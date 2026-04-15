@@ -1,0 +1,25 @@
+{
+    "name": "siyuan-lumina",
+    "author": "LunaNorth",
+    "url": "https://github.com/LunaNorth/siyuan-deco",
+    "version": "1.0.0",
+    "minAppVersion": "3.0.0",
+    "disabledInPublish": true,
+    "backends": ["all"],
+    "frontends": ["all"],
+    "displayName": {
+        "default": "Lumina",
+        "zh_CN": "轻语"
+    },
+    "description": {
+        "default": "A lightweight note-taking plugin for SiYuan, inspired by Flomo",
+        "zh_CN": "记录每一个轻闪而过的念头"
+    },
+    "readme": {
+        "default": "README.md"
+    },
+    "keywords": ["碎碎念", "记录", "回顾"],
+    "funding": {
+        "custom": []
+    }
+}
