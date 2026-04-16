@@ -12,6 +12,7 @@ const FLOMO_SYNC_TARGET_STORAGE_NAME = "shuoshuo-flomo-sync-target";
 const FLOMO_SYNC_DOC_ID_STORAGE_NAME = "shuoshuo-flomo-sync-doc-id";
 const REVIEW_CONFIG_STORAGE_NAME = "shuoshuo-review-config";
 const TAG_ICONS_STORAGE_NAME = "shuoshuo-tag-icons";
+const TAG_PINNED_STORAGE_NAME = "shuoshuo-tag-pinned";
 const THEME_MODE_STORAGE_NAME = "shuoshuo-theme-mode"; // 主题模式存储
 const TAB_TYPE = "shuoshuo-tab";
 
@@ -74,6 +75,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.selectedDate = null;
         this.selectedTag = null;
         this.tagIcons = {}; // 标签图标映射 {tagName: emoji/icon}
+        this.pinnedTags = []; // 置顶标签列表
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan
         this.loadShuoshuos();
         this.loadAvatars();
@@ -83,6 +85,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.loadFlomoConfig();
         this.loadReviewConfig();
         this.loadTagIcons();
+        this.loadPinnedTags();
         this.loadThemeMode();
 
         const plugin = this;
@@ -1332,35 +1335,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 `</div></div>`;
         }
         
-        // 自定义图标（数字和星期）
-        const customIcons = [
-            { type: '1', label: '日历' },
-            { type: '6', label: '星期' },
-            { type: '5', label: '周数' }
-        ];
-        
-        let customHtml = customIcons.map(icon => `
-            <div class="north-shuoshuo-custom-icon-option" data-icon-type="dynamic" data-type="${icon.type}">
-                <img src="/api/icon/getDynamicIcon?type=${icon.type}&color=%232ecc71" alt="${icon.label}">
-                <span>${icon.label}</span>
-            </div>
-        `).join('');
-        
-        // 添加笔记和日记图标
-        customHtml += `
-            <div class="north-shuoshuo-custom-icon-option" data-icon-type="preset" data-content="📝">
-                <span class="north-shuoshuo-custom-icon-emoji">📝</span>
-                <span>笔记</span>
-            </div>
-            <div class="north-shuoshuo-custom-icon-option" data-icon-type="preset" data-content="📔">
-                <span class="north-shuoshuo-custom-icon-emoji">📔</span>
-                <span>日记</span>
-            </div>
-            <div class="north-shuoshuo-custom-icon-option" data-icon-type="preset" data-content="📅">
-                <span class="north-shuoshuo-custom-icon-emoji">📅</span>
-                <span>日期</span>
-            </div>
-        `;
+        // 移除了自定义图标选项
         
         modal.innerHTML = `
             <div class="north-shuoshuo-modal-overlay"></div>
@@ -1377,7 +1352,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     <!-- 标签页 -->
                     <div class="north-shuoshuo-icon-tabs">
                         <div class="north-shuoshuo-icon-tab active" data-tab="emoji">Emoji</div>
-                        <div class="north-shuoshuo-icon-tab" data-tab="custom">自定义</div>
                         <div class="north-shuoshuo-icon-tab" data-tab="text">文字</div>
                     </div>
                     
@@ -1387,11 +1361,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                             <input type="text" class="north-shuoshuo-emoji-search-input" placeholder="搜索表情...">
                         </div>
                         <div class="north-shuoshuo-emoji-container">${emojiPanelHtml}</div>
-                    </div>
-                    
-                    <!-- 自定义面板 -->
-                    <div class="north-shuoshuo-icon-panel" data-panel="custom">
-                        <div class="north-shuoshuo-custom-grid">${customHtml}</div>
                     </div>
                     
                     <!-- 文字面板 -->
@@ -1510,25 +1479,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             });
         }
         
-        // 自定义图标选择
-        const customOptions = modal.querySelectorAll('.north-shuoshuo-custom-icon-option');
-        customOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                customOptions.forEach(o => o.classList.remove('selected'));
-                option.classList.add('selected');
-                const iconType = option.dataset.iconType;
-                if (iconType === 'dynamic') {
-                    // 动态图标（日期相关）
-                    selectedIcon = { type: 'dynamic', iconType: option.dataset.type };
-                    previewImg.src = `/api/icon/getDynamicIcon?type=${option.dataset.type}&color=${encodeURIComponent(selectedColor)}`;
-                } else {
-                    // 预设 emoji
-                    const content = option.dataset.content;
-                    selectedIcon = { type: 'emoji', content };
-                    updatePreview(content, true);
-                }
-            });
-        });
+        // 移除了自定义图标选择事件绑定
         
         // 文字输入事件
         textInput.addEventListener('input', () => {
@@ -2114,23 +2065,24 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     return;
                 }
 
-                // 处理标签图标点击
-                const tagIconWrapper = e.target.closest('.north-shuoshuo-tag-icon-wrapper');
-                if (tagIconWrapper) {
+                // 处理标签菜单按钮点击
+                const menuBtn = e.target.closest('.north-shuoshuo-tag-menu-btn');
+                if (menuBtn) {
                     e.stopPropagation();
-                    const tagName = tagIconWrapper.dataset.tag;
-                    const currentIcon = this.tagIcons[tagName] || '';
-                    
-                    // 创建图标选择器弹窗
-                    this.showIconPicker(tagName, currentIcon, (newIcon) => {
-                        this.setTagIcon(tagName, newIcon);
-                    });
+                    const tagName = menuBtn.dataset.tag;
+                    this.showTagMenu(tagName, menuBtn);
                     return;
                 }
+
+                // 左侧图标和名称区域不再直接触发编辑，仅通过菜单操作
+                const tagIconWrapper = e.target.closest('.north-shuoshuo-tag-icon-wrapper');
+                if (tagIconWrapper) {
+                    // 不再拦截图标点击，允许事件冒泡到标签项进行筛选
+                }
                 
-                // 处理标签点击
+                // 处理标签点击（不包括菜单和展开按钮区域）
                 const tagItem = e.target.closest('.north-shuoshuo-tag-tree-item');
-                if (tagItem && !e.target.closest('.north-shuoshuo-tag-toggle')) {
+                if (tagItem && !e.target.closest('.north-shuoshuo-tag-toggle') && !e.target.closest('.north-shuoshuo-tag-menu-btn')) {
                     const tag = tagItem.dataset.tag;
                     if (tag) {
                         // 切换选中状态
@@ -2633,12 +2585,22 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
     // 渲染标签树
     renderTagTree(tree, level, parentPath = '') {
-        const entries = Object.entries(tree);
+        let entries = Object.entries(tree);
         if (entries.length === 0) return '';
+
+        // 置顶标签排在前面
+        entries.sort((a, b) => {
+            const aPinned = this.pinnedTags.includes(a[1].fullPath);
+            const bPinned = this.pinnedTags.includes(b[1].fullPath);
+            if (aPinned && !bPinned) return -1;
+            if (!aPinned && bPinned) return 1;
+            return b[1].count - a[1].count;
+        });
         
         return entries.map(([name, data]) => {
             const hasChildren = Object.keys(data.children).length > 0;
             const fullPath = data.fullPath;
+            const isPinned = this.pinnedTags.includes(fullPath);
             // 获取标签图标配置
             const iconConfig = this.tagIcons[fullPath] || '';
             let iconHtml = '';
@@ -2650,11 +2612,11 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 if (type === 'dynamic') {
                     // 动态图标（日期相关）
                     const dynamicType = parts[1] || '1';
-                    iconHtml = `<img class="north-shuoshuo-tag-dynamic-icon" src="/api/icon/getDynamicIcon?type=${dynamicType}&color=%232ecc71" alt="icon" title="点击切换图标">`;
+                    iconHtml = `<img class="north-shuoshuo-tag-dynamic-icon" src="/api/icon/getDynamicIcon?type=${dynamicType}&color=%232ecc71" alt="icon">`;
                 } else if (type === 'customEmoji') {
                     // 自定义 emoji 图片
                     const emojiPath = decodeURIComponent(parts[1] || '');
-                    iconHtml = `<img class="north-shuoshuo-tag-dynamic-icon" src="/emojis/${emojiPath}" alt="emoji" title="点击切换图标">`;
+                    iconHtml = `<img class="north-shuoshuo-tag-dynamic-icon" src="/emojis/${emojiPath}" alt="emoji">`;
                 } else {
                     // Emoji 或文字图标
                     let content = decodeURIComponent(parts[0] || '');
@@ -2666,14 +2628,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     // 检测是否是 emoji
                     const isEmoji = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(content);
                     if (isEmoji) {
-                        iconHtml = `<span class="north-shuoshuo-tag-emoji" title="点击切换图标">${content}</span>`;
+                        iconHtml = `<span class="north-shuoshuo-tag-emoji">${content}</span>`;
                     } else {
-                        iconHtml = `<img class="north-shuoshuo-tag-dynamic-icon" src="/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(color)}&content=${encodeURIComponent(content)}" alt="${content}" title="点击切换图标">`;
+                        iconHtml = `<img class="north-shuoshuo-tag-dynamic-icon" src="/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(color)}&content=${encodeURIComponent(content)}" alt="${content}">`;
                     }
                 }
             } else {
                 // 默认 # 号
-                iconHtml = `<span class="north-shuoshuo-tag-icon-default" title="点击设置图标">#</span>`;
+                iconHtml = `<span class="north-shuoshuo-tag-icon-default">#</span>`;
             }
             
             const itemId = 'tag-' + Math.random().toString(36).substr(2, 9);
@@ -2685,10 +2647,13 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const leftContent = `${toggleBtn}<span class="north-shuoshuo-tag-icon-wrapper" data-tag="${fullPath}">${iconHtml}</span><span class="north-shuoshuo-tag-name">${name}</span>`;
             
             let html = `
-                <div class="north-shuoshuo-tag-tree-item ${level > 0 ? 'child' : ''}" data-level="${level}" data-tag="${fullPath}">
+                <div class="north-shuoshuo-tag-tree-item ${level > 0 ? 'child' : ''} ${isPinned ? 'pinned' : ''}" data-level="${level}" data-tag="${fullPath}">
                     <div class="north-shuoshuo-tag-item-content">
                         <div class="north-shuoshuo-tag-text-part">${leftContent}</div>
-                        <div class="north-shuoshuo-tag-count">${data.count}</div>
+                        <div class="north-shuoshuo-tag-meta">
+                            <span class="north-shuoshuo-tag-count">${data.count}</span>
+                            <span class="north-shuoshuo-tag-menu-btn" data-tag="${fullPath}">•••</span>
+                        </div>
                     </div>
                     ${hasChildren ? `
                         <div class="north-shuoshuo-tag-children" id="${itemId}" style="display: none;">
@@ -4042,6 +4007,383 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         }
         await this.saveTagIcons();
         this.renderTags(); // 刷新标签列表
+    }
+
+    // 加载置顶标签
+    async loadPinnedTags() {
+        try {
+            const data = await this.loadData(TAG_PINNED_STORAGE_NAME);
+            this.pinnedTags = Array.isArray(data) ? data : [];
+        } catch (e) {
+            console.log("加载置顶标签失败", e);
+            this.pinnedTags = [];
+        }
+    }
+
+    // 保存置顶标签
+    async savePinnedTags() {
+        try {
+            await this.saveData(TAG_PINNED_STORAGE_NAME, this.pinnedTags);
+        } catch (e) {
+            console.log("保存置顶标签失败", e);
+        }
+    }
+
+    // 切换置顶状态
+    async togglePinnedTag(tagName) {
+        const index = this.pinnedTags.indexOf(tagName);
+        if (index > -1) {
+            this.pinnedTags.splice(index, 1);
+        } else {
+            this.pinnedTags.push(tagName);
+        }
+        await this.savePinnedTags();
+        this.renderTags();
+    }
+
+    // 显示标签菜单
+    showTagMenu(tagName, anchorEl) {
+        // 关闭已有菜单
+        this.closeAllTagMenus();
+
+        const isPinned = this.pinnedTags.includes(tagName);
+        const menu = document.createElement('div');
+        menu.className = 'north-shuoshuo-tag-menu-dropdown';
+        menu.innerHTML = `
+            <div class="north-shuoshuo-tag-menu-item" data-action="pin">
+                <span class="north-shuoshuo-tag-menu-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4H17V2H7V4H8V12L6 14V16H11.2V22H12.8V16H18V14L16 12Z"/></svg>
+                </span>
+                <span class="north-shuoshuo-tag-menu-text">${isPinned ? '取消置顶' : '置顶'}</span>
+            </div>
+            <div class="north-shuoshuo-tag-menu-item" data-action="rename">
+                <span class="north-shuoshuo-tag-menu-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                </span>
+                <span class="north-shuoshuo-tag-menu-text">编辑名称/图标</span>
+            </div>
+            <div class="north-shuoshuo-tag-menu-item north-shuoshuo-tag-menu-item-danger" data-action="delete">
+                <span class="north-shuoshuo-tag-menu-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                </span>
+                <span class="north-shuoshuo-tag-menu-text">删除标签</span>
+                <span class="north-shuoshuo-tag-menu-arrow">›</span>
+            </div>
+        `;
+
+        document.body.appendChild(menu);
+        this._activeTagMenu = menu;
+
+        // 定位
+        const rect = anchorEl.getBoundingClientRect();
+        menu.style.position = 'fixed';
+        menu.style.top = `${rect.bottom + 4}px`;
+        menu.style.left = `${Math.min(rect.left, window.innerWidth - 180)}px`;
+        menu.style.zIndex = '10001';
+
+        // 点击菜单项
+        menu.querySelectorAll('.north-shuoshuo-tag-menu-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = item.dataset.action;
+                if (action === 'pin') {
+                    this.togglePinnedTag(tagName);
+                    menu.remove();
+                } else if (action === 'rename') {
+                    menu.remove();
+                    this.showTagRenameDialog(tagName);
+                } else if (action === 'delete') {
+                    this.showTagDeleteSubmenu(tagName, item, menu);
+                }
+            });
+        });
+
+        // 点击外部关闭
+        setTimeout(() => {
+            const closeHandler = (e) => {
+                if (!menu.contains(e.target) && !anchorEl.contains(e.target)) {
+                    menu.remove();
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            document.addEventListener('click', closeHandler);
+        }, 0);
+    }
+
+    // 关闭所有标签菜单
+    closeAllTagMenus() {
+        if (this._activeTagMenu) {
+            this._activeTagMenu.remove();
+            this._activeTagMenu = null;
+        }
+        const oldSub = document.querySelector('.north-shuoshuo-tag-submenu');
+        if (oldSub) oldSub.remove();
+    }
+
+    // 显示删除子菜单
+    showTagDeleteSubmenu(tagName, anchorItem, parentMenu) {
+        const oldSub = document.querySelector('.north-shuoshuo-tag-submenu');
+        if (oldSub) oldSub.remove();
+
+        const subMenu = document.createElement('div');
+        subMenu.className = 'north-shuoshuo-tag-submenu';
+        subMenu.innerHTML = `
+            <div class="north-shuoshuo-tag-submenu-item" data-action="delete-tag-only">仅删除标签</div>
+            <div class="north-shuoshuo-tag-submenu-item north-shuoshuo-tag-submenu-item-danger" data-action="delete-tag-and-notes">删除标签和笔记</div>
+        `;
+
+        document.body.appendChild(subMenu);
+
+        const rect = anchorItem.getBoundingClientRect();
+        subMenu.style.position = 'fixed';
+        subMenu.style.top = `${rect.top}px`;
+        subMenu.style.left = `${rect.right + 4}px`;
+        subMenu.style.zIndex = '10002';
+
+        subMenu.querySelectorAll('.north-shuoshuo-tag-submenu-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = item.dataset.action;
+                if (action === 'delete-tag-only') {
+                    this.deleteTagOnly(tagName);
+                } else if (action === 'delete-tag-and-notes') {
+                    this.deleteTagAndNotes(tagName);
+                }
+                subMenu.remove();
+                parentMenu.remove();
+            });
+        });
+
+        setTimeout(() => {
+            const closeHandler = (e) => {
+                if (!subMenu.contains(e.target) && !anchorItem.contains(e.target)) {
+                    subMenu.remove();
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            document.addEventListener('click', closeHandler);
+        }, 0);
+    }
+
+    // 显示重命名弹窗
+    showTagRenameDialog(tagName) {
+        const currentIcon = this.tagIcons[tagName] || '';
+        let previewSrc = '';
+        let currentColor = '#2ecc71';
+        let currentContent = '';
+
+        // 解析当前图标
+        if (currentIcon && currentIcon.startsWith('icon:')) {
+            const parts = currentIcon.substring(5).split(':');
+            if (parts[0] === 'dynamic') {
+                previewSrc = `/api/icon/getDynamicIcon?type=${parts[1] || '1'}&color=%232ecc71`;
+            } else if (parts[0] === 'customEmoji') {
+                previewSrc = `/emojis/${decodeURIComponent(parts[1] || '')}`;
+            } else {
+                currentContent = decodeURIComponent(parts[0] || '');
+                currentColor = parts[1] || '#2ecc71';
+                currentContent = this.convertHexToEmoji(currentContent);
+                const isEmoji = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(currentContent);
+                if (isEmoji) {
+                    previewSrc = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(currentColor)}&content=${encodeURIComponent(currentContent)}`;
+                } else {
+                    previewSrc = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(currentColor)}&content=${encodeURIComponent(currentContent)}`;
+                }
+            }
+        } else {
+            previewSrc = `/api/icon/getDynamicIcon?type=8&color=%232ecc71&content=${encodeURIComponent(tagName.substring(0, 2))}`;
+        }
+
+        const modal = document.createElement('div');
+        modal.className = 'north-shuoshuo-tag-rename-modal';
+        modal.innerHTML = `
+            <div class="north-shuoshuo-modal-overlay"></div>
+            <div class="north-shuoshuo-tag-rename-content">
+                <div class="north-shuoshuo-tag-rename-row">
+                    <div class="north-shuoshuo-tag-rename-icon" data-tag="${tagName}">
+                        <img src="${previewSrc}" alt="icon">
+                    </div>
+                    <input type="text" class="north-shuoshuo-tag-rename-input" value="${tagName}" placeholder="标签名称">
+                    <button class="north-shuoshuo-tag-rename-save">保存</button>
+                </div>
+                <div class="north-shuoshuo-tag-rename-hint">使用 标签/次级标签 格式创建多级标签</div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const input = modal.querySelector('.north-shuoshuo-tag-rename-input');
+        const saveBtn = modal.querySelector('.north-shuoshuo-tag-rename-save');
+        const iconBox = modal.querySelector('.north-shuoshuo-tag-rename-icon');
+
+        // 点击图标切换图标
+        iconBox.addEventListener('click', () => {
+            this.showIconPicker(tagName, currentIcon, (newIcon) => {
+                this.setTagIcon(tagName, newIcon);
+                // 更新预览
+                if (newIcon && newIcon.startsWith('icon:')) {
+                    const p = newIcon.substring(5).split(':');
+                    if (p[0] === 'dynamic') {
+                        iconBox.querySelector('img').src = `/api/icon/getDynamicIcon?type=${p[1] || '1'}&color=%232ecc71`;
+                    } else if (p[0] === 'customEmoji') {
+                        iconBox.querySelector('img').src = `/emojis/${decodeURIComponent(p[1] || '')}`;
+                    } else {
+                        const c = this.convertHexToEmoji(decodeURIComponent(p[0] || ''));
+                        const col = p[1] || '#2ecc71';
+                        iconBox.querySelector('img').src = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(col)}&content=${encodeURIComponent(c)}`;
+                    }
+                } else {
+                    iconBox.querySelector('img').src = `/api/icon/getDynamicIcon?type=8&color=%232ecc71&content=${encodeURIComponent(tagName.substring(0, 2))}`;
+                }
+            });
+        });
+
+        const doSave = () => {
+            const newName = input.value.trim();
+            if (newName && newName !== tagName) {
+                this.renameTag(tagName, newName);
+            }
+            modal.remove();
+        };
+
+        saveBtn.addEventListener('click', doSave);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') doSave();
+        });
+        input.focus();
+        input.select();
+
+        modal.querySelector('.north-shuoshuo-modal-overlay').addEventListener('click', () => {
+            modal.remove();
+        });
+    }
+
+    // 重命名标签
+    async renameTag(oldName, newName) {
+        // 更新所有笔记中的标签
+        this.shuoshuos.forEach(note => {
+            if (note.tags) {
+                note.tags = note.tags.map(tag => {
+                    if (tag === oldName) return newName;
+                    if (tag.startsWith(oldName + '/')) {
+                        return newName + tag.substring(oldName.length);
+                    }
+                    return tag;
+                });
+            }
+            // 同时替换内容中的标签文本
+            if (note.content) {
+                note.content = note.content.replace(
+                    new RegExp('#' + this.escapeRegExp(oldName) + '(?![\\w/])', 'g'),
+                    '#' + newName
+                );
+            }
+        });
+
+        // 迁移图标配置
+        if (this.tagIcons[oldName]) {
+            this.tagIcons[newName] = this.tagIcons[oldName];
+            delete this.tagIcons[oldName];
+        }
+        // 迁移子标签的图标配置
+        Object.keys(this.tagIcons).forEach(key => {
+            if (key.startsWith(oldName + '/')) {
+                const newKey = newName + key.substring(oldName.length);
+                this.tagIcons[newKey] = this.tagIcons[key];
+                delete this.tagIcons[key];
+            }
+        });
+
+        // 迁移置顶状态
+        const pinIndex = this.pinnedTags.indexOf(oldName);
+        if (pinIndex > -1) {
+            this.pinnedTags[pinIndex] = newName;
+        }
+        // 迁移子标签置顶状态
+        this.pinnedTags = this.pinnedTags.map(tag => {
+            if (tag === oldName) return newName;
+            if (tag.startsWith(oldName + '/')) {
+                return newName + tag.substring(oldName.length);
+            }
+            return tag;
+        });
+
+        await this.saveData(STORAGE_NAME, this.shuoshuos);
+        await this.saveTagIcons();
+        await this.savePinnedTags();
+
+        if (this.selectedTag === oldName) {
+            this.selectedTag = newName;
+        }
+
+        this.renderTags();
+        this.renderNotes();
+        showMessage(`标签已重命名为 "${newName}"`);
+    }
+
+    // 仅删除标签
+    async deleteTagOnly(tagName) {
+        // 从所有笔记内容中移除该标签
+        this.shuoshuos.forEach(note => {
+            if (note.tags) {
+                note.tags = note.tags.filter(t => t !== tagName && !t.startsWith(tagName + '/'));
+            }
+            if (note.content) {
+                note.content = note.content.replace(
+                    new RegExp('#' + this.escapeRegExp(tagName) + '(?![\\w/])', 'g'),
+                    ''
+                ).replace(/\s+/g, ' ').trim();
+            }
+        });
+
+        // 清理图标和置顶
+        delete this.tagIcons[tagName];
+        Object.keys(this.tagIcons).forEach(key => {
+            if (key.startsWith(tagName + '/')) delete this.tagIcons[key];
+        });
+        this.pinnedTags = this.pinnedTags.filter(t => t !== tagName && !t.startsWith(tagName + '/'));
+
+        if (this.selectedTag === tagName || (this.selectedTag && this.selectedTag.startsWith(tagName + '/'))) {
+            this.selectedTag = null;
+        }
+
+        await this.saveData(STORAGE_NAME, this.shuoshuos);
+        await this.saveTagIcons();
+        await this.savePinnedTags();
+        this.renderTags();
+        this.renderNotes();
+        showMessage('标签已删除');
+    }
+
+    // 删除标签和关联笔记
+    async deleteTagAndNotes(tagName) {
+        // 过滤掉包含该标签的笔记
+        this.shuoshuos = this.shuoshuos.filter(note => {
+            const tags = note.tags || this.extractTags(note.content);
+            return !tags.some(t => t === tagName || t.startsWith(tagName + '/'));
+        });
+
+        // 清理图标和置顶
+        delete this.tagIcons[tagName];
+        Object.keys(this.tagIcons).forEach(key => {
+            if (key.startsWith(tagName + '/')) delete this.tagIcons[key];
+        });
+        this.pinnedTags = this.pinnedTags.filter(t => t !== tagName && !t.startsWith(tagName + '/'));
+
+        if (this.selectedTag === tagName || (this.selectedTag && this.selectedTag.startsWith(tagName + '/'))) {
+            this.selectedTag = null;
+        }
+
+        await this.saveData(STORAGE_NAME, this.shuoshuos);
+        await this.saveTagIcons();
+        await this.savePinnedTags();
+        this.renderTags();
+        this.renderNotes();
+        showMessage('标签和关联笔记已删除');
+    }
+
+    escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     // 加载主题模式

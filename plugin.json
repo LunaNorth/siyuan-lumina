@@ -1,8 +1,8 @@
 {
     "name": "siyuan-lumina",
     "author": "LunaNorth",
-    "url": "https://github.com/LunaNorth/siyuan-deco",
-    "version": "1.0.0",
+    "url": "https://github.com/LunaNorth/siyuan-lumina",
+    "version": "1.0.1",
     "minAppVersion": "3.0.0",
     "disabledInPublish": true,
     "backends": ["all"],
