@@ -665,11 +665,14 @@
     min-height: 60px;
     border: none;
     outline: none;
-    font-size: 14px;
+    font-size: 14.5px;
+    line-height: 2;
     font-family: inherit;
     resize: none;
+    overflow: hidden;
     background: transparent;
     color: var(--b3-theme-on-background);
+    font-family: inherit;
 }
 
 .north-shuoshuo-input-field::placeholder {
@@ -794,6 +797,36 @@
     /* 无悬停效果 */
 }
 
+@keyframes noteHighlight {
+    0% { box-shadow: 0 0 0 0 var(--b3-theme-primary-lighter); }
+    50% { box-shadow: 0 0 0 4px var(--b3-theme-primary-lighter); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.north-shuoshuo-note-highlight {
+    animation: noteHighlight 1.5s ease;
+}
+
+/* 内联编辑 */
+.north-shuoshuo-inline-edit {
+    margin-bottom: 10px;
+}
+
+.north-shuoshuo-inline-edit-cancel {
+    padding: 4px 10px;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.north-shuoshuo-inline-edit-cancel:hover {
+    background: var(--b3-list-hover);
+}
+
 .north-shuoshuo-note-header {
     display: flex;
     justify-content: space-between;
@@ -844,8 +877,8 @@
 }
 
 .north-shuoshuo-note-content {
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: 14.5px;
+    line-height: 2;
     color: var(--b3-theme-on-background);
     margin-bottom: 8px;
     word-wrap: break-word;
@@ -2725,6 +2758,27 @@
     font-size: 16px;
     font-weight: 600;
     color: var(--b3-theme-on-background);
+}
+
+.north-shuoshuo-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.north-shuoshuo-memo-detail-save {
+    padding: 4px 12px;
+    font-size: 13px;
+    color: #fff;
+    background: var(--b3-theme-primary);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.north-shuoshuo-memo-detail-save:hover {
+    opacity: 0.85;
 }
 
 .north-shuoshuo-modal-close {
@@ -5206,3 +5260,1053 @@
 
 /* 适配主题下的所有样式都在 .theme-siyuan 下重新定义 */
 /* 这里省略，因为它们已经在上面定义为默认样式了 */
+
+/* ========== @ 快速引用 ========== */
+
+/* @ 按钮 */
+#toolbar-at svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 引用选择器 */
+.north-shuoshuo-mention-picker {
+    background: var(--b3-theme-surface);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 8px;
+    box-shadow: var(--b3-dialog-shadow);
+    min-width: 280px;
+    max-width: 360px;
+    max-height: 320px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.north-shuoshuo-mention-picker-list {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.north-shuoshuo-mention-picker-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid var(--b3-border-color);
+}
+
+.north-shuoshuo-mention-picker-item:last-child {
+    border-bottom: none;
+}
+
+.north-shuoshuo-mention-picker-item:hover {
+    background: var(--b3-list-hover);
+}
+
+.north-shuoshuo-mention-picker-date {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    margin-bottom: 4px;
+}
+
+.north-shuoshuo-mention-picker-preview {
+    font-size: 14px;
+    color: var(--b3-theme-on-background);
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.north-shuoshuo-mention-picker-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 13px;
+}
+
+.north-shuoshuo-mention-highlight {
+    background-color: #ffeb3b;
+    color: #000;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+/* MEMO 引用链接 */
+.north-shuoshuo-memo-ref {
+    display: inline-block;
+    color: var(--b3-protyle-inline-link-color, #4285f4);
+    font-weight: 600;
+    cursor: pointer;
+    margin: 0 2px;
+    transition: opacity 0.2s;
+}
+
+.north-shuoshuo-memo-ref:hover {
+    opacity: 0.8;
+    text-decoration: underline;
+}
+
+/* MEMO 详情弹窗 */
+.north-shuoshuo-memo-detail-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.north-shuoshuo-memo-detail-content {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--b3-theme-on-background);
+    margin-bottom: 16px;
+}
+
+.north-shuoshuo-memo-detail-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--b3-theme-on-background);
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 8px;
+    resize: vertical;
+    outline: none;
+    margin-bottom: 16px;
+    font-family: inherit;
+}
+
+.north-shuoshuo-memo-detail-textarea:focus {
+    border-color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-memo-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.north-shuoshuo-memo-detail-date {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+}
+
+.north-shuoshuo-memo-detail-links {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--b3-border-color);
+}
+
+.north-shuoshuo-memo-detail-links-title {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    margin-bottom: 12px;
+}
+
+.north-shuoshuo-memo-detail-links-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.north-shuoshuo-memo-detail-link-item {
+    padding: 10px 12px;
+    background: var(--b3-theme-surface-lighter);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.north-shuoshuo-memo-detail-link-item:hover {
+    background: var(--b3-list-hover);
+}
+
+.north-shuoshuo-memo-detail-link-date {
+    font-size: 11px;
+    color: var(--b3-theme-on-surface-light);
+    margin-bottom: 2px;
+}
+
+.north-shuoshuo-memo-detail-link-preview {
+    font-size: 13px;
+    color: var(--b3-theme-on-background);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 滚动条 */
+.north-shuoshuo-mention-picker-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.north-shuoshuo-mention-picker-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.north-shuoshuo-mention-picker-list::-webkit-scrollbar-thumb {
+    background: var(--b3-scroll-color);
+    border-radius: 2px;
+}
+
+/* 详情弹窗中 MEMO 引用的内联样式 */
+.north-shuoshuo-memo-inline-ref {
+    display: inline;
+    color: var(--b3-theme-primary);
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    border-bottom: 1px dashed var(--b3-theme-primary);
+    transition: all 0.2s;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.north-shuoshuo-memo-inline-ref:hover {
+    background: var(--b3-theme-primary-lightest);
+    border-bottom-style: solid;
+}
+
+/* ========== MEMO 批注关联提示 ========== */
+
+.north-shuoshuo-memo-relations {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--b3-border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.north-shuoshuo-memo-relation-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    font-size: 12px;
+}
+
+.north-shuoshuo-memo-relation-item:hover {
+    opacity: 0.8;
+}
+
+.north-shuoshuo-memo-relation-icon {
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--b3-theme-on-surface-light);
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 9px;
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-memo-relation-icon::before {
+    content: '←';
+}
+
+.north-shuoshuo-memo-relation-info {
+    color: var(--b3-theme-on-surface-light);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+/* 详情弹窗改为右侧滑出 */
+.north-shuoshuo-memo-detail-modal {
+    align-items: stretch;
+    justify-content: flex-end;
+}
+
+.north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-content {
+    width: 420px;
+    max-width: 90vw;
+    height: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    margin: 0;
+    animation: memoSlideInRight 0.25s ease;
+}
+
+@keyframes memoSlideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* ========================================
+   莫兰迪主题 (morandi)
+   ======================================== */
+
+/* 莫兰迪主题 - 预览 */
+.morandi-theme-preview {
+    background: linear-gradient(135deg, #D4A5A5 0%, #9CAF88 33%, #8FA1B3 66%, #7A8471 100%);
+    border-radius: 6px;
+}
+
+/* 莫兰迪主题 - 基础变量 */
+.north-shuoshuo-container.theme-morandi {
+    --b3-theme-primary: #D4A5A5;
+    --b3-theme-primary-light: #E5C4C4;
+    --b3-theme-primary-lighter: #F0DADA;
+    --b3-theme-primary-lightest: #FAF0F0;
+    --b3-theme-on-primary: #FFFFFF;
+    --b3-theme-background: #FAF8F6;
+    --b3-theme-surface: #FFFFFF;
+    --b3-theme-surface-lighter: #F5F3F1;
+    --b3-theme-on-background: #5A5654;
+    --b3-theme-on-surface: #7A7572;
+    --b3-theme-on-surface-light: #9A9592;
+    --b3-border-color: #E8E4E1;
+    --b3-list-hover: #F5F2EF;
+    font-family: inherit;
+    background-color: var(--b3-theme-background);
+    color: var(--b3-theme-on-background);
+}
+
+/* 浅色系列 */
+.north-shuoshuo-container.morandi-dusty-pink {
+    --b3-theme-primary: #D4A5A5;
+    --b3-theme-primary-light: #E5C4C4;
+    --b3-theme-primary-lighter: #F0DADA;
+    --b3-theme-primary-lightest: #FAF0F0;
+}
+
+.north-shuoshuo-container.morandi-sage-green {
+    --b3-theme-primary: #9CAF88;
+    --b3-theme-primary-light: #B8C9A8;
+    --b3-theme-primary-lighter: #D4E0C8;
+    --b3-theme-primary-lightest: #EDF3E8;
+}
+
+.north-shuoshuo-container.morandi-muted-blue {
+    --b3-theme-primary: #8FA1B3;
+    --b3-theme-primary-light: #B0BEC9;
+    --b3-theme-primary-lighter: #D0D9E0;
+    --b3-theme-primary-lightest: #EBF0F4;
+}
+
+.north-shuoshuo-container.morandi-warm-beige {
+    --b3-theme-primary: #C4B7A6;
+    --b3-theme-primary-light: #D8CFC2;
+    --b3-theme-primary-lighter: #E9E2D9;
+    --b3-theme-primary-lightest: #F7F4F0;
+}
+
+.north-shuoshuo-container.morandi-dusty-purple {
+    --b3-theme-primary: #A898B5;
+    --b3-theme-primary-light: #C4BAD1;
+    --b3-theme-primary-lighter: #DDD6E6;
+    --b3-theme-primary-lightest: #F2EFF6;
+}
+
+.north-shuoshuo-container.morandi-terracotta {
+    --b3-theme-primary: #C78D7B;
+    --b3-theme-primary-light: #DBB2A6;
+    --b3-theme-primary-lighter: #EDD6CF;
+    --b3-theme-primary-lightest: #FAF0ED;
+}
+
+/* 中度系列 */
+.north-shuoshuo-container.morandi-olive-green {
+    --b3-theme-primary: #A3A380;
+    --b3-theme-primary-light: #C0C0A3;
+    --b3-theme-primary-lighter: #DCDCC6;
+    --b3-theme-primary-lightest: #F2F2EB;
+}
+
+.north-shuoshuo-container.morandi-slate-blue {
+    --b3-theme-primary: #7D8A9E;
+    --b3-theme-primary-light: #A5AEBD;
+    --b3-theme-primary-lighter: #CCD2DB;
+    --b3-theme-primary-lightest: #EBEEF2;
+}
+
+.north-shuoshuo-container.morandi-mauve {
+    --b3-theme-primary: #B8A1A8;
+    --b3-theme-primary-light: #D1C2C6;
+    --b3-theme-primary-lighter: #E6DDE0;
+    --b3-theme-primary-lightest: #F5F0F2;
+}
+
+.north-shuoshuo-container.morandi-warm-gray {
+    --b3-theme-primary: #A8A39D;
+    --b3-theme-primary-light: #C4C0BC;
+    --b3-theme-primary-lighter: #DDDAD7;
+    --b3-theme-primary-lightest: #F2F0EE;
+}
+
+/* 深色系列 */
+.north-shuoshuo-container.morandi-deep-bean {
+    --b3-theme-primary: #A67B7B;
+    --b3-theme-primary-light: #C4A5A5;
+    --b3-theme-primary-lighter: #E0D0D0;
+    --b3-theme-primary-lightest: #F5ECEC;
+}
+
+.north-shuoshuo-container.morandi-dark-moss {
+    --b3-theme-primary: #7A8471;
+    --b3-theme-primary-light: #A0A896;
+    --b3-theme-primary-lighter: #C8CDBF;
+    --b3-theme-primary-lightest: #EBEDE6;
+}
+
+.north-shuoshuo-container.morandi-caramel {
+    --b3-theme-primary: #A67C52;
+    --b3-theme-primary-light: #C9A783;
+    --b3-theme-primary-lighter: #E4D3BC;
+    --b3-theme-primary-lightest: #F5EDE2;
+}
+
+.north-shuoshuo-container.morandi-dusk-purple {
+    --b3-theme-primary: #8B7B8B;
+    --b3-theme-primary-light: #ADA0AD;
+    --b3-theme-primary-lighter: #D6CFD6;
+    --b3-theme-primary-lightest: #F2EFF2;
+}
+
+.north-shuoshuo-container.morandi-deep-sea {
+    --b3-theme-primary: #5E738B;
+    --b3-theme-primary-light: #8A9AAF;
+    --b3-theme-primary-lighter: #C0CBD8;
+    --b3-theme-primary-lightest: #EBEFF4;
+}
+
+.north-shuoshuo-container.morandi-tobacco {
+    --b3-theme-primary: #8B7355;
+    --b3-theme-primary-light: #B39B7D;
+    --b3-theme-primary-lighter: #D9CCB8;
+    --b3-theme-primary-lightest: #F2EDE5;
+}
+
+.north-shuoshuo-container.morandi-stone {
+    --b3-theme-primary: #7D7D7D;
+    --b3-theme-primary-light: #A5A5A5;
+    --b3-theme-primary-lighter: #D0D0D0;
+    --b3-theme-primary-lightest: #EFEFEF;
+}
+
+.north-shuoshuo-container.morandi-withered-rose {
+    --b3-theme-primary: #9E7A7A;
+    --b3-theme-primary-light: #C2A5A5;
+    --b3-theme-primary-lighter: #E0D0D0;
+    --b3-theme-primary-lightest: #F5ECEC;
+}
+
+.north-shuoshuo-container.morandi-navy-gray {
+    --b3-theme-primary: #5D6D7E;
+    --b3-theme-primary-light: #8A9AAF;
+    --b3-theme-primary-lighter: #C0CBD8;
+    --b3-theme-primary-lightest: #EBEFF4;
+}
+
+.north-shuoshuo-container.morandi-rust-red {
+    --b3-theme-primary: #9C6B6B;
+    --b3-theme-primary-light: #C2A5A5;
+    --b3-theme-primary-lighter: #E0D0D0;
+    --b3-theme-primary-lightest: #F5ECEC;
+}
+
+.north-shuoshuo-container.morandi-sandalwood {
+    --b3-theme-primary: #8B6F5C;
+    --b3-theme-primary-light: #B39B7D;
+    --b3-theme-primary-lighter: #D9CCB8;
+    --b3-theme-primary-lightest: #F2EDE5;
+}
+
+.north-shuoshuo-container.morandi-slate-green {
+    --b3-theme-primary: #7D8B8B;
+    --b3-theme-primary-light: #A5B3B3;
+    --b3-theme-primary-lighter: #D0D8D8;
+    --b3-theme-primary-lightest: #EDF1F1;
+}
+
+.north-shuoshuo-container.morandi-deep-wisteria {
+    --b3-theme-primary: #6B5B6B;
+    --b3-theme-primary-light: #998A99;
+    --b3-theme-primary-lighter: #C8BFC8;
+    --b3-theme-primary-lightest: #EFE8EF;
+}
+
+/* =================== 莫兰迪主题 - 完整组件适配 =================== */
+
+/* 左侧导航栏 */
+.theme-morandi .north-shuoshuo-sidebar {
+    background: var(--b3-theme-surface);
+    border-right: 1px solid var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-nav-item {
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .north-shuoshuo-nav-item:hover {
+    background: var(--b3-list-hover);
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-nav-item.active {
+    background: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+}
+
+/* Flomo 侧边栏 */
+.theme-morandi .north-shuoshuo-flomo-sidebar {
+    background-color: var(--b3-theme-surface);
+    border-right: 1px solid var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-stat-number {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-stat-label {
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* 热力图 */
+.theme-morandi .north-shuoshuo-heatmap-cell {
+    background-color: var(--b3-theme-surface-lighter);
+}
+
+.theme-morandi .north-shuoshuo-heatmap-cell.level-1 {
+    background-color: var(--b3-theme-primary-lightest);
+}
+
+.theme-morandi .north-shuoshuo-heatmap-cell.level-2 {
+    background-color: var(--b3-theme-primary-lighter);
+}
+
+.theme-morandi .north-shuoshuo-heatmap-cell.level-3 {
+    background-color: var(--b3-theme-primary-light);
+}
+
+.theme-morandi .north-shuoshuo-heatmap-cell.level-4 {
+    background-color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-heatmap-cell:hover {
+    box-shadow: 0 0 0 2px var(--b3-theme-primary-lighter);
+}
+
+.theme-morandi .north-shuoshuo-heatmap-cell.selected {
+    box-shadow: 0 0 0 2px var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-months {
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* 菜单 */
+.theme-morandi .north-shuoshuo-menu-item {
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .north-shuoshuo-menu-item:hover {
+    background-color: var(--b3-list-hover);
+}
+
+.theme-morandi .north-shuoshuo-menu-item.active {
+    background-color: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+}
+
+.theme-morandi .north-shuoshuo-menu-item.active .north-shuoshuo-menu-icon {
+    color: var(--b3-theme-on-primary);
+}
+
+.theme-morandi .north-shuoshuo-menu-icon {
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .north-shuoshuo-section-title {
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* 标签 */
+.theme-morandi .north-shuoshuo-tag-item-content {
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .north-shuoshuo-tag-name {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-tag-count {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-tag-tree-item:hover .north-shuoshuo-tag-item-content {
+    background-color: var(--b3-list-hover);
+}
+
+.theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-item-content {
+    background-color: transparent;
+}
+
+.theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-name,
+.theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-count {
+    color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-icon-wrapper,
+.theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-toggle {
+    color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-tag-empty {
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* 右侧主区域 */
+.theme-morandi .north-shuoshuo-flomo-area {
+    background-color: var(--b3-theme-background);
+}
+
+.theme-morandi .north-shuoshuo-main {
+    background-color: var(--b3-theme-surface);
+}
+
+.theme-morandi .north-shuoshuo-input-area {
+    border-bottom: 1px solid var(--b3-border-color);
+    background-color: transparent;
+}
+
+.theme-morandi .north-shuoshuo-input-box {
+    background-color: #FFFFFF;
+    border: 1px solid #E0DCD9;
+}
+
+.theme-morandi .north-shuoshuo-input-box.focused {
+    border-color: var(--b3-theme-primary);
+    box-shadow: 0 0 0 3px var(--b3-theme-primary-lightest);
+    background-color: #FFFFFF;
+}
+
+.theme-morandi .north-shuoshuo-input-field {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-input-field::placeholder {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-toolbar-icon {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-toolbar-icon:hover {
+    color: var(--b3-theme-on-surface);
+    background-color: var(--b3-list-hover);
+}
+
+.theme-morandi .north-shuoshuo-toolbar-divider {
+    background-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-send-btn {
+    background-color: var(--b3-theme-surface-lighter);
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-send-btn.active {
+    background-color: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+}
+
+/* 笔记卡片 */
+.theme-morandi .north-shuoshuo-note-card {
+    background-color: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-note-date {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-note-menu {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-note-menu:hover {
+    background-color: var(--b3-list-hover);
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .north-shuoshuo-note-content {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-note-tag {
+    background-color: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-note-content .north-shuoshuo-tag {
+    background-color: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-note-content .north-shuoshuo-tag:hover {
+    background-color: var(--b3-theme-primary-lighter);
+}
+
+/* Markdown */
+.theme-morandi .north-shuoshuo-note-content h1,
+.theme-morandi .north-shuoshuo-note-content h2,
+.theme-morandi .north-shuoshuo-note-content h3 {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-note-content strong {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-note-content a {
+    color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-note-content blockquote {
+    border-left-color: var(--b3-theme-primary);
+}
+
+/* MEMO 引用 */
+.theme-morandi .north-shuoshuo-memo-ref {
+    color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-memo-relations {
+    border-top-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-memo-relation-item:hover {
+    opacity: 0.8;
+}
+
+.theme-morandi .north-shuoshuo-memo-relation-icon {
+    border-color: var(--b3-theme-on-surface-light);
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-memo-relation-info {
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* 莫兰迪主题 - 详情弹窗关联卡片 */
+.theme-morandi .north-shuoshuo-memo-detail-link-item {
+    background: var(--b3-theme-primary-lightest);
+    border: 1px solid var(--b3-theme-primary-lighter);
+    box-shadow: 0 2px 8px var(--b3-theme-primary-lightest);
+}
+
+.theme-morandi .north-shuoshuo-memo-detail-link-item:hover {
+    background: var(--b3-theme-primary-lighter);
+    border-color: var(--b3-theme-primary-light);
+    box-shadow: 0 4px 12px var(--b3-theme-primary-lighter);
+}
+
+/* 设置面板 */
+.theme-morandi .north-shuoshuo-settings-area {
+    background: var(--b3-theme-background);
+}
+
+.theme-morandi .north-shuoshuo-settings-nav {
+    background-color: var(--b3-theme-surface);
+    border-right-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-settings-nav-header {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-settings-nav-item {
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .north-shuoshuo-settings-nav-item:hover {
+    background-color: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-settings-nav-item.active {
+    background-color: var(--b3-theme-primary-lighter);
+    color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-content-area {
+    background-color: var(--b3-theme-background);
+}
+
+.theme-morandi .north-shuoshuo-section-card {
+    border-color: var(--b3-border-color);
+    background: var(--b3-theme-surface);
+}
+
+.theme-morandi .north-shuoshuo-section-title {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-section-desc {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-radio-item {
+    border-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-radio-item:hover {
+    border-color: var(--b3-theme-primary);
+    background: var(--b3-theme-primary-lightest);
+}
+
+.theme-morandi .north-shuoshuo-radio-item.selected {
+    border-color: var(--b3-theme-primary);
+    background: var(--b3-theme-primary-lightest);
+}
+
+.theme-morandi .north-shuoshuo-radio-check {
+    border-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-radio-item.selected .north-shuoshuo-radio-check {
+    border-color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-radio-check::after {
+    background: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-select-field,
+.theme-morandi .north-shuoshuo-select-field,
+.theme-morandi .north-shuoshuo-tag-rename-input {
+    border-color: var(--b3-border-color);
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-select-field:focus,
+.theme-morandi .north-shuoshuo-tag-rename-input:focus {
+    border-color: var(--b3-theme-primary);
+    box-shadow: 0 0 0 2px var(--b3-theme-primary-lightest);
+}
+
+.theme-morandi .north-shuoshuo-btn-icon {
+    border-color: var(--b3-border-color);
+    background: var(--b3-theme-surface);
+}
+
+.theme-morandi .north-shuoshuo-btn-icon:hover {
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+    background: var(--b3-theme-primary-lightest);
+}
+
+.theme-morandi .north-shuoshuo-switch.on {
+    background: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-switch::after {
+    background: var(--b3-theme-surface);
+}
+
+.theme-morandi .north-shuoshuo-readonly-field {
+    background-color: var(--b3-theme-surface-lighter);
+    border-color: var(--b3-border-color);
+    color: var(--b3-theme-on-surface);
+}
+
+/* 弹窗 */
+.theme-morandi .north-shuoshuo-modal-content {
+    background: var(--b3-theme-surface);
+    border-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-modal-header {
+    border-bottom-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-modal-title {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-modal-close {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-modal-close:hover {
+    background: var(--b3-list-hover);
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-modal-body {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-memo-detail-textarea {
+    background: var(--b3-theme-background);
+    border-color: var(--b3-border-color);
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-memo-detail-textarea:focus {
+    border-color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-tag-picker {
+    background: var(--b3-theme-surface);
+    border-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-tag-picker-input-wrapper {
+    background: var(--b3-theme-background);
+    border-bottom-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-tag-picker-item:hover {
+    background: var(--b3-list-hover);
+}
+
+.theme-morandi .north-shuoshuo-review-tag-checkbox.selected {
+    background: var(--b3-theme-primary-lightest);
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+
+/* 统计页 */
+.theme-morandi .north-shuoshuo-stats-page {
+    background: var(--b3-theme-background);
+}
+
+.theme-morandi .north-shuoshuo-stats-header h1 {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-stat-card {
+    background: var(--b3-theme-surface);
+    border-color: var(--b3-border-color);
+}
+
+.theme-morandi .north-shuoshuo-heatmap-header {
+    color: var(--b3-theme-on-surface);
+}
+
+/* 每日回顾 */
+.theme-morandi .north-shuoshuo-review-page {
+    background: var(--b3-theme-background);
+}
+
+.theme-morandi .north-shuoshuo-review-card {
+    background-color: var(--b3-theme-surface);
+    border-color: var(--b3-border-color);
+}
+
+/* 随机漫步 */
+.theme-morandi .north-shuoshuo-random-title {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .north-shuoshuo-random-hint {
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* 底部导航 */
+.theme-morandi .north-shuoshuo-bottom-nav {
+    background: transparent;
+}
+
+/* 空状态 */
+.theme-morandi .north-shuoshuo-empty-text {
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .north-shuoshuo-empty-hint {
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* =================== 莫兰迪主题 - 配色选择器 =================== */
+
+.north-shuoshuo-morandi-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 8px;
+    max-width: 560px;
+}
+
+.north-shuoshuo-morandi-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 4px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+}
+
+.north-shuoshuo-morandi-option:hover {
+    background: var(--b3-theme-surface-lighter);
+}
+
+.north-shuoshuo-morandi-option.selected {
+    border-color: var(--b3-theme-primary);
+    background: var(--b3-theme-primary-lightest);
+}
+
+.north-shuoshuo-morandi-color {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.north-shuoshuo-morandi-option:hover .north-shuoshuo-morandi-color {
+    transform: scale(1.1);
+}
+
+.north-shuoshuo-morandi-name {
+    font-size: 11px;
+    color: var(--b3-theme-on-surface);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.theme-morandi .north-shuoshuo-inline-edit-cancel {
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .north-shuoshuo-inline-edit-cancel:hover {
+    background: var(--b3-list-hover);
+}
+
+@media (max-width: 600px) {
+    .north-shuoshuo-morandi-grid {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+        max-width: 100%;
+    }
+    .north-shuoshuo-morandi-color {
+        width: 28px;
+        height: 28px;
+    }
+    .north-shuoshuo-morandi-name {
+        font-size: 10px;
+    }
+}
+

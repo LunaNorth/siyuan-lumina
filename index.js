@@ -14,7 +14,38 @@ const REVIEW_CONFIG_STORAGE_NAME = "shuoshuo-review-config";
 const TAG_ICONS_STORAGE_NAME = "shuoshuo-tag-icons";
 const TAG_PINNED_STORAGE_NAME = "shuoshuo-tag-pinned";
 const THEME_MODE_STORAGE_NAME = "shuoshuo-theme-mode"; // 主题模式存储
+const MORANDI_COLOR_STORAGE_NAME = "shuoshuo-morandi-color"; // 莫兰迪配色存储
 const TAB_TYPE = "shuoshuo-tab";
+
+// 莫兰迪配色方案
+const MORANDI_COLORS = [
+    // 浅色系列
+    { key: 'dusty-pink', name: '灰粉', color: '#D4A5A5', bg: '#FAF6F6' },
+    { key: 'sage-green', name: '鼠尾草绿', color: '#9CAF88', bg: '#F7F8F5' },
+    { key: 'muted-blue', name: '雾霾蓝', color: '#8FA1B3', bg: '#F5F7F9' },
+    { key: 'warm-beige', name: '燕麦色', color: '#C4B7A6', bg: '#FAF8F5' },
+    { key: 'dusty-purple', name: '香芋紫', color: '#A898B5', bg: '#F7F5F9' },
+    { key: 'terracotta', name: '赤陶色', color: '#C78D7B', bg: '#FAF6F4' },
+    // 中度系列
+    { key: 'olive-green', name: '橄榄绿', color: '#A3A380', bg: '#F8F8F4' },
+    { key: 'slate-blue', name: '灰蓝色', color: '#7D8A9E', bg: '#F5F6F8' },
+    { key: 'mauve', name: '藕荷色', color: '#B8A1A8', bg: '#F8F5F6' },
+    { key: 'warm-gray', name: '暖灰色', color: '#A8A39D', bg: '#F8F7F6' },
+    // 深色系列
+    { key: 'deep-bean', name: '深豆沙', color: '#A67B7B', bg: '#FAF5F5' },
+    { key: 'dark-moss', name: '暗苔绿', color: '#7A8471', bg: '#F5F6F3' },
+    { key: 'caramel', name: '焦糖棕', color: '#A67C52', bg: '#FAF6F0' },
+    { key: 'dusk-purple', name: '暮山紫', color: '#8B7B8B', bg: '#F7F4F7' },
+    { key: 'deep-sea', name: '深海蓝', color: '#5E738B', bg: '#F2F5F8' },
+    { key: 'tobacco', name: '烟草褐', color: '#8B7355', bg: '#F7F4EF' },
+    { key: 'stone', name: '岩灰', color: '#7D7D7D', bg: '#F5F5F5' },
+    { key: 'withered-rose', name: '枯玫瑰', color: '#9E7A7A', bg: '#F8F2F2' },
+    { key: 'navy-gray', name: '藏青灰', color: '#5D6D7E', bg: '#F0F3F5' },
+    { key: 'rust-red', name: '铁锈红', color: '#9C6B6B', bg: '#F8F2F2' },
+    { key: 'sandalwood', name: '檀木棕', color: '#8B6F5C', bg: '#F7F3EF' },
+    { key: 'slate-green', name: '青石灰', color: '#7D8B8B', bg: '#F2F4F4' },
+    { key: 'deep-wisteria', name: '藤萝紫', color: '#6B5B6B', bg: '#F4F1F4' }
+];
 
 // 回顾配置默认值
 const DEFAULT_REVIEW_CONFIG = {
@@ -54,7 +85,9 @@ const ICONS = {
     list: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>`,
     at: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10h5v-2h-5c-4.34 0-8-3.66-8-8s3.66-8 8-8 8 3.66 8 8v1.43c0 .79-.71 1.57-1.5 1.57s-1.5-.78-1.5-1.57V12c0-2.76-2.24-5-5-5s-5 2.24-5 5 2.24 5 5 5c1.38 0 2.64-.56 3.54-1.47.65.89 1.77 1.47 2.96 1.47 1.97 0 3.5-1.6 3.5-3.57V12c0-5.52-4.48-10-10-10zm0 13c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/></svg>`,
     refresh: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>`,
-    moreH: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`
+    moreH: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`,
+    comment: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"/></svg>`,
+    link: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>`
 };
 
 module.exports = class ShuoshuoPlugin extends Plugin {
@@ -76,7 +109,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.selectedTag = null;
         this.tagIcons = {}; // 标签图标映射 {tagName: emoji/icon}
         this.pinnedTags = []; // 置顶标签列表
-        this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan
+        this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
+        this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
         this.loadShuoshuos();
         this.loadAvatars();
         this.loadNotebookId();
@@ -87,6 +121,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.loadTagIcons();
         this.loadPinnedTags();
         this.loadThemeMode();
+        this.loadMorandiColor();
 
         const plugin = this;
 
@@ -239,6 +274,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                                         <span class="north-shuoshuo-toolbar-icon" id="toolbar-ol" title="有序列表">
                                             <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2 6h2v2H2V6zm4 0h14v2H6V6zM2 11h2v2H2v-2zm4 0h14v2H6v-2zM2 16h2v2H2v-2zm4 0h14v2H6v-2z"/></svg>
                                         </span>
+                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-at" title="快速引用">${ICONS.at}</span>
                                     </div>
                                     <button class="north-shuoshuo-send-btn" id="shuoshuo-send">${ICONS.send}</button>
                                 </div>
@@ -372,9 +408,37 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                                             <input type="radio" name="theme-mode" value="siyuan" ${this.themeMode === 'siyuan' ? 'checked' : ''}>
                                             <span class="north-shuoshuo-radio-check"></span>
                                         </label>
+                                        <label class="north-shuoshuo-radio-item ${this.themeMode === 'morandi' ? 'selected' : ''}" data-mode="morandi">
+                                            <div class="north-shuoshuo-radio-preview morandi-theme-preview"></div>
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">莫兰迪主题</div>
+                                                <div class="north-shuoshuo-radio-desc">低饱和度柔和配色，优雅舒适</div>
+                                            </div>
+                                            <input type="radio" name="theme-mode" value="morandi" ${this.themeMode === 'morandi' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
                                     </div>
-                                    <div class="north-shuoshuo-form-hint">
+                                    <div class="north-shuoshuo-form-hint" id="theme-mode-hint-original" style="display: ${this.themeMode === 'original' ? 'flex' : 'none'};">
+                                        <span>💡</span> 经典绿色主题，熟悉的配方
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint" id="theme-mode-hint-siyuan" style="display: ${this.themeMode === 'siyuan' ? 'flex' : 'none'};">
                                         <span>💡</span> 选择「适配主题」后，插件将自动跟随思源笔记的亮/暗主题
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint" id="theme-mode-hint-morandi" style="display: ${this.themeMode === 'morandi' ? 'flex' : 'none'};">
+                                        <span>💡</span> 莫兰迪色系，温和不刺眼
+                                    </div>
+                                </div>
+
+                                <!-- 莫兰迪配色选择 -->
+                                <div class="north-shuoshuo-form-row" id="morandi-color-row" style="display: ${this.themeMode === 'morandi' ? 'block' : 'none'};">
+                                    <label class="north-shuoshuo-form-label">选择配色</label>
+                                    <div class="north-shuoshuo-morandi-grid">
+                                        ${MORANDI_COLORS.map(c => `
+                                            <div class="north-shuoshuo-morandi-option ${this.morandiColor === c.key ? 'selected' : ''}" data-color="${c.key}" title="${c.name}">
+                                                <div class="north-shuoshuo-morandi-color" style="background-color: ${c.color};"></div>
+                                                <div class="north-shuoshuo-morandi-name">${c.name}</div>
+                                            </div>
+                                        `).join('')}
                                     </div>
                                 </div>
                             </div>
@@ -806,6 +870,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     renderNoteCard(item) {
         const dateStr = this.formatDate(item.created);
         const pinnedIcon = item.pinned ? `<span class="north-shuoshuo-note-pinned">${ICONS.star}</span>` : '';
+        const memoRelations = this.renderMemoRelations(item.content);
         return `
             <div class="north-shuoshuo-note-card ${item.pinned ? 'pinned' : ''}" data-id="${item.id}">
                 <div class="north-shuoshuo-note-header">
@@ -816,6 +881,58 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     </div>
                 </div>
                 ${this.renderNoteContent(item.content)}
+                ${memoRelations}
+            </div>
+        `;
+    }
+
+    // 提取 MEMO 引用
+    extractMemoRefs(content) {
+        if (!content) return [];
+        const refs = [];
+        const regex = /\[MEMO:([^\]]+)\]/g;
+        let match;
+        while ((match = regex.exec(content)) !== null) {
+            refs.push(match[1]);
+        }
+        return [...new Set(refs)];
+    }
+
+    // 渲染 MEMO 关联提示
+    renderMemoRelations(content) {
+        const noteIds = this.extractMemoRefs(content);
+        if (noteIds.length === 0) return '';
+        
+        const isComment = /^关联自：\[MEMO:[^\]]+\]/.test(content || '');
+        
+        return `
+            <div class="north-shuoshuo-memo-relations">
+                ${noteIds.map(id => {
+                    const note = this.shuoshuos.find(s => s.id === id);
+                    if (!note) return '';
+                    const dateStr = this.formatDate(note.created).split(' ')[0]; // 只取日期部分
+                    
+                    let infoText = '';
+                    if (isComment) {
+                        // 批注：显示"关联自：被引用原文预览"
+                        let sourcePreview = (note.content || '').replace(/\[MEMO:[^\]]+\]/g, '').trim();
+                        sourcePreview = sourcePreview.split('\n')[0];
+                        sourcePreview = sourcePreview.substring(0, 80) + (sourcePreview.length > 80 ? '...' : '');
+                        infoText = `关联自：${this.escapeHtml(sourcePreview)}`;
+                    } else {
+                        let preview = (note.content || '').replace(/\[MEMO:[^\]]+\]/g, '').trim();
+                        preview = preview.split('\n')[0];
+                        preview = preview.substring(0, 80) + (preview.length > 80 ? '...' : '');
+                        infoText = this.escapeHtml(preview);
+                    }
+                    
+                    return `
+                        <div class="north-shuoshuo-memo-relation-item" data-id="${id}">
+                            <span class="north-shuoshuo-memo-relation-icon"></span>
+                            <span class="north-shuoshuo-memo-relation-info">${dateStr}: ${infoText}</span>
+                        </div>
+                    `;
+                }).join('')}
             </div>
         `;
     }
@@ -1882,6 +1999,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // 输入监听，控制发送按钮，并自动转换列表符?
         if (input && sendBtn) {
+            const autoResize = () => {
+                input.style.height = 'auto';
+                input.style.height = Math.max(60, input.scrollHeight) + 'px';
+            };
             input.addEventListener('input', () => {
                 if (input.value.trim().length > 0) {
                     sendBtn.classList.add('active');
@@ -1889,13 +2010,13 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     sendBtn.classList.remove('active');
                 }
                 
-                // 自动将行首的 - ?* 转换??
+                // 自动将行首的 - / * 转换为 •
                 const cursorPos = input.selectionStart;
                 const value = input.value;
                 const beforeCursor = value.substring(0, cursorPos);
                 const afterCursor = value.substring(cursorPos);
                 
-                // 检查是否在行首输入?- ?*
+                // 检查是否在行首输入 - 或 *
                 const lines = beforeCursor.split('\n');
                 const currentLine = lines[lines.length - 1];
                 
@@ -1905,6 +2026,11 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     // 保持光标位置
                     input.setSelectionRange(cursorPos, cursorPos);
                 }
+                
+                requestAnimationFrame(autoResize);
+                
+                // 处理 @ 快速引用
+                this.handleMentionInput(input);
             });
 
             // Enter 换行，支持列表自动延?
@@ -1915,7 +2041,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     const beforeCursor = value.substring(0, cursorPos);
                     const afterCursor = value.substring(cursorPos);
                     
-                    // 获取当前?
+                    // 获取当前行
                     const lines = beforeCursor.split('\n');
                     const currentLine = lines[lines.length - 1];
                     
@@ -1989,6 +2115,28 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     const id = menuEl.dataset.id;
                     if (id) {
                         this.showNoteMenu(id, menuEl);
+                    }
+                    return;
+                }
+                
+                // 处理 MEMO 引用点击
+                const memoRef = e.target.closest('.north-shuoshuo-memo-ref');
+                if (memoRef) {
+                    e.stopPropagation();
+                    const id = memoRef.dataset.id;
+                    if (id) {
+                        this.showMemoDetail(id);
+                    }
+                    return;
+                }
+                
+                // 处理底部关联提示点击
+                const memoRelation = e.target.closest('.north-shuoshuo-memo-relation-item, .north-shuoshuo-memo-relation-ref');
+                if (memoRelation) {
+                    e.stopPropagation();
+                    const id = memoRelation.dataset.id;
+                    if (id) {
+                        this.showMemoDetail(id);
                     }
                 }
             });
@@ -2194,6 +2342,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     }
 
     async addShuoshuo(content) {
+        // 将粘贴的 lumina MEMO 链接转换为内部引用格式
+        content = content.replace(/lumina:\/\/memo\/([a-zA-Z0-9]+)/g, '[MEMO:$1]');
+        
         const tags = this.extractTags(content);
         
         const shuoshuo = {
@@ -2277,6 +2428,15 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             });
         }
 
+        // @ 快速引用按钮
+        const atBtn = this.container.querySelector('#toolbar-at');
+        if (atBtn) {
+            atBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showMentionPicker(input);
+            });
+        }
+
     }
 
     // 在光标位置插入文?
@@ -2293,6 +2453,320 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         
         // 触发 input 事件更新发送按钮状?
         input.dispatchEvent(new Event('input'));
+    }
+
+    // 处理 @ 快速引用输入
+    handleMentionInput(input) {
+        const existingPicker = document.querySelector('.north-shuoshuo-mention-picker');
+        if (!existingPicker) {
+            // 检查是否刚刚输入了 @
+            const cursorPos = input.selectionStart;
+            const value = input.value;
+            const beforeCursor = value.substring(0, cursorPos);
+            const currentLine = beforeCursor.split('\n').pop();
+            
+            // 如果当前行包含 @ 且在光标前
+            const atIndex = currentLine.lastIndexOf('@');
+            if (atIndex >= 0) {
+                const afterAt = currentLine.substring(atIndex + 1);
+                // @ 后不能有空格断开（允许多关键词空格分隔，但不能有第二个 @ 或换行）
+                if (!afterAt.includes('@')) {
+                    const lineStartPos = cursorPos - currentLine.length;
+                    const triggerPos = lineStartPos + atIndex;
+                    this.showMentionPicker(input, triggerPos);
+                }
+            }
+            return;
+        }
+        
+        // 更新已有选择器的过滤条件
+        const triggerPos = parseInt(existingPicker.dataset.triggerPos, 10);
+        const cursorPos = input.selectionStart;
+        const value = input.value;
+        
+        // 如果光标移到了 @ 前面，关闭选择器
+        if (cursorPos <= triggerPos) {
+            existingPicker.remove();
+            return;
+        }
+        
+        // 检查 @ 是否还存在
+        if (value.substring(triggerPos, triggerPos + 1) !== '@') {
+            existingPicker.remove();
+            return;
+        }
+        
+        const searchText = value.substring(triggerPos + 1, cursorPos);
+        const listEl = existingPicker.querySelector('.north-shuoshuo-mention-picker-list');
+        if (listEl) {
+            this.filterMentionPicker(listEl, searchText, input);
+        }
+    }
+
+    // 显示 @ 快速引用选择器
+    showMentionPicker(input, triggerPos = null) {
+        // 移除已存在的
+        const existingPicker = document.querySelector('.north-shuoshuo-mention-picker');
+        if (existingPicker) {
+            existingPicker.remove();
+        }
+        
+        if (triggerPos === null) {
+            triggerPos = input.selectionStart;
+            // 按钮触发时，如果光标前不是 @，插入一个
+            const value = input.value;
+            if (value.substring(triggerPos - 1, triggerPos) !== '@') {
+                // 手动插入 @，不触发 input 事件，避免 handleMentionInput 重复创建 picker
+                const start = input.selectionStart;
+                const text = input.value;
+                input.value = text.substring(0, start) + '@' + text.substring(start);
+                input.setSelectionRange(start + 1, start + 1);
+            }
+        }
+        
+        const picker = document.createElement('div');
+        picker.className = 'north-shuoshuo-mention-picker';
+        picker.dataset.triggerPos = triggerPos;
+        picker.innerHTML = `
+            <div class="north-shuoshuo-mention-picker-list"></div>
+        `;
+        
+        // 定位到输入框下方
+        const inputBox = this.container.querySelector('#shuoshuo-input-box');
+        if (inputBox) {
+            const rect = inputBox.getBoundingClientRect();
+            picker.style.position = 'fixed';
+            picker.style.left = `${rect.left + 20}px`;
+            picker.style.top = `${rect.bottom + 8}px`;
+            picker.style.zIndex = '99999';
+        }
+        
+        document.body.appendChild(picker);
+        
+        const listEl = picker.querySelector('.north-shuoshuo-mention-picker-list');
+        const searchText = input.value.substring(triggerPos + 1, input.selectionStart);
+        this.filterMentionPicker(listEl, searchText, input);
+        
+        // 点击外部关闭
+        const closeOnClickOutside = (e) => {
+            if (!picker.contains(e.target) && !e.target.closest('#toolbar-at')) {
+                picker.remove();
+                document.removeEventListener('click', closeOnClickOutside);
+            }
+        };
+        setTimeout(() => {
+            document.addEventListener('click', closeOnClickOutside);
+        }, 0);
+    }
+
+    // 过滤并渲染 @ 引用列表
+    filterMentionPicker(listEl, value, input) {
+        const keywords = value.trim().toLowerCase().split(/\s+/).filter(k => k);
+        
+        // 按时间倒序获取笔记
+        let notes = [...this.shuoshuos].sort((a, b) => b.created - a.created);
+        
+        if (keywords.length > 0) {
+            notes = notes.filter(note => {
+                const content = (note.content || '').toLowerCase();
+                return keywords.every(k => content.includes(k));
+            });
+        }
+        
+        // 最多显示 20 条
+        notes = notes.slice(0, 20);
+        
+        if (notes.length === 0) {
+            listEl.innerHTML = '<div class="north-shuoshuo-mention-picker-empty">未找到相关 MEMO</div>';
+            return;
+        }
+        
+        const highlightText = (text, keywords) => {
+            if (!keywords.length) return this.escapeHtml(text);
+            let html = this.escapeHtml(text);
+            keywords.forEach(k => {
+                const regex = new RegExp(`(${this.escapeRegExp(k)})`, 'gi');
+                html = html.replace(regex, '<mark class="north-shuoshuo-mention-highlight">$1</mark>');
+            });
+            return html;
+        };
+        
+        listEl.innerHTML = notes.map(note => {
+            const dateStr = this.formatDate(note.created);
+            const preview = (note.content || '').split('\n')[0].substring(0, 80);
+            const displayPreview = preview + ((note.content || '').split('\n')[0].length > 80 ? '...' : '');
+            const highlightedPreview = highlightText(displayPreview, keywords);
+            
+            return `
+                <div class="north-shuoshuo-mention-picker-item" data-id="${note.id}">
+                    <div class="north-shuoshuo-mention-picker-date">${dateStr}</div>
+                    <div class="north-shuoshuo-mention-picker-preview">${highlightedPreview}</div>
+                </div>
+            `;
+        }).join('');
+        
+        // 绑定点击事件
+        listEl.querySelectorAll('.north-shuoshuo-mention-picker-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const noteId = item.dataset.id;
+                const picker = document.querySelector('.north-shuoshuo-mention-picker');
+                const tp = picker ? parseInt(picker.dataset.triggerPos, 10) : null;
+                this.insertMention(input, noteId, tp);
+                picker?.remove();
+            });
+        });
+    }
+
+    escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // 插入 MEMO 引用
+    insertMention(input, noteId, triggerPos) {
+        input.focus(); // 确保获取到正确的光标位置
+        const cursorPos = input.selectionStart;
+        const value = input.value;
+        
+        if (triggerPos !== null && triggerPos >= 0 && value.substring(triggerPos, triggerPos + 1) === '@') {
+            const before = value.substring(0, triggerPos);
+            const after = value.substring(cursorPos);
+            const insertText = `[MEMO:${noteId}]`;
+            input.value = before + insertText + after;
+            const newPos = triggerPos + insertText.length;
+            input.setSelectionRange(newPos, newPos);
+        } else {
+            this.insertText(input, `[MEMO:${noteId}]`, '');
+        }
+        
+        input.focus();
+        input.dispatchEvent(new Event('input'));
+    }
+
+    // 显示 MEMO 详情
+    showMemoDetail(noteId) {
+        const note = this.shuoshuos.find(s => s.id === noteId);
+        if (!note) return;
+        
+        // 查找链接至此的 MEMO（按时间倒序，最新的在前）
+        const linkingNotes = this.shuoshuos
+            .filter(s => s.id !== noteId && s.content && s.content.includes(`[MEMO:${noteId}]`))
+            .sort((a, b) => (b.created || 0) - (a.created || 0));
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'north-shuoshuo-memo-detail-modal';
+        
+        overlay.innerHTML = `
+            <div class="north-shuoshuo-modal-overlay"></div>
+            <div class="north-shuoshuo-modal-content">
+                <div class="north-shuoshuo-modal-header">
+                    <div class="north-shuoshuo-modal-title">详情</div>
+                    <div class="north-shuoshuo-modal-actions">
+                        <button class="north-shuoshuo-memo-detail-save" style="display:none;">保存</button>
+                        <div class="north-shuoshuo-modal-close">×</div>
+                    </div>
+                </div>
+                <div class="north-shuoshuo-modal-body">
+                    <div class="north-shuoshuo-memo-detail-header">
+                        <div class="north-shuoshuo-memo-detail-date">${this.formatDate(note.created)}</div>
+                    </div>
+                    <div class="north-shuoshuo-memo-detail-content">${this.renderNoteContent(note.content)}</div>
+                    <textarea class="north-shuoshuo-memo-detail-textarea" style="display:none;">${this.escapeHtml(note.content)}</textarea>
+                    ${linkingNotes.length > 0 ? `
+                    <div class="north-shuoshuo-memo-detail-links">
+                        <div class="north-shuoshuo-memo-detail-links-title">${linkingNotes.length} 条链接至此的 MEMO</div>
+                        <div class="north-shuoshuo-memo-detail-links-list">
+                            ${linkingNotes.map(linkNote => {
+                                let preview = (linkNote.content || '')
+                                    .replace(new RegExp(`\\[MEMO:${noteId}\\]`, 'g'), '')
+                                    .replace(/^关联自：/, '')
+                                    .trim();
+                                preview = preview.split('\n')[0];
+                                preview = preview.substring(0, 120) + (preview.length > 120 ? '...' : '');
+                                preview = this.escapeHtml(preview).replace(/\s+/g, ' ').trim();
+                                return `
+                                    <div class="north-shuoshuo-memo-detail-link-item" data-id="${linkNote.id}">
+                                        <div class="north-shuoshuo-memo-detail-link-date">${this.formatDate(linkNote.created)}</div>
+                                        <div class="north-shuoshuo-memo-detail-link-preview">${preview}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        const contentEl = overlay.querySelector('.north-shuoshuo-memo-detail-content');
+        const textarea = overlay.querySelector('.north-shuoshuo-memo-detail-textarea');
+        const saveBtn = overlay.querySelector('.north-shuoshuo-memo-detail-save');
+        
+        // 自动调整高度
+        const autoResize = () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.max(120, textarea.scrollHeight) + 'px';
+        };
+        textarea.addEventListener('input', autoResize);
+        
+        // 双击进入编辑
+        contentEl.addEventListener('dblclick', () => {
+            contentEl.style.display = 'none';
+            textarea.style.display = 'block';
+            saveBtn.style.display = 'inline-block';
+            requestAnimationFrame(() => {
+                autoResize();
+                textarea.focus();
+            });
+        });
+        
+        overlay.querySelector('.north-shuoshuo-modal-close').addEventListener('click', () => {
+            overlay.remove();
+        });
+        overlay.querySelector('.north-shuoshuo-modal-overlay').addEventListener('click', () => {
+            overlay.remove();
+        });
+        
+        // 点击关联 MEMO 跳转到原位置
+        overlay.querySelectorAll('.north-shuoshuo-memo-detail-link-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const id = el.dataset.id;
+                overlay.remove();
+                setTimeout(() => {
+                    const card = this.container.querySelector(`.north-shuoshuo-note-card[data-id="${id}"]`);
+                    if (card) {
+                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        card.classList.add('north-shuoshuo-note-highlight');
+                        setTimeout(() => card.classList.remove('north-shuoshuo-note-highlight'), 1500);
+                    }
+                }, 100);
+            });
+        });
+        
+        // 保存编辑
+        saveBtn.addEventListener('click', async () => {
+            const newContent = textarea.value.trim();
+            if (newContent === note.content) {
+                contentEl.style.display = 'block';
+                textarea.style.display = 'none';
+                saveBtn.style.display = 'none';
+                return;
+            }
+            
+            note.content = newContent;
+            note.tags = this.extractTags(newContent);
+            await this.saveShuoshuos();
+            this.renderNotes();
+            this.renderTags();
+            
+            // 更新详情弹窗中的原文展示
+            contentEl.innerHTML = this.renderNoteContent(newContent);
+            contentEl.style.display = 'block';
+            textarea.style.display = 'none';
+            saveBtn.style.display = 'none';
+            showMessage('保存成功');
+        });
     }
 
     // 显示标签选择器
@@ -2476,12 +2950,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             
             if (!file.type.startsWith('image/')) {
                 showMessage("请选择图片文件");
-                document.body.removeChild(fileInput);
-                return;
-            }
-            
-            if (file.size > 2 * 1024 * 1024) {
-                showMessage("图片大小不能超过 2MB");
                 document.body.removeChild(fileInput);
                 return;
             }
@@ -2834,6 +3302,18 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // ?#标签?转换为标签样式（支持多级标签 #??孙）
         html = html.replace(/#([^\s\d][^\s]*(?:\/[^\s]+)*)/g, '<span class="north-shuoshuo-tag">#$1</span>');
         
+        // 移除批注的"关联自"头部，不在正文显示
+        html = html.replace(/^关联自：\[MEMO:[^\]]+\](?:<br>)+/, '');
+        
+        // 移除正文中的 lumina MEMO 链接，统一在底部显示
+        html = html.replace(/lumina:\/\/memo\/[a-zA-Z0-9]+/g, '');
+        
+        // 移除正文中的 MEMO 引用，统一在底部显示
+        html = html.replace(/\[MEMO:[^\]]+\]/g, '');
+        
+        // 清理可能因移除引用产生的多余空行
+        html = html.replace(/(<br>){3,}/g, '<br><br>');
+        
         // 还原图片标签（这里保留单张图片的处理，用于兼容纯图片内容?
         images.forEach((img, index) => {
             html = html.replace(
@@ -2918,6 +3398,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 <span class="north-shuoshuo-menu-text">编辑</span>
             </div>
             <div class="north-shuoshuo-menu-divider"></div>
+            <div class="north-shuoshuo-menu-item" data-action="comment">
+                <span class="north-shuoshuo-menu-icon">${ICONS.comment}</span>
+                <span class="north-shuoshuo-menu-text">批注</span>
+            </div>
             <div class="north-shuoshuo-menu-item" data-action="sync">
                 <span class="north-shuoshuo-menu-icon">${ICONS.sync}</span>
                 <span class="north-shuoshuo-menu-text">插入今日日记</span>
@@ -2953,6 +3437,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 case 'edit':
                     this.editNote(id);
                     break;
+                case 'comment':
+                    this.commentOnNote(id);
+                    break;
                 case 'sync':
                     await this.syncToDailyNote(id);
                     break;
@@ -2984,8 +3471,205 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         }
     }
 
-    // 编辑笔记
+    // 编辑笔记（内联编辑）
     editNote(id) {
+        const item = this.shuoshuos.find(s => s.id === id);
+        if (!item) return;
+
+        const card = this.container.querySelector(`.north-shuoshuo-note-card[data-id="${id}"]`);
+        const reviewCard = !card ? this.container.querySelector('.north-shuoshuo-review-card') : null;
+        const targetCard = card || reviewCard;
+
+        if (!targetCard) {
+            this.editNoteModal(id);
+            return;
+        }
+
+        const contentEl = card
+            ? targetCard.querySelector('.north-shuoshuo-note-content')
+            : targetCard.querySelector('.north-shuoshuo-review-card-content');
+        const relationsEl = card ? targetCard.querySelector('.north-shuoshuo-memo-relations') : null;
+
+        if (!contentEl || targetCard.querySelector('.north-shuoshuo-inline-edit')) return;
+
+        const editBox = document.createElement('div');
+        editBox.className = 'north-shuoshuo-input-box north-shuoshuo-inline-edit';
+        editBox.innerHTML = `
+            <div class="north-shuoshuo-input-wrapper">
+                <textarea class="north-shuoshuo-input-field north-shuoshuo-inline-edit-field" rows="3">${this.escapeHtml(item.content)}</textarea>
+            </div>
+            <div class="north-shuoshuo-input-toolbar">
+                <div class="north-shuoshuo-toolbar-left">
+                    <span class="north-shuoshuo-toolbar-icon" data-action="tag" title="标签">#</span>
+                    <span class="north-shuoshuo-toolbar-icon" data-action="image" title="图片">${ICONS.image}</span>
+                    <span class="north-shuoshuo-toolbar-divider"></span>
+                    <span class="north-shuoshuo-toolbar-icon" data-action="ul" title="无序列表">
+                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+                    </span>
+                    <span class="north-shuoshuo-toolbar-icon" data-action="ol" title="有序列表">
+                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2 6h2v2H2V6zm4 0h14v2H6V6zM2 11h2v2H2v-2zm4 0h14v2H6v-2zM2 16h2v2H2v-2zm4 0h14v2H6v-2z"/></svg>
+                    </span>
+                    <span class="north-shuoshuo-toolbar-icon" data-action="at" title="快速引用">${ICONS.at}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button class="north-shuoshuo-inline-edit-cancel">取消</button>
+                    <button class="north-shuoshuo-send-btn north-shuoshuo-inline-save active">${ICONS.send}</button>
+                </div>
+            </div>
+        `;
+
+        contentEl.style.display = 'none';
+        if (relationsEl) relationsEl.style.display = 'none';
+
+        if (relationsEl) {
+            targetCard.insertBefore(editBox, relationsEl);
+        } else if (contentEl.nextSibling) {
+            targetCard.insertBefore(editBox, contentEl.nextSibling);
+        } else {
+            targetCard.appendChild(editBox);
+        }
+
+        const textarea = editBox.querySelector('.north-shuoshuo-inline-edit-field');
+        const autoResize = () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.max(80, textarea.scrollHeight) + 'px';
+        };
+
+        // 输入监听（列表自动转换、@ mention）
+        textarea.addEventListener('input', () => {
+            const cursorPos = textarea.selectionStart;
+            const value = textarea.value;
+            const beforeCursor = value.substring(0, cursorPos);
+            const lines = beforeCursor.split('\n');
+            const currentLine = lines[lines.length - 1];
+            if (currentLine === '- ' || currentLine === '* ') {
+                lines[lines.length - 1] = '• ';
+                const afterCursor = value.substring(cursorPos);
+                textarea.value = lines.join('\n') + afterCursor;
+                textarea.setSelectionRange(cursorPos, cursorPos);
+            }
+            requestAnimationFrame(autoResize);
+            this.handleMentionInput(textarea);
+        });
+
+        // Enter / Ctrl+Enter
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+                const cursorPos = textarea.selectionStart;
+                const value = textarea.value;
+                const beforeCursor = value.substring(0, cursorPos);
+                const afterCursor = value.substring(cursorPos);
+                const lines = beforeCursor.split('\n');
+                const currentLine = lines[lines.length - 1];
+                const unorderedMatch = currentLine.match(/^(•\s|-\s|\*\s)(.*)$/);
+                const orderedMatch = currentLine.match(/^(\d+)\.\s(.*)$/);
+                if (unorderedMatch) {
+                    if (!unorderedMatch[2].trim()) {
+                        e.preventDefault();
+                        lines.pop();
+                        textarea.value = lines.join('\n') + '\n' + afterCursor;
+                        textarea.setSelectionRange(lines.join('\n').length + 1, lines.join('\n').length + 1);
+                        requestAnimationFrame(autoResize);
+                        return;
+                    }
+                    e.preventDefault();
+                    const newLine = '\n• ';
+                    textarea.value = beforeCursor + newLine + afterCursor;
+                    textarea.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+                    requestAnimationFrame(autoResize);
+                    return;
+                }
+                if (orderedMatch) {
+                    if (!orderedMatch[2].trim()) {
+                        e.preventDefault();
+                        lines.pop();
+                        textarea.value = lines.join('\n') + '\n' + afterCursor;
+                        textarea.setSelectionRange(lines.join('\n').length + 1, lines.join('\n').length + 1);
+                        requestAnimationFrame(autoResize);
+                        return;
+                    }
+                    e.preventDefault();
+                    const nextNum = parseInt(orderedMatch[1]) + 1;
+                    const newLine = '\n' + nextNum + '. ';
+                    textarea.value = beforeCursor + newLine + afterCursor;
+                    textarea.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+                    requestAnimationFrame(autoResize);
+                    return;
+                }
+            }
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                saveBtn.click();
+            }
+        });
+
+        requestAnimationFrame(() => {
+            autoResize();
+            textarea.focus();
+        });
+
+        const restore = () => {
+            editBox.remove();
+            contentEl.style.display = '';
+            if (relationsEl) relationsEl.style.display = '';
+        };
+
+        // 取消
+        editBox.querySelector('.north-shuoshuo-inline-edit-cancel').addEventListener('click', restore);
+
+        // 工具栏
+        editBox.querySelector('[data-action="tag"]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showTagPicker(textarea);
+        });
+        editBox.querySelector('[data-action="image"]').addEventListener('click', () => {
+            this.insertImage(textarea);
+        });
+        editBox.querySelector('[data-action="ul"]').addEventListener('click', () => {
+            this.insertText(textarea, '• ', '');
+            textarea.focus();
+        });
+        editBox.querySelector('[data-action="ol"]').addEventListener('click', () => {
+            const lines = textarea.value.substring(0, textarea.selectionStart).split('\n');
+            const currentLine = lines[lines.length - 1];
+            const match = currentLine.match(/^(\d+)\.\s/);
+            const num = match ? parseInt(match[1]) + 1 : 1;
+            this.insertText(textarea, `${num}. `, '');
+            textarea.focus();
+        });
+        editBox.querySelector('[data-action="at"]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showMentionPicker(textarea);
+        });
+
+        // 保存
+        const saveBtn = editBox.querySelector('.north-shuoshuo-inline-save');
+        saveBtn.addEventListener('click', async () => {
+            const newContent = textarea.value.trim();
+            if (!newContent) {
+                showMessage("内容不能为空");
+                return;
+            }
+            if (newContent === item.content) {
+                restore();
+                return;
+            }
+
+            item.content = newContent;
+            item.tags = this.extractTags(newContent);
+            item.updated = Date.now();
+            await this.saveShuoshuos();
+            this.renderNotes();
+            this.renderTags();
+            if (reviewCard) {
+                this.renderReview();
+            }
+            showMessage("已保存");
+        });
+    }
+
+    // 编辑笔记兜底弹窗
+    editNoteModal(id) {
         const item = this.shuoshuos.find(s => s.id === id);
         if (!item) return;
 
@@ -3085,6 +3769,109 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         });
     }
 
+    // 批注 MEMO
+    commentOnNote(id) {
+        const input = this.container.querySelector('#shuoshuo-input');
+        if (!input) return;
+        
+        const note = this.shuoshuos.find(s => s.id === id);
+        if (!note) return;
+        
+        // 提取被引用笔记的内容预览（第一行，去除引用标记）
+        let preview = (note.content || '').replace(/\[MEMO:[^\]]+\]/g, '').trim();
+        preview = preview.split('\n')[0];
+        preview = preview.substring(0, 60) + (preview.length > 60 ? '...' : '');
+        
+        // 滚动到输入区域
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // 插入 MEMO 引用到输入框顶部，格式为：关联自：内容预览
+        const currentValue = input.value.trim();
+        const insertText = `关联自：${preview}`;
+        if (currentValue) {
+            input.value = insertText + '\n' + currentValue;
+            input.setSelectionRange(insertText.length + 1, insertText.length + 1);
+        } else {
+            input.value = insertText + '\n';
+            input.setSelectionRange(insertText.length + 1, insertText.length + 1);
+        }
+        
+        input.focus();
+        
+        // 高亮输入框
+        const inputBox = this.container.querySelector('#shuoshuo-input-box');
+        if (inputBox) {
+            inputBox.classList.add('focused');
+        }
+        
+        // 触发 input 事件更新发送按钮状态
+        input.dispatchEvent(new Event('input'));
+    }
+
+    // 复制 MEMO 链接
+    copyMemoLink(id) {
+        const url = `lumina://memo/${id}`;
+        
+        // 复制到剪贴板
+        const doCopy = () => {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(() => {
+                    showMessage("链接已复制");
+                }).catch(() => {
+                    this.fallbackCopyText(url);
+                });
+            } else {
+                this.fallbackCopyText(url);
+            }
+        };
+        
+        // 自动插入到输入框
+        const input = this.container.querySelector('#shuoshuo-input');
+        if (input) {
+            input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const currentValue = input.value.trim();
+            if (currentValue) {
+                const lines = currentValue.split('\n');
+                const firstLine = lines[0];
+                // 如果第一行已经是 lumina 链接或关联自开头，直接替换第一行
+                if (firstLine.startsWith('lumina://') || firstLine.startsWith('关联自：')) {
+                    lines[0] = url;
+                    input.value = lines.join('\n');
+                } else {
+                    input.value = url + '\n' + currentValue;
+                }
+            } else {
+                input.value = url;
+            }
+            input.setSelectionRange(url.length, url.length);
+            input.focus();
+            
+            const inputBox = this.container.querySelector('#shuoshuo-input-box');
+            if (inputBox) {
+                inputBox.classList.add('focused');
+            }
+            input.dispatchEvent(new Event('input'));
+        }
+        
+        doCopy();
+    }
+
+    fallbackCopyText(text) {
+        const input = document.createElement('input');
+        input.value = text;
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        try {
+            document.execCommand('copy');
+            showMessage("链接已复制");
+        } catch (e) {
+            showMessage("复制失败");
+        }
+        document.body.removeChild(input);
+    }
+
     // 同步到今日日?
     async syncToDailyNote(id) {
         const item = this.shuoshuos.find(s => s.id === id);
@@ -3124,12 +3911,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
             if (!file.type.startsWith('image/')) {
                 showMessage("请选择图片文件");
-                if (fileInput.parentNode) document.body.removeChild(fileInput);
-                return;
-            }
-
-            if (file.size > 2 * 1024 * 1024) {
-                showMessage("图片大小不能超过 2MB");
                 if (fileInput.parentNode) document.body.removeChild(fileInput);
                 return;
             }
@@ -3360,6 +4141,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // 绑定主题模式选择事件
         const themeModeItems = this.container.querySelectorAll('#theme-mode-grid .north-shuoshuo-radio-item');
+        const morandiColorRow = this.container.querySelector('#morandi-color-row');
+        
         themeModeItems.forEach(item => {
             item.addEventListener('click', async () => {
                 const mode = item.dataset.mode;
@@ -3369,11 +4152,41 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 themeModeItems.forEach(i => i.classList.remove('selected'));
                 item.classList.add('selected');
                 
+                // 更新 radio 输入
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+                
+                // 显示/隐藏提示和莫兰迪配色选择
+                this.container.querySelectorAll('[id^="theme-mode-hint-"]').forEach(hint => {
+                    hint.style.display = 'none';
+                });
+                const activeHint = this.container.querySelector(`#theme-mode-hint-${mode}`);
+                if (activeHint) activeHint.style.display = 'flex';
+                
+                if (morandiColorRow) {
+                    morandiColorRow.style.display = mode === 'morandi' ? 'block' : 'none';
+                }
+                
                 // 应用主题模式
                 this.applyThemeMode();
                 
                 // 保存设置
                 await this.saveThemeMode();
+            });
+        });
+        
+        // 绑定莫兰迪配色选择
+        const morandiOptions = this.container.querySelectorAll('.north-shuoshuo-morandi-option');
+        morandiOptions.forEach(option => {
+            option.addEventListener('click', async () => {
+                const colorKey = option.dataset.color;
+                this.morandiColor = colorKey;
+                
+                morandiOptions.forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+                
+                this.applyThemeMode();
+                await this.saveMorandiColor();
             });
         });
 
@@ -3415,6 +4228,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
                 // 保存主题模式
                 await this.saveThemeMode();
+                await this.saveMorandiColor();
 
                 showMessage('设置已保存');
             };
@@ -4406,17 +5220,46 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         }
     }
 
+    // 加载莫兰迪配色
+    async loadMorandiColor() {
+        try {
+            const data = await this.loadData(MORANDI_COLOR_STORAGE_NAME);
+            const validKeys = MORANDI_COLORS.map(c => c.key);
+            this.morandiColor = validKeys.includes(data) ? data : MORANDI_COLORS[0].key;
+        } catch (e) {
+            console.log("加载莫兰迪配色失败", e);
+            this.morandiColor = MORANDI_COLORS[0].key;
+        }
+    }
+
+    // 保存莫兰迪配色
+    async saveMorandiColor() {
+        try {
+            await this.saveData(MORANDI_COLOR_STORAGE_NAME, this.morandiColor);
+        } catch (e) {
+            console.log("保存莫兰迪配色失败", e);
+        }
+    }
+
     // 应用主题模式
     applyThemeMode() {
         const container = this.container?.querySelector('.north-shuoshuo-container');
         if (!container) return;
         
         // 移除所有主题类
-        container.classList.remove('theme-original', 'theme-siyuan');
+        container.classList.remove('theme-original', 'theme-siyuan', 'theme-morandi');
+        MORANDI_COLORS.forEach(c => {
+            container.classList.remove(`morandi-${c.key}`);
+        });
         
         // 添加当前主题模式类
         const themeToApply = this.themeMode || 'original';
         container.classList.add(`theme-${themeToApply}`);
+        
+        // 如果是莫兰迪主题，添加具体配色类
+        if (themeToApply === 'morandi' && this.morandiColor) {
+            container.classList.add(`morandi-${this.morandiColor}`);
+        }
     }
 
     // 根据回顾配置获取回顾笔记
