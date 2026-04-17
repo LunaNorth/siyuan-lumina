@@ -2469,36 +2469,6 @@
 }
 
 /* 随机漫步 */
-.north-shuoshuo-random-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px;
-}
-
-.north-shuoshuo-random-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--b3-theme-on-background);
-    margin-bottom: 20px;
-}
-
-.north-shuoshuo-random-btn {
-    margin-top: 20px;
-    padding: 10px 24px;
-    background: var(--b3-theme-primary);
-    color: var(--b3-theme-on-primary);
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.north-shuoshuo-random-btn:hover {
-    background: var(--b3-theme-primary-light);
-}
-
 /* 横向排列的 radio group - Flomo 同步设置 */
 .north-shuoshuo-radio-group.horizontal {
     flex-direction: row;
@@ -2744,6 +2714,8 @@
     max-height: 80vh;
     overflow: hidden;
     box-shadow: var(--b3-dialog-shadow);
+    display: flex;
+    flex-direction: column;
 }
 
 .north-shuoshuo-modal-header {
@@ -2803,6 +2775,20 @@
     padding: 20px;
     overflow-y: auto;
     max-height: 60vh;
+}
+
+.north-shuoshuo-memo-detail-body {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: none;
+}
+
+.north-shuoshuo-memo-detail-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 20px;
 }
 
 .north-shuoshuo-modal-footer {
@@ -2916,45 +2902,299 @@
     color: var(--b3-theme-on-background);
 }
 
-/* 随机漫步样式 */
-.north-shuoshuo-random-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 40px 20px;
-}
-
-.north-shuoshuo-random-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 8px;
-}
-
-.north-shuoshuo-random-hint {
-    font-size: 14px;
-    color: #888;
-    margin-bottom: 24px;
-}
-
-.north-shuoshuo-random-section .north-shuoshuo-note-card {
-    width: 100%;
-    max-width: 600px;
-    margin-bottom: 24px;
-}
-
-.north-shuoshuo-random-btn {
-    padding: 10px 24px;
-    font-size: 14px;
-}
-
 /* 每日回顾模式下的 notes-list */
 .north-shuoshuo-notes-list.review-mode {
     padding: 0;
     background: var(--b3-theme-background);
+    display: block;
+    overflow-y: auto;
+}
+
+/* 每日回顾便利贴墙 */
+.north-shuoshuo-sticky-review-container {
+    min-height: 100%;
+    padding: 40px 30px;
+    background-color: var(--b3-theme-background);
+    background-image: 
+        radial-gradient(circle, rgba(128, 128, 128, 0.12) 1px, transparent 1px),
+        radial-gradient(circle, rgba(128, 128, 128, 0.12) 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
+}
+
+.north-shuoshuo-sticky-review-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.north-shuoshuo-sticky-review-label {
+    font-size: 13px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 8px;
+}
+
+.north-shuoshuo-sticky-review-title {
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+    letter-spacing: -0.02em;
+}
+
+.north-shuoshuo-sticky-wall {
+    column-count: 3;
+    column-gap: 24px;
+}
+
+.north-shuoshuo-sticky-note {
+    break-inside: avoid;
+    margin-bottom: 24px;
+    display: inline-block;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.north-shuoshuo-sticky-note {
+    position: relative;
+    padding: 20px;
+    border-radius: 2px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.05);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    cursor: pointer;
+    color: rgba(0,0,0,0.85);
+}
+
+/* 便利贴颜色 - 默认（原主题） */
+.north-shuoshuo-sticky-note.note-color-1 {
+    background: #fef08a;
+    transform: rotate(-1.5deg);
+}
+.north-shuoshuo-sticky-note.note-color-2 {
+    background: #fbcfe8;
+    transform: rotate(1deg);
+}
+.north-shuoshuo-sticky-note.note-color-3 {
+    background: #bfdbfe;
+    transform: rotate(-0.5deg);
+}
+.north-shuoshuo-sticky-note.note-color-4 {
+    background: #bbf7d0;
+    transform: rotate(2deg);
+}
+.north-shuoshuo-sticky-note.note-color-5 {
+    background: #e9d5ff;
+    transform: rotate(-2deg);
+}
+.north-shuoshuo-sticky-note.note-color-6 {
+    background: #fed7aa;
+    transform: rotate(0.8deg);
+}
+
+/* 思源主题 - 适配柔和色 */
+.theme-siyuan .north-shuoshuo-sticky-note.note-color-1 {
+    background: #fff9c4;
+}
+.theme-siyuan .north-shuoshuo-sticky-note.note-color-2 {
+    background: #f8bbd9;
+}
+.theme-siyuan .north-shuoshuo-sticky-note.note-color-3 {
+    background: #b3e5fc;
+}
+.theme-siyuan .north-shuoshuo-sticky-note.note-color-4 {
+    background: #c8e6c9;
+}
+.theme-siyuan .north-shuoshuo-sticky-note.note-color-5 {
+    background: #e1bee7;
+}
+.theme-siyuan .north-shuoshuo-sticky-note.note-color-6 {
+    background: #ffe0b2;
+}
+
+/* 莫兰迪主题 - 低饱和色系 */
+.theme-morandi .north-shuoshuo-sticky-note.note-color-1 {
+    background: #D4A5A5;
+}
+.theme-morandi .north-shuoshuo-sticky-note.note-color-2 {
+    background: #9CAF88;
+}
+.theme-morandi .north-shuoshuo-sticky-note.note-color-3 {
+    background: #8FA1B3;
+}
+.theme-morandi .north-shuoshuo-sticky-note.note-color-4 {
+    background: #C4B7A6;
+}
+.theme-morandi .north-shuoshuo-sticky-note.note-color-5 {
+    background: #A898B5;
+}
+.theme-morandi .north-shuoshuo-sticky-note.note-color-6 {
+    background: #C78D7B;
+}
+
+.north-shuoshuo-sticky-note:hover {
+    transform: rotate(0deg) translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.1), 0 10px 24px rgba(0,0,0,0.08);
+    z-index: 2;
+}
+
+/* 胶带效果 */
+.north-shuoshuo-sticky-note::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 24px;
+    background: rgba(255,255,255,0.5);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border-left: 1px solid rgba(255,255,255,0.3);
+    border-right: 1px solid rgba(255,255,255,0.3);
+    pointer-events: none;
+}
+
+.north-shuoshuo-sticky-note-inner {
+    position: relative;
+    z-index: 1;
+}
+
+/* 便利贴内容：覆盖深色文字 */
+.north-shuoshuo-sticky-note-content {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: rgba(0,0,0,0.85);
+    margin-bottom: 14px;
+}
+
+.north-shuoshuo-sticky-note-content .north-shuoshuo-note-content {
+    color: rgba(0,0,0,0.85);
+    margin-bottom: 0;
+}
+
+.north-shuoshuo-sticky-note-content .north-shuoshuo-note-content h1,
+.north-shuoshuo-sticky-note-content .north-shuoshuo-note-content h2,
+.north-shuoshuo-sticky-note-content .north-shuoshuo-note-content h3,
+.north-shuoshuo-sticky-note-content .north-shuoshuo-note-content strong {
+    color: rgba(0,0,0,0.85);
+}
+
+.north-shuoshuo-sticky-note-content .north-shuoshuo-note-content a {
+    color: #2563eb;
+}
+
+.north-shuoshuo-sticky-note-content .north-shuoshuo-note-content code {
+    color: #dc2626;
+    background: rgba(0,0,0,0.05);
+}
+
+.north-shuoshuo-sticky-note-content .north-shuoshuo-note-content blockquote {
+    border-left-color: rgba(0,0,0,0.3);
+    color: rgba(0,0,0,0.7);
+}
+
+.north-shuoshuo-sticky-note-content .north-shuoshuo-tag {
+    background: rgba(0,0,0,0.08);
+    color: rgba(0,0,0,0.6);
+}
+
+/* 图片在便利贴中限制大小 */
+.north-shuoshuo-sticky-note-content .north-shuoshuo-image-grid img,
+.north-shuoshuo-sticky-note-content .north-shuoshuo-markdown-img {
+    max-height: 140px;
+    border-radius: 4px;
+}
+
+.north-shuoshuo-sticky-note-content .north-shuoshuo-image-grid.single {
+    max-height: 160px;
+    overflow: hidden;
+}
+
+.north-shuoshuo-sticky-note-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    min-height: 18px;
+}
+
+.north-shuoshuo-sticky-tag {
+    font-size: 12px;
+    color: rgba(0,0,0,0.5);
+    font-weight: 500;
+}
+
+.north-shuoshuo-sticky-time {
+    font-size: 11px;
+    color: rgba(0,0,0,0.4);
+    font-weight: 500;
+}
+
+.north-shuoshuo-sticky-note-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+}
+
+.north-shuoshuo-sticky-indicator {
+    font-size: 12px;
+    color: rgba(0,0,0,0.4);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.north-shuoshuo-sticky-menu-btn {
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: rgba(0,0,0,0.04);
+    border-radius: 6px;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    color: rgba(0,0,0,0.5);
+    transition: all 0.2s;
+    padding: 0;
+}
+
+.north-shuoshuo-sticky-menu-btn:hover {
+    background: rgba(0,0,0,0.1);
+    color: rgba(0,0,0,0.8);
+}
+
+.north-shuoshuo-sticky-menu-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.north-shuoshuo-sticky-review-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+}
+
+/* 响应式 */
+@media (max-width: 1100px) {
+    .north-shuoshuo-sticky-wall {
+        column-count: 2;
+    }
+}
+
+@media (max-width: 768px) {
+    .north-shuoshuo-sticky-review-container {
+        padding: 24px 16px;
+    }
+    
+    .north-shuoshuo-sticky-wall {
+        column-count: 1;
+    }
+    
+    .north-shuoshuo-sticky-note {
+        transform: none !important;
+    }
 }
 
 /* 统计模式下占满 */
@@ -4730,20 +4970,6 @@
     border-bottom: 1px solid #f0f0f0;
 }
 
-/* 原主题 - 随机漫步 */
-.theme-original .north-shuoshuo-random-title {
-    color: #333;
-}
-
-.theme-original .north-shuoshuo-random-btn {
-    background: #56c596;
-    color: white;
-}
-
-.theme-original .north-shuoshuo-random-btn:hover {
-    background: #4ab386;
-}
-
 /* 原主题 - 横向 radio 组 */
 .theme-original .north-shuoshuo-radio-group.horizontal .north-shuoshuo-radio-item {
     border: 1px solid #e0e0e0;
@@ -5399,9 +5625,10 @@
 }
 
 .north-shuoshuo-memo-detail-links {
-    margin-top: 20px;
-    padding-top: 16px;
+    margin-top: 0;
+    padding: 16px 20px;
     border-top: 1px solid var(--b3-border-color);
+    flex-shrink: 0;
 }
 
 .north-shuoshuo-memo-detail-links-title {
@@ -5516,6 +5743,23 @@
 
 .north-shuoshuo-memo-relation-icon::before {
     content: '←';
+}
+
+.north-shuoshuo-memo-relations.comment-source .north-shuoshuo-memo-relation-icon {
+    border: none;
+    border-radius: 0;
+    width: 16px;
+    height: 16px;
+}
+
+.north-shuoshuo-memo-relations.comment-source .north-shuoshuo-memo-relation-icon::before {
+    content: none;
+}
+
+.north-shuoshuo-memo-relations.comment-source .north-shuoshuo-memo-relation-icon svg {
+    width: 16px;
+    height: 16px;
+    fill: var(--b3-theme-on-surface-light);
 }
 
 .north-shuoshuo-memo-relation-info {
@@ -6003,6 +6247,10 @@
     color: var(--b3-theme-on-surface-light);
 }
 
+.theme-morandi .north-shuoshuo-memo-relations.comment-source .north-shuoshuo-memo-relation-icon svg {
+    fill: var(--b3-theme-on-surface-light);
+}
+
 .theme-morandi .north-shuoshuo-memo-relation-info {
     color: var(--b3-theme-on-surface-light);
 }
@@ -6215,15 +6463,6 @@
     border-color: var(--b3-border-color);
 }
 
-/* 随机漫步 */
-.theme-morandi .north-shuoshuo-random-title {
-    color: var(--b3-theme-on-background);
-}
-
-.theme-morandi .north-shuoshuo-random-hint {
-    color: var(--b3-theme-on-surface-light);
-}
-
 /* 底部导航 */
 .theme-morandi .north-shuoshuo-bottom-nav {
     background: transparent;
@@ -6310,3 +6549,745 @@
     }
 }
 
+
+
+/* =================== 每日回顾 - 软木板墙主题 =================== */
+
+.north-shuoshuo-cork-review-container {
+    min-height: 100%;
+    padding: 0;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.north-shuoshuo-cork-board {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    background:
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='corkNoise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0.6 0 0 0 0.4  0.5 0 0 0 0.35  0.4 0 0 0 0.25  0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23corkNoise)'/%3E%3C/svg%3E"),
+        linear-gradient(135deg, #d4a574 0%, #c9956c 50%, #b8855c 100%);
+    background-size: 200px 200px, 100% 100%;
+    border-radius: 0;
+    padding: 30px;
+    border: 16px solid #8b5a2b;
+    border-image: linear-gradient(
+        to bottom,
+        #a67c52 0%,
+        #8b5a2b 15%,
+        #6b4423 50%,
+        #8b5a2b 85%,
+        #a67c52 100%
+    ) 1;
+    box-shadow:
+        inset 0 0 0 2px rgba(255,255,255,0.1),
+        inset 0 0 20px rgba(0,0,0,0.3);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.north-shuoshuo-cork-board::before {
+    content: '';
+    position: absolute;
+    top: -16px;
+    left: -16px;
+    right: -16px;
+    bottom: -16px;
+    border: 2px solid rgba(255,255,255,0.15);
+    pointer-events: none;
+}
+
+.north-shuoshuo-cork-header {
+    text-align: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed rgba(0,0,0,0.15);
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-cork-header h1 {
+    font-size: 24px;
+    color: rgba(0,0,0,0.7);
+    font-weight: 600;
+    margin-bottom: 4px;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.5);
+}
+
+.north-shuoshuo-cork-header p {
+    color: rgba(0,0,0,0.5);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.north-shuoshuo-cork-wall {
+    column-count: 3;
+    column-gap: 16px;
+    position: relative;
+    z-index: 2;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.north-shuoshuo-cork-note {
+    break-inside: avoid;
+    margin-bottom: 16px;
+    display: inline-block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 20px 20px 50px 20px;
+    border-radius: 4px;
+    min-height: 140px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    background-image:
+        linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+    box-shadow:
+        0 1px 4px rgba(0,0,0,0.15),
+        0 4px 12px rgba(0,0,0,0.2),
+        0 8px 24px rgba(0,0,0,0.15);
+    color: rgba(0,0,0,0.75);
+}
+
+.north-shuoshuo-cork-note:hover {
+    transform: translateY(-2px);
+    box-shadow:
+        0 4px 10px rgba(0,0,0,0.2),
+        0 8px 20px rgba(0,0,0,0.25);
+    z-index: 10;
+}
+
+/* 图钉 */
+.north-shuoshuo-cork-note::before {
+    content: '';
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #ff6b6b 0%, #c92a2a 50%, #750e0e 100%);
+    box-shadow:
+        0 2px 4px rgba(0,0,0,0.4),
+        inset -2px -2px 4px rgba(0,0,0,0.3),
+        inset 2px 2px 4px rgba(255,255,255,0.4);
+    z-index: 3;
+}
+
+/* 图钉阴影 */
+.north-shuoshuo-cork-note::after {
+    content: '';
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px;
+    height: 3px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 50%;
+    filter: blur(2px);
+    z-index: 1;
+}
+
+/* 不同颜色图钉 */
+.north-shuoshuo-cork-note.cork-pin-blue::before {
+    background: radial-gradient(circle at 30% 30%, #4dabf7 0%, #1971c2 50%, #0c4a6e 100%);
+}
+.north-shuoshuo-cork-note.cork-pin-green::before {
+    background: radial-gradient(circle at 30% 30%, #69db7c 0%, #2f9e44 50%, #1b5e20 100%);
+}
+.north-shuoshuo-cork-note.cork-pin-yellow::before {
+    background: radial-gradient(circle at 30% 30%, #ffd43b 0%, #f59f00 50%, #e67700 100%);
+}
+.north-shuoshuo-cork-note.cork-pin-purple::before {
+    background: radial-gradient(circle at 30% 30%, #da77f2 0%, #9c36b5 50%, #6a1b9a 100%);
+}
+
+/* 便签颜色 */
+.north-shuoshuo-cork-note.cork-note-yellow {
+    background: linear-gradient(135deg, #fff59d 0%, #fff176 100%);
+}
+.north-shuoshuo-cork-note.cork-note-pink {
+    background: linear-gradient(135deg, #f8bbd9 0%, #f48fb1 100%);
+}
+.north-shuoshuo-cork-note.cork-note-blue {
+    background: linear-gradient(135deg, #bbdefb 0%, #90caf9 100%);
+}
+.north-shuoshuo-cork-note.cork-note-green {
+    background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+}
+.north-shuoshuo-cork-note.cork-note-purple {
+    background: linear-gradient(135deg, #e1bee7 0%, #ce93d8 100%);
+}
+.north-shuoshuo-cork-note.cork-note-orange {
+    background: linear-gradient(135deg, #ffe0b2 0%, #ffcc80 100%);
+}
+.north-shuoshuo-cork-note.cork-note-cream {
+    background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+}
+.north-shuoshuo-cork-note.cork-note-mint {
+    background: linear-gradient(135deg, #b2dfdb 0%, #80cbc4 100%);
+}
+
+/* 内容覆盖 */
+.north-shuoshuo-cork-note-content {
+    font-size: 14.5px;
+    color: rgba(0,0,0,0.7);
+    line-height: 1.7;
+    margin-top: 8px;
+}
+
+.north-shuoshuo-cork-note-content .north-shuoshuo-note-content {
+    color: rgba(0,0,0,0.75);
+    margin-bottom: 0;
+}
+
+.north-shuoshuo-cork-note-content .north-shuoshuo-note-content h1,
+.north-shuoshuo-cork-note-content .north-shuoshuo-note-content h2,
+.north-shuoshuo-cork-note-content .north-shuoshuo-note-content h3,
+.north-shuoshuo-cork-note-content .north-shuoshuo-note-content strong {
+    color: rgba(0,0,0,0.75);
+}
+
+.north-shuoshuo-cork-note-content .north-shuoshuo-note-content a {
+    color: #2563eb;
+}
+
+.north-shuoshuo-cork-note-content .north-shuoshuo-note-content code {
+    color: #dc2626;
+    background: rgba(0,0,0,0.05);
+}
+
+.north-shuoshuo-cork-note-content .north-shuoshuo-note-content blockquote {
+    border-left-color: rgba(0,0,0,0.3);
+    color: rgba(0,0,0,0.65);
+}
+
+.north-shuoshuo-cork-note-content .north-shuoshuo-tag {
+    background: rgba(0,0,0,0.08);
+    color: rgba(0,0,0,0.6);
+}
+
+.north-shuoshuo-cork-note-content .north-shuoshuo-image-grid img,
+.north-shuoshuo-cork-note-content .north-shuoshuo-markdown-img {
+    max-height: 130px;
+    border-radius: 4px;
+}
+
+.north-shuoshuo-cork-note-content .north-shuoshuo-image-grid.single {
+    max-height: 150px;
+    overflow: hidden;
+}
+
+.north-shuoshuo-cork-note-time {
+    font-size: 12px;
+    color: rgba(0,0,0,0.45);
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.north-shuoshuo-cork-tag {
+    display: inline-block;
+    font-size: 11px;
+    color: rgba(0,0,0,0.55);
+    background: rgba(0,0,0,0.08);
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-top: 10px;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.north-shuoshuo-cork-note-footer {
+    position: absolute;
+    bottom: 12px;
+    right: 14px;
+    font-size: 11px;
+    color: rgba(0,0,0,0.35);
+    font-weight: 500;
+}
+
+.north-shuoshuo-cork-menu-btn {
+    position: absolute;
+    bottom: 10px;
+    left: 14px;
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: rgba(0,0,0,0.06);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(0,0,0,0.5);
+    transition: all 0.2s;
+    padding: 0;
+    z-index: 2;
+}
+
+.north-shuoshuo-cork-menu-btn:hover {
+    background: rgba(0,0,0,0.12);
+    color: rgba(0,0,0,0.8);
+}
+
+.north-shuoshuo-cork-menu-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* 软木板空状态 */
+.north-shuoshuo-cork-review-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    background: #2a2a2a;
+    color: #d4a574;
+}
+
+/* 软木板响应式 */
+@media (max-width: 1100px) {
+    .north-shuoshuo-cork-wall {
+        column-count: 2;
+    }
+}
+
+@media (max-width: 768px) {
+    .north-shuoshuo-cork-review-container {
+        padding: 16px;
+    }
+    
+    .north-shuoshuo-cork-board {
+        border-width: 12px;
+        padding: 20px;
+    }
+    
+    .north-shuoshuo-cork-board::before {
+        top: -12px;
+        left: -12px;
+        right: -12px;
+        bottom: -12px;
+    }
+    
+    .north-shuoshuo-cork-header h1 {
+        font-size: 20px;
+    }
+    
+    .north-shuoshuo-cork-wall {
+        column-count: 1;
+    }
+    
+    .north-shuoshuo-cork-note {
+        margin-bottom: 14px;
+    }
+}
+
+/* =================== 随机漫步 - 方格纸便签风格 =================== */
+
+.north-shuoshuo-random-bg {
+    min-height: 100%;
+    background-color: #faf9f6;
+    background-image:
+        linear-gradient(rgba(200, 195, 185, 0.15) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200, 195, 185, 0.15) 1px, transparent 1px);
+    background-size: 24px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 80px 24px 40px;
+    /* 抵消父元素 #shuoshuo-notes-list 的 padding，实现全宽 */
+    margin: -20px -30px;
+    /* 创建独立层叠上下文，防止内部 z-index 影响全局 */
+    isolation: isolate;
+}
+
+/* 卡片 */
+.north-shuoshuo-review-card {
+    width: 100%;
+    max-width: 760px;
+    background: #fefcf7;
+    border-radius: 2px;
+    box-shadow:
+        0 1px 2px rgba(0,0,0,0.05),
+        0 4px 12px rgba(0,0,0,0.08),
+        0 16px 48px rgba(0,0,0,0.06);
+    padding: 48px 48px 40px;
+    position: relative;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+/* 顶部：漫步标识 + 日期 */
+.north-shuoshuo-review-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 36px;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed #e8e4dc;
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.north-shuoshuo-icon-wander {
+    width: 16px;
+    height: 16px;
+    color: #c4b8a8;
+    stroke-width: 2;
+}
+
+.north-shuoshuo-review-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #b8a99a;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.north-shuoshuo-review-date {
+    font-size: 13px;
+    color: #d4c8b8;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+
+/* 内容区 */
+.north-shuoshuo-review-body {
+    padding: 8px 0 32px;
+    min-height: 120px;
+}
+
+.north-shuoshuo-review-content {
+    font-size: 16px;
+    line-height: 1.9;
+    color: #3a3a3a;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    word-wrap: break-word;
+    text-align: justify;
+}
+
+.north-shuoshuo-review-content .north-shuoshuo-note-content {
+    color: #3a3a3a;
+    margin-bottom: 0;
+    line-height: 1.9;
+    font-size: 16px;
+}
+
+.north-shuoshuo-review-content .north-shuoshuo-note-content h1,
+.north-shuoshuo-review-content .north-shuoshuo-note-content h2,
+.north-shuoshuo-review-content .north-shuoshuo-note-content h3,
+.north-shuoshuo-review-content .north-shuoshuo-note-content strong {
+    color: #2c2c2c;
+}
+
+.north-shuoshuo-review-content .north-shuoshuo-note-content a {
+    color: #0066cc;
+}
+
+.north-shuoshuo-review-content .north-shuoshuo-note-content code {
+    color: #c7254e;
+    background: rgba(199, 37, 78, 0.06);
+}
+
+.north-shuoshuo-review-content .north-shuoshuo-note-content blockquote {
+    border-left-color: rgba(0,0,0,0.1);
+    color: #555;
+}
+
+.north-shuoshuo-review-content .north-shuoshuo-tag {
+    background: rgba(0,102,204,0.08);
+    color: #0066cc;
+}
+
+.north-shuoshuo-review-content .north-shuoshuo-image-grid.single .north-shuoshuo-grid-img,
+.north-shuoshuo-review-content .north-shuoshuo-image-grid.multi img,
+.north-shuoshuo-review-content .north-shuoshuo-markdown-img {
+    max-height: 140px;
+    border-radius: 4px;
+}
+
+/* 底部：标签 + 页码 */
+.north-shuoshuo-review-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    padding-top: 24px;
+    border-top: 1px dashed #e8e4dc;
+}
+
+/* 便签标签 */
+.north-shuoshuo-review-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    background: #f0f5f2;
+    border: 1px solid #d8e6df;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b9b8a;
+    letter-spacing: 0.06em;
+    position: relative;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.north-shuoshuo-review-tag::before {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 8px;
+    background: #e8f0ec;
+    border: 1px solid #c8ddd3;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.north-shuoshuo-tag-dot {
+    width: 6px;
+    height: 6px;
+    background: #7ab8a8;
+    border-radius: 50%;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-page-indicator {
+    font-size: 13px;
+    color: #d4c8b8;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    font-family: Georgia, serif;
+    letter-spacing: 0.02em;
+}
+
+.north-shuoshuo-page-current {
+    color: #a89888;
+    font-weight: 700;
+}
+
+/* 快捷键提示 */
+.north-shuoshuo-keyboard-hint {
+    margin-top: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: #c8c0b4;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+}
+
+.north-shuoshuo-kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    color: #b8a99a;
+    background: rgba(255,255,255,0.6);
+    border: 1px solid #e0d8cc;
+    border-radius: 4px;
+    box-shadow: 0 1px 0 #d8d0c4;
+    cursor: default;
+    user-select: none;
+    letter-spacing: 0.04em;
+}
+
+/* 动画 */
+.north-shuoshuo-card-enter {
+    animation: north-shuoshuo-cardEnter 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes north-shuoshuo-cardEnter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 空状态 */
+.north-shuoshuo-random-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    color: #666;
+}
+
+.north-shuoshuo-random-empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.north-shuoshuo-random-empty-text {
+    font-size: 18px;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.north-shuoshuo-random-empty-hint {
+    font-size: 13px;
+    color: #999;
+}
+
+/* ========== 随机漫步 - 适配主题 & 莫兰迪主题 ========== */
+
+.theme-siyuan .north-shuoshuo-random-bg,
+.theme-morandi .north-shuoshuo-random-bg {
+    background-color: var(--b3-theme-background);
+    background-image:
+        linear-gradient(rgba(200, 195, 185, 0.12) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200, 195, 185, 0.12) 1px, transparent 1px);
+}
+
+.theme-siyuan .north-shuoshuo-review-card,
+.theme-morandi .north-shuoshuo-review-card {
+    background: var(--b3-theme-surface);
+    box-shadow:
+        0 1px 2px rgba(0,0,0,0.05),
+        0 4px 12px rgba(0,0,0,0.08),
+        0 16px 48px rgba(0,0,0,0.06);
+}
+
+.theme-siyuan .north-shuoshuo-review-header,
+.theme-morandi .north-shuoshuo-review-header {
+    border-bottom-color: var(--b3-border-color);
+}
+
+.theme-siyuan .north-shuoshuo-review-title,
+.theme-morandi .north-shuoshuo-review-title {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-siyuan .north-shuoshuo-review-date,
+.theme-morandi .north-shuoshuo-review-date {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-siyuan .north-shuoshuo-review-content,
+.theme-morandi .north-shuoshuo-review-content {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content,
+.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content h1,
+.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content h2,
+.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content h3,
+.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content strong,
+.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content h1,
+.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content h2,
+.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content h3,
+.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content strong {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content a,
+.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content a {
+    color: var(--b3-theme-primary);
+}
+
+.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content blockquote,
+.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content blockquote {
+    border-left-color: var(--b3-theme-primary-light);
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-tag,
+.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-tag {
+    background: rgba(0,102,204,0.08);
+    color: #0066cc;
+}
+
+.theme-siyuan .north-shuoshuo-review-footer,
+.theme-morandi .north-shuoshuo-review-footer {
+    border-top-color: var(--b3-border-color);
+}
+
+.theme-siyuan .north-shuoshuo-review-tag,
+.theme-morandi .north-shuoshuo-review-tag {
+    background: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary-lighter);
+}
+
+.theme-siyuan .north-shuoshuo-review-tag::before,
+.theme-morandi .north-shuoshuo-review-tag::before {
+    background: var(--b3-theme-primary-lighter);
+    border-color: var(--b3-theme-primary-light);
+}
+
+.theme-siyuan .north-shuoshuo-tag-dot,
+.theme-morandi .north-shuoshuo-tag-dot {
+    background: var(--b3-theme-primary);
+}
+
+.theme-siyuan .north-shuoshuo-page-indicator,
+.theme-morandi .north-shuoshuo-page-indicator {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-siyuan .north-shuoshuo-page-current,
+.theme-morandi .north-shuoshuo-page-current {
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-siyuan .north-shuoshuo-keyboard-hint,
+.theme-morandi .north-shuoshuo-keyboard-hint {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-siyuan .north-shuoshuo-kbd,
+.theme-morandi .north-shuoshuo-kbd {
+    background: var(--b3-theme-surface-lighter);
+    border-color: var(--b3-border-color);
+    color: var(--b3-theme-on-surface);
+    box-shadow: 0 1px 0 var(--b3-border-color);
+}
+
+.theme-siyuan .north-shuoshuo-random-empty,
+.theme-morandi .north-shuoshuo-random-empty {
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-siyuan .north-shuoshuo-random-empty-hint,
+.theme-morandi .north-shuoshuo-random-empty-hint {
+    color: var(--b3-theme-on-surface-light);
+}
+
+@media (max-width: 768px) {
+    .north-shuoshuo-review-card {
+        padding: 40px 28px 32px;
+    }
+}

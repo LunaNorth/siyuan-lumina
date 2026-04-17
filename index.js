@@ -52,7 +52,8 @@ const DEFAULT_REVIEW_CONFIG = {
     contentScope: 'all', // all, include_tags, exclude_tags, no_tags
     contentScopeTags: [], // 用于 include_tags 或 exclude_tags
     timeRange: '6_months', // all, 1_year, 6_months, 3_months, 1_month
-    dailyCount: 8 // 4, 8, 12, 16, 20, 24
+    dailyCount: 8, // 4, 8, 12, 16, 20, 24
+    theme: 'sticky' // sticky, cork
 };
 
 // 主题配置：original (原主题-硬编码绿色), siyuan (适配思源主题)
@@ -87,7 +88,8 @@ const ICONS = {
     refresh: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>`,
     moreH: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`,
     comment: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"/></svg>`,
-    link: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>`
+    link: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>`,
+    clock: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`
 };
 
 module.exports = class ShuoshuoPlugin extends Plugin {
@@ -708,6 +710,29 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                                     </div>
                                 </div>
                             </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">回顾主题</div>
+                                        <div class="north-shuoshuo-section-desc">选择每日回顾的展示样式</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <div class="north-shuoshuo-radio-group vertical" id="review-theme-group">
+                                        <label class="north-shuoshuo-radio-item ${this.reviewConfig.theme === 'sticky' ? 'selected' : ''}" data-value="sticky">
+                                            <input type="radio" name="review-theme" value="sticky" ${this.reviewConfig.theme === 'sticky' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">便利贴墙</span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item ${this.reviewConfig.theme === 'cork' ? 'selected' : ''}" data-value="cork">
+                                            <input type="radio" name="review-theme" value="cork" ${this.reviewConfig.theme === 'cork' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">软木板墙</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- 底部操作 -->
@@ -901,38 +926,55 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     // 渲染 MEMO 关联提示
     renderMemoRelations(content) {
         const noteIds = this.extractMemoRefs(content);
-        if (noteIds.length === 0) return '';
-        
-        const isComment = /^关联自：\[MEMO:[^\]]+\]/.test(content || '');
-        
+        const isComment = noteIds.length > 0 || /^关联自：/.test(content || '');
+
+        if (noteIds.length === 0 && !isComment) return '';
+
+        // 处理旧格式批注（没有 [MEMO:id]）
+        let oldFormatSource = '';
+        if (/^关联自：/.test(content || '') && noteIds.length === 0) {
+            const firstLine = (content || '').split('\n')[0];
+            const match = firstLine.match(/^关联自：(.+)$/);
+            if (match) {
+                oldFormatSource = `
+                    <div class="north-shuoshuo-memo-relation-item">
+                        <svg class="icon"><use xlink:href="#iconRef"></use></svg>
+                        <span class="north-shuoshuo-memo-relation-info">${this.escapeHtml(match[1].trim())}</span>
+                    </div>
+                `;
+            }
+        }
+
         return `
-            <div class="north-shuoshuo-memo-relations">
+            <div class="north-shuoshuo-memo-relations ${isComment ? 'comment-source' : ''}">
                 ${noteIds.map(id => {
                     const note = this.shuoshuos.find(s => s.id === id);
                     if (!note) return '';
                     const dateStr = this.formatDate(note.created).split(' ')[0]; // 只取日期部分
-                    
+
                     let infoText = '';
                     if (isComment) {
-                        // 批注：显示"关联自：被引用原文预览"
+                        // 批注：显示被引用原文预览
                         let sourcePreview = (note.content || '').replace(/\[MEMO:[^\]]+\]/g, '').trim();
                         sourcePreview = sourcePreview.split('\n')[0];
                         sourcePreview = sourcePreview.substring(0, 80) + (sourcePreview.length > 80 ? '...' : '');
-                        infoText = `关联自：${this.escapeHtml(sourcePreview)}`;
+                        sourcePreview = sourcePreview.replace(/^关联自：/, '');
+                        infoText = this.escapeHtml(sourcePreview);
                     } else {
                         let preview = (note.content || '').replace(/\[MEMO:[^\]]+\]/g, '').trim();
                         preview = preview.split('\n')[0];
                         preview = preview.substring(0, 80) + (preview.length > 80 ? '...' : '');
                         infoText = this.escapeHtml(preview);
                     }
-                    
+
                     return `
                         <div class="north-shuoshuo-memo-relation-item" data-id="${id}">
-                            <span class="north-shuoshuo-memo-relation-icon"></span>
+                            <span class="north-shuoshuo-memo-relation-icon">${isComment ? '<svg class="icon"><use xlink:href="#iconRef"></use></svg>' : ''}</span>
                             <span class="north-shuoshuo-memo-relation-info">${dateStr}: ${infoText}</span>
                         </div>
                     `;
                 }).join('')}
+                ${oldFormatSource}
             </div>
         `;
     }
@@ -971,125 +1013,172 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
         if (inputArea) inputArea.style.display = 'none';
         
+        // 移除笔记布局相关类名，避免影响回顾视图
+        listEl.classList.remove('card-layout', 'list-layout');
+        
         // 添加特殊类名用于样式控制
         listEl.classList.add('review-mode');
 
         // 获取回顾笔记
         const reviewNotes = this.getReviewNotes();
-        
-        // 获取当前回顾配置描述
-        const { contentScope, timeRange, dailyCount } = this.reviewConfig;
-        
-        const contentScopeMap = {
-            'all': '全部内容',
-            'include_tags': '包含指定标签',
-            'exclude_tags': '排除指定标签',
-            'no_tags': '无标签'
-        };
-        
-        const timeRangeMap = {
-            'all': '全部时间',
-            '1_year': '1年内',
-            '6_months': '6个月内',
-            '3_months': '3个月内',
-            '1_month': '1个月内'
-        };
-
-        const configDesc = `${contentScopeMap[contentScope]} · ${timeRangeMap[timeRange]} · ${dailyCount}条/天`;
 
         if (reviewNotes.length === 0) {
+            const theme = this.reviewConfig.theme || 'sticky';
+            let emptyClass = 'north-shuoshuo-sticky-review-empty';
+            if (theme === 'cork') emptyClass = 'north-shuoshuo-cork-review-empty';
             listEl.innerHTML = `
-                <div class="north-shuoshuo-review-page">
-                    <div class="north-shuoshuo-review-card-wrapper">
-                        <div class="north-shuoshuo-review-card">
-                            <div class="north-shuoshuo-empty-state" style="padding: 80px 20px; text-align: center;">
-                                <div class="north-shuoshuo-empty-icon" style="font-size: 48px; margin-bottom: 16px;">📭</div>
-                                <div class="north-shuoshuo-empty-text" style="font-size: 16px; color: #666; margin-bottom: 8px;">暂无符合条件的笔记</div>
-                                <div class="north-shuoshuo-empty-hint" style="font-size: 13px; color: #999;">试着在设置中调整回顾规则或添加更多笔记吧</div>
-                            </div>
-                        </div>
+                <div class="${emptyClass}">
+                    <div class="north-shuoshuo-empty-state" style="padding: 80px 20px; text-align: center;">
+                        <div class="north-shuoshuo-empty-icon" style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                        <div class="north-shuoshuo-empty-text" style="font-size: 16px; margin-bottom: 8px;">暂无符合条件的笔记</div>
+                        <div class="north-shuoshuo-empty-hint" style="font-size: 13px;">试着在设置中调整回顾规则或添加更多笔记吧</div>
                     </div>
                 </div>
             `;
             return;
         }
 
-        // 存储回顾笔记和当前索引
-        this.currentReviewNotes = reviewNotes;
-        this.currentReviewIndex = 0;
-
-        // 渲染单条卡片
-        this.renderReviewCard(listEl, configDesc);
+        const theme = this.reviewConfig.theme || 'sticky';
+        if (theme === 'cork') {
+            this.renderReviewCork(listEl, reviewNotes);
+        } else {
+            this.renderReviewSticky(listEl, reviewNotes);
+        }
     }
 
-    // 渲染单条回顾卡片
-    renderReviewCard(listEl, configDesc) {
-        const note = this.currentReviewNotes[this.currentReviewIndex];
-        const dateStr = this.formatDate(note.created);
-        const total = this.currentReviewNotes.length;
-        const current = this.currentReviewIndex + 1;
+    renderReviewSticky(listEl, reviewNotes) {
+        const today = new Date();
+        const month = today.getMonth() + 1;
+        const date = today.getDate();
+        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        const weekday = weekdays[today.getDay()];
+        const colors = ['note-color-1', 'note-color-2', 'note-color-3', 'note-color-4', 'note-color-5', 'note-color-6'];
 
         listEl.innerHTML = `
-            <div class="north-shuoshuo-review-page">
-                <div class="north-shuoshuo-review-card-wrapper">
-                    <div class="north-shuoshuo-review-card">
-                        <div class="north-shuoshuo-review-card-header">
-                            <span class="north-shuoshuo-review-card-date">${dateStr}</span>
-                            <span class="north-shuoshuo-review-card-menu" data-id="${note.id}">•••</span>
-                        </div>
-                        <div class="north-shuoshuo-review-card-content">
-                            ${this.renderNoteContent(note.content)}
-                        </div>
-                        <div class="north-shuoshuo-review-card-footer">
-                            <div class="north-shuoshuo-review-card-actions">
-                                <button class="north-shuoshuo-review-card-btn" id="review-edit-btn" title="编辑" data-id="${note.id}">
-                                    <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                                </button>
+            <div class="north-shuoshuo-sticky-review-container">
+                <div class="north-shuoshuo-sticky-review-header">
+                    <div class="north-shuoshuo-sticky-review-label">DAILY REVIEW</div>
+                    <div class="north-shuoshuo-sticky-review-title">${month} 月 ${date} 日 · ${weekday}</div>
+                </div>
+                <div class="north-shuoshuo-sticky-wall">
+                    ${reviewNotes.map((note, index) => {
+                        const colorClass = colors[index % colors.length];
+                        const timeStr = this.formatTimeForDiary(note.created);
+                        const dateStr = this.formatDate(note.created).split(' ')[0];
+                        const noteDateKey = this.formatDateKey(new Date(note.created));
+                        const todayKey = this.formatDateKey(new Date());
+                        const displayTime = noteDateKey === todayKey ? timeStr : dateStr;
+                        const tags = note.tags || [];
+                        const tagHtml = tags.length > 0 ? `<span class="north-shuoshuo-sticky-tag">${this.escapeHtml(tags[0])}</span>` : '';
+                        return `
+                            <div class="north-shuoshuo-sticky-note ${colorClass}" data-id="${note.id}">
+                                <div class="north-shuoshuo-sticky-note-inner">
+                                    <div class="north-shuoshuo-sticky-note-content">${this.renderNoteContent(note.content, { hideTags: true })}</div>
+                                    <div class="north-shuoshuo-sticky-note-meta">
+                                        ${tagHtml}
+                                        <span class="north-shuoshuo-sticky-time">${displayTime}</span>
+                                    </div>
+                                    <div class="north-shuoshuo-sticky-note-footer">
+                                        <span class="north-shuoshuo-sticky-indicator">${index + 1} / ${reviewNotes.length}</span>
+                                        <button class="north-shuoshuo-sticky-menu-btn" data-id="${note.id}" title="更多">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <circle cx="12" cy="12" r="1"/>
+                                                <circle cx="19" cy="12" r="1"/>
+                                                <circle cx="5" cy="12" r="1"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="north-shuoshuo-review-pagination">
-                                <span class="north-shuoshuo-review-page-btn ${this.currentReviewIndex === 0 ? 'disabled' : ''}" id="review-prev-btn">&lt;</span>
-                                <span>${current}/${total}</span>
-                                <span class="north-shuoshuo-review-page-btn ${this.currentReviewIndex === total - 1 ? 'disabled' : ''}" id="review-next-btn">&gt;</span>
-                            </div>
-                        </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+
+        listEl.querySelectorAll('.north-shuoshuo-sticky-note').forEach(noteEl => {
+            noteEl.addEventListener('click', (e) => {
+                if (e.target.closest('.north-shuoshuo-sticky-menu-btn')) return;
+                const id = noteEl.dataset.id;
+                this.showMemoDetail(id);
+            });
+        });
+
+        listEl.querySelectorAll('.north-shuoshuo-sticky-menu-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                this.showNoteMenu(id, btn);
+            });
+        });
+    }
+
+    renderReviewCork(listEl, reviewNotes) {
+        const today = new Date();
+        const month = today.getMonth() + 1;
+        const date = today.getDate();
+        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        const weekday = weekdays[today.getDay()];
+        const colors = [
+            'cork-note-yellow', 'cork-note-pink', 'cork-note-blue', 'cork-note-green',
+            'cork-note-purple', 'cork-note-orange', 'cork-note-cream', 'cork-note-mint'
+        ];
+        const pinColors = ['', 'cork-pin-blue', 'cork-pin-green', 'cork-pin-yellow', 'cork-pin-purple'];
+
+        listEl.innerHTML = `
+            <div class="north-shuoshuo-cork-review-container">
+                <div class="north-shuoshuo-cork-board">
+                    <div class="north-shuoshuo-cork-header">
+                        <h1>${month} 月 ${date} 日 · ${weekday}</h1>
+                        <p>DAILY REVIEW</p>
+                    </div>
+                    <div class="north-shuoshuo-cork-wall">
+                        ${reviewNotes.map((note, index) => {
+                            const colorClass = colors[index % colors.length];
+                            const pinClass = pinColors[index % pinColors.length];
+                            const timeStr = this.formatTimeForDiary(note.created);
+                            const dateStr = this.formatDate(note.created).split(' ')[0];
+                            const noteDateKey = this.formatDateKey(new Date(note.created));
+                            const todayKey = this.formatDateKey(new Date());
+                            const displayTime = noteDateKey === todayKey ? timeStr : dateStr;
+                            const tags = note.tags || [];
+                            const tagHtml = tags.length > 0 ? `<span class="north-shuoshuo-cork-tag">${this.escapeHtml(tags[0])}</span>` : '';
+                            return `
+                                <div class="north-shuoshuo-cork-note ${colorClass} ${pinClass}" data-id="${note.id}">
+                                    <div class="north-shuoshuo-cork-note-time">${displayTime}</div>
+                                    <div class="north-shuoshuo-cork-note-content">${this.renderNoteContent(note.content, { hideTags: true })}</div>
+                                    ${tagHtml}
+                                    <div class="north-shuoshuo-cork-note-footer">${index + 1} / ${reviewNotes.length}</div>
+                                    <button class="north-shuoshuo-cork-menu-btn" data-id="${note.id}" title="更多">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="1"/>
+                                            <circle cx="19" cy="12" r="1"/>
+                                            <circle cx="5" cy="12" r="1"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
                 </div>
             </div>
         `;
 
-        // 绑定翻页事件
-        const prevBtn = listEl.querySelector('#review-prev-btn');
-        const nextBtn = listEl.querySelector('#review-next-btn');
-
-        if (prevBtn && this.currentReviewIndex > 0) {
-            prevBtn.addEventListener('click', () => {
-                this.currentReviewIndex--;
-                this.renderReviewCard(listEl, configDesc);
+        listEl.querySelectorAll('.north-shuoshuo-cork-note').forEach(noteEl => {
+            noteEl.addEventListener('click', (e) => {
+                if (e.target.closest('.north-shuoshuo-cork-menu-btn')) return;
+                const id = noteEl.dataset.id;
+                this.showMemoDetail(id);
             });
-        }
+        });
 
-        if (nextBtn && this.currentReviewIndex < total - 1) {
-            nextBtn.addEventListener('click', () => {
-                this.currentReviewIndex++;
-                this.renderReviewCard(listEl, configDesc);
+        listEl.querySelectorAll('.north-shuoshuo-cork-menu-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                this.showNoteMenu(id, btn);
             });
-        }
-
-        // 绑定菜单事件
-        const menuBtn = listEl.querySelector('.north-shuoshuo-review-card-menu');
-        if (menuBtn) {
-            menuBtn.addEventListener('click', (e) => {
-                this.showNoteMenu(note.id, menuBtn);
-            });
-        }
-
-        // 绑定编辑按钮
-        const editBtn = listEl.querySelector('#review-edit-btn');
-        if (editBtn) {
-            editBtn.addEventListener('click', () => {
-                this.editNote(note.id);
-            });
-        }
+        });
     }
 
     // 绑定回顾设置按钮事件
@@ -1103,40 +1192,130 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // 隐藏输入区域
         const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
         if (inputArea) inputArea.style.display = 'none';
-        listEl.classList.remove('review-mode');
+        listEl.classList.remove('review-mode', 'card-layout', 'list-layout');
 
         if (this.shuoshuos.length === 0) {
             listEl.innerHTML = `
-                <div class="north-shuoshuo-random-section">
-                    <div class="north-shuoshuo-random-title">随机漫步</div>
-                    <div class="north-shuoshuo-empty-icon">🎲</div>
-                    <div class="north-shuoshuo-empty-text">还没有笔记</div>
-                    <div class="north-shuoshuo-empty-hint">添加一些笔记后，来这里发现惊喜</div>
+                <div class="north-shuoshuo-random-bg">
+                    <div class="north-shuoshuo-random-empty">
+                        <div class="north-shuoshuo-random-empty-icon">🎲</div>
+                        <div class="north-shuoshuo-random-empty-text">还没有笔记</div>
+                        <div class="north-shuoshuo-random-empty-hint">添加一些笔记后，来这里发现惊喜</div>
+                    </div>
                 </div>
             `;
             return;
         }
 
-        // 随机选择一条笔记
-        const randomIndex = Math.floor(Math.random() * this.shuoshuos.length);
-        const randomNote = this.shuoshuos[randomIndex];
+        const total = this.shuoshuos.length;
 
         listEl.innerHTML = `
-            <div class="north-shuoshuo-random-section">
-                <div class="north-shuoshuo-random-title">随机漫步</div>
-                <div class="north-shuoshuo-random-hint">发现过去的灵感</div>
-                ${this.renderNoteCard(randomNote)}
-                <button class="north-shuoshuo-btn north-shuoshuo-btn-primary north-shuoshuo-random-btn">🎲 再来一条</button>
+            <div class="north-shuoshuo-random-bg">
+                <div class="north-shuoshuo-review-card" id="memoCard">
+                    <div class="north-shuoshuo-review-header">
+                        <div class="north-shuoshuo-header-left">
+                            <svg class="north-shuoshuo-icon-wander" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                            <span class="north-shuoshuo-review-title">随机漫步</span>
+                        </div>
+                        <span class="north-shuoshuo-review-date" id="memoDate"></span>
+                    </div>
+                    <div class="north-shuoshuo-review-body">
+                        <div class="north-shuoshuo-review-content" id="memoContent"></div>
+                    </div>
+                    <div class="north-shuoshuo-review-footer">
+                        <span class="north-shuoshuo-review-tag" id="memoTag"></span>
+                        <span class="north-shuoshuo-page-indicator">
+                            <span class="north-shuoshuo-page-current" id="memoPageCurrent"></span>
+                            <span style="margin: 0 3px; opacity: 0.5;">/</span>
+                            <span id="memoPageTotal"></span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="north-shuoshuo-keyboard-hint">
+                    <span>快捷键</span>
+                    <kbd class="north-shuoshuo-kbd">Space</kbd>
+                    <span>换一条</span>
+                </div>
             </div>
         `;
 
-        // 绑定再来一条按钮
-        const randomBtn = listEl.querySelector('.north-shuoshuo-random-btn');
-        if (randomBtn) {
-            randomBtn.addEventListener('click', () => {
-                this.renderRandom();
-            });
+        const memoCard = listEl.querySelector('#memoCard');
+        const memoDate = listEl.querySelector('#memoDate');
+        const memoContent = listEl.querySelector('#memoContent');
+        const memoTag = listEl.querySelector('#memoTag');
+        const memoPageCurrent = listEl.querySelector('#memoPageCurrent');
+        const memoPageTotal = listEl.querySelector('#memoPageTotal');
+
+        // Fisher-Yates 洗牌：确保每条都被"漫步"到，不重复，全部走完再重新洗牌
+        let shuffled = [];
+        let index = 0;
+
+        const shuffle = (array) => {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        };
+
+        const renderNote = (note, currentNum) => {
+            memoDate.textContent = this.formatDate(note.created);
+            memoContent.innerHTML = this.renderNoteContent(note.content, { hideTags: true });
+            const tags = note.tags || [];
+            if (tags.length > 0) {
+                memoTag.innerHTML = `<span class="north-shuoshuo-tag-dot"></span>${this.escapeHtml(tags[0])}`;
+                memoTag.style.display = 'inline-flex';
+            } else {
+                memoTag.innerHTML = '';
+                memoTag.style.display = 'none';
+            }
+            memoPageCurrent.textContent = currentNum;
+            memoPageTotal.textContent = total;
+        };
+
+        const init = () => {
+            shuffled = shuffle(this.shuoshuos);
+            index = 0;
+            renderNote(shuffled[index], index + 1);
+        };
+
+        const next = () => {
+            index++;
+            if (index >= shuffled.length) {
+                shuffled = shuffle(this.shuoshuos);
+                index = 0;
+            }
+
+            // 动画：仅内容区淡出，更新后再淡入，卡片容器保持不动避免闪动
+            memoContent.style.transition = 'opacity 0.2s ease';
+            memoContent.style.opacity = '0';
+
+            setTimeout(() => {
+                renderNote(shuffled[index], index + 1);
+                memoContent.style.opacity = '1';
+            }, 200);
+        };
+
+        // 初始化
+        init();
+
+        // 键盘事件
+        if (this._randomKeyHandler) {
+            document.removeEventListener('keydown', this._randomKeyHandler);
         }
+        this._randomKeyHandler = (e) => {
+            if (this.currentMainView !== 'random') return;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                next();
+            }
+        };
+        document.addEventListener('keydown', this._randomKeyHandler);
     }
 
     // 渲染统计视图
@@ -1147,7 +1326,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // 隐藏输入区域
         const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
         if (inputArea) inputArea.style.display = 'none';
-        listEl.classList.remove('review-mode');
+        listEl.classList.remove('review-mode', 'card-layout', 'list-layout');
 
         // 获取年份列表（从最早记录到当前年）
         const currentYear = new Date().getFullYear();
@@ -2665,12 +2844,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                         <div class="north-shuoshuo-modal-close">×</div>
                     </div>
                 </div>
-                <div class="north-shuoshuo-modal-body">
-                    <div class="north-shuoshuo-memo-detail-header">
-                        <div class="north-shuoshuo-memo-detail-date">${this.formatDate(note.created)}</div>
+                <div class="north-shuoshuo-modal-body north-shuoshuo-memo-detail-body">
+                    <div class="north-shuoshuo-memo-detail-scroll">
+                        <div class="north-shuoshuo-memo-detail-header">
+                            <div class="north-shuoshuo-memo-detail-date">${this.formatDate(note.created)}</div>
+                        </div>
+                        <div class="north-shuoshuo-memo-detail-content">${this.renderNoteContent(note.content)}</div>
+                        <textarea class="north-shuoshuo-memo-detail-textarea" style="display:none;">${this.escapeHtml(note.content)}</textarea>
                     </div>
-                    <div class="north-shuoshuo-memo-detail-content">${this.renderNoteContent(note.content)}</div>
-                    <textarea class="north-shuoshuo-memo-detail-textarea" style="display:none;">${this.escapeHtml(note.content)}</textarea>
                     ${linkingNotes.length > 0 ? `
                     <div class="north-shuoshuo-memo-detail-links">
                         <div class="north-shuoshuo-memo-detail-links-title">${linkingNotes.length} 条链接至此的 MEMO</div>
@@ -2678,8 +2859,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                             ${linkingNotes.map(linkNote => {
                                 let preview = (linkNote.content || '')
                                     .replace(new RegExp(`\\[MEMO:${noteId}\\]`, 'g'), '')
-                                    .replace(/^关联自：/, '')
                                     .trim();
+                                // 如果是批注，去掉第一行的引用预览，保留实际批注内容
+                                const lines = preview.split('\n');
+                                if (lines[0].startsWith('关联自：') || lines[0].includes('[MEMO:')) {
+                                    preview = lines.slice(1).join('\n').trim();
+                                }
                                 preview = preview.split('\n')[0];
                                 preview = preview.substring(0, 120) + (preview.length > 120 ? '...' : '');
                                 preview = this.escapeHtml(preview).replace(/\s+/g, ' ').trim();
@@ -2734,9 +2919,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 const id = el.dataset.id;
                 overlay.remove();
                 setTimeout(() => {
-                    const card = this.container.querySelector(`.north-shuoshuo-note-card[data-id="${id}"]`);
-                    if (card) {
-                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const notesList = this.container.querySelector('#shuoshuo-notes-list');
+                    const card = notesList?.querySelector(`.north-shuoshuo-note-card[data-id="${id}"]`);
+                    if (card && notesList) {
+                        // 只在笔记列表内部滚动，避免带动整个页面导致输入框上移
+                        const cardRect = card.getBoundingClientRect();
+                        const listRect = notesList.getBoundingClientRect();
+                        const scrollTop = notesList.scrollTop + (cardRect.top - listRect.top) - notesList.clientHeight / 2 + cardRect.height / 2;
+                        notesList.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
                         card.classList.add('north-shuoshuo-note-highlight');
                         setTimeout(() => card.classList.remove('north-shuoshuo-note-highlight'), 1500);
                     }
@@ -3208,14 +3398,21 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     }
 
     // 渲染笔记内容（支持九宫格图片布局?
-    renderNoteContent(content) {
+    renderNoteContent(content, options = {}) {
         const { text, images } = this.extractContentAndImages(content);
+        
+        let displayText = text;
+        if (options.hideTags) {
+            // 移除内容中的标签，避免重复显示
+            displayText = displayText.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim();
+            displayText = displayText.replace(/\n{3,}/g, '\n\n').trim();
+        }
         
         let html = '<div class="north-shuoshuo-note-content">';
         
         // 渲染文字内容
-        if (text.trim()) {
-            html += this.formatContent(text);
+        if (displayText.trim()) {
+            html += this.formatContent(displayText);
         }
         
         html += '</div>';
@@ -3302,8 +3499,11 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // ?#标签?转换为标签样式（支持多级标签 #??孙）
         html = html.replace(/#([^\s\d][^\s]*(?:\/[^\s]+)*)/g, '<span class="north-shuoshuo-tag">#$1</span>');
         
-        // 移除批注的"关联自"头部，不在正文显示
-        html = html.replace(/^关联自：\[MEMO:[^\]]+\](?:<br>)+/, '');
+        // 移除批注的引用头部，不在正文显示
+        // 支持新格式：文章预览 [MEMO:xxx]<br>...
+        // 支持旧格式：关联自：文章预览 [MEMO:xxx]<br>...
+        html = html.replace(/^[^<]*\[MEMO:[^\]]+\][^<]*(?:<br>)+/, '');
+        html = html.replace(/^关联自：.*?(?:\[MEMO:[^\]]+\])?(?:<br>)+/, '');
         
         // 移除正文中的 lumina MEMO 链接，统一在底部显示
         html = html.replace(/lumina:\/\/memo\/[a-zA-Z0-9]+/g, '');
@@ -3785,9 +3985,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // 滚动到输入区域
         input.scrollIntoView({ behavior: 'smooth', block: 'center' });
         
-        // 插入 MEMO 引用到输入框顶部，格式为：关联自：内容预览
+        // 插入 MEMO 引用到输入框顶部
         const currentValue = input.value.trim();
-        const insertText = `关联自：${preview}`;
+        const insertText = `${preview} [MEMO:${id}]`;
         if (currentValue) {
             input.value = insertText + '\n' + currentValue;
             input.setSelectionRange(insertText.length + 1, insertText.length + 1);
@@ -3974,35 +4174,42 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         this.currentMainView = view;
 
+        const notesList = this.container.querySelector('#shuoshuo-notes-list');
+
         switch (view) {
             case 'notes':
                 // 显示说说视图
                 if (flomoArea) flomoArea.style.display = 'flex';
                 if (settingsArea) settingsArea.style.display = 'none';
+                if (notesList) notesList.style.overflowY = '';
                 this.renderNotes();
                 break;
             case 'review':
                 // 显示每日回顾视图
                 if (flomoArea) flomoArea.style.display = 'flex';
                 if (settingsArea) settingsArea.style.display = 'none';
+                if (notesList) notesList.style.overflowY = '';
                 this.renderReview();
                 break;
             case 'random':
                 // 显示随机漫步视图
                 if (flomoArea) flomoArea.style.display = 'flex';
                 if (settingsArea) settingsArea.style.display = 'none';
+                if (notesList) notesList.style.overflowY = 'hidden';
                 this.renderRandom();
                 break;
             case 'stats':
                 // 显示统计视图
                 if (flomoArea) flomoArea.style.display = 'flex';
                 if (settingsArea) settingsArea.style.display = 'none';
+                if (notesList) notesList.style.overflowY = '';
                 this.renderStats();
                 break;
             case 'settings':
                 // 显示设置视图
                 if (flomoArea) flomoArea.style.display = 'none';
                 if (settingsArea) settingsArea.style.display = 'flex';
+                if (notesList) notesList.style.overflowY = '';
                 this.bindSettingsEvents();
                 break;
         }
@@ -4217,12 +4424,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 const reviewTags = Array.from(this.container.querySelectorAll('#review-tags-select input:checked')).map(cb => cb.value);
                 const reviewTimeRange = this.container.querySelector('#review-time-range')?.value || '6_months';
                 const reviewDailyCount = parseInt(this.container.querySelector('#review-daily-count')?.value || '8');
+                const reviewTheme = this.container.querySelector('input[name="review-theme"]:checked')?.value || 'sticky';
 
                 this.reviewConfig = {
                     contentScope: reviewScope,
                     contentScopeTags: reviewTags,
                     timeRange: reviewTimeRange,
-                    dailyCount: reviewDailyCount
+                    dailyCount: reviewDailyCount,
+                    theme: reviewTheme
                 };
                 await this.saveReviewConfig();
 
@@ -4293,6 +4502,17 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 if (tagsRow) {
                     tagsRow.style.display = (value === 'include_tags' || value === 'exclude_tags') ? 'block' : 'none';
                 }
+            });
+        });
+
+        // 回顾主题单选
+        const themeItems = this.container.querySelectorAll('#review-theme-group .north-shuoshuo-radio-item');
+        themeItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+                themeItems.forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
             });
         });
 
@@ -4622,44 +4842,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         `).join('');
     }
 
-    // 渲染随机漫步
-    renderRandomNote() {
-        const listEl = this.container?.querySelector('#shuoshuo-notes-list');
-        if (!listEl) return;
-
-        if (this.shuoshuos.length === 0) {
-            listEl.innerHTML = `
-                <div class="north-shuoshuo-empty-state">
-                    <div class="north-shuoshuo-empty-icon">🎲</div>
-                    <div class="north-shuoshuo-empty-text">还没有笔记</div>
-                    <div class="north-shuoshuo-empty-hint">记录下第一条想法，开始你的记录之旅</div>
-                </div>
-            `;
-            return;
-        }
-
-        // 随机选择一条笔?
-        const randomIndex = Math.floor(Math.random() * this.shuoshuos.length);
-        const item = this.shuoshuos[randomIndex];
-
-        listEl.innerHTML = `
-            <div class="north-shuoshuo-random-section">
-                <div class="north-shuoshuo-random-title">🎲 随机漫步</div>
-                <div class="north-shuoshuo-note-card ${item.pinned ? 'pinned' : ''}" data-id="${item.id}">
-                    <div class="north-shuoshuo-note-header">
-                        <span class="north-shuoshuo-note-date">${this.formatDate(item.created)}</span>
-                    </div>
-                    <div class="north-shuoshuo-note-content">${this.formatContent(item.content)}</div>
-                </div>
-                <button class="north-shuoshuo-random-btn" id="shuoshuo-random-again">再来一条</button>
-            </div>
-        `;
-
-        const againBtn = this.container.querySelector('#shuoshuo-random-again');
-        if (againBtn) {
-            againBtn.onclick = () => this.renderRandomNote();
-        }
-    }
 
     async loadShuoshuos() {
         try {
