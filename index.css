@@ -308,7 +308,8 @@
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
-    padding-right: 6px;
+    margin: 0 -12px;
+    padding: 0 12px;
 }
 
 /* 标签树项 - 新的简洁样式 */
@@ -323,7 +324,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 0;
+    padding: 10px 10px;
     color: var(--b3-theme-on-surface);
     width: 100%;
 }
@@ -331,7 +332,7 @@
 .north-shuoshuo-tag-text-part {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-grow: 1;
     overflow: hidden;
     justify-content: flex-start;
@@ -351,12 +352,9 @@
     flex-shrink: 0;
 }
 
-.north-shuoshuo-tag-tree-item:hover .north-shuoshuo-tag-item-content {
-    background-color: transparent;
-}
-
-.north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-item-content {
-    background-color: transparent;
+.north-shuoshuo-tag-item-content.north-shuoshuo-tag-item-hovered {
+    background-color: rgba(0, 0, 0, 0.04);
+    border-radius: 6px;
 }
 
 .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-name,
@@ -371,7 +369,7 @@
 
 /* 子标签 */
 .north-shuoshuo-tag-tree-item.child .north-shuoshuo-tag-item-content {
-    padding: 6px 0 6px 28px;
+    padding: 6px 0;
 }
 
 /* 标签右侧 meta 区域（数量和菜单） */
@@ -380,10 +378,8 @@
     align-items: center;
     justify-content: flex-end;
     flex-shrink: 0;
-    margin-left: 8px;
-    min-width: 28px;
-    position: relative;
-    height: 20px;
+    margin-left: 6px;
+    gap: 4px;
 }
 
 /* 默认隐藏数量和菜单 */
@@ -398,28 +394,23 @@
     opacity: 1;
 }
 
-/* 鼠标悬停在某个标签上时，隐藏该标签的数量，显示菜单按钮 */
-.north-shuoshuo-tag-tree-item:hover .north-shuoshuo-tag-count {
-    opacity: 0;
-}
-
+/* 鼠标悬停在某个标签上时，显示菜单按钮（数量保持显示） */
 .north-shuoshuo-tag-tree-item:hover .north-shuoshuo-tag-menu-btn {
     opacity: 1;
 }
 
 .north-shuoshuo-tag-menu-btn {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--b3-theme-on-surface-light);
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.15s ease;
+    padding: 2px 4px;
+    letter-spacing: 0.5px;
+    line-height: 1;
 }
 
 .north-shuoshuo-tag-menu-btn:hover {
@@ -761,7 +752,7 @@
     display: flex;
     flex-direction: row;
     gap: 16px;
-    padding: 20px 24px;
+    padding: 20px 30px;
     align-items: flex-start;
 }
 
@@ -1227,13 +1218,22 @@
 .north-shuoshuo-tag-toggle {
     width: 16px;
     height: 16px;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--b3-theme-on-surface-light);
     cursor: pointer;
     flex-shrink: 0;
+}
+
+/* 有子标签的项：hover 时显示箭头，隐藏图标（展开/收起状态不影响） */
+.north-shuoshuo-tag-tree-item.has-children:hover .north-shuoshuo-tag-toggle {
+    display: flex;
+}
+
+.north-shuoshuo-tag-tree-item.has-children:hover .north-shuoshuo-tag-icon-wrapper {
+    display: none;
 }
 
 /* 占位符，用于没有子标签的项，保持左对齐 */
@@ -1251,11 +1251,14 @@
 /* 子标签容器 */
 .north-shuoshuo-tag-children {
     display: none;
+    position: relative;
+    padding-left: 8px;
+    border-left: 1.5px solid var(--b3-border-color);
 }
 
 .north-shuoshuo-tag-children.expanded {
     display: block;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 
@@ -3572,12 +3575,10 @@
 
 /* 月份标签 - 在下方横排 */
 .north-shuoshuo-heatmap-months {
-    display: flex;
-    padding-left: 0;
-    padding-right: 32px;
-    margin-top: 10px;
-    margin-left: 0;
+    display: grid;
     gap: 4px;
+    margin-top: 10px;
+    margin-right: 28px;
 }
 
 .north-shuoshuo-heatmap-month {
@@ -3585,7 +3586,6 @@
     color: var(--b3-theme-on-surface-light);
     text-align: center;
     white-space: nowrap;
-    flex: 1;
 }
 
 /* 热力图行 */
@@ -3627,10 +3627,123 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+.north-shuoshuo-heatmap-cell-large.level-empty { background: var(--b3-theme-surface-lighter); }
 .north-shuoshuo-heatmap-cell-large.level-1 { background: #d4edda; }
 .north-shuoshuo-heatmap-cell-large.level-2 { background: #90ee90; }
 .north-shuoshuo-heatmap-cell-large.level-3 { background: #34c759; }
 .north-shuoshuo-heatmap-cell-large.level-4 { background: #248a3d; }
+
+/* ========== 贡献图（GitHub 风格）========== */
+.north-shuoshuo-contribution-section {
+    background: var(--b3-theme-surface);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 28px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.north-shuoshuo-contribution-body {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+    width: 100%;
+}
+
+.north-shuoshuo-contribution-weekdays {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 20px;
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-contribution-weekdays span {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    font-size: 11px;
+    color: var(--b3-theme-on-surface-light);
+    min-height: 0;
+}
+
+.north-shuoshuo-contribution-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.north-shuoshuo-contribution-columns {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+}
+
+.north-shuoshuo-contribution-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.north-shuoshuo-contribution-cell {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 3px;
+    background: var(--b3-theme-surface-lighter);
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.north-shuoshuo-contribution-cell:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 1px var(--b3-theme-primary-lighter);
+}
+
+.north-shuoshuo-contribution-cell.level-empty {
+    background: var(--b3-theme-surface-lighter);
+    opacity: 0.5;
+    cursor: default;
+}
+
+.north-shuoshuo-contribution-cell.level-empty:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.north-shuoshuo-contribution-cell.level-1 {
+    background: var(--b3-theme-primary-lightest);
+}
+
+.north-shuoshuo-contribution-cell.level-2 {
+    background: var(--b3-theme-primary-lighter);
+}
+
+.north-shuoshuo-contribution-cell.level-3 {
+    background: var(--b3-theme-primary-light);
+}
+
+.north-shuoshuo-contribution-cell.level-4 {
+    background: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-contribution-months {
+    position: relative;
+    margin-top: 8px;
+    height: 16px;
+    width: 100%;
+}
+
+.north-shuoshuo-contribution-month-label {
+    position: absolute;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--b3-theme-on-surface-light);
+    white-space: nowrap;
+    line-height: 1;
+}
 
 /* 功能卡片网格 */
 .north-shuoshuo-features-grid {
@@ -4556,8 +4669,9 @@
     color: #999;
 }
 
-.theme-original .north-shuoshuo-tag-tree-item:hover .north-shuoshuo-tag-item-content {
-    background-color: #f5f5f5;
+.theme-original .north-shuoshuo-tag-item-content.north-shuoshuo-tag-item-hovered {
+    background-color: rgba(0, 0, 0, 0.04);
+    border-radius: 6px;
 }
 
 .theme-original .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-item-content {
@@ -5279,7 +5393,7 @@
     color: #1d1d1f;
 }
 
-.theme-original .north-shuoshuo-heatmap-cell-large {
+.theme-original .north-shuoshuo-heatmap-cell-large.level-empty {
     background: #f0f0f0;
 }
 
@@ -5288,6 +5402,49 @@
 }
 
 .theme-original .north-shuoshuo-heatmap-daylabel {
+    color: #86868b;
+}
+
+/* 原始主题 - 贡献图 */
+.theme-original .north-shuoshuo-contribution-section {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.theme-original .north-shuoshuo-contribution-weekdays span {
+    color: #86868b;
+}
+
+.theme-original .north-shuoshuo-contribution-cell {
+    background: #f0f0f0;
+}
+
+.theme-original .north-shuoshuo-contribution-cell.level-empty {
+    background: #f0f0f0;
+    opacity: 0.5;
+}
+
+.theme-original .north-shuoshuo-contribution-cell.level-1 {
+    background: #e0f2e9;
+}
+
+.theme-original .north-shuoshuo-contribution-cell.level-2 {
+    background: #a8e6cf;
+}
+
+.theme-original .north-shuoshuo-contribution-cell.level-3 {
+    background: #7fd99a;
+}
+
+.theme-original .north-shuoshuo-contribution-cell.level-4 {
+    background: #2ecc71;
+}
+
+.theme-original .north-shuoshuo-contribution-cell:hover {
+    box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.3);
+}
+
+.theme-original .north-shuoshuo-contribution-month-label {
     color: #86868b;
 }
 
@@ -6052,6 +6209,44 @@
     box-shadow: 0 0 0 2px var(--b3-theme-primary);
 }
 
+/* 莫兰迪主题 - 贡献图 */
+.theme-morandi .north-shuoshuo-contribution-cell {
+    background-color: var(--b3-theme-surface-lighter);
+}
+
+.theme-morandi .north-shuoshuo-contribution-cell.level-empty {
+    background-color: var(--b3-theme-surface-lighter);
+    opacity: 0.5;
+}
+
+.theme-morandi .north-shuoshuo-contribution-cell.level-1 {
+    background-color: var(--b3-theme-primary-lightest);
+}
+
+.theme-morandi .north-shuoshuo-contribution-cell.level-2 {
+    background-color: var(--b3-theme-primary-lighter);
+}
+
+.theme-morandi .north-shuoshuo-contribution-cell.level-3 {
+    background-color: var(--b3-theme-primary-light);
+}
+
+.theme-morandi .north-shuoshuo-contribution-cell.level-4 {
+    background-color: var(--b3-theme-primary);
+}
+
+.theme-morandi .north-shuoshuo-contribution-cell:hover {
+    box-shadow: 0 0 0 2px var(--b3-theme-primary-lighter);
+}
+
+.theme-morandi .north-shuoshuo-contribution-weekdays span {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-contribution-month-label {
+    color: var(--b3-theme-on-surface-light);
+}
+
 .theme-morandi .north-shuoshuo-months {
     color: var(--b3-theme-on-surface-light);
 }
@@ -6095,8 +6290,9 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-.theme-morandi .north-shuoshuo-tag-tree-item:hover .north-shuoshuo-tag-item-content {
-    background-color: var(--b3-list-hover);
+.theme-morandi .north-shuoshuo-tag-item-content.north-shuoshuo-tag-item-hovered {
+    background-color: rgba(0, 0, 0, 0.04);
+    border-radius: 6px;
 }
 
 .theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-item-content {

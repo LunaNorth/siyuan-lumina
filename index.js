@@ -10,6 +10,9 @@ const FLOMO_CONFIG_STORAGE_NAME = "shuoshuo-flomo-config";
 const FLOMO_SYNC_TIME_STORAGE_NAME = "shuoshuo-flomo-sync-time";
 const FLOMO_SYNC_TARGET_STORAGE_NAME = "shuoshuo-flomo-sync-target";
 const FLOMO_SYNC_DOC_ID_STORAGE_NAME = "shuoshuo-flomo-sync-doc-id";
+const WRITEATHON_CONFIG_STORAGE_NAME = "shuoshuo-writeathon-config";
+const WRITEATHON_SYNC_TIME_STORAGE_NAME = "shuoshuo-writeathon-sync-time";
+const MEMOS_CONFIG_STORAGE_NAME = "shuoshuo-memos-config";
 const REVIEW_CONFIG_STORAGE_NAME = "shuoshuo-review-config";
 const TAG_ICONS_STORAGE_NAME = "shuoshuo-tag-icons";
 const TAG_PINNED_STORAGE_NAME = "shuoshuo-tag-pinned";
@@ -65,6 +68,9 @@ const FLOMO_SECRET = "dbbc3dd73364b4084c3a69346e0ce2b2";
 const FLOMO_API_KEY = "flomo_web";
 const FLOMO_APP_VERSION = "2.0";
 
+// Writeathon API 配置
+const WRITEATHON_API_BASE = "https://api.writeathon.cn";
+
 const DEFAULT_NOTEBOOK_ID = "";
 
 // SVG 图标
@@ -106,6 +112,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.autoSync = false;
         this.viewStyle = 'list'; // 'list' 平铺, 'card' 卡片
         this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
+        this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
+        this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
         this.selectedDate = null;
         this.selectedTag = null;
@@ -119,6 +127,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.loadAutoSync();
         this.loadViewStyle();
         this.loadFlomoConfig();
+        this.loadWriteathonConfig();
+        this.loadMemosConfig();
         this.loadReviewConfig();
         this.loadTagIcons();
         this.loadPinnedTags();
@@ -303,6 +313,18 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
                             </svg>
                             <span>Flomo 同步</span>
+                        </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="writeathon">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                            </svg>
+                            <span>写拉送同步</span>
+                        </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="memos">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+                            </svg>
+                            <span>Memos 同步</span>
                         </div>
                         <div class="north-shuoshuo-settings-nav-item" data-setting="sync">
                             <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -591,6 +613,228 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                                 
                                 <div class="north-shuoshuo-form-row" style="margin-bottom: 0;">
                                     <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="flomo-sync-btn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: middle;">
+                                            <path d="M23 4v6h-6M1 20v-6h6"/>
+                                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                                        </svg>
+                                        开始同步
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 写拉送同步设置 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-writeathon" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">写拉送账号</div>
+                                        <div class="north-shuoshuo-section-desc">配置写拉送集成 Token 以同步卡片</div>
+                                    </div>
+                                    <span class="north-shuoshuo-badge" id="writeathon-connection-status">未配置</span>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-form-label">集成 Token</label>
+                                    <input type="text" id="writeathon-token" class="north-shuoshuo-input-field" placeholder="请输入写拉送集成 Token">
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-form-label">用户 ID</label>
+                                    <input type="text" id="writeathon-userid" class="north-shuoshuo-input-field" placeholder="请输入用户 ID（在写拉送设置→集成中获取）">
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 0;">
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="writeathon-verify-btn">验证并保存</button>
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="writeathon-clear-btn" style="display: none;">清除配置</button>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card" id="writeathon-sync-card" style="opacity: 0.5; pointer-events: none;">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">同步设置</div>
+                                        <div class="north-shuoshuo-section-desc">配置同步方式和目标位置</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 12px;">
+                                    <label class="north-shuoshuo-form-label">同步到</label>
+                                    <div class="north-shuoshuo-radio-group horizontal">
+                                        <label class="north-shuoshuo-radio-item writeathon-target" data-value="dailynote">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">每日笔记</div>
+                                                <div class="north-shuoshuo-radio-desc">按日期同步到对应日记</div>
+                                            </div>
+                                            <input type="radio" name="writeathon-target" value="dailynote">
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item writeathon-target" data-value="singledoc">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">指定文档</div>
+                                                <div class="north-shuoshuo-radio-desc">同步到一个固定文档</div>
+                                            </div>
+                                            <input type="radio" name="writeathon-target" value="singledoc">
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item writeathon-target" data-value="shuoshuo">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">说说视图</div>
+                                                <div class="north-shuoshuo-radio-desc">同步到说说列表中展示</div>
+                                            </div>
+                                            <input type="radio" name="writeathon-target" value="shuoshuo" checked>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" id="writeathon-notebook-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-form-label">选择笔记本</label>
+                                    <div class="north-shuoshuo-input-group">
+                                        <div class="north-shuoshuo-select-wrapper">
+                                            <select id="writeathon-notebook-select" class="north-shuoshuo-select-field">
+                                                <option value="">请选择笔记本...</option>
+                                            </select>
+                                            <span class="north-shuoshuo-select-arrow">▼</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" id="writeathon-doc-row" style="margin-bottom: 10px; display: none;">
+                                    <label class="north-shuoshuo-form-label">目标文档 ID</label>
+                                    <div class="north-shuoshuo-input-group">
+                                        <input type="text" id="writeathon-target-doc-id" class="north-shuoshuo-input-field" placeholder="请输入文档块 ID，如：20200812220555-lj3enxa" value="">
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint" style="margin-top: 6px; font-size: 12px; color: #888;">
+                                        提示：右键点击文档，选择"复制文档块 ID"
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-form-label">上次同步时间</label>
+                                    <div class="north-shuoshuo-readonly-field" id="writeathon-last-sync">从未同步</div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: #555;">
+                                        <input type="checkbox" id="writeathon-full-sync" style="width: 16px; height: 16px; cursor: pointer;">
+                                        <span>全量同步（重新同步所有笔记，包括本地已删除的）</span>
+                                    </label>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 0;">
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="writeathon-sync-btn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: middle;">
+                                            <path d="M23 4v6h-6M1 20v-6h6"/>
+                                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                                        </svg>
+                                        开始同步
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Memos 同步设置 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-memos" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">Memos 账号</div>
+                                        <div class="north-shuoshuo-section-desc">配置 Memos 服务器地址和 Access Token 以同步</div>
+                                    </div>
+                                    <span class="north-shuoshuo-badge" id="memos-connection-status">未配置</span>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-form-label">服务器地址</label>
+                                    <input type="text" id="memos-host" class="north-shuoshuo-input-field" placeholder="如：https://memos.example.com">
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-form-label">Access Token</label>
+                                    <input type="password" id="memos-token" class="north-shuoshuo-input-field" placeholder="请输入 Memos Access Token">
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 0;">
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="memos-verify-btn">验证并保存</button>
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="memos-clear-btn" style="display: none;">清除配置</button>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card" id="memos-sync-card" style="opacity: 0.5; pointer-events: none;">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">同步设置</div>
+                                        <div class="north-shuoshuo-section-desc">配置同步方式和版本</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 12px;">
+                                    <label class="north-shuoshuo-form-label">同步到</label>
+                                    <div class="north-shuoshuo-radio-group horizontal">
+                                        <label class="north-shuoshuo-radio-item memos-target" data-value="dailynote">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">每日笔记</div>
+                                                <div class="north-shuoshuo-radio-desc">按日期同步到对应日记</div>
+                                            </div>
+                                            <input type="radio" name="memos-target" value="dailynote">
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item memos-target" data-value="singledoc">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">指定文档</div>
+                                                <div class="north-shuoshuo-radio-desc">同步到一个固定文档</div>
+                                            </div>
+                                            <input type="radio" name="memos-target" value="singledoc">
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item memos-target" data-value="shuoshuo">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">说说视图</div>
+                                                <div class="north-shuoshuo-radio-desc">同步到说说列表中展示</div>
+                                            </div>
+                                            <input type="radio" name="memos-target" value="shuoshuo" checked>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" id="memos-notebook-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-form-label">选择笔记本</label>
+                                    <div class="north-shuoshuo-input-group">
+                                        <div class="north-shuoshuo-select-wrapper">
+                                            <select id="memos-notebook-select" class="north-shuoshuo-select-field">
+                                                <option value="">请选择笔记本...</option>
+                                            </select>
+                                            <span class="north-shuoshuo-select-arrow">▼</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" id="memos-doc-row" style="margin-bottom: 10px; display: none;">
+                                    <label class="north-shuoshuo-form-label">目标文档 ID</label>
+                                    <div class="north-shuoshuo-input-group">
+                                        <input type="text" id="memos-target-doc-id" class="north-shuoshuo-input-field" placeholder="请输入文档块 ID，如：20200812220555-lj3enxa" value="">
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint" style="margin-top: 6px; font-size: 12px; color: #888;">
+                                        提示：右键点击文档，选择"复制文档块 ID"
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-form-label">上次同步时间</label>
+                                    <div class="north-shuoshuo-readonly-field" id="memos-last-sync">从未同步</div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: #555;">
+                                        <input type="checkbox" id="memos-full-sync" style="width: 16px; height: 16px; cursor: pointer;">
+                                        <span>全量同步（重新同步所有笔记，包括本地已删除的）</span>
+                                    </label>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 0;">
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="memos-sync-btn">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: middle;">
                                             <path d="M23 4v6h-6M1 20v-6h6"/>
                                             <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
@@ -957,6 +1201,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                         // 批注：显示被引用原文预览
                         let sourcePreview = (note.content || '').replace(/\[MEMO:[^\]]+\]/g, '').trim();
                         sourcePreview = sourcePreview.split('\n')[0];
+                        sourcePreview = sourcePreview.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim().replace(/\s+/g, ' ');
                         sourcePreview = sourcePreview.substring(0, 80) + (sourcePreview.length > 80 ? '...' : '');
                         sourcePreview = sourcePreview.replace(/^关联自：/, '');
                         infoText = this.escapeHtml(sourcePreview);
@@ -1344,6 +1589,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         
         // 计算统计数据（按年份）
         const stats = this.calculateStats(year);
+        const heatmap = this.generateLargeHeatmap(year);
 
         listEl.innerHTML = `
             <div class="north-shuoshuo-stats-page">
@@ -1383,11 +1629,26 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                         </div>
                     </div>
 
-                    <!-- 热力图 -->
-                    <div class="north-shuoshuo-heatmap-section">
-                        <div class="north-shuoshuo-heatmap-header">${year}年 共 ${stats.totalNotes} 条记录</div>
-                        <div class="north-shuoshuo-heatmap-large">
-                            ${this.generateLargeHeatmap(year)}
+                    <!-- 贡献图 -->
+                    <div class="north-shuoshuo-contribution-section">
+                        <div class="north-shuoshuo-contribution-body">
+                            <div class="north-shuoshuo-contribution-weekdays">
+                                <span></span>
+                                <span>一</span>
+                                <span></span>
+                                <span>三</span>
+                                <span></span>
+                                <span>五</span>
+                                <span></span>
+                            </div>
+                            <div class="north-shuoshuo-contribution-main">
+                                <div class="north-shuoshuo-contribution-columns">
+                                    ${heatmap.columns}
+                                </div>
+                                <div class="north-shuoshuo-contribution-months">
+                                    ${heatmap.months}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -2043,120 +2304,89 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         };
     }
 
-    // 生成大型热力图
+    // 生成大型热力图（GitHub 风格贡献图）
     generateLargeHeatmap(year = null) {
         const today = new Date();
-        const days = 7;
-        
-        // 确定要显示的年份范围
-        let startDate, endDate;
-        if (year) {
-            // 特定年份：从该年1月1日到12月31日
-            startDate = new Date(year, 0, 1);
-            endDate = new Date(year, 11, 31);
-            // 调整到周日开始
-            startDate.setDate(startDate.getDate() - startDate.getDay());
-        } else {
-            // 默认：最近一年
-            const oneYearAgo = new Date(today);
-            oneYearAgo.setDate(today.getDate() - 364);
-            startDate = new Date(oneYearAgo);
-            startDate.setDate(oneYearAgo.getDate() - oneYearAgo.getDay());
-            endDate = today;
-        }
-        
-        // 计算需要多少周
-        const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-        const weeks = Math.ceil((daysDiff + startDate.getDay()) / 7);
-        
-        let html = '';
-        
-        // 记录每个月份的起始周（只记录目标年份的月份）
-        const monthPositions = [];
-        const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
-        let currentMonth = -1;
         const targetYear = year || today.getFullYear();
-        
-        for (let week = 0; week < weeks; week++) {
-            const date = new Date(startDate);
-            date.setDate(date.getDate() + week * 7);
-            
-            // 只记录目标年份的月份，跳过前一年或后一年的月份
-            if (date.getFullYear() !== targetYear) {
-                continue;
-            }
-            
-            const month = date.getMonth();
-            
-            if (month !== currentMonth) {
-                currentMonth = month;
-                monthPositions.push({ month: months[month], week: week });
-            }
-        }
 
-        // 热力图格子（先生成）
-        for (let day = 0; day < days; day++) {
-            html += '<div class="north-shuoshuo-heatmap-row">';
-            
-            // 格子
-            html += '<div class="north-shuoshuo-heatmap-cells">';
-            for (let week = 0; week < weeks; week++) {
-                const dayIndex = week * 7 + day;
+        // 确定起始日期（该年1月1日之前的第一个周日）
+        const yearStart = new Date(targetYear, 0, 1);
+        const startDate = new Date(yearStart);
+        startDate.setDate(yearStart.getDate() - yearStart.getDay());
+
+        // 确定结束日期（该年12月31日）
+        const yearEnd = new Date(targetYear, 11, 31);
+
+        // 计算总天数和周数
+        const totalDays = Math.floor((yearEnd - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        const weeks = Math.ceil(totalDays / 7);
+
+        // 生成每列（每周）
+        let columnsHtml = '';
+        const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+        for (let week = 0; week < weeks; week++) {
+            let columnCells = '';
+
+            for (let day = 0; day < 7; day++) {
                 const date = new Date(startDate);
-                date.setDate(date.getDate() + dayIndex);
-                
-                // 只显示范围内的日期
-                if (date <= endDate && date >= new Date(year || today.getFullYear(), 0, 1)) {
+                date.setDate(startDate.getDate() + week * 7 + day);
+
+                if (date.getFullYear() === targetYear) {
                     const count = this.getNoteCountByDate(date);
                     let level = 0;
                     if (count >= 1) level = 1;
                     if (count >= 3) level = 2;
                     if (count >= 5) level = 3;
                     if (count >= 8) level = 4;
-                    
+
                     const dateStr = this.formatDateKey(date);
-                    html += `<div class="north-shuoshuo-heatmap-cell-large level-${level}" data-date="${dateStr}" title="${dateStr}: ${count}条"></div>`;
+                    const tooltip = `${dateStr}: ${count}条记录`;
+                    columnCells += `<div class="north-shuoshuo-contribution-cell level-${level}" data-date="${dateStr}" title="${tooltip}"></div>`;
                 } else {
-                    html += `<div class="north-shuoshuo-heatmap-cell-large level-empty"></div>`;
+                    columnCells += `<div class="north-shuoshuo-contribution-cell level-empty"></div>`;
                 }
             }
-            html += '</div>';
-            
-            // 星期标签（在右侧）- 只显示一、三、五
-            const dayLabels = ['日', '一', '二', '三', '四', '五', '六'];
-            const showLabels = ['一', '三', '五'];
-            const labelText = showLabels.includes(dayLabels[day]) ? dayLabels[day] : '';
-            html += `<span class="north-shuoshuo-heatmap-daylabel">${labelText}</span>`;
-            
-            html += '</div>';
+
+            columnsHtml += `<div class="north-shuoshuo-contribution-column">${columnCells}</div>`;
         }
-        
-        // 月份标签（在下方）
-        html += '<div class="north-shuoshuo-heatmap-months">';
-        
-        // 找到目标年份第一周的索引
-        let firstTargetWeek = 0;
+
+        // 计算每个月份覆盖的周范围，标签放在中间位置
+        const monthStartWeek = new Array(12).fill(-1);
+        const monthEndWeek = new Array(12).fill(-1);
+
         for (let week = 0; week < weeks; week++) {
-            const date = new Date(startDate);
-            date.setDate(date.getDate() + week * 7);
-            if (date.getFullYear() === targetYear) {
-                firstTargetWeek = week;
-                break;
+            for (let day = 0; day < 7; day++) {
+                const date = new Date(startDate);
+                date.setDate(startDate.getDate() + week * 7 + day);
+                if (date.getFullYear() === targetYear) {
+                    const m = date.getMonth();
+                    if (monthStartWeek[m] === -1) monthStartWeek[m] = week;
+                    monthEndWeek[m] = week;
+                }
             }
         }
-        
-        // 计算每个月份占据的周数
-        monthPositions.forEach((mp, index) => {
-            const nextWeek = index < monthPositions.length - 1 ? monthPositions[index + 1].week : weeks;
-            // 相对于目标年份开始位置的周数
-            const relativeStartWeek = mp.week - firstTargetWeek;
-            const relativeNextWeek = nextWeek - firstTargetWeek;
-            const flexValue = Math.max(1, relativeNextWeek - relativeStartWeek);
-            html += `<span class="north-shuoshuo-heatmap-month" style="flex: ${flexValue};">${mp.month}</span>`;
-        });
-        html += '</div>';
 
-        return html;
+        // 计算每个月份标签的位置（百分比定位，基于该月中间周）
+        const monthLabels = [];
+        for (let m = 0; m < 12; m++) {
+            if (monthStartWeek[m] !== -1) {
+                const midWeek = (monthStartWeek[m] + monthEndWeek[m]) / 2;
+                const leftPercent = ((midWeek + 0.5) / weeks * 100).toFixed(2) + '%';
+                monthLabels.push({ name: monthNames[m], left: leftPercent });
+            }
+        }
+
+        // 生成月份标签 HTML（绝对定位）
+        const monthsHtml = monthLabels.map(l =>
+            `<span class="north-shuoshuo-contribution-month-label" style="left: ${l.left};">${l.name}</span>`
+        ).join('');
+
+        return {
+            columns: columnsHtml,
+            months: monthsHtml,
+            weeks: weeks
+        };
     }
 
     bindEvents() {
@@ -2377,6 +2607,25 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // 标签点击筛选和展开/折叠
         const tagsListEl = this.container.querySelector('.north-shuoshuo-tags-list');
         if (tagsListEl) {
+            // 单独处理 hover 背景，避免 CSS :hover 冒泡到祖先标签项
+            tagsListEl.addEventListener('mouseover', (e) => {
+                const tagItem = e.target.closest('.north-shuoshuo-tag-tree-item');
+                if (!tagItem) return;
+                // 清除其他标签项的 hover
+                tagsListEl.querySelectorAll('.north-shuoshuo-tag-item-hovered').forEach(el => {
+                    el.classList.remove('north-shuoshuo-tag-item-hovered');
+                });
+                const content = tagItem.children[0];
+                if (content && content.classList.contains('north-shuoshuo-tag-item-content')) {
+                    content.classList.add('north-shuoshuo-tag-item-hovered');
+                }
+            });
+            tagsListEl.addEventListener('mouseleave', () => {
+                tagsListEl.querySelectorAll('.north-shuoshuo-tag-item-hovered').forEach(el => {
+                    el.classList.remove('north-shuoshuo-tag-item-hovered');
+                });
+            });
+
             tagsListEl.addEventListener('click', (e) => {
                 // 处理展开/折叠按钮点击
                 const toggleBtn = e.target.closest('.north-shuoshuo-tag-toggle');
@@ -2384,10 +2633,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     e.stopPropagation();
                     const targetId = toggleBtn.dataset.target;
                     const childrenEl = document.getElementById(targetId);
+                    const tagItem = toggleBtn.closest('.north-shuoshuo-tag-tree-item');
                     if (childrenEl) {
                         const isExpanded = childrenEl.style.display !== 'none';
                         childrenEl.style.display = isExpanded ? 'none' : 'block';
                         toggleBtn.textContent = isExpanded ? '▸' : '▾';
+                        if (tagItem) {
+                            tagItem.classList.toggle('expanded', !isExpanded);
+                        }
                     }
                     return;
                 }
@@ -2857,12 +3110,17 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                         <div class="north-shuoshuo-memo-detail-links-title">${linkingNotes.length} 条链接至此的 MEMO</div>
                         <div class="north-shuoshuo-memo-detail-links-list">
                             ${linkingNotes.map(linkNote => {
-                                let preview = (linkNote.content || '')
-                                    .replace(new RegExp(`\\[MEMO:${noteId}\\]`, 'g'), '')
-                                    .trim();
+                                let content = (linkNote.content || '').trim();
+                                const lines = content.split('\n');
+                                
+                                // 判断是否是批注格式：第一行包含被引用的 MEMO 标记
+                                const isCommentFormat = lines[0] && lines[0].includes(`[MEMO:${noteId}]`);
+                                
+                                // 去掉当前 MEMO 引用标记
+                                let preview = content.replace(new RegExp(`\\[MEMO:${noteId}\\]`, 'g'), '').trim();
+                                
                                 // 如果是批注，去掉第一行的引用预览，保留实际批注内容
-                                const lines = preview.split('\n');
-                                if (lines[0].startsWith('关联自：') || lines[0].includes('[MEMO:')) {
+                                if (lines[0] && (lines[0].startsWith('关联自：') || isCommentFormat)) {
                                     preview = lines.slice(1).join('\n').trim();
                                 }
                                 preview = preview.split('\n')[0];
@@ -3298,19 +3556,19 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             
             const itemId = 'tag-' + Math.random().toString(36).substr(2, 9);
             
-            // 构建左侧内容 - 使用占位符让所有标签左对齐
+            // 构建左侧内容
             const toggleBtn = hasChildren 
                 ? `<span class="north-shuoshuo-tag-toggle" data-target="${itemId}">▸</span>`
-                : `<span class="north-shuoshuo-tag-toggle-placeholder"></span>`;
+                : '';
             const leftContent = `${toggleBtn}<span class="north-shuoshuo-tag-icon-wrapper" data-tag="${fullPath}">${iconHtml}</span><span class="north-shuoshuo-tag-name">${name}</span>`;
             
             let html = `
-                <div class="north-shuoshuo-tag-tree-item ${level > 0 ? 'child' : ''} ${isPinned ? 'pinned' : ''}" data-level="${level}" data-tag="${fullPath}">
+                <div class="north-shuoshuo-tag-tree-item ${level > 0 ? 'child' : ''} ${isPinned ? 'pinned' : ''} ${hasChildren ? 'has-children' : ''}" data-level="${level}" data-tag="${fullPath}">
                     <div class="north-shuoshuo-tag-item-content">
                         <div class="north-shuoshuo-tag-text-part">${leftContent}</div>
                         <div class="north-shuoshuo-tag-meta">
                             <span class="north-shuoshuo-tag-count">${data.count}</span>
-                            <span class="north-shuoshuo-tag-menu-btn" data-tag="${fullPath}">•••</span>
+                            <span class="north-shuoshuo-tag-menu-btn" data-tag="${fullPath}">...</span>
                         </div>
                     </div>
                     ${hasChildren ? `
@@ -3977,9 +4235,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         const note = this.shuoshuos.find(s => s.id === id);
         if (!note) return;
         
-        // 提取被引用笔记的内容预览（第一行，去除引用标记）
+        // 提取被引用笔记的内容预览（第一行，去除引用标记和标签）
         let preview = (note.content || '').replace(/\[MEMO:[^\]]+\]/g, '').trim();
         preview = preview.split('\n')[0];
+        preview = preview.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim().replace(/\s+/g, ' ');
         preview = preview.substring(0, 60) + (preview.length > 60 ? '...' : '');
         
         // 滚动到输入区域
@@ -4480,6 +4739,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // ==================== Flomo 同步事件绑定 ====================
         this.bindFlomoEvents();
+
+        // ==================== 写拉送同步事件绑定 ====================
+        this.bindWriteathonEvents();
+
+        // ==================== Memos 同步事件绑定 ====================
+        this.bindMemosEvents();
     }
 
     // 绑定回顾设置事件
@@ -4754,6 +5019,530 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // 根据初始目标设置笔记本选择器显示状态
         if (flomoNotebookRow) {
             flomoNotebookRow.style.display = syncTarget === 'shuoshuo' ? 'none' : 'block';
+        }
+    }
+
+    // ==================== 写拉送同步事件绑定 ====================
+    bindWriteathonEvents() {
+        this.updateWriteathonUI();
+        
+        // 加载笔记本列表到写拉送选择器
+        this.loadWriteathonNotebooks();
+
+        const verifyBtn = this.container.querySelector('#writeathon-verify-btn');
+        const clearBtn = this.container.querySelector('#writeathon-clear-btn');
+        const tokenInput = this.container.querySelector('#writeathon-token');
+        const userIdInput = this.container.querySelector('#writeathon-userid');
+        const syncBtn = this.container.querySelector('#writeathon-sync-btn');
+        const refreshSpacesBtn = this.container.querySelector('#writeathon-refresh-spaces');
+
+        if (verifyBtn) {
+            verifyBtn.onclick = async () => {
+                const token = tokenInput?.value?.trim();
+                const userId = userIdInput?.value?.trim();
+                
+                if (!token || !userId) {
+                    showMessage('请输入集成 Token 和用户 ID');
+                    return;
+                }
+                
+                verifyBtn.textContent = '验证中...';
+                verifyBtn.disabled = true;
+                
+                const result = await this.writeathonVerify(token, userId);
+                
+                verifyBtn.textContent = '验证并保存';
+                verifyBtn.disabled = false;
+                
+                if (result.success) {
+                    this.writeathonConfig.token = token;
+                    this.writeathonConfig.userId = userId;
+                    await this.saveWriteathonConfig();
+                    showMessage('验证成功');
+                    this.updateWriteathonUI();
+                    // 加载空间列表
+                    this.loadWriteathonSpaces();
+                } else {
+                    showMessage(result.message);
+                }
+            };
+        }
+
+        if (clearBtn) {
+            clearBtn.onclick = async () => {
+                this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
+                await this.saveWriteathonConfig();
+                if (tokenInput) tokenInput.value = '';
+                if (userIdInput) userIdInput.value = '';
+                this.updateWriteathonUI();
+                showMessage('已清除配置');
+            };
+        }
+
+        if (syncBtn) {
+            syncBtn.onclick = async () => {
+                // 保存当前选择的同步目标
+                const targetRadio = this.container.querySelector('input[name="writeathon-target"]:checked');
+                this.writeathonConfig.syncTarget = targetRadio?.value || 'shuoshuo';
+                
+                // 保存输入的目标文档 ID
+                const targetDocIdInput = this.container.querySelector('#writeathon-target-doc-id');
+                if (targetDocIdInput) {
+                    this.writeathonConfig.syncDocId = targetDocIdInput.value.trim();
+                }
+                
+                await this.saveWriteathonConfig();
+                
+                // 检查是否选择了全量同步
+                const fullSyncCheckbox = this.container.querySelector('#writeathon-full-sync');
+                const isFullSync = fullSyncCheckbox?.checked || false;
+                
+                await this.writeathonSync(isFullSync);
+                
+                // 取消勾选全量同步
+                if (fullSyncCheckbox) fullSyncCheckbox.checked = false;
+                
+                this.updateWriteathonUI();
+            };
+        }
+
+        if (refreshSpacesBtn) {
+            refreshSpacesBtn.onclick = async () => {
+                await this.loadWriteathonSpaces();
+            };
+        }
+
+        // 空间选择器变化时保存
+        const spaceSelect = this.container.querySelector('#writeathon-space-select');
+        // 写拉送目标单选框
+        const writeathonTargetItems = this.container.querySelectorAll('.writeathon-target');
+        const writeathonNotebookRow = this.container.querySelector('#writeathon-notebook-row');
+        const writeathonDocRow = this.container.querySelector('#writeathon-doc-row');
+        
+        writeathonTargetItems.forEach(item => {
+            item.addEventListener('click', () => {
+                writeathonTargetItems.forEach(r => r.classList.remove('selected'));
+                item.classList.add('selected');
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+                
+                // 根据选择显示/隐藏选择器
+                const value = item.dataset.value;
+                if (writeathonNotebookRow) {
+                    writeathonNotebookRow.style.display = value === 'shuoshuo' ? 'none' : 'block';
+                }
+                if (writeathonDocRow) {
+                    writeathonDocRow.style.display = value === 'singledoc' ? 'block' : 'none';
+                }
+            });
+        });
+        
+        // 初始化选择器显示状态
+        const initialTarget = this.container.querySelector('input[name="writeathon-target"]:checked');
+        if (initialTarget) {
+            const initialValue = initialTarget.value;
+            if (writeathonNotebookRow) {
+                writeathonNotebookRow.style.display = initialValue === 'shuoshuo' ? 'none' : 'block';
+            }
+            if (writeathonDocRow) {
+                writeathonDocRow.style.display = initialValue === 'singledoc' ? 'block' : 'none';
+            }
+        }
+
+        if (spaceSelect) {
+            spaceSelect.addEventListener('change', async () => {
+                this.writeathonConfig.spaceId = spaceSelect.value;
+                await this.saveWriteathonConfig();
+            });
+        }
+    }
+
+    // ==================== Memos 同步事件绑定 ====================
+    bindMemosEvents() {
+        this.updateMemosUI();
+
+        const verifyBtn = this.container.querySelector('#memos-verify-btn');
+        const clearBtn = this.container.querySelector('#memos-clear-btn');
+        const hostInput = this.container.querySelector('#memos-host');
+        const tokenInput = this.container.querySelector('#memos-token');
+        const syncBtn = this.container.querySelector('#memos-sync-btn');
+
+        if (verifyBtn) {
+            verifyBtn.onclick = async () => {
+                const host = hostInput?.value?.trim();
+                const token = tokenInput?.value?.trim();
+                
+                if (!host || !token) {
+                    showMessage('请输入服务器地址和 Access Token');
+                    return;
+                }
+                
+                verifyBtn.textContent = '验证中...';
+                verifyBtn.disabled = true;
+                
+                const result = await this.memosVerify(host, token);
+                
+                verifyBtn.textContent = '验证并保存';
+                verifyBtn.disabled = false;
+                
+                if (result.success) {
+                    this.memosConfig.host = host;
+                    this.memosConfig.token = token;
+                    await this.saveMemosConfig();
+                    showMessage('验证成功');
+                    this.updateMemosUI();
+                } else {
+                    showMessage(result.message);
+                }
+            };
+        }
+
+        if (clearBtn) {
+            clearBtn.onclick = async () => {
+                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
+                await this.saveMemosConfig();
+                if (hostInput) hostInput.value = '';
+                if (tokenInput) tokenInput.value = '';
+                this.updateMemosUI();
+                showMessage('已清除配置');
+            };
+        }
+
+        if (syncBtn) {
+            syncBtn.onclick = async () => {
+                // 保存当前选择的同步目标
+                const targetRadio = this.container.querySelector('input[name="memos-target"]:checked');
+                this.memosConfig.syncTarget = targetRadio?.value || 'shuoshuo';
+                
+                // 保存输入的目标文档 ID
+                const targetDocIdInput = this.container.querySelector('#memos-target-doc-id');
+                if (targetDocIdInput) {
+                    this.memosConfig.syncDocId = targetDocIdInput.value.trim();
+                }
+                
+                await this.saveMemosConfig();
+                
+                // 检查是否选择了全量同步
+                const fullSyncCheckbox = this.container.querySelector('#memos-full-sync');
+                const isFullSync = fullSyncCheckbox?.checked || false;
+                
+                await this.memosSync(isFullSync);
+                
+                // 取消勾选全量同步
+                if (fullSyncCheckbox) fullSyncCheckbox.checked = false;
+                
+                this.updateMemosUI();
+            };
+        }
+
+        // Memos 目标单选框
+        const memosTargetItems = this.container.querySelectorAll('.memos-target');
+        const memosNotebookRow = this.container.querySelector('#memos-notebook-row');
+        const memosDocRow = this.container.querySelector('#memos-doc-row');
+        
+        memosTargetItems.forEach(item => {
+            item.addEventListener('click', () => {
+                memosTargetItems.forEach(r => r.classList.remove('selected'));
+                item.classList.add('selected');
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+                
+                // 根据选择显示/隐藏选择器
+                const value = item.dataset.value;
+                if (memosNotebookRow) {
+                    memosNotebookRow.style.display = value === 'shuoshuo' ? 'none' : 'block';
+                }
+                if (memosDocRow) {
+                    memosDocRow.style.display = value === 'singledoc' ? 'block' : 'none';
+                }
+            });
+        });
+        
+        // 初始化选择器显示状态
+        const initialTarget = this.container.querySelector('input[name="memos-target"]:checked');
+        if (initialTarget) {
+            const initialValue = initialTarget.value;
+            if (memosNotebookRow) {
+                memosNotebookRow.style.display = initialValue === 'shuoshuo' ? 'none' : 'block';
+            }
+            if (memosDocRow) {
+                memosDocRow.style.display = initialValue === 'singledoc' ? 'block' : 'none';
+            }
+        }
+
+        // 加载笔记本列表
+        this.loadMemosNotebooks();
+    }
+
+    // 更新 Memos UI 状态
+    updateMemosUI() {
+        const statusBadge = this.container.querySelector('#memos-connection-status');
+        const hostInput = this.container.querySelector('#memos-host');
+        const tokenInput = this.container.querySelector('#memos-token');
+        const verifyBtn = this.container.querySelector('#memos-verify-btn');
+        const clearBtn = this.container.querySelector('#memos-clear-btn');
+        const syncCard = this.container.querySelector('#memos-sync-card');
+        const lastSyncEl = this.container.querySelector('#memos-last-sync');
+        const memosNotebookRow = this.container.querySelector('#memos-notebook-row');
+        const memosDocRow = this.container.querySelector('#memos-doc-row');
+
+        const isConfigured = !!this.memosConfig.host && !!this.memosConfig.token;
+        
+        // 更新选择器显示状态
+        const targetRadio = this.container?.querySelector('input[name="memos-target"]:checked');
+        const syncTarget = targetRadio?.value || this.memosConfig.syncTarget || 'shuoshuo';
+        
+        if (memosNotebookRow) {
+            memosNotebookRow.style.display = syncTarget === 'shuoshuo' ? 'none' : 'block';
+        }
+        if (memosDocRow) {
+            memosDocRow.style.display = syncTarget === 'singledoc' ? 'block' : 'none';
+        }
+
+        if (statusBadge) {
+            if (isConfigured) {
+                statusBadge.textContent = '已配置';
+                statusBadge.className = 'north-shuoshuo-badge north-shuoshuo-badge-success';
+            } else {
+                statusBadge.textContent = '未配置';
+                statusBadge.className = 'north-shuoshuo-badge';
+                statusBadge.style.background = '#f5f5f5';
+                statusBadge.style.color = '#888';
+            }
+        }
+
+        if (isConfigured) {
+            if (hostInput) {
+                hostInput.value = this.memosConfig.host;
+                hostInput.disabled = true;
+                hostInput.classList.add('readonly-field');
+            }
+            if (tokenInput) {
+                tokenInput.value = '********';
+                tokenInput.disabled = true;
+                tokenInput.classList.add('readonly-field');
+            }
+            if (verifyBtn) verifyBtn.style.display = 'none';
+            if (clearBtn) clearBtn.style.display = 'inline-block';
+            if (syncCard) {
+                syncCard.style.opacity = '1';
+                syncCard.style.pointerEvents = 'auto';
+            }
+        } else {
+            if (hostInput) hostInput.disabled = false;
+            if (tokenInput) tokenInput.disabled = false;
+            if (verifyBtn) verifyBtn.style.display = 'inline-block';
+            if (clearBtn) clearBtn.style.display = 'none';
+            if (syncCard) {
+                syncCard.style.opacity = '0.5';
+                syncCard.style.pointerEvents = 'none';
+            }
+        }
+
+        if (lastSyncEl) {
+            if (this.memosConfig.lastSyncTime) {
+                lastSyncEl.textContent = this.memosConfig.lastSyncTime;
+            } else {
+                lastSyncEl.textContent = '从未同步';
+            }
+        }
+
+        // 初始化同步目标单选框
+        const savedSyncTarget = this.memosConfig.syncTarget || 'shuoshuo';
+        const targetRadios = this.container.querySelectorAll('input[name="memos-target"]');
+        targetRadios.forEach(radio => {
+            if (radio.value === savedSyncTarget) {
+                radio.checked = true;
+                radio.closest('.memos-target')?.classList.add('selected');
+            } else {
+                radio.checked = false;
+                radio.closest('.memos-target')?.classList.remove('selected');
+            }
+        });
+        
+        // 根据初始目标设置选择器显示状态
+        if (memosNotebookRow) {
+            memosNotebookRow.style.display = savedSyncTarget === 'shuoshuo' ? 'none' : 'block';
+        }
+        if (memosDocRow) {
+            memosDocRow.style.display = savedSyncTarget === 'singledoc' ? 'block' : 'none';
+        }
+
+        // 恢复保存的目标文档 ID
+        const targetDocIdInput = this.container.querySelector('#memos-target-doc-id');
+        if (targetDocIdInput && this.memosConfig.syncDocId) {
+            targetDocIdInput.value = this.memosConfig.syncDocId;
+        }
+    }
+
+    // 更新写拉送 UI 状态
+    updateWriteathonUI() {
+        const statusBadge = this.container.querySelector('#writeathon-connection-status');
+        const tokenInput = this.container.querySelector('#writeathon-token');
+        const userIdInput = this.container.querySelector('#writeathon-userid');
+        const verifyBtn = this.container.querySelector('#writeathon-verify-btn');
+        const clearBtn = this.container.querySelector('#writeathon-clear-btn');
+        const syncCard = this.container.querySelector('#writeathon-sync-card');
+        const lastSyncEl = this.container.querySelector('#writeathon-last-sync');
+        const writeathonNotebookRow = this.container.querySelector('#writeathon-notebook-row');
+        const writeathonDocRow = this.container.querySelector('#writeathon-doc-row');
+
+        const isConfigured = !!this.writeathonConfig.token && !!this.writeathonConfig.userId;
+        
+        // 更新选择器显示状态
+        const targetRadio = this.container?.querySelector('input[name="writeathon-target"]:checked');
+        const syncTarget = targetRadio?.value || this.writeathonConfig.syncTarget || 'shuoshuo';
+        
+        if (writeathonNotebookRow) {
+            writeathonNotebookRow.style.display = syncTarget === 'shuoshuo' ? 'none' : 'block';
+        }
+        if (writeathonDocRow) {
+            writeathonDocRow.style.display = syncTarget === 'singledoc' ? 'block' : 'none';
+        }
+
+        if (statusBadge) {
+            if (isConfigured) {
+                statusBadge.textContent = '已配置';
+                statusBadge.className = 'north-shuoshuo-badge north-shuoshuo-badge-success';
+            } else {
+                statusBadge.textContent = '未配置';
+                statusBadge.className = 'north-shuoshuo-badge';
+                statusBadge.style.background = '#f5f5f5';
+                statusBadge.style.color = '#888';
+            }
+        }
+
+        if (isConfigured) {
+            if (tokenInput) {
+                tokenInput.value = this.writeathonConfig.token;
+                tokenInput.disabled = true;
+                tokenInput.classList.add('readonly-field');
+            }
+            if (userIdInput) {
+                userIdInput.value = this.writeathonConfig.userId;
+                userIdInput.disabled = true;
+                userIdInput.classList.add('readonly-field');
+            }
+            if (verifyBtn) verifyBtn.style.display = 'none';
+            if (clearBtn) clearBtn.style.display = 'inline-block';
+            if (syncCard) {
+                syncCard.style.opacity = '1';
+                syncCard.style.pointerEvents = 'auto';
+            }
+        } else {
+            if (tokenInput) tokenInput.disabled = false;
+            if (userIdInput) userIdInput.disabled = false;
+            if (verifyBtn) verifyBtn.style.display = 'inline-block';
+            if (clearBtn) clearBtn.style.display = 'none';
+            if (syncCard) {
+                syncCard.style.opacity = '0.5';
+                syncCard.style.pointerEvents = 'none';
+            }
+        }
+
+        if (lastSyncEl) {
+            if (this.writeathonConfig.lastSyncTime) {
+                lastSyncEl.textContent = this.writeathonConfig.lastSyncTime;
+            } else {
+                lastSyncEl.textContent = '从未同步';
+            }
+        }
+
+        // 初始化同步目标单选框
+        const savedSyncTarget = this.writeathonConfig.syncTarget || 'shuoshuo';
+        const targetRadios = this.container.querySelectorAll('input[name="writeathon-target"]');
+        targetRadios.forEach(radio => {
+            if (radio.value === savedSyncTarget) {
+                radio.checked = true;
+                radio.closest('.writeathon-target')?.classList.add('selected');
+            } else {
+                radio.checked = false;
+                radio.closest('.writeathon-target')?.classList.remove('selected');
+            }
+        });
+        
+        // 根据初始目标设置选择器显示状态
+        if (writeathonNotebookRow) {
+            writeathonNotebookRow.style.display = savedSyncTarget === 'shuoshuo' ? 'none' : 'block';
+        }
+        if (writeathonDocRow) {
+            writeathonDocRow.style.display = savedSyncTarget === 'singledoc' ? 'block' : 'none';
+        }
+
+        // 恢复保存的目标文档 ID
+        const targetDocIdInput = this.container.querySelector('#writeathon-target-doc-id');
+        if (targetDocIdInput && this.writeathonConfig.syncDocId) {
+            targetDocIdInput.value = this.writeathonConfig.syncDocId;
+        }
+
+        // 恢复保存的空间选择
+        const spaceSelect = this.container.querySelector('#writeathon-space-select');
+        if (spaceSelect && this.writeathonConfig.spaceId) {
+            spaceSelect.value = this.writeathonConfig.spaceId;
+        }
+        
+        // 如果已配置，加载空间列表
+        if (isConfigured) {
+            this.loadWriteathonSpaces();
+        }
+    }
+
+    // 加载写拉送空间列表
+    async loadWriteathonSpaces() {
+        const select = this.container?.querySelector('#writeathon-space-select');
+        if (!select) return;
+
+        if (!this.writeathonConfig.token || !this.writeathonConfig.userId) {
+            select.innerHTML = '<option value="">默认空间</option>';
+            return;
+        }
+
+        try {
+            const result = await this.writeathonGetSpaces();
+            if (result.success && result.data && result.data.length > 0) {
+                let html = '<option value="">默认空间</option>';
+                result.data.forEach(space => {
+                    html += `<option value="${space.id}">${space.title}</option>`;
+                });
+                select.innerHTML = html;
+                // 恢复保存的选择
+                if (this.writeathonConfig.spaceId) {
+                    select.value = this.writeathonConfig.spaceId;
+                }
+            } else {
+                select.innerHTML = '<option value="">默认空间</option>';
+            }
+        } catch (e) {
+            console.error('加载写拉送空间列表失败', e);
+            select.innerHTML = '<option value="">默认空间</option>';
+        }
+    }
+
+    // 加载笔记本列表到写拉送选择器
+    async loadWriteathonNotebooks() {
+        const select = this.container?.querySelector('#writeathon-notebook-select');
+        if (!select) return;
+
+        try {
+            const response = await fetch('/api/notebook/lsNotebooks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const result = await response.json();
+            
+            if (result.code === 0 && result.data?.notebooks) {
+                const notebooks = result.data.notebooks.filter(nb => !nb.closed);
+                
+                let html = '<option value="">请选择笔记本...</option>';
+                notebooks.forEach(nb => {
+                    const icon = nb.icon ? String.fromCodePoint(parseInt(nb.icon, 16)) : '📒';
+                    html += `<option value="${nb.id}">${icon} ${nb.name}</option>`;
+                });
+                select.innerHTML = html;
+            }
+        } catch (e) {
+            console.error('加载笔记本列表失败', e);
         }
     }
 
@@ -6204,6 +6993,907 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         }
     }
 
+    // ==================== 写拉送同步功能 ====================
+
+    async loadWriteathonConfig() {
+        try {
+            const data = await this.loadData(WRITEATHON_CONFIG_STORAGE_NAME);
+            this.writeathonConfig = data || { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
+        } catch (e) {
+            console.log("加载写拉送配置失败", e);
+            this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
+        }
+    }
+
+    async saveWriteathonConfig() {
+        try {
+            await this.saveData(WRITEATHON_CONFIG_STORAGE_NAME, this.writeathonConfig);
+        } catch (e) {
+            console.log("保存写拉送配置失败", e);
+        }
+    }
+
+    async writeathonRequest(path, options = {}) {
+        const url = `${WRITEATHON_API_BASE}${path}`;
+        const headers = {
+            'Content-Type': 'application/json',
+            'x-writeathon-token': this.writeathonConfig.token || ''
+        };
+        
+        const response = await fetch(url, {
+            ...options,
+            headers: { ...headers, ...options.headers }
+        });
+        
+        const data = await response.json();
+        return data;
+    }
+
+    // 验证写拉送 Token
+    async writeathonVerify(token, userId) {
+        try {
+            // 临时使用传入的 token 验证
+            const url = `${WRITEATHON_API_BASE}/v1/me`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-writeathon-token': token
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success && data.data) {
+                return { success: true, message: '验证成功', data: data.data };
+            } else {
+                return { success: false, message: data.message || '验证失败' };
+            }
+        } catch (e) {
+            console.error('写拉送验证失败:', e);
+            return { success: false, message: '验证失败：' + e.message };
+        }
+    }
+
+    // 获取空间列表
+    async writeathonGetSpaces() {
+        try {
+            const userId = this.writeathonConfig.userId;
+            if (!userId) {
+                return { success: false, message: '未配置用户 ID' };
+            }
+            
+            const data = await this.writeathonRequest(`/v1/users/${userId}/spaces`, {
+                method: 'GET'
+            });
+            
+            if (data.success && data.data) {
+                return { success: true, data: data.data };
+            } else {
+                return { success: false, message: data.message || '获取空间列表失败' };
+            }
+        } catch (e) {
+            console.error('获取写拉送空间列表失败:', e);
+            return { success: false, message: '获取空间列表失败：' + e.message };
+        }
+    }
+
+    // 同步写拉送卡片
+    async writeathonSync(isFullSync = false) {
+        if (!this.writeathonConfig.token || !this.writeathonConfig.userId) {
+            showMessage('请先配置写拉送 Token 和用户 ID');
+            return;
+        }
+
+        try {
+            showMessage('正在同步写拉送...');
+            const userId = this.writeathonConfig.userId;
+            const spaceId = this.writeathonConfig.spaceId;
+            
+            let cards = [];
+            
+            // 方案1：获取最近更新的卡片列表
+            let recentUrl = `/v1/users/${userId}/cards/recent`;
+            const queryParams = [];
+            if (spaceId) {
+                queryParams.push(`space=${encodeURIComponent(spaceId)}`);
+            }
+            // 不排除日期标题，避免过滤掉有效卡片
+            queryParams.push(`exclude_date_title=false`);
+            if (queryParams.length > 0) {
+                recentUrl += '?' + queryParams.join('&');
+            }
+            
+            console.log('写拉送同步请求 URL:', recentUrl);
+            const recentData = await this.writeathonRequest(recentUrl, {
+                method: 'GET'
+            });
+            console.log('写拉送 recent API 返回:', recentData);
+            
+            // 解析返回数据，兼容多种可能的数据结构
+            if (recentData.success) {
+                if (Array.isArray(recentData.data)) {
+                    cards = recentData.data;
+                } else if (recentData.data && typeof recentData.data === 'object') {
+                    // 可能数据被包装在子字段中
+                    cards = recentData.data.cards || recentData.data.list || recentData.data.data || [];
+                }
+            }
+            
+            // 方案2：如果 recent 没有返回数据，尝试写作拾贝接口
+            if (cards.length === 0) {
+                console.log('recent 接口未返回卡片，尝试 writing-pick 接口');
+                const pickData = await this.writeathonRequest(`/v1/users/${userId}/writing-pick`, {
+                    method: 'POST',
+                    body: JSON.stringify({ type: 'card', limit: 10 })
+                });
+                console.log('写拉送 writing-pick API 返回:', pickData);
+                
+                if (pickData.success) {
+                    if (Array.isArray(pickData.data)) {
+                        cards = pickData.data;
+                    } else if (pickData.data && typeof pickData.data === 'object') {
+                        cards = pickData.data.cards || pickData.data.list || pickData.data.data || [];
+                    }
+                }
+            }
+            
+            if (cards.length === 0) {
+                showMessage('没有获取到卡片（请确认卡片盒中已有卡片，或检查空间选择）');
+                return;
+            }
+            
+            console.log('获取到卡片列表:', cards);
+            const cardDetails = [];
+            
+            // 获取每个卡片的详情
+            for (const card of cards) {
+                const cardId = card._id || card.id;
+                const cardTitle = card.title || '';
+                if (!cardId) {
+                    console.log('跳过无 ID 的卡片:', card);
+                    continue;
+                }
+                
+                try {
+                    console.log('获取卡片详情:', cardId, cardTitle);
+                    const detailData = await this.writeathonRequest(`/v1/users/${userId}/cards/get`, {
+                        method: 'POST',
+                        body: JSON.stringify({ id: cardId })
+                    });
+                    console.log('卡片详情返回:', cardId, detailData);
+                    
+                    if (detailData.success && detailData.data) {
+                        cardDetails.push(detailData.data);
+                    } else {
+                        // 如果详情获取失败但列表数据已有 content，直接用列表数据
+                        if (card.content) {
+                            cardDetails.push(card);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`获取卡片 ${cardId} 详情失败:`, e);
+                    // 如果详情获取失败但列表数据已有 content，直接用列表数据
+                    if (card.content) {
+                        cardDetails.push(card);
+                    }
+                }
+            }
+            
+            if (cardDetails.length === 0) {
+                showMessage('没有获取到卡片详情');
+                return;
+            }
+            
+            // 根据同步目标分别处理
+            const syncTarget = this.writeathonConfig.syncTarget || 'shuoshuo';
+            if (syncTarget === 'shuoshuo') {
+                await this.saveWriteathonCardsToShuoshuo(cardDetails, isFullSync);
+            } else if (syncTarget === 'singledoc') {
+                await this.saveWriteathonCardsToSingleDoc(cardDetails);
+            } else {
+                await this.saveWriteathonCardsToDailyNote(cardDetails);
+            }
+            
+            // 更新最后同步时间
+            this.writeathonConfig.lastSyncTime = new Date().toISOString().replace('T', ' ').substring(0, 19);
+            await this.saveWriteathonConfig();
+            
+            showMessage(`成功同步 ${cardDetails.length} 张卡片`);
+        } catch (e) {
+            console.error('写拉送同步失败:', e);
+            showMessage('同步失败：' + e.message);
+        }
+    }
+
+    // 判断是否为自动生成的日期标题（纯数字，8位或14位）
+    isDateTitle(title) {
+        if (!title) return false;
+        // 匹配纯数字的标题，如 20260418 或 20260418153514
+        return /^\d{8}(\d{6})?$/.test(title.trim());
+    }
+
+    // 移除内容开头的日期标题行
+    removeDateTitleFromContent(content) {
+        if (!content) return content;
+        const lines = content.split('\n');
+        if (lines.length > 0 && this.isDateTitle(lines[0])) {
+            return lines.slice(1).join('\n').trim();
+        }
+        return content;
+    }
+
+    // 下载写拉送内容中的远程图片并替换为本地路径
+    async processWriteathonImages(content) {
+        const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        const matches = [];
+        let match;
+        while ((match = imageRegex.exec(content)) !== null) {
+            const alt = match[1];
+            const url = match[2];
+            if (url.startsWith('http://') || url.startsWith('https://')) {
+                matches.push({ full: match[0], alt, url });
+            }
+        }
+        
+        let result = content;
+        for (const img of matches) {
+            showMessage(`正在下载图片...`);
+            const localPath = await this.downloadRemoteImage(img.url, img.alt || 'image.png');
+            if (localPath) {
+                result = result.replace(img.full, `![${img.alt}](${localPath})`);
+            }
+        }
+        return result;
+    }
+
+    // 保存写拉送卡片到说说视图
+    async saveWriteathonCardsToShuoshuo(cards, isFullSync = false) {
+        let addedCount = 0;
+        let updatedCount = 0;
+        
+        for (const card of cards) {
+            // 兼容 _id 和 id 两种字段名
+            const cardId = card._id || card.id;
+            if (!cardId) continue;
+            
+            // 写拉送内容直接是文本/Markdown
+            let content = (card.content || '').trim();
+            const title = (card.title || '').trim();
+            
+            // 处理图片 - 下载远程图片并替换为本地路径
+            content = await this.processWriteathonImages(content);
+            
+            // 移除内容开头的日期标题行（写拉送有时会把标题也放到 content 里）
+            content = this.removeDateTitleFromContent(content);
+            
+            // 如果有标题且不是自动生成的日期标题，把标题加到内容前面
+            if (title && !this.isDateTitle(title)) {
+                content = title + '\n' + content;
+            }
+            
+            // 提取标签
+            const tags = this.extractTags(content);
+            
+            // 处理时间字段，兼容多种格式
+            let createdTime = Date.now();
+            let updatedTime = Date.now();
+            try {
+                if (card.created) createdTime = new Date(card.created).getTime();
+                else if (card.created_at) createdTime = new Date(card.created_at).getTime();
+            } catch (e) {}
+            try {
+                if (card.updated) updatedTime = new Date(card.updated).getTime();
+                else if (card.updated_at) updatedTime = new Date(card.updated_at).getTime();
+            } catch (e) {}
+            
+            // 创建说说对象
+            const shuoshuo = {
+                id: `writeathon_${cardId}`,
+                content: content,
+                tags: tags,
+                pinned: false,
+                created: createdTime,
+                updated: updatedTime,
+                source: 'writeathon'
+            };
+            
+            // 检查是否已存在（避免重复）
+            const existingIndex = this.shuoshuos.findIndex(s => s.id === shuoshuo.id);
+            if (existingIndex === -1) {
+                this.shuoshuos.push(shuoshuo);
+                addedCount++;
+            } else {
+                // 更新已有笔记
+                this.shuoshuos[existingIndex] = shuoshuo;
+                updatedCount++;
+            }
+        }
+        
+        // 保存到存储
+        await this.saveShuoshuos();
+        
+        // 刷新说说视图
+        this.renderNotes();
+        this.renderTags();
+        
+        if (addedCount > 0 && updatedCount > 0) {
+            showMessage(`同步完成：新增 ${addedCount} 条，更新 ${updatedCount} 条`);
+        } else if (addedCount > 0) {
+            showMessage(`成功添加 ${addedCount} 条卡片到说说视图`);
+        } else if (updatedCount > 0) {
+            showMessage(`成功更新 ${updatedCount} 条卡片`);
+        } else {
+            showMessage(`同步完成：没有变化的卡片`);
+        }
+    }
+
+    // 保存写拉送卡片到每日笔记
+    async saveWriteathonCardsToDailyNote(cards) {
+        // 按日期分组
+        const cardsByDate = {};
+        
+        for (const card of cards) {
+            let dateStr;
+            try {
+                const d = new Date(card.created || card.created_at || Date.now());
+                dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            } catch (e) {
+                dateStr = new Date().toISOString().split('T')[0];
+            }
+            if (!cardsByDate[dateStr]) {
+                cardsByDate[dateStr] = [];
+            }
+            cardsByDate[dateStr].push(card);
+        }
+        
+        // 处理每一天的卡片
+        for (const [dateStr, dayCards] of Object.entries(cardsByDate)) {
+            let allContent = '';
+            
+            for (const card of dayCards) {
+                let content = (card.content || '').trim();
+                const title = (card.title || '').trim();
+                
+                // 处理图片
+                content = await this.processWriteathonImages(content);
+                
+                // 移除内容开头的日期标题行
+                content = this.removeDateTitleFromContent(content);
+                
+                // 去掉日期标题
+                if (title && !this.isDateTitle(title)) {
+                    content = title + '\n' + content;
+                }
+                
+                allContent += `- ${content.trim()}\n\n`;
+            }
+            
+            if (allContent) {
+                await this.appendToDailyNote(allContent, new Date(dateStr).getTime());
+            }
+        }
+        
+        showMessage(`成功同步 ${cards.length} 张卡片到每日笔记`);
+    }
+
+    // 保存写拉送卡片到指定文档
+    async saveWriteathonCardsToSingleDoc(cards) {
+        const docId = this.writeathonConfig.syncDocId;
+        if (!docId) {
+            showMessage('请输入目标文档 ID');
+            return;
+        }
+        
+        let allContent = '';
+        
+        for (const card of cards) {
+            let content = (card.content || '').trim();
+            const title = (card.title || '').trim();
+            
+            // 处理图片
+            content = await this.processWriteathonImages(content);
+            
+            // 去掉日期标题
+            if (title && !this.isDateTitle(title)) {
+                content = title + '\n' + content;
+            }
+            
+            allContent += `- ${content.trim()}\n\n`;
+        }
+        
+        try {
+            showMessage('正在保存到指定文档...');
+            const response = await fetch('/api/block/appendBlock', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    dataType: 'markdown',
+                    data: allContent,
+                    parentID: docId
+                })
+            });
+            
+            const result = await response.json();
+            if (result.code === 0) {
+                showMessage(`成功追加 ${cards.length} 张卡片到指定文档`);
+            } else {
+                showMessage('保存失败：' + (result.msg || '未知错误'));
+            }
+        } catch (e) {
+            console.error('保存到指定文档失败:', e);
+            showMessage('保存失败：' + e.message);
+        }
+    }
+
+    // ==================== Memos 同步功能 ====================
+
+    async loadMemosConfig() {
+        try {
+            const data = await this.loadData(MEMOS_CONFIG_STORAGE_NAME);
+            this.memosConfig = data || { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo' };
+        } catch (e) {
+            console.log("加载 Memos 配置失败", e);
+            this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo' };
+        }
+    }
+
+    async saveMemosConfig() {
+        try {
+            await this.saveData(MEMOS_CONFIG_STORAGE_NAME, this.memosConfig);
+        } catch (e) {
+            console.log("保存 Memos 配置失败", e);
+        }
+    }
+
+    async memosRequest(path, options = {}) {
+        const url = `${this.memosConfig.host.replace(/\/$/, '')}${path}`;
+        
+        // 尝试多种认证头格式
+        let response;
+        try {
+            response = await fetch(url, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.memosConfig.token || ''}`,
+                    ...options.headers
+                }
+            });
+        } catch (e) {
+            console.log('Memos 请求失败（Bearer）:', e.message);
+            throw e;
+        }
+        
+        // 如果 401，尝试不带 Bearer 的格式
+        if (response.status === 401) {
+            console.log('Memos 请求 401，尝试不带 Bearer 的认证头');
+            response = await fetch(url, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': this.memosConfig.token || '',
+                    ...options.headers
+                }
+            });
+        }
+        
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            console.error('Memos 请求失败:', response.status, text);
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        return data;
+    }
+
+    // 验证 Memos Token
+    async memosVerify(host, token) {
+        try {
+            const baseUrl = host.replace(/\/$/, '');
+            
+            // 尝试多种认证头格式
+            const authHeaders = [
+                { 'Authorization': `Bearer ${token}` },
+                { 'Authorization': token },
+            ];
+            
+            // 尝试 V2 接口（优先，因为 V2 更常见）
+            const v2Paths = ['/api/v1/user/me', '/api/v1/auth/status', '/api/v1/users'];
+            
+            for (const path of v2Paths) {
+                for (const headers of authHeaders) {
+                    try {
+                        console.log(`Memos 验证尝试: ${baseUrl}${path}`, headers);
+                        const response = await fetch(`${baseUrl}${path}`, {
+                            method: 'GET',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...headers
+                            }
+                        });
+                        
+                        console.log(`Memos 验证响应: ${path}`, response.status, response.statusText);
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            console.log('Memos 验证数据:', data);
+                            
+                            // V2 成功标志
+                            if (data.users || data.name || data.id || data.email) {
+                                return { success: true, message: '验证成功' };
+                            }
+                        }
+                    } catch (innerE) {
+                        console.log(`Memos 验证 ${path} 失败:`, innerE.message);
+                    }
+                }
+            }
+            
+            // 最后尝试不认证直接访问（某些公开实例）
+            try {
+                const publicResponse = await fetch(`${baseUrl}/api/v1/memos?pageSize=1`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (publicResponse.ok) {
+                    return { success: true, message: '验证成功（公开实例）' };
+                }
+            } catch (e) {}
+            
+            return { success: false, message: '验证失败：请检查服务器地址和 Token 是否正确，并在浏览器控制台查看详细日志' };
+        } catch (e) {
+            console.error('Memos 验证失败:', e);
+            return { success: false, message: '验证失败：' + e.message };
+        }
+    }
+
+    // 同步 Memos
+    async memosSync(isFullSync = false) {
+        if (!this.memosConfig.host || !this.memosConfig.token) {
+            showMessage('请先配置 Memos 服务器地址和 Token');
+            return;
+        }
+
+        try {
+            showMessage('正在同步 Memos...');
+            
+            let memos = [];
+            const version = this.memosConfig.version;
+            
+            if (version === 'v1') {
+                memos = await this.memosGetV1Memos(isFullSync);
+            } else {
+                memos = await this.memosGetV2Memos(isFullSync);
+            }
+            
+            if (memos.length === 0) {
+                showMessage('没有需要同步的 Memos');
+                return;
+            }
+            
+            console.log('获取到 Memos:', memos.length);
+            
+            // 根据同步目标分别处理
+            const syncTarget = this.memosConfig.syncTarget || 'shuoshuo';
+            if (syncTarget === 'shuoshuo') {
+                await this.saveMemosToShuoshuo(memos);
+            } else if (syncTarget === 'singledoc') {
+                await this.saveMemosToSingleDoc(memos);
+            } else {
+                await this.saveMemosToDailyNote(memos);
+            }
+            
+            // 更新最后同步时间
+            this.memosConfig.lastSyncTime = new Date().toISOString().replace('T', ' ').substring(0, 19);
+            await this.saveMemosConfig();
+            
+            showMessage(`成功同步 ${memos.length} 条 Memos`);
+        } catch (e) {
+            console.error('Memos 同步失败:', e);
+            showMessage('同步失败：' + e.message);
+        }
+    }
+
+    // V1 获取 Memos
+    async memosGetV1Memos(isFullSync) {
+        const allMemos = [];
+        const pageSize = 100;
+        let offset = 0;
+        const lastSyncTime = isFullSync ? '1970-01-01 00:00:00' : (this.memosConfig.lastSyncTime || '1970-01-01 00:00:00');
+        
+        while (true) {
+            const data = await this.memosRequest(`/api/v1/memo?offset=${offset}&limit=${pageSize}`, {
+                method: 'GET'
+            });
+            
+            if (!Array.isArray(data) || data.length === 0) break;
+            
+            for (const memo of data) {
+                const updatedTs = memo.updatedTs ? new Date(memo.updatedTs * 1000) : new Date(0);
+                if (isFullSync || updatedTs >= new Date(lastSyncTime)) {
+                    allMemos.push(memo);
+                }
+            }
+            
+            if (data.length < pageSize) break;
+            offset += pageSize;
+        }
+        
+        return allMemos;
+    }
+
+    // V2 获取 Memos
+    async memosGetV2Memos(isFullSync) {
+        const allMemos = [];
+        const pageSize = 100;
+        let pageToken = '';
+        const lastSyncTime = isFullSync ? '1970-01-01 00:00:00' : (this.memosConfig.lastSyncTime || '1970-01-01 00:00:00');
+        
+        while (true) {
+            let url = `/api/v1/memos?pageSize=${pageSize}`;
+            if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+            
+            const data = await this.memosRequest(url, { method: 'GET' });
+            
+            if (!data || !Array.isArray(data.memos) || data.memos.length === 0) break;
+            
+            for (const memo of data.memos) {
+                let updateTime;
+                try {
+                    updateTime = memo.updateTime ? new Date(memo.updateTime) : new Date(0);
+                } catch (e) {
+                    updateTime = new Date(0);
+                }
+                if (isFullSync || updateTime >= new Date(lastSyncTime)) {
+                    allMemos.push(memo);
+                }
+            }
+            
+            if (!data.nextPageToken) break;
+            pageToken = data.nextPageToken;
+        }
+        
+        return allMemos;
+    }
+
+    // 处理 Memos 内容（标签、链接、图片）
+    async processMemosContent(content, resources = []) {
+        if (!content) return '';
+        
+        // 处理标签 #tag -> #tag#
+        content = content.replace(/#([^\s#][^\s]*)/g, '#$1');
+        
+        // 处理双链引用 ((...))
+        content = content.replace(/\(\(([^)]+)\)\)/g, '[[$1]]');
+        
+        // 处理纯 URL 转为 Markdown 链接
+        content = content.replace(/(?<![\[(])(https?:\/\/[^\s]+)/g, (url) => {
+            // 如果已经是 markdown 链接的一部分，不处理
+            return `[${url}](${url})`;
+        });
+        
+        // 处理资源（图片、附件）
+        for (const res of resources) {
+            const filename = res.filename || res.name || 'file';
+            const ext = filename.split('.').pop().toLowerCase();
+            const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+            
+            let resourceUrl;
+            if (res.externalLink) {
+                resourceUrl = res.externalLink;
+            } else {
+                // 构造资源下载 URL
+                const resName = res.name || res.uid || '';
+                resourceUrl = `${this.memosConfig.host.replace(/\/$/, '')}/file/${resName}/${filename}`;
+            }
+            
+            if (isImage && !res.externalLink) {
+                // 下载图片到本地
+                showMessage(`正在下载图片: ${filename}...`);
+                const localPath = await this.downloadRemoteImage(resourceUrl, filename);
+                if (localPath) {
+                    resourceUrl = localPath;
+                }
+            }
+            
+            if (isImage) {
+                content += `\n![${filename}](${resourceUrl})`;
+            } else {
+                content += `\n[${filename}](${resourceUrl})`;
+            }
+        }
+        
+        return content.trim();
+    }
+
+    // 保存 Memos 到说说视图
+    async saveMemosToShuoshuo(memos) {
+        let addedCount = 0;
+        let updatedCount = 0;
+        
+        for (const memo of memos) {
+            const memoId = memo.id || memo.name;
+            if (!memoId) continue;
+            
+            // V1 和 V2 字段名不同
+            const content = memo.content || '';
+            const resources = memo.resourceList || memo.resources || memo.attachments || [];
+            
+            // 处理内容
+            let processedContent = await this.processMemosContent(content, resources);
+            
+            // 提取标签
+            const tags = this.extractTags(processedContent);
+            
+            // 处理时间
+            let createdTime = Date.now();
+            let updatedTime = Date.now();
+            try {
+                if (memo.createdTs) createdTime = memo.createdTs * 1000;
+                else if (memo.createTime) createdTime = new Date(memo.createTime).getTime();
+            } catch (e) {}
+            try {
+                if (memo.updatedTs) updatedTime = memo.updatedTs * 1000;
+                else if (memo.updateTime) updatedTime = new Date(memo.updateTime).getTime();
+            } catch (e) {}
+            
+            // 创建说说对象
+            const shuoshuo = {
+                id: `memos_${memoId}`,
+                content: processedContent,
+                tags: tags,
+                pinned: false,
+                created: createdTime,
+                updated: updatedTime,
+                source: 'memos'
+            };
+            
+            // 检查是否已存在
+            const existingIndex = this.shuoshuos.findIndex(s => s.id === shuoshuo.id);
+            if (existingIndex === -1) {
+                this.shuoshuos.push(shuoshuo);
+                addedCount++;
+            } else {
+                this.shuoshuos[existingIndex] = shuoshuo;
+                updatedCount++;
+            }
+        }
+        
+        // 保存到存储
+        await this.saveShuoshuos();
+        
+        // 刷新说说视图
+        this.renderNotes();
+        this.renderTags();
+        
+        if (addedCount > 0 && updatedCount > 0) {
+            showMessage(`同步完成：新增 ${addedCount} 条，更新 ${updatedCount} 条`);
+        } else if (addedCount > 0) {
+            showMessage(`成功添加 ${addedCount} 条 Memos 到说说视图`);
+        } else if (updatedCount > 0) {
+            showMessage(`成功更新 ${updatedCount} 条 Memos`);
+        } else {
+            showMessage(`同步完成：没有变化的 Memos`);
+        }
+    }
+
+    // 加载笔记本列表到 Memos 选择器
+    async loadMemosNotebooks() {
+        const select = this.container?.querySelector('#memos-notebook-select');
+        if (!select) return;
+
+        try {
+            const response = await fetch('/api/notebook/lsNotebooks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const result = await response.json();
+            
+            if (result.code === 0 && result.data?.notebooks) {
+                const notebooks = result.data.notebooks.filter(nb => !nb.closed);
+                
+                let html = '<option value="">请选择笔记本...</option>';
+                notebooks.forEach(nb => {
+                    const icon = nb.icon ? String.fromCodePoint(parseInt(nb.icon, 16)) : '📒';
+                    html += `<option value="${nb.id}">${icon} ${nb.name}</option>`;
+                });
+                select.innerHTML = html;
+            }
+        } catch (e) {
+            console.error('加载笔记本列表失败', e);
+        }
+    }
+
+    // 保存 Memos 到每日笔记
+    async saveMemosToDailyNote(memos) {
+        // 按日期分组
+        const memosByDate = {};
+        
+        for (const memo of memos) {
+            let dateStr;
+            try {
+                let ts;
+                if (memo.createdTs) ts = memo.createdTs * 1000;
+                else if (memo.createTime) ts = new Date(memo.createTime).getTime();
+                else ts = Date.now();
+                const d = new Date(ts);
+                dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            } catch (e) {
+                dateStr = new Date().toISOString().split('T')[0];
+            }
+            if (!memosByDate[dateStr]) {
+                memosByDate[dateStr] = [];
+            }
+            memosByDate[dateStr].push(memo);
+        }
+        
+        // 处理每一天的 Memos
+        for (const [dateStr, dayMemos] of Object.entries(memosByDate)) {
+            let allContent = '';
+            
+            for (const memo of dayMemos) {
+                const content = memo.content || '';
+                const resources = memo.resourceList || memo.resources || memo.attachments || [];
+                let processedContent = await this.processMemosContent(content, resources);
+                allContent += `- ${processedContent.trim()}\n\n`;
+            }
+            
+            if (allContent) {
+                await this.appendToDailyNote(allContent, new Date(dateStr).getTime());
+            }
+        }
+        
+        showMessage(`成功同步 ${memos.length} 条 Memos 到每日笔记`);
+    }
+
+    // 保存 Memos 到指定文档
+    async saveMemosToSingleDoc(memos) {
+        const docId = this.memosConfig.syncDocId;
+        if (!docId) {
+            showMessage('请输入目标文档 ID');
+            return;
+        }
+        
+        let allContent = '';
+        
+        for (const memo of memos) {
+            const content = memo.content || '';
+            const resources = memo.resourceList || memo.resources || memo.attachments || [];
+            let processedContent = await this.processMemosContent(content, resources);
+            allContent += `- ${processedContent.trim()}\n\n`;
+        }
+        
+        try {
+            showMessage('正在保存到指定文档...');
+            const response = await fetch('/api/block/appendBlock', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    dataType: 'markdown',
+                    data: allContent,
+                    parentID: docId
+                })
+            });
+            
+            const result = await response.json();
+            if (result.code === 0) {
+                showMessage(`成功追加 ${memos.length} 条 Memos 到指定文档`);
+            } else {
+                showMessage('保存失败：' + (result.msg || '未知错误'));
+            }
+        } catch (e) {
+            console.error('保存到指定文档失败:', e);
+            showMessage('保存失败：' + e.message);
+        }
+    }
+
     uninstall() {
         this.removeData(STORAGE_NAME).catch(e => {
             showMessage(`uninstall [${this.name}] remove data [${STORAGE_NAME}] fail: ${e.msg}`);
@@ -6216,6 +7906,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         });
         this.removeData(NOTEBOOK_ID_STORAGE_NAME).catch(e => {
             showMessage(`uninstall [${this.name}] remove data [${NOTEBOOK_ID_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(WRITEATHON_CONFIG_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${WRITEATHON_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(MEMOS_CONFIG_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${MEMOS_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
         });
     }
 }
