@@ -157,6 +157,49 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             }
         });
 
+        // 全局快捷键唤起快速记录窗口
+        this.addCommand({
+            langKey: "openQuickWindow",
+            hotkey: "Ctrl+Shift+O",
+            globalCallback: () => {
+                const frontEnd = getFrontend();
+                if (frontEnd === "desktop" || frontEnd === "desktop-window") {
+                    this.openQuickWindow();
+                }
+            }
+        });
+
+        // 注册 ipc 监听器，接收快速窗口的保存/上传指令
+        try {
+            const { ipcMain } = require('electron');
+            this._quickSaveHandler = (event, data) => {
+                this.addQuickNote(data.content);
+            };
+            ipcMain.on('lumina-quick-save', this._quickSaveHandler);
+
+            this._quickUploadHandler = async (event, data) => {
+                try {
+                    const base64Response = await fetch(data.base64);
+                    const blob = await base64Response.blob();
+                    const file = new File([blob], data.name, { type: blob.type });
+                    const formData = new FormData();
+                    formData.append('assetsDirPath', '/assets/');
+                    formData.append('file[]', file);
+                    const response = await fetch('/api/asset/upload', { method: 'POST', body: formData });
+                    const result = await response.json();
+                    if (result.code === 0 && result.data.succMap && Object.keys(result.data.succMap).length > 0) {
+                        return { success: true, url: Object.values(result.data.succMap)[0] };
+                    }
+                    return { success: false, error: '上传失败' };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            };
+            ipcMain.handle('lumina-quick-upload', this._quickUploadHandler);
+        } catch (e) {
+            // 非桌面端，忽略
+        }
+
         console.log("Shuoshuo plugin loaded");
     }
 
@@ -172,6 +215,27 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     }
 
     onunload() {
+        // 移除 ipc 监听器
+        if (this._quickSaveHandler) {
+            try {
+                const { ipcMain } = require('electron');
+                ipcMain.removeListener('lumina-quick-save', this._quickSaveHandler);
+            } catch (e) {
+                // 忽略
+            }
+        }
+        if (this._quickUploadHandler) {
+            try {
+                const { ipcMain } = require('electron');
+                ipcMain.removeHandler('lumina-quick-upload');
+            } catch (e) {
+                // 忽略
+            }
+        }
+        // 关闭快速记录窗口
+        if (this.quickWindow && !this.quickWindow.isDestroyed()) {
+            this.quickWindow.close();
+        }
         console.log("Shuoshuo plugin unloaded");
     }
 
@@ -185,6 +249,361 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 id: this.name + TAB_TYPE
             }
         });
+    }
+
+    // 打开/聚焦快速记录窗口
+    openQuickWindow() {
+        if (this.quickWindow && !this.quickWindow.isDestroyed()) {
+            this.quickWindow.show();
+            this.quickWindow.focus();
+            return;
+        }
+
+        try {
+            const { BrowserWindow } = require("@electron/remote");
+
+            this.quickWindow = new BrowserWindow({
+                width: 520,
+                height: 360,
+                frame: false,
+                skipTaskbar: true,
+                title: "快速记录",
+                webPreferences: {
+                    nodeIntegration: true,
+                    contextIsolation: false,
+                    enableRemoteModule: true,
+                    webSecurity: false
+                },
+                autoHideMenuBar: true,
+                fullscreenable: false,
+                maximizable: false,
+                transparent: true,
+                show: false,
+                alwaysOnTop: true
+            });
+
+            this.quickWindow.loadURL(
+                `data:text/html;charset=utf-8,${encodeURIComponent(this.getQuickWindowHTML())}`
+            );
+
+            this.quickWindow.once('ready-to-show', () => {
+                this.quickWindow.show();
+                this.quickWindow.focus();
+            });
+
+            this.quickWindow.on("blur", () => {
+                if (this.quickWindow && !this.quickWindow.isDestroyed()) {
+                    this.quickWindow.close();
+                }
+            });
+
+            this.quickWindow.on("closed", () => {
+                this.quickWindow = null;
+            });
+        } catch (e) {
+            console.warn("打开快速记录窗口失败", e);
+        }
+    }
+
+    // 构建快速记录窗口的 HTML
+    getQuickWindowHTML() {
+        const notesJson = JSON.stringify(this.shuoshuos.map(n => ({
+            id: n.id,
+            content: (n.content || '').split('\n')[0].substring(0, 60),
+            created: n.created
+        })));
+        return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e8e8e8;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+}
+.header {
+    padding: 14px 16px 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #333;
+    flex-shrink: 0;
+}
+.editor-wrap {
+    flex: 1;
+    padding: 0 16px;
+    min-height: 0;
+}
+textarea {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #333;
+    font-family: inherit;
+}
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    border-top: 1px solid #f0f0f0;
+    flex-shrink: 0;
+}
+.toolbar-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+    color: #999;
+    transition: all 0.2s;
+    user-select: none;
+}
+.toolbar-icon:hover {
+    background: #f5f5f5;
+    color: #666;
+}
+.toolbar-divider {
+    width: 1px;
+    height: 18px;
+    background: #eee;
+}
+.footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 10px 16px 14px;
+    flex-shrink: 0;
+}
+.btn {
+    padding: 6px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    background: #fff;
+    color: #666;
+    transition: all 0.2s;
+}
+.btn:hover {
+    background: #f5f5f5;
+}
+.btn-primary {
+    background: #34c759;
+    border-color: #34c759;
+    color: #fff;
+}
+.btn-primary:hover {
+    background: #2db14d;
+}
+.mention-picker {
+    position: fixed;
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 99999;
+    width: 280px;
+}
+.mention-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #555;
+    border-bottom: 1px solid #f5f5f5;
+}
+.mention-item:hover {
+    background: #f5f5f5;
+}
+.mention-item:last-child {
+    border-bottom: none;
+}
+.mention-date {
+    font-size: 11px;
+    color: #aaa;
+    margin-bottom: 2px;
+}
+</style>
+</head>
+<body>
+<div class="header">快速记录</div>
+<div class="editor-wrap">
+    <textarea id="editor" placeholder="记录此刻的想法..."></textarea>
+</div>
+<div class="toolbar">
+    <div class="toolbar-icon" id="btn-tag" title="标签">#</div>
+    <div class="toolbar-icon" id="btn-image" title="图片">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-icon" id="btn-ul" title="无序列表">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+    </div>
+    <div class="toolbar-icon" id="btn-ol" title="有序列表">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6h2v2H2V6zm4 0h14v2H6V6zM2 11h2v2H2v-2zm4 0h14v2H6v-2zM2 16h2v2H2v-2zm4 0h14v2H6v-2z"/></svg>
+    </div>
+    <div class="toolbar-icon" id="btn-at" title="引用笔记">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10h5v-2h-5c-4.34 0-8-3.66-8-8s3.66-8 8-8 8 3.66 8 8v1.43c0 .79-.71 1.57-1.5 1.57s-1.5-.78-1.5-1.57V12c0-2.76-2.24-5-5-5s-5 2.24-5 5 2.24 5 5 5c1.38 0 2.64-.56 3.54-1.47.65.89 1.77 1.47 2.96 1.47 1.97 0 3.5-1.6 3.5-3.57V12c0-5.52-4.48-10-10-10zm0 13c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/></svg>
+    </div>
+</div>
+<div class="footer">
+    <button class="btn" id="btn-cancel">取消</button>
+    <button class="btn btn-primary" id="btn-save">保存</button>
+</div>
+
+<script>
+const { ipcRenderer } = require('electron');
+const editor = document.getElementById('editor');
+editor.focus();
+
+const NOTES = ${notesJson};
+
+function insertText(text) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const val = editor.value;
+    editor.value = val.substring(0, start) + text + val.substring(end);
+    editor.setSelectionRange(start + text.length, start + text.length);
+    editor.focus();
+}
+
+// 标签
+document.getElementById('btn-tag').addEventListener('click', () => insertText('#'));
+
+// 图片
+document.getElementById('btn-image').addEventListener('click', async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            try {
+                const result = await ipcRenderer.invoke('lumina-quick-upload', { base64: ev.target.result, name: file.name });
+                if (result.success) {
+                    insertText('\\n![' + file.name + '](' + result.url + ')\\n');
+                } else {
+                    alert('图片上传失败: ' + result.error);
+                }
+            } catch (err) {
+                alert('图片上传失败');
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+    input.click();
+});
+
+// 无序列表
+document.getElementById('btn-ul').addEventListener('click', () => insertText('- '));
+
+// 有序列表
+document.getElementById('btn-ol').addEventListener('click', () => insertText('1. '));
+
+// @ 引用
+let mentionPicker = null;
+document.getElementById('btn-at').addEventListener('click', () => {
+    if (mentionPicker) { mentionPicker.remove(); mentionPicker = null; return; }
+    mentionPicker = document.createElement('div');
+    mentionPicker.className = 'mention-picker';
+    const rect = document.getElementById('btn-at').getBoundingClientRect();
+    mentionPicker.style.left = rect.left + 'px';
+    mentionPicker.style.top = (rect.top - Math.min(NOTES.length * 40 + 10, 200)) + 'px';
+
+    if (NOTES.length === 0) {
+        mentionPicker.innerHTML = '<div class="mention-item">暂无笔记</div>';
+    } else {
+        mentionPicker.innerHTML = NOTES.map(n => {
+            const date = new Date(n.created).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            return '<div class="mention-item" data-id="' + n.id + '"><div class="mention-date">' + date + '</div><div>' + (n.content || '无内容') + '</div></div>';
+        }).join('');
+    }
+    document.body.appendChild(mentionPicker);
+
+    mentionPicker.querySelectorAll('.mention-item[data-id]').forEach(item => {
+        item.addEventListener('click', () => {
+            insertText('[MEMO:' + item.dataset.id + ']');
+            mentionPicker.remove();
+            mentionPicker = null;
+        });
+    });
+});
+
+// 点击外部关闭 mention picker
+document.addEventListener('click', (e) => {
+    if (mentionPicker && !mentionPicker.contains(e.target) && !e.target.closest('#btn-at')) {
+        mentionPicker.remove();
+        mentionPicker = null;
+    }
+});
+
+// 快捷键
+editor.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        save();
+    }
+    if (e.key === 'Escape') {
+        window.close();
+    }
+});
+
+// 取消
+document.getElementById('btn-cancel').addEventListener('click', () => window.close());
+
+// 保存
+function save() {
+    const text = editor.value.trim();
+    if (!text) { window.close(); return; }
+    ipcRenderer.send('lumina-quick-save', { content: text });
+    window.close();
+}
+document.getElementById('btn-save').addEventListener('click', save);
+<\/script>
+</body>
+</html>`;
+    }
+
+    // 快速记录保存到说说列表
+    async addQuickNote(content) {
+        if (!content || !content.trim()) return;
+
+        const note = {
+            id: Date.now().toString(),
+            content: content.trim(),
+            created: Date.now(),
+            updated: Date.now(),
+            images: [],
+            comments: [],
+            isDailyNote: false
+        };
+
+        this.shuoshuos.unshift(note);
+        await this.saveShuoshuos();
+
+        // 如果主窗口已打开，刷新列表
+        if (this.container) {
+            this.renderNotes();
+        }
+
+        showMessage('已保存到轻语');
     }
 
     render(container) {
@@ -360,7 +779,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                                 
                                 <div class="north-shuoshuo-form-row">
                                     <label class="north-shuoshuo-form-label">布局模式</label>
-                                    <div class="north-shuoshuo-radio-group">
+                                    <div class="north-shuoshuo-radio-group" id="view-style-grid">
                                         <label class="north-shuoshuo-radio-item" data-value="list">
                                             <div class="north-shuoshuo-radio-preview list-preview">
                                                 <div class="preview-line"></div>
@@ -2577,10 +2996,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             item.addEventListener('click', () => {
                 const view = item.dataset.view;
                 
-                // 更新菜单选中状态
-                menuItems.forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                
                 // 清除热力图选中
                 this.selectedDate = null;
                 this.container.querySelectorAll('.north-shuoshuo-heatmap-cell').forEach(c => {
@@ -2593,14 +3008,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     t.classList.remove('selected');
                 });
                 
-                // 切换视图
-                if (view === 'notes') {
-                    this.switchMainView('notes', null);
-                } else if (view === 'review') {
-                    this.switchMainView('review', null);
-                } else if (view === 'random') {
-                    this.switchMainView('random', null);
-                }
+                // 切换视图（active 状态由 switchMainView 统一处理）
+                this.switchMainView(view, null);
             });
         });
 
@@ -3055,12 +3464,15 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
     // 插入 MEMO 引用
     insertMention(input, noteId, triggerPos) {
+        // 先保存光标位置，因为 focus() 在某些浏览器下会重置选区
+        const savedCursorPos = input.selectionStart;
         input.focus(); // 确保获取到正确的光标位置
-        const cursorPos = input.selectionStart;
         const value = input.value;
         
         if (triggerPos !== null && triggerPos >= 0 && value.substring(triggerPos, triggerPos + 1) === '@') {
             const before = value.substring(0, triggerPos);
+            // 如果保存的光标位置不可靠（<= triggerPos），则回退到 triggerPos + 1（只替换 @）
+            const cursorPos = savedCursorPos > triggerPos ? savedCursorPos : triggerPos + 1;
             const after = value.substring(cursorPos);
             const insertText = `[MEMO:${noteId}]`;
             input.value = before + insertText + after;
@@ -3631,7 +4043,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
             const result = await response.json();
             if (result.code !== 0) {
-                console.log("插入日记失败:", result.msg);
+                console.warn("插入日记失败:", result.msg);
             }
         } catch (e) {
             console.error("插入日记失败", e);
@@ -4423,12 +4835,23 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         const flomoArea = this.container.querySelector('.north-shuoshuo-flomo-area');
         const settingsArea = this.container.querySelector('#shuoshuo-settings-area');
 
-        // 更新左侧边栏选中状?
+        // 更新左侧边栏选中状态
         this.container.querySelectorAll('.north-shuoshuo-sidebar .north-shuoshuo-nav-item').forEach(item => {
             item.classList.remove('active');
         });
-        if (navItem) {
-            navItem.classList.add('active');
+        const sidebarView = (view === 'review' || view === 'random') ? 'notes' : view;
+        const targetNav = navItem || this.container.querySelector(`.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="${sidebarView}"]`);
+        if (targetNav) {
+            targetNav.classList.add('active');
+        }
+
+        // 更新中间菜单选中状态
+        this.container.querySelectorAll('.north-shuoshuo-menu-list .north-shuoshuo-menu-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        const targetMenu = this.container.querySelector(`.north-shuoshuo-menu-list .north-shuoshuo-menu-item[data-view="${view}"]`);
+        if (targetMenu) {
+            targetMenu.classList.add('active');
         }
 
         this.currentMainView = view;
@@ -4576,7 +4999,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         }
 
         // 视图样式单选框
-        const radioItems = this.container.querySelectorAll('#setting-group-view .north-shuoshuo-radio-item');
+        const radioItems = this.container.querySelectorAll('#view-style-grid .north-shuoshuo-radio-item');
         radioItems.forEach(item => {
             item.addEventListener('click', async () => {
                 const value = item.dataset.value;
@@ -5637,7 +6060,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const data = await this.loadData(STORAGE_NAME);
             this.shuoshuos = data || [];
         } catch (e) {
-            console.log("加载笔记失败", e);
+            console.warn("加载笔记失败", e);
             this.shuoshuos = [];
         }
     }
@@ -5649,7 +6072,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             this.assistantAvatarUrl = assistantData || null;
             this.userAvatarUrl = userData || null;
         } catch (e) {
-            console.log("加载头像失败", e);
+            console.warn("加载头像失败", e);
             this.assistantAvatarUrl = null;
             this.userAvatarUrl = null;
         }
@@ -5660,7 +6083,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const data = await this.loadData(NOTEBOOK_ID_STORAGE_NAME);
             this.notebookId = data || DEFAULT_NOTEBOOK_ID;
         } catch (e) {
-            console.log("加载笔记本ID失败", e);
+            console.warn("加载笔记本ID失败", e);
             this.notebookId = DEFAULT_NOTEBOOK_ID;
         }
     }
@@ -5671,7 +6094,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             // 严格转换为布尔值，防止字符串 "false" 被当作 true
             this.autoSync = data === true || data === 'true' || data === 1;
         } catch (e) {
-            console.log("加载自动同步设置失败", e);
+            console.warn("加载自动同步设置失败", e);
             this.autoSync = false;
         }
     }
@@ -5681,7 +6104,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const data = await this.loadData(VIEW_STYLE_STORAGE_NAME);
             this.viewStyle = data === 'card' ? 'card' : 'list';
         } catch (e) {
-            console.log("加载视图样式设置失败", e);
+            console.warn("加载视图样式设置失败", e);
             this.viewStyle = 'list';
         }
     }
@@ -5714,7 +6137,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         try {
             await this.saveData(STORAGE_NAME, this.shuoshuos);
         } catch (e) {
-            console.log("保存笔记失败", e);
+            console.warn("保存笔记失败", e);
             showMessage("保存失败: " + e.message);
         }
     }
@@ -5726,7 +6149,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const data = await this.loadData(FLOMO_CONFIG_STORAGE_NAME);
             this.flomoConfig = data || { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
         } catch (e) {
-            console.log("加载 flomo 配置失败", e);
+            console.warn("加载 flomo 配置失败", e);
             this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
         }
     }
@@ -5735,7 +6158,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         try {
             await this.saveData(FLOMO_CONFIG_STORAGE_NAME, this.flomoConfig);
         } catch (e) {
-            console.log("保存 flomo 配置失败", e);
+            console.warn("保存 flomo 配置失败", e);
         }
     }
 
@@ -5749,7 +6172,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
             }
         } catch (e) {
-            console.log("加载回顾配置失败", e);
+            console.warn("加载回顾配置失败", e);
             this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
         }
     }
@@ -5759,7 +6182,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         try {
             await this.saveData(REVIEW_CONFIG_STORAGE_NAME, this.reviewConfig);
         } catch (e) {
-            console.log("保存回顾配置失败", e);
+            console.warn("保存回顾配置失败", e);
         }
     }
 
@@ -5769,7 +6192,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const data = await this.loadData(TAG_ICONS_STORAGE_NAME);
             this.tagIcons = data || {};
         } catch (e) {
-            console.log("加载标签图标失败", e);
+            console.warn("加载标签图标失败", e);
             this.tagIcons = {};
         }
     }
@@ -5779,7 +6202,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         try {
             await this.saveData(TAG_ICONS_STORAGE_NAME, this.tagIcons);
         } catch (e) {
-            console.log("保存标签图标失败", e);
+            console.warn("保存标签图标失败", e);
         }
     }
 
@@ -5800,7 +6223,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const data = await this.loadData(TAG_PINNED_STORAGE_NAME);
             this.pinnedTags = Array.isArray(data) ? data : [];
         } catch (e) {
-            console.log("加载置顶标签失败", e);
+            console.warn("加载置顶标签失败", e);
             this.pinnedTags = [];
         }
     }
@@ -5810,7 +6233,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         try {
             await this.saveData(TAG_PINNED_STORAGE_NAME, this.pinnedTags);
         } catch (e) {
-            console.log("保存置顶标签失败", e);
+            console.warn("保存置顶标签失败", e);
         }
     }
 
@@ -6177,7 +6600,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const data = await this.loadData(THEME_MODE_STORAGE_NAME);
             this.themeMode = data || DEFAULT_THEME_MODE;
         } catch (e) {
-            console.log("加载主题模式失败", e);
+            console.warn("加载主题模式失败", e);
             this.themeMode = DEFAULT_THEME_MODE;
         }
     }
@@ -6187,7 +6610,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         try {
             await this.saveData(THEME_MODE_STORAGE_NAME, this.themeMode);
         } catch (e) {
-            console.log("保存主题模式失败", e);
+            console.warn("保存主题模式失败", e);
         }
     }
 
@@ -6198,7 +6621,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const validKeys = MORANDI_COLORS.map(c => c.key);
             this.morandiColor = validKeys.includes(data) ? data : MORANDI_COLORS[0].key;
         } catch (e) {
-            console.log("加载莫兰迪配色失败", e);
+            console.warn("加载莫兰迪配色失败", e);
             this.morandiColor = MORANDI_COLORS[0].key;
         }
     }
@@ -6208,7 +6631,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         try {
             await this.saveData(MORANDI_COLOR_STORAGE_NAME, this.morandiColor);
         } catch (e) {
-            console.log("保存莫兰迪配色失败", e);
+            console.warn("保存莫兰迪配色失败", e);
         }
     }
 
@@ -7000,7 +7423,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const data = await this.loadData(WRITEATHON_CONFIG_STORAGE_NAME);
             this.writeathonConfig = data || { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         } catch (e) {
-            console.log("加载写拉送配置失败", e);
+            console.warn("加载写拉送配置失败", e);
             this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         }
     }
@@ -7009,7 +7432,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         try {
             await this.saveData(WRITEATHON_CONFIG_STORAGE_NAME, this.writeathonConfig);
         } catch (e) {
-            console.log("保存写拉送配置失败", e);
+            console.warn("保存写拉送配置失败", e);
         }
     }
 
@@ -7435,7 +7858,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             const data = await this.loadData(MEMOS_CONFIG_STORAGE_NAME);
             this.memosConfig = data || { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo' };
         } catch (e) {
-            console.log("加载 Memos 配置失败", e);
+            console.warn("加载 Memos 配置失败", e);
             this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo' };
         }
     }
@@ -7444,7 +7867,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         try {
             await this.saveData(MEMOS_CONFIG_STORAGE_NAME, this.memosConfig);
         } catch (e) {
-            console.log("保存 Memos 配置失败", e);
+            console.warn("保存 Memos 配置失败", e);
         }
     }
 
@@ -7463,7 +7886,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 }
             });
         } catch (e) {
-            console.log('Memos 请求失败（Bearer）:', e.message);
+            console.warn('Memos 请求失败（Bearer）:', e.message);
             throw e;
         }
         
@@ -7895,9 +8318,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     }
 
     uninstall() {
-        this.removeData(STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${STORAGE_NAME}] fail: ${e.msg}`);
-        });
+        // 保留用户笔记数据（STORAGE_NAME），仅删除配置文件
         this.removeData(AVATAR_ASSISTANT_STORAGE_NAME).catch(e => {
             showMessage(`uninstall [${this.name}] remove data [${AVATAR_ASSISTANT_STORAGE_NAME}] fail: ${e.msg}`);
         });
@@ -7907,11 +8328,47 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.removeData(NOTEBOOK_ID_STORAGE_NAME).catch(e => {
             showMessage(`uninstall [${this.name}] remove data [${NOTEBOOK_ID_STORAGE_NAME}] fail: ${e.msg}`);
         });
+        this.removeData(AUTO_SYNC_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${AUTO_SYNC_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(VIEW_STYLE_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${VIEW_STYLE_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(FLOMO_CONFIG_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${FLOMO_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(FLOMO_SYNC_TIME_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${FLOMO_SYNC_TIME_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(FLOMO_SYNC_TARGET_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${FLOMO_SYNC_TARGET_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(FLOMO_SYNC_DOC_ID_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${FLOMO_SYNC_DOC_ID_STORAGE_NAME}] fail: ${e.msg}`);
+        });
         this.removeData(WRITEATHON_CONFIG_STORAGE_NAME).catch(e => {
             showMessage(`uninstall [${this.name}] remove data [${WRITEATHON_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
         });
+        this.removeData(WRITEATHON_SYNC_TIME_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${WRITEATHON_SYNC_TIME_STORAGE_NAME}] fail: ${e.msg}`);
+        });
         this.removeData(MEMOS_CONFIG_STORAGE_NAME).catch(e => {
             showMessage(`uninstall [${this.name}] remove data [${MEMOS_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(REVIEW_CONFIG_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${REVIEW_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(TAG_ICONS_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${TAG_ICONS_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(TAG_PINNED_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${TAG_PINNED_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(THEME_MODE_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${THEME_MODE_STORAGE_NAME}] fail: ${e.msg}`);
+        });
+        this.removeData(MORANDI_COLOR_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${MORANDI_COLOR_STORAGE_NAME}] fail: ${e.msg}`);
         });
     }
 }
