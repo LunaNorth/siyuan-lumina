@@ -1,23 +1,7 @@
 const { Plugin, showMessage, openTab, getFrontend, confirm } = require("siyuan");
 
 const STORAGE_NAME = "shuoshuo-data";
-const AVATAR_ASSISTANT_STORAGE_NAME = "shuoshuo-avatar-assistant";
-const AVATAR_USER_STORAGE_NAME = "shuoshuo-avatar-user";
-const NOTEBOOK_ID_STORAGE_NAME = "shuoshuo-notebook-id";
-const AUTO_SYNC_STORAGE_NAME = "shuoshuo-auto-sync";
-const VIEW_STYLE_STORAGE_NAME = "shuoshuo-view-style";
-const FLOMO_CONFIG_STORAGE_NAME = "shuoshuo-flomo-config";
-const FLOMO_SYNC_TIME_STORAGE_NAME = "shuoshuo-flomo-sync-time";
-const FLOMO_SYNC_TARGET_STORAGE_NAME = "shuoshuo-flomo-sync-target";
-const FLOMO_SYNC_DOC_ID_STORAGE_NAME = "shuoshuo-flomo-sync-doc-id";
-const WRITEATHON_CONFIG_STORAGE_NAME = "shuoshuo-writeathon-config";
-const WRITEATHON_SYNC_TIME_STORAGE_NAME = "shuoshuo-writeathon-sync-time";
-const MEMOS_CONFIG_STORAGE_NAME = "shuoshuo-memos-config";
-const REVIEW_CONFIG_STORAGE_NAME = "shuoshuo-review-config";
-const TAG_ICONS_STORAGE_NAME = "shuoshuo-tag-icons";
-const TAG_PINNED_STORAGE_NAME = "shuoshuo-tag-pinned";
-const THEME_MODE_STORAGE_NAME = "shuoshuo-theme-mode"; // 主题模式存储
-const MORANDI_COLOR_STORAGE_NAME = "shuoshuo-morandi-color"; // 莫兰迪配色存储
+const CONFIG_STORAGE_NAME = "shuoshuo-config";
 const TAB_TYPE = "shuoshuo-tab";
 
 // 莫兰迪配色方案
@@ -63,7 +47,6 @@ const DEFAULT_REVIEW_CONFIG = {
 const DEFAULT_THEME_MODE = 'original';
 
 // 字体大小配置
-const FONT_SIZE_CONFIG_STORAGE_NAME = "shuoshuo-font-size-config";
 const DEFAULT_FONT_SIZE_CONFIG = { mode: 'default', customSize: 14.5 };
 
 // Flomo API 配置
@@ -127,19 +110,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
         this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
         this.loadShuoshuos();
-        this.loadAvatars();
-        this.loadNotebookId();
-        this.loadAutoSync();
-        this.loadViewStyle();
-        this.loadFlomoConfig();
-        this.loadWriteathonConfig();
-        this.loadMemosConfig();
-        this.loadReviewConfig();
-        this.loadTagIcons();
-        this.loadPinnedTags();
-        this.loadThemeMode();
-        this.loadMorandiColor();
-        this.loadFontSizeConfig();
+        this.loadConfig();
 
         const plugin = this;
 
@@ -156,28 +127,32 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         });
 
         this.addCommand({
-            langKey: "打开轻语",
-            hotkey: "⌥⌘S",
+            langKey: "openShuoshuo",
+            langText: "打开轻语",
+            hotkey: "Ctrl+Shift+S",
             callback: () => {
                 this.openShuoshuoTab();
             }
         });
 
         // 全局快捷键唤起快速记录窗口
-        this.addCommand({
-            langKey: "打开快速记录窗口",
-            hotkey: "Ctrl+Alt+U",
-            callback: () => {
-                try {
-                    if (this.isMobile) {
-                        showMessage('移动端不支持快速记录窗口');
-                        return;
-                    }
-                    this.openQuickWindow();
-                } catch (e) {
-                    console.error('打开快速记录窗口失败', e);
+        const quickWindowCallback = () => {
+            try {
+                if (this.isMobile) {
+                    showMessage('移动端不支持快速记录窗口');
+                    return;
                 }
+                this.openQuickWindow();
+            } catch (e) {
+                console.error('打开快速记录窗口失败', e);
             }
+        };
+        this.addCommand({
+            langKey: "openQuickWindow",
+            langText: "打开快速记录窗口",
+            hotkey: "Ctrl+Alt+U",
+            callback: quickWindowCallback,
+            globalCallback: quickWindowCallback
         });
 
         // 注册 ipc 监听器，接收快速窗口的保存/上传指令
@@ -235,7 +210,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         if (this._quickSaveHandler) {
             try {
                 const { ipcMain } = require('electron');
-                ipcMain.removeListener('lumina-quick-save', this._quickSaveHandler);
+                ipcMain.off('lumina-quick-save', this._quickSaveHandler);
             } catch (e) {
                 // 忽略
             }
@@ -5479,10 +5454,10 @@ document.getElementById('btn-save').addEventListener('click', save);
                         const fullPath = '/' + newPath;
                         if (role === 'assistant') {
                             this.assistantAvatarUrl = fullPath;
-                            await this.saveData(AVATAR_ASSISTANT_STORAGE_NAME, this.assistantAvatarUrl);
+                            await this.saveConfig();
                         } else {
                             this.userAvatarUrl = fullPath;
-                            await this.saveData(AVATAR_USER_STORAGE_NAME, this.userAvatarUrl);
+                            await this.saveConfig();
                         }
                         this.render(this.container);
                         showMessage('头像上传成功');
@@ -5686,7 +5661,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 if (radio) radio.checked = true;
                 // 实时更新视图样式
                 this.viewStyle = value;
-                await this.saveData(VIEW_STYLE_STORAGE_NAME, this.viewStyle);
+                await this.saveConfig();
                 this.applyViewStyle();
             });
         });
@@ -5815,9 +5790,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 this.notebookId = notebookId;
                 this.autoSync = autoSync;
 
-                await this.saveData(NOTEBOOK_ID_STORAGE_NAME, this.notebookId);
-                await this.saveData(AUTO_SYNC_STORAGE_NAME, this.autoSync);
-                await this.saveData(VIEW_STYLE_STORAGE_NAME, this.viewStyle);
+                await this.saveConfig();
 
                 // 保存回顾设置
                 const reviewScope = this.container.querySelector('input[name="review-content-scope"]:checked')?.value || 'all';
@@ -6786,48 +6759,100 @@ document.getElementById('btn-save').addEventListener('click', save);
         }
     }
 
-    async loadAvatars() {
+    async loadConfig() {
         try {
-            const assistantData = await this.loadData(AVATAR_ASSISTANT_STORAGE_NAME);
-            const userData = await this.loadData(AVATAR_USER_STORAGE_NAME);
-            this.assistantAvatarUrl = assistantData || null;
-            this.userAvatarUrl = userData || null;
+            let data = await this.loadData(CONFIG_STORAGE_NAME);
+            if (!data) {
+                data = await this.migrateOldConfig();
+            }
+            this.assistantAvatarUrl = data.assistantAvatarUrl ?? null;
+            this.userAvatarUrl = data.userAvatarUrl ?? null;
+            this.notebookId = data.notebookId ?? DEFAULT_NOTEBOOK_ID;
+            this.autoSync = data.autoSync === true || data.autoSync === 'true' || data.autoSync === 1;
+            this.viewStyle = data.viewStyle === 'card' ? 'card' : 'list';
+            this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', ...(data.flomoConfig || data.flomo || {}) };
+            this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
+            this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.memosConfig || data.memos || {}) };
+            this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...(data.reviewConfig || data.review || {}) };
+            this.tagIcons = data.tagIcons || {};
+            this.pinnedTags = Array.isArray(data.pinnedTags) ? data.pinnedTags : [];
+            this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
+            this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
+            this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...(data.fontSizeConfig || data.fontSize || {}) };
         } catch (e) {
-            console.warn("加载头像失败", e);
-            this.assistantAvatarUrl = null;
-            this.userAvatarUrl = null;
+            console.warn("加载配置失败", e);
         }
+    }
+
+    async migrateOldConfig() {
+        const data = {};
+        const oldKeys = {
+            assistantAvatarUrl: 'shuoshuo-avatar-assistant',
+            userAvatarUrl: 'shuoshuo-avatar-user',
+            notebookId: 'shuoshuo-notebook-id',
+            autoSync: 'shuoshuo-auto-sync',
+            viewStyle: 'shuoshuo-view-style',
+            flomoConfig: 'shuoshuo-flomo-config',
+            writeathonConfig: 'shuoshuo-writeathon-config',
+            memosConfig: 'shuoshuo-memos-config',
+            reviewConfig: 'shuoshuo-review-config',
+            tagIcons: 'shuoshuo-tag-icons',
+            pinnedTags: 'shuoshuo-tag-pinned',
+            themeMode: 'shuoshuo-theme-mode',
+            morandiColor: 'shuoshuo-morandi-color',
+            fontSizeConfig: 'shuoshuo-font-size-config'
+        };
+        for (const [key, storageKey] of Object.entries(oldKeys)) {
+            try {
+                const val = await this.loadData(storageKey);
+                if (val !== null && val !== undefined) {
+                    data[key] = val;
+                }
+            } catch (e) {
+                // 忽略旧配置读取失败
+            }
+        }
+        await this.saveData(CONFIG_STORAGE_NAME, data);
+        return data;
+    }
+
+    async saveConfig() {
+        try {
+            await this.saveData(CONFIG_STORAGE_NAME, {
+                assistantAvatarUrl: this.assistantAvatarUrl,
+                userAvatarUrl: this.userAvatarUrl,
+                notebookId: this.notebookId,
+                autoSync: this.autoSync,
+                viewStyle: this.viewStyle,
+                flomoConfig: this.flomoConfig,
+                writeathonConfig: this.writeathonConfig,
+                memosConfig: this.memosConfig,
+                reviewConfig: this.reviewConfig,
+                tagIcons: this.tagIcons,
+                pinnedTags: this.pinnedTags,
+                themeMode: this.themeMode,
+                morandiColor: this.morandiColor,
+                fontSizeConfig: this.fontSizeConfig
+            });
+        } catch (e) {
+            console.warn("保存配置失败", e);
+        }
+    }
+
+    async loadAvatars() {
+        await this.loadConfig();
     }
 
     async loadNotebookId() {
-        try {
-            const data = await this.loadData(NOTEBOOK_ID_STORAGE_NAME);
-            this.notebookId = data || DEFAULT_NOTEBOOK_ID;
-        } catch (e) {
-            console.warn("加载笔记本ID失败", e);
-            this.notebookId = DEFAULT_NOTEBOOK_ID;
-        }
+        await this.loadConfig();
     }
 
     async loadAutoSync() {
-        try {
-            const data = await this.loadData(AUTO_SYNC_STORAGE_NAME);
-            // 严格转换为布尔值，防止字符串 "false" 被当作 true
-            this.autoSync = data === true || data === 'true' || data === 1;
-        } catch (e) {
-            console.warn("加载自动同步设置失败", e);
-            this.autoSync = false;
-        }
+        await this.loadConfig();
     }
 
     async loadViewStyle() {
-        try {
-            const data = await this.loadData(VIEW_STYLE_STORAGE_NAME);
-            this.viewStyle = data === 'card' ? 'card' : 'list';
-        } catch (e) {
-            console.warn("加载视图样式设置失败", e);
-            this.viewStyle = 'list';
-        }
+        await this.loadConfig();
     }
 
     // 应用视图样式到笔记列表
@@ -6866,65 +6891,31 @@ document.getElementById('btn-save').addEventListener('click', save);
     // ==================== Flomo 同步功能 ====================
 
     async loadFlomoConfig() {
-        try {
-            const data = await this.loadData(FLOMO_CONFIG_STORAGE_NAME);
-            this.flomoConfig = data || { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
-        } catch (e) {
-            console.warn("加载 flomo 配置失败", e);
-            this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
-        }
+        await this.loadConfig();
     }
 
     async saveFlomoConfig() {
-        try {
-            await this.saveData(FLOMO_CONFIG_STORAGE_NAME, this.flomoConfig);
-        } catch (e) {
-            console.warn("保存 flomo 配置失败", e);
-        }
+        await this.saveConfig();
     }
 
     // 加载回顾配置
     async loadReviewConfig() {
-        try {
-            const data = await this.loadData(REVIEW_CONFIG_STORAGE_NAME);
-            if (data) {
-                this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...data };
-            } else {
-                this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
-            }
-        } catch (e) {
-            console.warn("加载回顾配置失败", e);
-            this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
-        }
+        await this.loadConfig();
     }
 
     // 保存回顾配置
     async saveReviewConfig() {
-        try {
-            await this.saveData(REVIEW_CONFIG_STORAGE_NAME, this.reviewConfig);
-        } catch (e) {
-            console.warn("保存回顾配置失败", e);
-        }
+        await this.saveConfig();
     }
 
     // 加载标签图标
     async loadTagIcons() {
-        try {
-            const data = await this.loadData(TAG_ICONS_STORAGE_NAME);
-            this.tagIcons = data || {};
-        } catch (e) {
-            console.warn("加载标签图标失败", e);
-            this.tagIcons = {};
-        }
+        await this.loadConfig();
     }
 
     // 保存标签图标
     async saveTagIcons() {
-        try {
-            await this.saveData(TAG_ICONS_STORAGE_NAME, this.tagIcons);
-        } catch (e) {
-            console.warn("保存标签图标失败", e);
-        }
+        await this.saveConfig();
     }
 
     // 设置标签图标
@@ -6940,22 +6931,12 @@ document.getElementById('btn-save').addEventListener('click', save);
 
     // 加载置顶标签
     async loadPinnedTags() {
-        try {
-            const data = await this.loadData(TAG_PINNED_STORAGE_NAME);
-            this.pinnedTags = Array.isArray(data) ? data : [];
-        } catch (e) {
-            console.warn("加载置顶标签失败", e);
-            this.pinnedTags = [];
-        }
+        await this.loadConfig();
     }
 
     // 保存置顶标签
     async savePinnedTags() {
-        try {
-            await this.saveData(TAG_PINNED_STORAGE_NAME, this.pinnedTags);
-        } catch (e) {
-            console.warn("保存置顶标签失败", e);
-        }
+        await this.saveConfig();
     }
 
     // 切换置顶状态
@@ -7317,43 +7298,22 @@ document.getElementById('btn-save').addEventListener('click', save);
 
     // 加载主题模式
     async loadThemeMode() {
-        try {
-            const data = await this.loadData(THEME_MODE_STORAGE_NAME);
-            this.themeMode = data || DEFAULT_THEME_MODE;
-        } catch (e) {
-            console.warn("加载主题模式失败", e);
-            this.themeMode = DEFAULT_THEME_MODE;
-        }
+        await this.loadConfig();
     }
 
     // 保存主题模式
     async saveThemeMode() {
-        try {
-            await this.saveData(THEME_MODE_STORAGE_NAME, this.themeMode);
-        } catch (e) {
-            console.warn("保存主题模式失败", e);
-        }
+        await this.saveConfig();
     }
 
     // 加载莫兰迪配色
     async loadMorandiColor() {
-        try {
-            const data = await this.loadData(MORANDI_COLOR_STORAGE_NAME);
-            const validKeys = MORANDI_COLORS.map(c => c.key);
-            this.morandiColor = validKeys.includes(data) ? data : MORANDI_COLORS[0].key;
-        } catch (e) {
-            console.warn("加载莫兰迪配色失败", e);
-            this.morandiColor = MORANDI_COLORS[0].key;
-        }
+        await this.loadConfig();
     }
 
     // 保存莫兰迪配色
     async saveMorandiColor() {
-        try {
-            await this.saveData(MORANDI_COLOR_STORAGE_NAME, this.morandiColor);
-        } catch (e) {
-            console.warn("保存莫兰迪配色失败", e);
-        }
+        await this.saveConfig();
     }
 
     // 应用主题模式
@@ -7379,23 +7339,12 @@ document.getElementById('btn-save').addEventListener('click', save);
 
     // 加载字体大小配置
     async loadFontSizeConfig() {
-        try {
-            const data = await this.loadData(FONT_SIZE_CONFIG_STORAGE_NAME);
-            if (data && typeof data === 'object') {
-                this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...data };
-            }
-        } catch (e) {
-            this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG };
-        }
+        await this.loadConfig();
     }
 
     // 保存字体大小配置
     async saveFontSizeConfig() {
-        try {
-            await this.saveData(FONT_SIZE_CONFIG_STORAGE_NAME, this.fontSizeConfig);
-        } catch (e) {
-            console.warn("保存字体大小设置失败", e);
-        }
+        await this.saveConfig();
     }
 
     // 应用字体大小配置
@@ -8183,21 +8132,11 @@ document.getElementById('btn-save').addEventListener('click', save);
     // ==================== 写拉松同步功能 ====================
 
     async loadWriteathonConfig() {
-        try {
-            const data = await this.loadData(WRITEATHON_CONFIG_STORAGE_NAME);
-            this.writeathonConfig = data || { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
-        } catch (e) {
-            console.warn("加载写拉松配置失败", e);
-            this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
-        }
+        await this.loadConfig();
     }
 
     async saveWriteathonConfig() {
-        try {
-            await this.saveData(WRITEATHON_CONFIG_STORAGE_NAME, this.writeathonConfig);
-        } catch (e) {
-            console.warn("保存写拉松配置失败", e);
-        }
+        await this.saveConfig();
     }
 
     async writeathonRequest(path, options = {}) {
@@ -8618,21 +8557,11 @@ document.getElementById('btn-save').addEventListener('click', save);
     // ==================== Memos 同步功能 ====================
 
     async loadMemosConfig() {
-        try {
-            const data = await this.loadData(MEMOS_CONFIG_STORAGE_NAME);
-            this.memosConfig = data || { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo' };
-        } catch (e) {
-            console.warn("加载 Memos 配置失败", e);
-            this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo' };
-        }
+        await this.loadConfig();
     }
 
     async saveMemosConfig() {
-        try {
-            await this.saveData(MEMOS_CONFIG_STORAGE_NAME, this.memosConfig);
-        } catch (e) {
-            console.warn("保存 Memos 配置失败", e);
-        }
+        await this.saveConfig();
     }
 
     async memosRequest(path, options = {}) {
@@ -9084,56 +9013,8 @@ document.getElementById('btn-save').addEventListener('click', save);
 
     uninstall() {
         // 保留用户笔记数据（STORAGE_NAME），仅删除配置文件
-        this.removeData(AVATAR_ASSISTANT_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${AVATAR_ASSISTANT_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(AVATAR_USER_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${AVATAR_USER_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(NOTEBOOK_ID_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${NOTEBOOK_ID_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(AUTO_SYNC_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${AUTO_SYNC_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(VIEW_STYLE_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${VIEW_STYLE_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(FLOMO_CONFIG_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${FLOMO_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(FLOMO_SYNC_TIME_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${FLOMO_SYNC_TIME_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(FLOMO_SYNC_TARGET_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${FLOMO_SYNC_TARGET_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(FLOMO_SYNC_DOC_ID_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${FLOMO_SYNC_DOC_ID_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(WRITEATHON_CONFIG_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${WRITEATHON_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(WRITEATHON_SYNC_TIME_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${WRITEATHON_SYNC_TIME_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(MEMOS_CONFIG_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${MEMOS_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(REVIEW_CONFIG_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${REVIEW_CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(TAG_ICONS_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${TAG_ICONS_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(TAG_PINNED_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${TAG_PINNED_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(THEME_MODE_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${THEME_MODE_STORAGE_NAME}] fail: ${e.msg}`);
-        });
-        this.removeData(MORANDI_COLOR_STORAGE_NAME).catch(e => {
-            showMessage(`uninstall [${this.name}] remove data [${MORANDI_COLOR_STORAGE_NAME}] fail: ${e.msg}`);
+        this.removeData(CONFIG_STORAGE_NAME).catch(e => {
+            showMessage(`uninstall [${this.name}] remove data [${CONFIG_STORAGE_NAME}] fail: ${e.msg}`);
         });
     }
 }
