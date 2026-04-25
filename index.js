@@ -129,7 +129,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.addCommand({
             langKey: "openShuoshuo",
             langText: "打开轻语",
-            hotkey: "Ctrl+Shift+S",
+            hotkey: "⌥⌘S",
             callback: () => {
                 this.openShuoshuoTab();
             }
@@ -150,7 +150,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.addCommand({
             langKey: "openQuickWindow",
             langText: "打开快速记录窗口",
-            hotkey: "Ctrl+Alt+U",
+            hotkey: "⌥⌘U",
             callback: quickWindowCallback,
             globalCallback: quickWindowCallback
         });
@@ -5710,7 +5710,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 this.applyThemeMode();
                 
                 // 保存设置
-                await this.saveThemeMode();
+                await this.saveConfig();
             });
         });
         
@@ -5725,7 +5725,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 option.classList.add('selected');
                 
                 this.applyThemeMode();
-                await this.saveMorandiColor();
+                await this.saveConfig();
             });
         });
 
@@ -5756,7 +5756,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 this.applyFontSizeConfig();
                 
                 // 保存设置
-                await this.saveFontSizeConfig();
+                await this.saveConfig();
             });
         });
         
@@ -5768,7 +5768,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 if (size > 24) size = 24;
                 this.fontSizeConfig.customSize = size;
                 this.applyFontSizeConfig();
-                await this.saveFontSizeConfig();
+                await this.saveConfig();
             });
         }
 
@@ -5806,12 +5806,12 @@ document.getElementById('btn-save').addEventListener('click', save);
                     dailyCount: reviewDailyCount,
                     theme: reviewTheme
                 };
-                await this.saveReviewConfig();
+                await this.saveConfig();
 
                 // 保存主题模式
-                await this.saveThemeMode();
-                await this.saveMorandiColor();
-                await this.saveFontSizeConfig();
+                await this.saveConfig();
+                await this.saveConfig();
+                await this.saveConfig();
 
                 showMessage('设置已保存');
             };
@@ -5949,7 +5949,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         if (flomoLogoutBtn) {
             flomoLogoutBtn.onclick = async () => {
                 this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
-                await this.saveFlomoConfig();
+                await this.saveConfig();
                 if (flomoUsername) flomoUsername.value = '';
                 if (flomoPassword) flomoPassword.value = '';
                 this.updateFlomoUI();
@@ -5971,7 +5971,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                     this.flomoConfig.syncDocId = targetDocIdInput.value.trim();
                 }
                 
-                await this.saveFlomoConfig();
+                await this.saveConfig();
                 
                 // 检查是否选择了全量同步
                 const fullSyncCheckbox = this.container.querySelector('#flomo-full-sync');
@@ -6172,7 +6172,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 if (result.success) {
                     this.writeathonConfig.token = token;
                     this.writeathonConfig.userId = userId;
-                    await this.saveWriteathonConfig();
+                    await this.saveConfig();
                     showMessage('验证成功');
                     this.updateWriteathonUI();
                     // 加载空间列表
@@ -6186,7 +6186,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         if (clearBtn) {
             clearBtn.onclick = async () => {
                 this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
-                await this.saveWriteathonConfig();
+                await this.saveConfig();
                 if (tokenInput) tokenInput.value = '';
                 if (userIdInput) userIdInput.value = '';
                 this.updateWriteathonUI();
@@ -6206,7 +6206,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                     this.writeathonConfig.syncDocId = targetDocIdInput.value.trim();
                 }
                 
-                await this.saveWriteathonConfig();
+                await this.saveConfig();
                 
                 // 检查是否选择了全量同步
                 const fullSyncCheckbox = this.container.querySelector('#writeathon-full-sync');
@@ -6267,7 +6267,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         if (spaceSelect) {
             spaceSelect.addEventListener('change', async () => {
                 this.writeathonConfig.spaceId = spaceSelect.value;
-                await this.saveWriteathonConfig();
+                await this.saveConfig();
             });
         }
     }
@@ -6303,7 +6303,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 if (result.success) {
                     this.memosConfig.host = host;
                     this.memosConfig.token = token;
-                    await this.saveMemosConfig();
+                    await this.saveConfig();
                     showMessage('验证成功');
                     this.updateMemosUI();
                 } else {
@@ -6315,7 +6315,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         if (clearBtn) {
             clearBtn.onclick = async () => {
                 this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
-                await this.saveMemosConfig();
+                await this.saveConfig();
                 if (hostInput) hostInput.value = '';
                 if (tokenInput) tokenInput.value = '';
                 this.updateMemosUI();
@@ -6335,7 +6335,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                     this.memosConfig.syncDocId = targetDocIdInput.value.trim();
                 }
                 
-                await this.saveMemosConfig();
+                await this.saveConfig();
                 
                 // 检查是否选择了全量同步
                 const fullSyncCheckbox = this.container.querySelector('#memos-full-sync');
@@ -6839,31 +6839,10 @@ document.getElementById('btn-save').addEventListener('click', save);
         }
     }
 
-    async loadAvatars() {
-        await this.loadConfig();
-    }
-
-    async loadNotebookId() {
-        await this.loadConfig();
-    }
-
-    async loadAutoSync() {
-        await this.loadConfig();
-    }
-
-    async loadViewStyle() {
-        await this.loadConfig();
-    }
-
     // 应用视图样式到笔记列表
     async applyViewStyle() {
         const listEl = this.container?.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
-        
-        // 确保 viewStyle 已加载
-        if (!this.viewStyle) {
-            await this.loadViewStyle();
-        }
         
         if (this.viewStyle === 'card') {
             listEl.classList.add('card-layout');
@@ -6890,34 +6869,6 @@ document.getElementById('btn-save').addEventListener('click', save);
 
     // ==================== Flomo 同步功能 ====================
 
-    async loadFlomoConfig() {
-        await this.loadConfig();
-    }
-
-    async saveFlomoConfig() {
-        await this.saveConfig();
-    }
-
-    // 加载回顾配置
-    async loadReviewConfig() {
-        await this.loadConfig();
-    }
-
-    // 保存回顾配置
-    async saveReviewConfig() {
-        await this.saveConfig();
-    }
-
-    // 加载标签图标
-    async loadTagIcons() {
-        await this.loadConfig();
-    }
-
-    // 保存标签图标
-    async saveTagIcons() {
-        await this.saveConfig();
-    }
-
     // 设置标签图标
     async setTagIcon(tagName, icon) {
         if (icon && icon.trim()) {
@@ -6925,18 +6876,8 @@ document.getElementById('btn-save').addEventListener('click', save);
         } else {
             delete this.tagIcons[tagName];
         }
-        await this.saveTagIcons();
-        this.renderTags(); // 刷新标签列表
-    }
-
-    // 加载置顶标签
-    async loadPinnedTags() {
-        await this.loadConfig();
-    }
-
-    // 保存置顶标签
-    async savePinnedTags() {
         await this.saveConfig();
+        this.renderTags(); // 刷新标签列表
     }
 
     // 切换置顶状态
@@ -6947,7 +6888,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         } else {
             this.pinnedTags.push(tagName);
         }
-        await this.savePinnedTags();
+        await this.saveConfig();
         this.renderTags();
     }
 
@@ -7219,8 +7160,8 @@ document.getElementById('btn-save').addEventListener('click', save);
         });
 
         await this.saveData(STORAGE_NAME, this.shuoshuos);
-        await this.saveTagIcons();
-        await this.savePinnedTags();
+        await this.saveConfig();
+        await this.saveConfig();
 
         if (this.selectedTag === oldName) {
             this.selectedTag = newName;
@@ -7258,8 +7199,8 @@ document.getElementById('btn-save').addEventListener('click', save);
         }
 
         await this.saveData(STORAGE_NAME, this.shuoshuos);
-        await this.saveTagIcons();
-        await this.savePinnedTags();
+        await this.saveConfig();
+        await this.saveConfig();
         this.renderTags();
         this.renderNotes();
         showMessage('标签已删除');
@@ -7285,8 +7226,8 @@ document.getElementById('btn-save').addEventListener('click', save);
         }
 
         await this.saveData(STORAGE_NAME, this.shuoshuos);
-        await this.saveTagIcons();
-        await this.savePinnedTags();
+        await this.saveConfig();
+        await this.saveConfig();
         this.renderTags();
         this.renderNotes();
         showMessage('标签和关联笔记已删除');
@@ -7296,25 +7237,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    // 加载主题模式
-    async loadThemeMode() {
-        await this.loadConfig();
-    }
 
-    // 保存主题模式
-    async saveThemeMode() {
-        await this.saveConfig();
-    }
-
-    // 加载莫兰迪配色
-    async loadMorandiColor() {
-        await this.loadConfig();
-    }
-
-    // 保存莫兰迪配色
-    async saveMorandiColor() {
-        await this.saveConfig();
-    }
 
     // 应用主题模式
     applyThemeMode() {
@@ -7335,16 +7258,6 @@ document.getElementById('btn-save').addEventListener('click', save);
         if (themeToApply === 'morandi' && this.morandiColor) {
             container.classList.add(`morandi-${this.morandiColor}`);
         }
-    }
-
-    // 加载字体大小配置
-    async loadFontSizeConfig() {
-        await this.loadConfig();
-    }
-
-    // 保存字体大小配置
-    async saveFontSizeConfig() {
-        await this.saveConfig();
     }
 
     // 应用字体大小配置
@@ -7636,7 +7549,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 this.flomoConfig.username = username;
                 this.flomoConfig.password = password;
                 this.flomoConfig.accessToken = data.data.access_token;
-                await this.saveFlomoConfig();
+                await this.saveConfig();
                 return { success: true, message: '登录成功' };
             } else {
                 return { success: false, message: data.message || '登录失败' };
@@ -7728,7 +7641,7 @@ document.getElementById('btn-save').addEventListener('click', save);
             
             // 更新最后同步时间（全量同步后也更新为当前时间）
             this.flomoConfig.lastSyncTime = new Date().toISOString().replace('T', ' ').substring(0, 19);
-            await this.saveFlomoConfig();
+            await this.saveConfig();
             
             const syncTypeText = isFullSync ? '全量同步' : '同步';
             showMessage(`成功${syncTypeText} ${allMemos.length} 条笔记`);
@@ -8131,14 +8044,6 @@ document.getElementById('btn-save').addEventListener('click', save);
 
     // ==================== 写拉松同步功能 ====================
 
-    async loadWriteathonConfig() {
-        await this.loadConfig();
-    }
-
-    async saveWriteathonConfig() {
-        await this.saveConfig();
-    }
-
     async writeathonRequest(path, options = {}) {
         const url = `${WRITEATHON_API_BASE}${path}`;
         const headers = {
@@ -8323,7 +8228,7 @@ document.getElementById('btn-save').addEventListener('click', save);
             
             // 更新最后同步时间
             this.writeathonConfig.lastSyncTime = new Date().toISOString().replace('T', ' ').substring(0, 19);
-            await this.saveWriteathonConfig();
+            await this.saveConfig();
             
             showMessage(`成功同步 ${cardDetails.length} 张卡片`);
         } catch (e) {
@@ -8556,14 +8461,6 @@ document.getElementById('btn-save').addEventListener('click', save);
 
     // ==================== Memos 同步功能 ====================
 
-    async loadMemosConfig() {
-        await this.loadConfig();
-    }
-
-    async saveMemosConfig() {
-        await this.saveConfig();
-    }
-
     async memosRequest(path, options = {}) {
         const url = `${this.memosConfig.host.replace(/\/$/, '')}${path}`;
         
@@ -8705,7 +8602,7 @@ document.getElementById('btn-save').addEventListener('click', save);
             
             // 更新最后同步时间
             this.memosConfig.lastSyncTime = new Date().toISOString().replace('T', ' ').substring(0, 19);
-            await this.saveMemosConfig();
+            await this.saveConfig();
             
             showMessage(`成功同步 ${memos.length} 条 Memos`);
         } catch (e) {
