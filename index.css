@@ -656,7 +656,7 @@
     min-height: 60px;
     border: none;
     outline: none;
-    font-size: 14.5px;
+    font-size: var(--shuoshuo-content-font-size, 14.5px);
     line-height: 2;
     font-family: inherit;
     resize: none;
@@ -782,6 +782,8 @@
     width: 100%;
     box-sizing: border-box;
     overflow: hidden;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .north-shuoshuo-note-card:hover {
@@ -842,6 +844,8 @@
     white-space: nowrap;
     flex-shrink: 1;
     min-width: 0;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .north-shuoshuo-note-menu {
@@ -868,7 +872,7 @@
 }
 
 .north-shuoshuo-note-content {
-    font-size: 14.5px;
+    font-size: var(--shuoshuo-content-font-size, 14.5px);
     line-height: 2;
     color: var(--b3-theme-on-background);
     margin-bottom: 8px;
@@ -877,6 +881,8 @@
     word-break: break-word;
     max-width: 100%;
     overflow: hidden;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .north-shuoshuo-note-tag {
@@ -2318,7 +2324,7 @@
 .north-shuoshuo-radio-item {
     display: flex;
     align-items: center;
-    padding: 12px;
+    padding: 8px;
     border: 1px solid var(--b3-border-color);
     border-radius: 8px;
     cursor: pointer;
@@ -2342,8 +2348,8 @@
 }
 
 .north-shuoshuo-radio-check {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     border: 2px solid var(--b3-border-color);
     border-radius: 50%;
     margin-right: 12px;
@@ -2361,8 +2367,8 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%) scale(0);
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     background: var(--b3-theme-primary);
     border-radius: 50%;
     transition: transform 0.2s;
@@ -2373,8 +2379,8 @@
 }
 
 .north-shuoshuo-radio-preview {
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     background: var(--b3-theme-surface-lighter);
     border-radius: 6px;
     margin-right: 12px;
@@ -2382,12 +2388,12 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 8px;
-    gap: 4px;
+    padding: 6px;
+    gap: 3px;
 }
 
 .north-shuoshuo-radio-preview .preview-line {
-    height: 4px;
+    height: 3px;
     background: var(--b3-border-color);
     border-radius: 2px;
 }
@@ -2399,12 +2405,12 @@
 .north-shuoshuo-radio-preview.card-preview {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
 }
 
 .north-shuoshuo-radio-preview.card-preview .preview-card-row {
     display: flex;
-    gap: 3px;
+    gap: 2px;
     flex: 1;
 }
 
@@ -2412,7 +2418,7 @@
     flex: 1;
     background: var(--b3-border-color);
     border-radius: 2px;
-    min-height: 6px;
+    min-height: 4px;
 }
 
 .north-shuoshuo-radio-info {
@@ -3063,7 +3069,7 @@
 
 /* 便利贴内容：覆盖深色文字 */
 .north-shuoshuo-sticky-note-content {
-    font-size: 14.5px;
+    font-size: var(--shuoshuo-content-font-size, 14.5px);
     line-height: 1.7;
     color: rgba(0,0,0,0.85);
     margin-bottom: 14px;
@@ -5961,7 +5967,7 @@
 }
 
 /* 莫兰迪主题 - 基础变量 */
-.north-shuoshuo-container.theme-morandi {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).theme-morandi {
     --b3-theme-primary: #D4A5A5;
     --b3-theme-primary-light: #E5C4C4;
     --b3-theme-primary-lighter: #F0DADA;
@@ -5975,48 +5981,52 @@
     --b3-theme-on-surface-light: #9A9592;
     --b3-border-color: #E8E4E1;
     --b3-list-hover: #F5F2EF;
+}
+
+/* 莫兰迪主题 - 容器本身的背景色和文字色（不应用到浮层，避免遮挡页面） */
+.north-shuoshuo-container.theme-morandi {
     font-family: inherit;
     background-color: var(--b3-theme-background);
     color: var(--b3-theme-on-background);
 }
 
 /* 浅色系列 */
-.north-shuoshuo-container.morandi-dusty-pink {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-dusty-pink {
     --b3-theme-primary: #D4A5A5;
     --b3-theme-primary-light: #E5C4C4;
     --b3-theme-primary-lighter: #F0DADA;
     --b3-theme-primary-lightest: #FAF0F0;
 }
 
-.north-shuoshuo-container.morandi-sage-green {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-sage-green {
     --b3-theme-primary: #9CAF88;
     --b3-theme-primary-light: #B8C9A8;
     --b3-theme-primary-lighter: #D4E0C8;
     --b3-theme-primary-lightest: #EDF3E8;
 }
 
-.north-shuoshuo-container.morandi-muted-blue {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-muted-blue {
     --b3-theme-primary: #8FA1B3;
     --b3-theme-primary-light: #B0BEC9;
     --b3-theme-primary-lighter: #D0D9E0;
     --b3-theme-primary-lightest: #EBF0F4;
 }
 
-.north-shuoshuo-container.morandi-warm-beige {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-warm-beige {
     --b3-theme-primary: #C4B7A6;
     --b3-theme-primary-light: #D8CFC2;
     --b3-theme-primary-lighter: #E9E2D9;
     --b3-theme-primary-lightest: #F7F4F0;
 }
 
-.north-shuoshuo-container.morandi-dusty-purple {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-dusty-purple {
     --b3-theme-primary: #A898B5;
     --b3-theme-primary-light: #C4BAD1;
     --b3-theme-primary-lighter: #DDD6E6;
     --b3-theme-primary-lightest: #F2EFF6;
 }
 
-.north-shuoshuo-container.morandi-terracotta {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-terracotta {
     --b3-theme-primary: #C78D7B;
     --b3-theme-primary-light: #DBB2A6;
     --b3-theme-primary-lighter: #EDD6CF;
@@ -6024,28 +6034,28 @@
 }
 
 /* 中度系列 */
-.north-shuoshuo-container.morandi-olive-green {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-olive-green {
     --b3-theme-primary: #A3A380;
     --b3-theme-primary-light: #C0C0A3;
     --b3-theme-primary-lighter: #DCDCC6;
     --b3-theme-primary-lightest: #F2F2EB;
 }
 
-.north-shuoshuo-container.morandi-slate-blue {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-slate-blue {
     --b3-theme-primary: #7D8A9E;
     --b3-theme-primary-light: #A5AEBD;
     --b3-theme-primary-lighter: #CCD2DB;
     --b3-theme-primary-lightest: #EBEEF2;
 }
 
-.north-shuoshuo-container.morandi-mauve {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-mauve {
     --b3-theme-primary: #B8A1A8;
     --b3-theme-primary-light: #D1C2C6;
     --b3-theme-primary-lighter: #E6DDE0;
     --b3-theme-primary-lightest: #F5F0F2;
 }
 
-.north-shuoshuo-container.morandi-warm-gray {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-warm-gray {
     --b3-theme-primary: #A8A39D;
     --b3-theme-primary-light: #C4C0BC;
     --b3-theme-primary-lighter: #DDDAD7;
@@ -6053,91 +6063,91 @@
 }
 
 /* 深色系列 */
-.north-shuoshuo-container.morandi-deep-bean {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-deep-bean {
     --b3-theme-primary: #A67B7B;
     --b3-theme-primary-light: #C4A5A5;
     --b3-theme-primary-lighter: #E0D0D0;
     --b3-theme-primary-lightest: #F5ECEC;
 }
 
-.north-shuoshuo-container.morandi-dark-moss {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-dark-moss {
     --b3-theme-primary: #7A8471;
     --b3-theme-primary-light: #A0A896;
     --b3-theme-primary-lighter: #C8CDBF;
     --b3-theme-primary-lightest: #EBEDE6;
 }
 
-.north-shuoshuo-container.morandi-caramel {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-caramel {
     --b3-theme-primary: #A67C52;
     --b3-theme-primary-light: #C9A783;
     --b3-theme-primary-lighter: #E4D3BC;
     --b3-theme-primary-lightest: #F5EDE2;
 }
 
-.north-shuoshuo-container.morandi-dusk-purple {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-dusk-purple {
     --b3-theme-primary: #8B7B8B;
     --b3-theme-primary-light: #ADA0AD;
     --b3-theme-primary-lighter: #D6CFD6;
     --b3-theme-primary-lightest: #F2EFF2;
 }
 
-.north-shuoshuo-container.morandi-deep-sea {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-deep-sea {
     --b3-theme-primary: #5E738B;
     --b3-theme-primary-light: #8A9AAF;
     --b3-theme-primary-lighter: #C0CBD8;
     --b3-theme-primary-lightest: #EBEFF4;
 }
 
-.north-shuoshuo-container.morandi-tobacco {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-tobacco {
     --b3-theme-primary: #8B7355;
     --b3-theme-primary-light: #B39B7D;
     --b3-theme-primary-lighter: #D9CCB8;
     --b3-theme-primary-lightest: #F2EDE5;
 }
 
-.north-shuoshuo-container.morandi-stone {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-stone {
     --b3-theme-primary: #7D7D7D;
     --b3-theme-primary-light: #A5A5A5;
     --b3-theme-primary-lighter: #D0D0D0;
     --b3-theme-primary-lightest: #EFEFEF;
 }
 
-.north-shuoshuo-container.morandi-withered-rose {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-withered-rose {
     --b3-theme-primary: #9E7A7A;
     --b3-theme-primary-light: #C2A5A5;
     --b3-theme-primary-lighter: #E0D0D0;
     --b3-theme-primary-lightest: #F5ECEC;
 }
 
-.north-shuoshuo-container.morandi-navy-gray {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-navy-gray {
     --b3-theme-primary: #5D6D7E;
     --b3-theme-primary-light: #8A9AAF;
     --b3-theme-primary-lighter: #C0CBD8;
     --b3-theme-primary-lightest: #EBEFF4;
 }
 
-.north-shuoshuo-container.morandi-rust-red {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-rust-red {
     --b3-theme-primary: #9C6B6B;
     --b3-theme-primary-light: #C2A5A5;
     --b3-theme-primary-lighter: #E0D0D0;
     --b3-theme-primary-lightest: #F5ECEC;
 }
 
-.north-shuoshuo-container.morandi-sandalwood {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-sandalwood {
     --b3-theme-primary: #8B6F5C;
     --b3-theme-primary-light: #B39B7D;
     --b3-theme-primary-lighter: #D9CCB8;
     --b3-theme-primary-lightest: #F2EDE5;
 }
 
-.north-shuoshuo-container.morandi-slate-green {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-slate-green {
     --b3-theme-primary: #7D8B8B;
     --b3-theme-primary-light: #A5B3B3;
     --b3-theme-primary-lighter: #D0D8D8;
     --b3-theme-primary-lightest: #EDF1F1;
 }
 
-.north-shuoshuo-container.morandi-deep-wisteria {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-deep-wisteria {
     --b3-theme-primary: #6B5B6B;
     --b3-theme-primary-light: #998A99;
     --b3-theme-primary-lighter: #C8BFC8;
@@ -6939,7 +6949,7 @@
 
 /* 内容覆盖 */
 .north-shuoshuo-cork-note-content {
-    font-size: 14.5px;
+    font-size: var(--shuoshuo-content-font-size, 14.5px);
     color: rgba(0,0,0,0.7);
     line-height: 1.7;
     margin-top: 8px;
@@ -7486,4 +7496,278 @@
     .north-shuoshuo-review-card {
         padding: 40px 28px 32px;
     }
+}
+
+
+/* ========================================
+   快速记录浮层 - 主题适配
+   ======================================== */
+
+/* 基础结构 */
+.north-shuoshuo-quick-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 99998;
+    pointer-events: none;
+}
+
+.north-shuoshuo-quick-overlay-content {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 520px;
+    max-width: 90vw;
+    height: 360px;
+    max-height: 80vh;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    pointer-events: auto;
+}
+
+.quick-overlay-header {
+    padding: 16px 20px 8px;
+    font-size: 16px;
+    font-weight: 600;
+    flex-shrink: 0;
+    cursor: move;
+    user-select: none;
+}
+
+.quick-overlay-body {
+    flex: 1;
+    padding: 0 20px;
+    min-height: 0;
+}
+
+.quick-overlay-body textarea {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: var(--shuoshuo-content-font-size, 14.5px);
+    line-height: 1.6;
+    font-family: inherit;
+    background: transparent;
+}
+
+.quick-overlay-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px 16px;
+    flex-shrink: 0;
+}
+
+.quick-overlay-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.quick-overlay-toolbar-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s;
+    user-select: none;
+    font-size: 16px;
+}
+
+.quick-overlay-toolbar-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.quick-overlay-toolbar-divider {
+    width: 1px;
+    height: 18px;
+}
+
+.quick-overlay-toolbar-right {
+    display: flex;
+    gap: 10px;
+}
+
+.quick-overlay-btn {
+    padding: 6px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.2s;
+}
+
+/* ---------- 原主题 ---------- */
+.theme-original .north-shuoshuo-quick-overlay-content {
+    background: #fff;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+}
+
+.theme-original .quick-overlay-header {
+    color: #333;
+}
+
+.theme-original .quick-overlay-body textarea {
+    color: #333;
+}
+
+.theme-original .quick-overlay-body textarea::placeholder {
+    color: #999;
+}
+
+.theme-original .quick-overlay-toolbar {
+    border-top: 1px solid #f0f0f0;
+}
+
+.theme-original .quick-overlay-toolbar-icon {
+    color: #999;
+}
+
+.theme-original .quick-overlay-toolbar-icon:hover {
+    background: #f5f5f5;
+    color: #666;
+}
+
+.theme-original .quick-overlay-toolbar-divider {
+    background: #eee;
+}
+
+.theme-original .quick-overlay-btn {
+    border-color: #ddd;
+    background: #fff;
+    color: #666;
+}
+
+.theme-original .quick-overlay-btn:hover {
+    background: #f5f5f5;
+}
+
+.theme-original .quick-overlay-btn.primary {
+    background: #34c759;
+    border-color: #34c759;
+    color: #fff;
+}
+
+.theme-original .quick-overlay-btn.primary:hover {
+    background: #2db14d;
+}
+
+/* ---------- 适配思源主题 ---------- */
+.theme-siyuan .north-shuoshuo-quick-overlay-content {
+    background: var(--b3-theme-surface);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    border: 1px solid var(--b3-border-color);
+}
+
+.theme-siyuan .quick-overlay-header {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-siyuan .quick-overlay-body textarea {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-siyuan .quick-overlay-body textarea::placeholder {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-siyuan .quick-overlay-toolbar {
+    border-top: 1px solid var(--b3-border-color);
+}
+
+.theme-siyuan .quick-overlay-toolbar-icon {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-siyuan .quick-overlay-toolbar-icon:hover {
+    background: var(--b3-list-hover);
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-siyuan .quick-overlay-toolbar-divider {
+    background: var(--b3-border-color);
+}
+
+.theme-siyuan .quick-overlay-btn {
+    border-color: var(--b3-border-color);
+    background: var(--b3-theme-surface);
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-siyuan .quick-overlay-btn:hover {
+    background: var(--b3-list-hover);
+}
+
+.theme-siyuan .quick-overlay-btn.primary {
+    background: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+}
+
+.theme-siyuan .quick-overlay-btn.primary:hover {
+    opacity: 0.9;
+}
+
+/* ---------- 莫兰迪主题 ---------- */
+.theme-morandi .north-shuoshuo-quick-overlay-content {
+    background: var(--b3-theme-surface);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    border: 1px solid var(--b3-border-color);
+}
+
+.theme-morandi .quick-overlay-header {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .quick-overlay-body textarea {
+    color: var(--b3-theme-on-background);
+}
+
+.theme-morandi .quick-overlay-body textarea::placeholder {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .quick-overlay-toolbar {
+    border-top: 1px solid var(--b3-border-color);
+}
+
+.theme-morandi .quick-overlay-toolbar-icon {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .quick-overlay-toolbar-icon:hover {
+    background: var(--b3-list-hover);
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .quick-overlay-toolbar-divider {
+    background: var(--b3-border-color);
+}
+
+.theme-morandi .quick-overlay-btn {
+    border-color: var(--b3-border-color);
+    background: var(--b3-theme-surface);
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .quick-overlay-btn:hover {
+    background: var(--b3-list-hover);
+}
+
+.theme-morandi .quick-overlay-btn.primary {
+    background: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+}
+
+.theme-morandi .quick-overlay-btn.primary:hover {
+    opacity: 0.9;
 }

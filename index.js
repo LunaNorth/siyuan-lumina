@@ -62,6 +62,10 @@ const DEFAULT_REVIEW_CONFIG = {
 // 主题配置：original (原主题-硬编码绿色), siyuan (适配思源主题)
 const DEFAULT_THEME_MODE = 'original';
 
+// 字体大小配置
+const FONT_SIZE_CONFIG_STORAGE_NAME = "shuoshuo-font-size-config";
+const DEFAULT_FONT_SIZE_CONFIG = { mode: 'default', customSize: 14.5 };
+
 // Flomo API 配置
 const FLOMO_API_BASE = "https://flomoapp.com/api/v1";
 const FLOMO_SECRET = "dbbc3dd73364b4084c3a69346e0ce2b2";
@@ -121,6 +125,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.pinnedTags = []; // 置顶标签列表
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
         this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
+        this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
         this.loadShuoshuos();
         this.loadAvatars();
         this.loadNotebookId();
@@ -134,6 +139,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.loadPinnedTags();
         this.loadThemeMode();
         this.loadMorandiColor();
+        this.loadFontSizeConfig();
 
         const plugin = this;
 
@@ -150,7 +156,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         });
 
         this.addCommand({
-            langKey: "openShuoshuo",
+            langKey: "打开轻语",
             hotkey: "⌥⌘S",
             callback: () => {
                 this.openShuoshuoTab();
@@ -159,12 +165,17 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // 全局快捷键唤起快速记录窗口
         this.addCommand({
-            langKey: "openQuickWindow",
-            hotkey: "Ctrl+Shift+O",
-            globalCallback: () => {
-                const frontEnd = getFrontend();
-                if (frontEnd === "desktop" || frontEnd === "desktop-window") {
+            langKey: "打开快速记录窗口",
+            hotkey: "Ctrl+Alt+U",
+            callback: () => {
+                try {
+                    if (this.isMobile) {
+                        showMessage('移动端不支持快速记录窗口');
+                        return;
+                    }
                     this.openQuickWindow();
+                } catch (e) {
+                    console.error('打开快速记录窗口失败', e);
                 }
             }
         });
@@ -196,6 +207,11 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 }
             };
             ipcMain.handle('lumina-quick-upload', this._quickUploadHandler);
+
+            this._quickTagsHandler = (event) => {
+                return this.extractAllTags();
+            };
+            ipcMain.handle('lumina-quick-tags', this._quickTagsHandler);
         } catch (e) {
             // 非桌面端，忽略
         }
@@ -232,6 +248,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 // 忽略
             }
         }
+        if (this._quickTagsHandler) {
+            try {
+                const { ipcMain } = require('electron');
+                ipcMain.removeHandler('lumina-quick-tags');
+            } catch (e) {
+                // 忽略
+            }
+        }
         // 关闭快速记录窗口
         if (this.quickWindow && !this.quickWindow.isDestroyed()) {
             this.quickWindow.close();
@@ -251,58 +275,226 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         });
     }
 
-    // 打开/聚焦快速记录窗口
-    openQuickWindow() {
-        if (this.quickWindow && !this.quickWindow.isDestroyed()) {
-            this.quickWindow.show();
-            this.quickWindow.focus();
+    // 打开快速记录浮层（复用说说输入框功能）
+    openQuickOverlay() {
+        const existing = document.querySelector('.north-shuoshuo-quick-overlay');
+        if (existing) {
+            const input = existing.querySelector('#quick-overlay-input');
+            const text = input?.value?.trim();
+            if (text) {
+                this.addQuickNote(text);
+            }
+            existing.remove();
             return;
         }
 
-        try {
-            const { BrowserWindow } = require("@electron/remote");
+        const overlay = document.createElement('div');
+        const themeClass = `theme-${this.themeMode || 'original'}`;
+        const morandiClass = this.themeMode === 'morandi' && this.morandiColor ? ` morandi-${this.morandiColor}` : '';
+        overlay.className = `north-shuoshuo-quick-overlay ${themeClass}${morandiClass}`;
+        overlay.innerHTML = `
+            <div class="north-shuoshuo-quick-overlay-content" id="quick-overlay-panel">
+                <div class="quick-overlay-header" id="quick-overlay-header">快速记录</div>
+                <div class="quick-overlay-body">
+                    <textarea id="quick-overlay-input" placeholder="记录此刻的想法..."></textarea>
+                </div>
+                <div class="quick-overlay-toolbar">
+                    <div class="quick-overlay-toolbar-left">
+                        <span class="quick-overlay-toolbar-icon" data-action="tag" title="标签">#</span>
+                        <span class="quick-overlay-toolbar-icon" data-action="image" title="图片">${ICONS.image}</span>
+                        <span class="quick-overlay-toolbar-divider"></span>
+                        <span class="quick-overlay-toolbar-icon" data-action="ul" title="无序列表">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+                        </span>
+                        <span class="quick-overlay-toolbar-icon" data-action="ol" title="有序列表">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6h2v2H2V6zm4 0h14v2H6V6zM2 11h2v2H2v-2zm4 0h14v2H6v-2zM2 16h2v2H2v-2zm4 0h14v2H6v-2z"/></svg>
+                        </span>
+                        <span class="quick-overlay-toolbar-icon" data-action="mention" title="引用笔记">${ICONS.at}</span>
+                    </div>
+                    <div class="quick-overlay-toolbar-right">
+                        <button class="quick-overlay-btn" id="quick-overlay-close">关闭</button>
+                        <button class="quick-overlay-btn primary" id="quick-overlay-save">保存</button>
+                    </div>
+                </div>
+            </div>
+        `;
 
-            this.quickWindow = new BrowserWindow({
-                width: 520,
-                height: 360,
-                frame: false,
-                skipTaskbar: true,
-                title: "快速记录",
-                webPreferences: {
-                    nodeIntegration: true,
-                    contextIsolation: false,
-                    enableRemoteModule: true,
-                    webSecurity: false
-                },
-                autoHideMenuBar: true,
-                fullscreenable: false,
-                maximizable: false,
-                transparent: true,
-                show: false,
-                alwaysOnTop: true
-            });
 
-            this.quickWindow.loadURL(
-                `data:text/html;charset=utf-8,${encodeURIComponent(this.getQuickWindowHTML())}`
-            );
-
-            this.quickWindow.once('ready-to-show', () => {
-                this.quickWindow.show();
-                this.quickWindow.focus();
-            });
-
-            this.quickWindow.on("blur", () => {
-                if (this.quickWindow && !this.quickWindow.isDestroyed()) {
-                    this.quickWindow.close();
-                }
-            });
-
-            this.quickWindow.on("closed", () => {
-                this.quickWindow = null;
-            });
-        } catch (e) {
-            console.warn("打开快速记录窗口失败", e);
+        const pluginContainer = this.container?.querySelector('.north-shuoshuo-container');
+        if (pluginContainer) {
+            pluginContainer.appendChild(overlay);
+        } else {
+            document.body.appendChild(overlay);
         }
+
+        const input = overlay.querySelector('#quick-overlay-input');
+        const panel = overlay.querySelector('#quick-overlay-panel');
+        const header = overlay.querySelector('#quick-overlay-header');
+
+        // 拖动功能
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        // 初始化位置（去掉 transform，改用 left/top）
+        const initLeft = Math.max(20, (window.innerWidth - 520) / 2);
+        const initTop = Math.max(20, (window.innerHeight - 360) / 2);
+        panel.style.left = initLeft + 'px';
+        panel.style.top = initTop + 'px';
+        panel.style.transform = 'none';
+
+        const onMouseMove = (e) => {
+            if (!isDragging) return;
+            panel.style.left = (e.clientX - dragOffsetX) + 'px';
+            panel.style.top = (e.clientY - dragOffsetY) + 'px';
+        };
+
+        const onMouseUp = () => {
+            if (isDragging) {
+                isDragging = false;
+                header.style.cursor = 'move';
+            }
+        };
+
+        header.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragOffsetX = e.clientX - panel.offsetLeft;
+            dragOffsetY = e.clientY - panel.offsetTop;
+            header.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+
+        // 清理函数
+        const cleanup = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            overlay.remove();
+        };
+
+        // 输入监听
+        input.addEventListener('input', () => {
+            this.handleMentionInput(input);
+        });
+
+        // 键盘事件
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+                const cursorPos = input.selectionStart;
+                const value = input.value;
+                const beforeCursor = value.substring(0, cursorPos);
+                const afterCursor = value.substring(cursorPos);
+                const lines = beforeCursor.split('\n');
+                const currentLine = lines[lines.length - 1];
+
+                const unorderedMatch = currentLine.match(/^(•\s|-\s|\*\s)(.*)$/);
+                const orderedMatch = currentLine.match(/^(\d+)\.\s(.*)$/);
+
+                if (unorderedMatch) {
+                    if (!unorderedMatch[2].trim()) {
+                        e.preventDefault();
+                        lines[lines.length - 1] = '';
+                        input.value = lines.join('\n') + '\n' + afterCursor;
+                        const newPos = lines.join('\n').length + 1;
+                        input.setSelectionRange(newPos, newPos);
+                        return;
+                    }
+                    e.preventDefault();
+                    const newLine = '\n• ';
+                    input.value = beforeCursor + newLine + afterCursor;
+                    input.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+                    return;
+                }
+
+                if (orderedMatch) {
+                    if (!orderedMatch[2].trim()) {
+                        e.preventDefault();
+                        lines[lines.length - 1] = '';
+                        input.value = lines.join('\n') + '\n' + afterCursor;
+                        const newPos = lines.join('\n').length + 1;
+                        input.setSelectionRange(newPos, newPos);
+                        return;
+                    }
+                    e.preventDefault();
+                    const nextNum = parseInt(orderedMatch[1]) + 1;
+                    const newLine = '\n' + nextNum + '. ';
+                    input.value = beforeCursor + newLine + afterCursor;
+                    input.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+                    return;
+                }
+            }
+
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                doSave();
+            }
+        });
+
+        // 工具栏事件
+        overlay.querySelector('[data-action="tag"]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showTagPicker(input);
+        });
+        overlay.querySelector('[data-action="image"]').addEventListener('click', () => {
+            this.insertImage(input);
+        });
+        overlay.querySelector('[data-action="ul"]').addEventListener('click', () => {
+            this.insertText(input, '• ', '');
+            input.focus();
+        });
+        overlay.querySelector('[data-action="ol"]').addEventListener('click', () => {
+            const lines = input.value.substring(0, input.selectionStart).split('\n');
+            const currentLine = lines[lines.length - 1];
+            const match = currentLine.match(/^(\d+)\.\s/);
+            const num = match ? parseInt(match[1]) + 1 : 1;
+            this.insertText(input, num + '. ', '');
+            input.focus();
+        });
+        overlay.querySelector('[data-action="mention"]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showMentionPicker(input);
+        });
+
+        // 保存
+        const doSave = async () => {
+            const text = input.value.trim();
+            if (!text) return;
+            const processed = text.replace(/lumina:\/\/memo\/([a-zA-Z0-9]+)/g, '[MEMO:$1]');
+            const tags = this.extractTags(processed);
+            const shuoshuo = {
+                id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+                content: processed,
+                tags: tags,
+                pinned: false,
+                created: Date.now(),
+                updated: Date.now()
+            };
+            this.shuoshuos.unshift(shuoshuo);
+            await this.saveShuoshuos();
+            if (this.autoSync) {
+                await this.appendToDailyNote(processed, shuoshuo.created);
+            }
+            if (this.container) {
+                this.renderNotes();
+                this.renderTags();
+            }
+            showMessage('已保存到轻语');
+            // 保存后清空输入框并聚焦，窗口保持打开
+            input.value = '';
+            input.focus();
+        };
+        overlay.querySelector('#quick-overlay-save').addEventListener('click', doSave);
+
+        // 关闭按钮
+        overlay.querySelector('#quick-overlay-close').addEventListener('click', cleanup);
+
+        input.focus();
+    }
+
+    // 打开/聚焦快速记录窗口
+    openQuickWindow() {
+        this.openQuickOverlay();
     }
 
     // 构建快速记录窗口的 HTML
@@ -335,6 +527,8 @@ body {
     font-weight: 600;
     color: #333;
     flex-shrink: 0;
+    -webkit-app-region: drag;
+    cursor: move;
 }
 .editor-wrap {
     flex: 1;
@@ -409,16 +603,81 @@ textarea {
 .btn-primary:hover {
     background: #2db14d;
 }
+.tag-picker {
+    position: fixed;
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 99999;
+    width: 260px;
+    padding: 8px 0;
+}
+.tag-picker-input-wrapper {
+    display: flex;
+    align-items: center;
+    padding: 0 12px 6px;
+    border-bottom: 1px solid #f0f0f0;
+    margin-bottom: 4px;
+}
+.tag-picker-prefix {
+    color: #999;
+    font-size: 14px;
+    margin-right: 4px;
+}
+.tag-picker-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    padding: 4px 0;
+    color: #333;
+    font-family: inherit;
+}
+.tag-picker-item {
+    padding: 7px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #555;
+}
+.tag-picker-item:hover, .tag-picker-item.selected {
+    background: #f5f5f5;
+}
+.tag-picker-create {
+    border-top: 1px dashed #eee;
+    margin-top: 2px;
+    padding-top: 7px;
+}
+.tag-picker-create-hint {
+    font-size: 11px;
+    color: #999;
+    margin-right: 6px;
+}
+.tag-picker-empty {
+    padding: 12px;
+    font-size: 13px;
+    color: #aaa;
+    text-align: center;
+}
 .mention-picker {
     position: fixed;
     background: #fff;
     border: 1px solid #e8e8e8;
     border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-    max-height: 200px;
+    max-height: 240px;
     overflow-y: auto;
     z-index: 99999;
     width: 280px;
+}
+.mention-search {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 12px;
+    color: #999;
+    background: #fafafa;
 }
 .mention-item {
     padding: 8px 12px;
@@ -427,11 +686,14 @@ textarea {
     color: #555;
     border-bottom: 1px solid #f5f5f5;
 }
-.mention-item:hover {
+.mention-item:hover, .mention-item.selected {
     background: #f5f5f5;
 }
 .mention-item:last-child {
     border-bottom: none;
+}
+.mention-item.hidden {
+    display: none;
 }
 .mention-date {
     font-size: 11px;
@@ -462,7 +724,7 @@ textarea {
     </div>
 </div>
 <div class="footer">
-    <button class="btn" id="btn-cancel">取消</button>
+    <button class="btn" id="btn-close">关闭</button>
     <button class="btn btn-primary" id="btn-save">保存</button>
 </div>
 
@@ -472,65 +734,193 @@ const editor = document.getElementById('editor');
 editor.focus();
 
 const NOTES = ${notesJson};
+let ALL_TAGS = [];
+let tagPicker = null;
+let mentionPicker = null;
 
-function insertText(text) {
+// 预加载标签列表
+ipcRenderer.invoke('lumina-quick-tags').then(tags => {
+    ALL_TAGS = tags || [];
+}).catch(() => {
+    ALL_TAGS = [];
+});
+
+function insertTextAtCursor(before, after) {
     const start = editor.selectionStart;
     const end = editor.selectionEnd;
-    const val = editor.value;
-    editor.value = val.substring(0, start) + text + val.substring(end);
-    editor.setSelectionRange(start + text.length, start + text.length);
+    const text = editor.value;
+    const selected = text.substring(start, end);
+    editor.value = text.substring(0, start) + before + selected + after + text.substring(end);
+    const newPos = start + before.length + selected.length;
+    editor.setSelectionRange(newPos, newPos);
     editor.focus();
 }
 
-// 标签
-document.getElementById('btn-tag').addEventListener('click', () => insertText('#'));
+function insertText(text) {
+    insertTextAtCursor(text, '');
+}
 
-// 图片
-document.getElementById('btn-image').addEventListener('click', async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-            try {
-                const result = await ipcRenderer.invoke('lumina-quick-upload', { base64: ev.target.result, name: file.name });
-                if (result.success) {
-                    insertText('\\n![' + file.name + '](' + result.url + ')\\n');
-                } else {
-                    alert('图片上传失败: ' + result.error);
-                }
-            } catch (err) {
-                alert('图片上传失败');
+// 标签选择器
+document.getElementById('btn-tag').addEventListener('click', (e) => {
+    e.stopPropagation();
+    showTagPicker();
+});
+
+function showTagPicker() {
+    if (tagPicker) { tagPicker.remove(); tagPicker = null; return; }
+    tagPicker = document.createElement('div');
+    tagPicker.className = 'tag-picker';
+    const rect = document.getElementById('btn-tag').getBoundingClientRect();
+    tagPicker.style.left = rect.left + 'px';
+    tagPicker.style.top = (rect.bottom + 6) + 'px';
+
+    tagPicker.innerHTML = \`
+        <div class="tag-picker-input-wrapper">
+            <span class="tag-picker-prefix">#</span>
+            <input type="text" class="tag-picker-input" placeholder="选择或创建标签..." autocomplete="off">
+        </div>
+        <div class="tag-picker-list"></div>
+    \`;
+    document.body.appendChild(tagPicker);
+
+    const pickerInput = tagPicker.querySelector('.tag-picker-input');
+    const pickerList = tagPicker.querySelector('.tag-picker-list');
+    pickerInput.focus();
+
+    function renderList(value) {
+        const v = (value || '').trim().toLowerCase();
+        let html = '';
+        const filtered = v ? ALL_TAGS.filter(t => t.toLowerCase().includes(v)) : ALL_TAGS;
+        const isNew = v && !ALL_TAGS.some(t => t.toLowerCase() === v);
+        if (isNew) {
+            html += \`<div class="tag-picker-item tag-picker-create" data-tag="\${v}"><span class="tag-picker-create-hint">创建标签</span><span class="tag-picker-item-name">#\${v}</span></div>\`;
+        }
+        html += filtered.map(tag => \`<div class="tag-picker-item" data-tag="\${tag}"><span class="tag-picker-item-name">\${tag}</span></div>\`).join('');
+        if (!html) html = '<div class="tag-picker-empty">输入创建新标签</div>';
+        pickerList.innerHTML = html;
+    }
+    renderList();
+
+    pickerInput.addEventListener('input', () => renderList(pickerInput.value));
+    pickerInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const v = pickerInput.value.trim();
+            if (v) { insertTag(v); tagPicker.remove(); tagPicker = null; }
+        } else if (e.key === 'Escape') {
+            tagPicker.remove(); tagPicker = null;
+        }
+    });
+
+    pickerList.addEventListener('click', (ev) => {
+        const item = ev.target.closest('.tag-picker-item');
+        if (item) { insertTag(item.dataset.tag); tagPicker.remove(); tagPicker = null; }
+    });
+
+    setTimeout(() => {
+        document.addEventListener('click', function closeOnClick(ev) {
+            if (!tagPicker) return;
+            if (!tagPicker.contains(ev.target) && !ev.target.closest('#btn-tag')) {
+                tagPicker.remove(); tagPicker = null;
+                document.removeEventListener('click', closeOnClick);
             }
-        };
-        reader.readAsDataURL(file);
+        });
+    }, 0);
+}
+
+function insertTag(tag) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const text = editor.value;
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+    const needsHash = before.length === 0 || before.endsWith(' ') || before.endsWith('\\n');
+    const tagText = needsHash ? '#' + tag + ' ' : tag + ' ';
+    editor.value = before + tagText + after;
+    editor.setSelectionRange(start + tagText.length, start + tagText.length);
+    editor.focus();
+}
+
+// 图片上传
+document.getElementById('btn-image').addEventListener('click', () => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+    fileInput.onchange = async () => {
+        const file = fileInput.files[0];
+        if (!file) { document.body.removeChild(fileInput); return; }
+        if (!file.type.startsWith('image/')) { alert('请选择图片文件'); document.body.removeChild(fileInput); return; }
+        try {
+            const formData = new FormData();
+            formData.append('assetsDirPath', '/assets/');
+            formData.append('file[]', file);
+            const response = await fetch('/api/asset/upload', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (result.code === 0) {
+                const succMap = result.data.succMap;
+                const newPath = succMap[file.name];
+                if (newPath) {
+                    const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                    insertTextAtCursor(\`![图片](\${imgPath})\`, '');
+                    editor.focus();
+                }
+            } else {
+                alert('上传失败：' + (result.msg || '未知错误'));
+            }
+        } catch (err) {
+            alert('上传失败：' + err.message);
+        } finally {
+            if (fileInput.parentNode) document.body.removeChild(fileInput);
+        }
     };
-    input.click();
+    fileInput.click();
 });
 
 // 无序列表
-document.getElementById('btn-ul').addEventListener('click', () => insertText('- '));
+document.getElementById('btn-ul').addEventListener('click', () => {
+    insertTextAtCursor('• ', '');
+    editor.focus();
+});
 
 // 有序列表
-document.getElementById('btn-ol').addEventListener('click', () => insertText('1. '));
+document.getElementById('btn-ol').addEventListener('click', () => {
+    const lines = editor.value.substring(0, editor.selectionStart).split('\\n');
+    const currentLine = lines[lines.length - 1];
+    const match = currentLine.match(/^(\\d+)\\.\\s/);
+    const num = match ? parseInt(match[1]) + 1 : 1;
+    insertTextAtCursor(num + '. ', '');
+    editor.focus();
+});
 
 // @ 引用
-let mentionPicker = null;
-document.getElementById('btn-at').addEventListener('click', () => {
-    if (mentionPicker) { mentionPicker.remove(); mentionPicker = null; return; }
+document.getElementById('btn-at').addEventListener('click', (e) => {
+    e.stopPropagation();
+    showMentionPicker();
+});
+
+function showMentionPicker(triggerPos) {
+    if (mentionPicker) { mentionPicker.remove(); mentionPicker = null; }
+    const pos = triggerPos !== undefined ? triggerPos : editor.selectionStart;
+    if (triggerPos === undefined) {
+        const value = editor.value;
+        if (value.substring(pos - 1, pos) !== '@') {
+            editor.value = value.substring(0, pos) + '@' + value.substring(pos);
+            editor.setSelectionRange(pos + 1, pos + 1);
+        }
+    }
     mentionPicker = document.createElement('div');
     mentionPicker.className = 'mention-picker';
     const rect = document.getElementById('btn-at').getBoundingClientRect();
     mentionPicker.style.left = rect.left + 'px';
     mentionPicker.style.top = (rect.top - Math.min(NOTES.length * 40 + 10, 200)) + 'px';
+    mentionPicker.dataset.triggerPos = pos;
 
     if (NOTES.length === 0) {
         mentionPicker.innerHTML = '<div class="mention-item">暂无笔记</div>';
     } else {
-        mentionPicker.innerHTML = NOTES.map(n => {
+        mentionPicker.innerHTML = '<div class="mention-search">输入搜索笔记...</div>' + NOTES.map(n => {
             const date = new Date(n.created).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
             return '<div class="mention-item" data-id="' + n.id + '"><div class="mention-date">' + date + '</div><div>' + (n.content || '无内容') + '</div></div>';
         }).join('');
@@ -540,23 +930,125 @@ document.getElementById('btn-at').addEventListener('click', () => {
     mentionPicker.querySelectorAll('.mention-item[data-id]').forEach(item => {
         item.addEventListener('click', () => {
             insertText('[MEMO:' + item.dataset.id + ']');
-            mentionPicker.remove();
-            mentionPicker = null;
+            mentionPicker.remove(); mentionPicker = null;
         });
     });
-});
+}
 
-// 点击外部关闭 mention picker
+function filterMentionPicker(searchText) {
+    if (!mentionPicker) return;
+    const items = mentionPicker.querySelectorAll('.mention-item[data-id]');
+    const st = searchText.toLowerCase();
+    items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.classList.toggle('hidden', !text.includes(st));
+    });
+}
+
+// 点击外部关闭 picker
 document.addEventListener('click', (e) => {
+    if (tagPicker && !tagPicker.contains(e.target) && !e.target.closest('#btn-tag')) {
+        tagPicker.remove(); tagPicker = null;
+    }
     if (mentionPicker && !mentionPicker.contains(e.target) && !e.target.closest('#btn-at')) {
-        mentionPicker.remove();
-        mentionPicker = null;
+        mentionPicker.remove(); mentionPicker = null;
     }
 });
 
-// 快捷键
+// 输入事件：自动转列表符 + 处理 @ 引用 + 自动调整高度
+editor.addEventListener('input', () => {
+    const cursorPos = editor.selectionStart;
+    const value = editor.value;
+    const beforeCursor = value.substring(0, cursorPos);
+    const afterCursor = value.substring(cursorPos);
+    const lines = beforeCursor.split('\\n');
+    const currentLine = lines[lines.length - 1];
+
+    // 自动将行首 - / * 转换为 •
+    if (currentLine === '- ' || currentLine === '* ') {
+        lines[lines.length - 1] = '• ';
+        editor.value = lines.join('\\n') + afterCursor;
+        editor.setSelectionRange(cursorPos, cursorPos);
+    }
+
+    // 处理 @ 快速引用
+    handleMentionInput();
+});
+
+function handleMentionInput() {
+    const existing = document.querySelector('.mention-picker');
+    if (!existing) {
+        const cursorPos = editor.selectionStart;
+        const value = editor.value;
+        const beforeCursor = value.substring(0, cursorPos);
+        const currentLine = beforeCursor.split('\\n').pop();
+        const atIndex = currentLine.lastIndexOf('@');
+        if (atIndex >= 0) {
+            const afterAt = currentLine.substring(atIndex + 1);
+            if (!afterAt.includes('@')) {
+                const lineStartPos = cursorPos - currentLine.length;
+                showMentionPicker(lineStartPos + atIndex);
+            }
+        }
+        return;
+    }
+    const triggerPos = parseInt(existing.dataset.triggerPos, 10);
+    const cursorPos = editor.selectionStart;
+    const value = editor.value;
+    if (cursorPos <= triggerPos) { existing.remove(); mentionPicker = null; return; }
+    if (value.substring(triggerPos, triggerPos + 1) !== '@') { existing.remove(); mentionPicker = null; return; }
+    const searchText = value.substring(triggerPos + 1, cursorPos);
+    filterMentionPicker(searchText);
+}
+
+// 键盘事件
 editor.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+        const cursorPos = editor.selectionStart;
+        const value = editor.value;
+        const beforeCursor = value.substring(0, cursorPos);
+        const afterCursor = value.substring(cursorPos);
+        const lines = beforeCursor.split('\\n');
+        const currentLine = lines[lines.length - 1];
+
+        const unorderedMatch = currentLine.match(/^(•\\s|-\\s|\\*\\s)(.*)$/);
+        const orderedMatch = currentLine.match(/^(\\d+)\\.\\s(.*)$/);
+
+        if (unorderedMatch) {
+            if (!unorderedMatch[2].trim()) {
+                e.preventDefault();
+                lines[lines.length - 1] = '';
+                editor.value = lines.join('\\n') + '\\n' + afterCursor;
+                const newPos = lines.join('\\n').length + 1;
+                editor.setSelectionRange(newPos, newPos);
+                return;
+            }
+            e.preventDefault();
+            const newLine = '\\n• ';
+            editor.value = beforeCursor + newLine + afterCursor;
+            editor.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+            return;
+        }
+
+        if (orderedMatch) {
+            if (!orderedMatch[2].trim()) {
+                e.preventDefault();
+                lines[lines.length - 1] = '';
+                editor.value = lines.join('\\n') + '\\n' + afterCursor;
+                const newPos = lines.join('\\n').length + 1;
+                editor.setSelectionRange(newPos, newPos);
+                return;
+            }
+            e.preventDefault();
+            const nextNum = parseInt(orderedMatch[1]) + 1;
+            const newLine = '\\n' + nextNum + '. ';
+            editor.value = beforeCursor + newLine + afterCursor;
+            editor.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+            return;
+        }
+    }
+
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         save();
     }
@@ -565,15 +1057,17 @@ editor.addEventListener('keydown', (e) => {
     }
 });
 
-// 取消
-document.getElementById('btn-cancel').addEventListener('click', () => window.close());
+// 关闭
+document.getElementById('btn-close').addEventListener('click', () => window.close());
 
 // 保存
 function save() {
     const text = editor.value.trim();
-    if (!text) { window.close(); return; }
+    if (!text) return;
     ipcRenderer.send('lumina-quick-save', { content: text });
-    window.close();
+    // 保存后清空输入框并聚焦，窗口保持打开以便连续记录
+    editor.value = '';
+    editor.focus();
 }
 document.getElementById('btn-save').addEventListener('click', save);
 <\/script>
@@ -585,22 +1079,29 @@ document.getElementById('btn-save').addEventListener('click', save);
     async addQuickNote(content) {
         if (!content || !content.trim()) return;
 
-        const note = {
-            id: Date.now().toString(),
-            content: content.trim(),
+        const trimmed = content.trim();
+        const processed = trimmed.replace(/lumina:\/\/memo\/([a-zA-Z0-9]+)/g, '[MEMO:$1]');
+        const tags = this.extractTags(processed);
+
+        const shuoshuo = {
+            id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+            content: processed,
+            tags: tags,
+            pinned: false,
             created: Date.now(),
-            updated: Date.now(),
-            images: [],
-            comments: [],
-            isDailyNote: false
+            updated: Date.now()
         };
 
-        this.shuoshuos.unshift(note);
+        this.shuoshuos.unshift(shuoshuo);
         await this.saveShuoshuos();
 
-        // 如果主窗口已打开，刷新列表
+        if (this.autoSync) {
+            await this.appendToDailyNote(processed, shuoshuo.created);
+        }
+
         if (this.container) {
             this.renderNotes();
+            this.renderTags();
         }
 
         showMessage('已保存到轻语');
@@ -737,7 +1238,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                             <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
                             </svg>
-                            <span>写拉送同步</span>
+                            <span>写拉松同步</span>
                         </div>
                         <div class="north-shuoshuo-settings-nav-item" data-setting="memos">
                             <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -882,6 +1383,40 @@ document.getElementById('btn-save').addEventListener('click', save);
                                                 <div class="north-shuoshuo-morandi-name">${c.name}</div>
                                             </div>
                                         `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 字体大小设置 -->
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">字体大小</div>
+                                        <div class="north-shuoshuo-section-desc">调整说说内容的字体大小</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row">
+                                    <div class="north-shuoshuo-radio-group vertical" id="font-size-mode-group">
+                                        <label class="north-shuoshuo-radio-item ${this.fontSizeConfig.mode === 'default' ? 'selected' : ''}" data-mode="default">
+                                            <input type="radio" name="font-size-mode" value="default" ${this.fontSizeConfig.mode === 'default' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">默认（14.5px）</span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item ${this.fontSizeConfig.mode === 'siyuan' ? 'selected' : ''}" data-mode="siyuan">
+                                            <input type="radio" name="font-size-mode" value="siyuan" ${this.fontSizeConfig.mode === 'siyuan' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">跟随思源编辑器</span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item ${this.fontSizeConfig.mode === 'custom' ? 'selected' : ''}" data-mode="custom">
+                                            <input type="radio" name="font-size-mode" value="custom" ${this.fontSizeConfig.mode === 'custom' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">自定义</span>
+                                        </label>
+                                    </div>
+                                    <div class="north-shuoshuo-form-row" id="font-size-custom-row" style="display: ${this.fontSizeConfig.mode === 'custom' ? 'flex' : 'none'}; align-items: center; gap: 8px; margin-top: 8px;">
+                                        <input type="number" id="font-size-custom-input" style="width: 80px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="24" step="0.5" value="${this.fontSizeConfig.customSize || 14.5}">
+                                        <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">px</span>
                                     </div>
                                 </div>
                             </div>
@@ -1042,25 +1577,25 @@ document.getElementById('btn-save').addEventListener('click', save);
                             </div>
                         </div>
 
-                        <!-- 写拉送同步设置 -->
+                        <!-- 写拉松同步设置 -->
                         <div class="north-shuoshuo-settings-section" id="setting-group-writeathon" style="display: none;">
                             <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-section-header">
                                     <div>
-                                        <div class="north-shuoshuo-section-title">写拉送账号</div>
-                                        <div class="north-shuoshuo-section-desc">配置写拉送集成 Token 以同步卡片</div>
+                                        <div class="north-shuoshuo-section-title">写拉松账号</div>
+                                        <div class="north-shuoshuo-section-desc">配置写拉松集成 Token 以同步卡片</div>
                                     </div>
                                     <span class="north-shuoshuo-badge" id="writeathon-connection-status">未配置</span>
                                 </div>
                                 
                                 <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
                                     <label class="north-shuoshuo-form-label">集成 Token</label>
-                                    <input type="text" id="writeathon-token" class="north-shuoshuo-input-field" placeholder="请输入写拉送集成 Token">
+                                    <input type="text" id="writeathon-token" class="north-shuoshuo-input-field" placeholder="请输入写拉松集成 Token">
                                 </div>
                                 
                                 <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
                                     <label class="north-shuoshuo-form-label">用户 ID</label>
-                                    <input type="text" id="writeathon-userid" class="north-shuoshuo-input-field" placeholder="请输入用户 ID（在写拉送设置→集成中获取）">
+                                    <input type="text" id="writeathon-userid" class="north-shuoshuo-input-field" placeholder="请输入用户 ID（在写拉松设置→集成中获取）">
                                 </div>
                                 
                                 <div class="north-shuoshuo-form-row" style="margin-bottom: 0;">
@@ -1411,7 +1946,10 @@ document.getElementById('btn-save').addEventListener('click', save);
         this.renderNotes();
         this.renderTags();
         // 应用主题模式（默认为原主题）
-        setTimeout(() => this.applyThemeMode(), 0);
+        setTimeout(() => {
+            this.applyThemeMode();
+            this.applyFontSizeConfig();
+        }, 0);
         this.bindEvents();
     }
 
@@ -3373,14 +3911,11 @@ document.getElementById('btn-save').addEventListener('click', save);
         `;
         
         // 定位到输入框下方
-        const inputBox = this.container.querySelector('#shuoshuo-input-box');
-        if (inputBox) {
-            const rect = inputBox.getBoundingClientRect();
-            picker.style.position = 'fixed';
-            picker.style.left = `${rect.left + 20}px`;
-            picker.style.top = `${rect.bottom + 8}px`;
-            picker.style.zIndex = '99999';
-        }
+        const rect = input.getBoundingClientRect();
+        picker.style.position = 'fixed';
+        picker.style.left = `${rect.left + 20}px`;
+        picker.style.top = `${rect.bottom + 8}px`;
+        picker.style.zIndex = '99999';
         
         document.body.appendChild(picker);
         
@@ -3390,7 +3925,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         
         // 点击外部关闭
         const closeOnClickOutside = (e) => {
-            if (!picker.contains(e.target) && !e.target.closest('#toolbar-at')) {
+            if (!picker.contains(e.target) && !e.target.closest('.north-shuoshuo-toolbar-icon, .toolbar-icon')) {
                 picker.remove();
                 document.removeEventListener('click', closeOnClickOutside);
             }
@@ -3532,7 +4067,9 @@ document.getElementById('btn-save').addEventListener('click', save);
                                 let preview = content.replace(new RegExp(`\\[MEMO:${noteId}\\]`, 'g'), '').trim();
                                 
                                 // 如果是批注，去掉第一行的引用预览，保留实际批注内容
-                                if (lines[0] && (lines[0].startsWith('关联自：') || isCommentFormat)) {
+                                if (lines[0] && lines[0].startsWith('关联自：')) {
+                                    preview = lines.slice(1).join('\n').trim();
+                                } else if (isCommentFormat && lines.length > 1) {
                                     preview = lines.slice(1).join('\n').trim();
                                 }
                                 preview = preview.split('\n')[0];
@@ -3659,14 +4196,11 @@ document.getElementById('btn-save').addEventListener('click', save);
         `;
 
         // 定位到输入框下方
-        const inputBox = this.container.querySelector('#shuoshuo-input-box');
-        if (inputBox) {
-            const rect = inputBox.getBoundingClientRect();
-            picker.style.position = 'fixed';
-            picker.style.left = `${rect.left + 20}px`;
-            picker.style.top = `${rect.bottom + 8}px`;
-            picker.style.zIndex = '99999';
-        }
+        const rect = input.getBoundingClientRect();
+        picker.style.position = 'fixed';
+        picker.style.left = `${rect.left + 20}px`;
+        picker.style.top = `${rect.bottom + 8}px`;
+        picker.style.zIndex = '99999';
 
         document.body.appendChild(picker);
 
@@ -3709,7 +4243,7 @@ document.getElementById('btn-save').addEventListener('click', save);
 
         // 点击外部关闭
         const closeOnClickOutside = (e) => {
-            if (!picker.contains(e.target) && e.target.id !== 'toolbar-tag') {
+            if (!picker.contains(e.target) && !e.target.closest('.north-shuoshuo-toolbar-icon, .toolbar-icon')) {
                 picker.remove();
                 document.removeEventListener('click', closeOnClickOutside);
             }
@@ -5079,6 +5613,49 @@ document.getElementById('btn-save').addEventListener('click', save);
             });
         });
 
+        // 绑定字体大小模式选择事件
+        const fontSizeModeItems = this.container.querySelectorAll('#font-size-mode-group .north-shuoshuo-radio-item');
+        const fontSizeCustomRow = this.container.querySelector('#font-size-custom-row');
+        const fontSizeCustomInput = this.container.querySelector('#font-size-custom-input');
+        
+        fontSizeModeItems.forEach(item => {
+            item.addEventListener('click', async () => {
+                const mode = item.dataset.mode;
+                this.fontSizeConfig.mode = mode;
+                
+                // 更新选中状态
+                fontSizeModeItems.forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                
+                // 更新 radio 输入
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+                
+                // 显示/隐藏自定义输入框
+                if (fontSizeCustomRow) {
+                    fontSizeCustomRow.style.display = mode === 'custom' ? 'flex' : 'none';
+                }
+                
+                // 应用字体大小
+                this.applyFontSizeConfig();
+                
+                // 保存设置
+                await this.saveFontSizeConfig();
+            });
+        });
+        
+        // 自定义字体大小输入
+        if (fontSizeCustomInput) {
+            fontSizeCustomInput.addEventListener('input', async () => {
+                let size = parseFloat(fontSizeCustomInput.value);
+                if (isNaN(size) || size < 10) size = 10;
+                if (size > 24) size = 24;
+                this.fontSizeConfig.customSize = size;
+                this.applyFontSizeConfig();
+                await this.saveFontSizeConfig();
+            });
+        }
+
         const saveBtn = this.container.querySelector('#settings-save');
         const cancelBtn = this.container.querySelector('#settings-cancel');
         const exportBtn = this.container.querySelector('#settings-export');
@@ -5120,6 +5697,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 // 保存主题模式
                 await this.saveThemeMode();
                 await this.saveMorandiColor();
+                await this.saveFontSizeConfig();
 
                 showMessage('设置已保存');
             };
@@ -5163,7 +5741,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         // ==================== Flomo 同步事件绑定 ====================
         this.bindFlomoEvents();
 
-        // ==================== 写拉送同步事件绑定 ====================
+        // ==================== 写拉松同步事件绑定 ====================
         this.bindWriteathonEvents();
 
         // ==================== Memos 同步事件绑定 ====================
@@ -5445,11 +6023,11 @@ document.getElementById('btn-save').addEventListener('click', save);
         }
     }
 
-    // ==================== 写拉送同步事件绑定 ====================
+    // ==================== 写拉松同步事件绑定 ====================
     bindWriteathonEvents() {
         this.updateWriteathonUI();
         
-        // 加载笔记本列表到写拉送选择器
+        // 加载笔记本列表到写拉松选择器
         this.loadWriteathonNotebooks();
 
         const verifyBtn = this.container.querySelector('#writeathon-verify-btn');
@@ -5537,7 +6115,7 @@ document.getElementById('btn-save').addEventListener('click', save);
 
         // 空间选择器变化时保存
         const spaceSelect = this.container.querySelector('#writeathon-space-select');
-        // 写拉送目标单选框
+        // 写拉松目标单选框
         const writeathonTargetItems = this.container.querySelectorAll('.writeathon-target');
         const writeathonNotebookRow = this.container.querySelector('#writeathon-notebook-row');
         const writeathonDocRow = this.container.querySelector('#writeathon-doc-row');
@@ -5798,7 +6376,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         }
     }
 
-    // 更新写拉送 UI 状态
+    // 更新写拉松 UI 状态
     updateWriteathonUI() {
         const statusBadge = this.container.querySelector('#writeathon-connection-status');
         const tokenInput = this.container.querySelector('#writeathon-token');
@@ -5910,7 +6488,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         }
     }
 
-    // 加载写拉送空间列表
+    // 加载写拉松空间列表
     async loadWriteathonSpaces() {
         const select = this.container?.querySelector('#writeathon-space-select');
         if (!select) return;
@@ -5936,12 +6514,12 @@ document.getElementById('btn-save').addEventListener('click', save);
                 select.innerHTML = '<option value="">默认空间</option>';
             }
         } catch (e) {
-            console.error('加载写拉送空间列表失败', e);
+            console.error('加载写拉松空间列表失败', e);
             select.innerHTML = '<option value="">默认空间</option>';
         }
     }
 
-    // 加载笔记本列表到写拉送选择器
+    // 加载笔记本列表到写拉松选择器
     async loadWriteathonNotebooks() {
         const select = this.container?.querySelector('#writeathon-notebook-select');
         if (!select) return;
@@ -6654,6 +7232,49 @@ document.getElementById('btn-save').addEventListener('click', save);
         if (themeToApply === 'morandi' && this.morandiColor) {
             container.classList.add(`morandi-${this.morandiColor}`);
         }
+    }
+
+    // 加载字体大小配置
+    async loadFontSizeConfig() {
+        try {
+            const data = await this.loadData(FONT_SIZE_CONFIG_STORAGE_NAME);
+            if (data && typeof data === 'object') {
+                this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...data };
+            }
+        } catch (e) {
+            this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG };
+        }
+    }
+
+    // 保存字体大小配置
+    async saveFontSizeConfig() {
+        try {
+            await this.saveData(FONT_SIZE_CONFIG_STORAGE_NAME, this.fontSizeConfig);
+        } catch (e) {
+            console.warn("保存字体大小设置失败", e);
+        }
+    }
+
+    // 应用字体大小配置
+    applyFontSizeConfig() {
+        const container = this.container?.querySelector('.north-shuoshuo-container');
+
+        let fontSize;
+        switch (this.fontSizeConfig.mode) {
+            case 'siyuan':
+                fontSize = 'var(--b3-font-size-editor)';
+                break;
+            case 'custom':
+                fontSize = `${this.fontSizeConfig.customSize || 14.5}px`;
+                break;
+            default:
+                fontSize = '14.5px';
+        }
+        if (container) {
+            container.style.setProperty('--shuoshuo-content-font-size', fontSize);
+        }
+        // 同时设置到根元素，让快速记录浮层等也能使用
+        document.documentElement.style.setProperty('--shuoshuo-content-font-size', fontSize);
     }
 
     // 根据回顾配置获取回顾笔记
@@ -7416,14 +8037,14 @@ document.getElementById('btn-save').addEventListener('click', save);
         }
     }
 
-    // ==================== 写拉送同步功能 ====================
+    // ==================== 写拉松同步功能 ====================
 
     async loadWriteathonConfig() {
         try {
             const data = await this.loadData(WRITEATHON_CONFIG_STORAGE_NAME);
             this.writeathonConfig = data || { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         } catch (e) {
-            console.warn("加载写拉送配置失败", e);
+            console.warn("加载写拉松配置失败", e);
             this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         }
     }
@@ -7432,7 +8053,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         try {
             await this.saveData(WRITEATHON_CONFIG_STORAGE_NAME, this.writeathonConfig);
         } catch (e) {
-            console.warn("保存写拉送配置失败", e);
+            console.warn("保存写拉松配置失败", e);
         }
     }
 
@@ -7452,7 +8073,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         return data;
     }
 
-    // 验证写拉送 Token
+    // 验证写拉松 Token
     async writeathonVerify(token, userId) {
         try {
             // 临时使用传入的 token 验证
@@ -7473,7 +8094,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                 return { success: false, message: data.message || '验证失败' };
             }
         } catch (e) {
-            console.error('写拉送验证失败:', e);
+            console.error('写拉松验证失败:', e);
             return { success: false, message: '验证失败：' + e.message };
         }
     }
@@ -7496,20 +8117,20 @@ document.getElementById('btn-save').addEventListener('click', save);
                 return { success: false, message: data.message || '获取空间列表失败' };
             }
         } catch (e) {
-            console.error('获取写拉送空间列表失败:', e);
+            console.error('获取写拉松空间列表失败:', e);
             return { success: false, message: '获取空间列表失败：' + e.message };
         }
     }
 
-    // 同步写拉送卡片
+    // 同步写拉松卡片
     async writeathonSync(isFullSync = false) {
         if (!this.writeathonConfig.token || !this.writeathonConfig.userId) {
-            showMessage('请先配置写拉送 Token 和用户 ID');
+            showMessage('请先配置写拉松 Token 和用户 ID');
             return;
         }
 
         try {
-            showMessage('正在同步写拉送...');
+            showMessage('正在同步写拉松...');
             const userId = this.writeathonConfig.userId;
             const spaceId = this.writeathonConfig.spaceId;
             
@@ -7527,11 +8148,11 @@ document.getElementById('btn-save').addEventListener('click', save);
                 recentUrl += '?' + queryParams.join('&');
             }
             
-            console.log('写拉送同步请求 URL:', recentUrl);
+            console.log('写拉松同步请求 URL:', recentUrl);
             const recentData = await this.writeathonRequest(recentUrl, {
                 method: 'GET'
             });
-            console.log('写拉送 recent API 返回:', recentData);
+            console.log('写拉松 recent API 返回:', recentData);
             
             // 解析返回数据，兼容多种可能的数据结构
             if (recentData.success) {
@@ -7550,7 +8171,7 @@ document.getElementById('btn-save').addEventListener('click', save);
                     method: 'POST',
                     body: JSON.stringify({ type: 'card', limit: 10 })
                 });
-                console.log('写拉送 writing-pick API 返回:', pickData);
+                console.log('写拉松 writing-pick API 返回:', pickData);
                 
                 if (pickData.success) {
                     if (Array.isArray(pickData.data)) {
@@ -7624,7 +8245,7 @@ document.getElementById('btn-save').addEventListener('click', save);
             
             showMessage(`成功同步 ${cardDetails.length} 张卡片`);
         } catch (e) {
-            console.error('写拉送同步失败:', e);
+            console.error('写拉松同步失败:', e);
             showMessage('同步失败：' + e.message);
         }
     }
@@ -7646,7 +8267,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         return content;
     }
 
-    // 下载写拉送内容中的远程图片并替换为本地路径
+    // 下载写拉松内容中的远程图片并替换为本地路径
     async processWriteathonImages(content) {
         const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
         const matches = [];
@@ -7670,7 +8291,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         return result;
     }
 
-    // 保存写拉送卡片到说说视图
+    // 保存写拉松卡片到说说视图
     async saveWriteathonCardsToShuoshuo(cards, isFullSync = false) {
         let addedCount = 0;
         let updatedCount = 0;
@@ -7680,14 +8301,14 @@ document.getElementById('btn-save').addEventListener('click', save);
             const cardId = card._id || card.id;
             if (!cardId) continue;
             
-            // 写拉送内容直接是文本/Markdown
+            // 写拉松内容直接是文本/Markdown
             let content = (card.content || '').trim();
             const title = (card.title || '').trim();
             
             // 处理图片 - 下载远程图片并替换为本地路径
             content = await this.processWriteathonImages(content);
             
-            // 移除内容开头的日期标题行（写拉送有时会把标题也放到 content 里）
+            // 移除内容开头的日期标题行（写拉松有时会把标题也放到 content 里）
             content = this.removeDateTitleFromContent(content);
             
             // 如果有标题且不是自动生成的日期标题，把标题加到内容前面
@@ -7751,7 +8372,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         }
     }
 
-    // 保存写拉送卡片到每日笔记
+    // 保存写拉松卡片到每日笔记
     async saveWriteathonCardsToDailyNote(cards) {
         // 按日期分组
         const cardsByDate = {};
@@ -7800,7 +8421,7 @@ document.getElementById('btn-save').addEventListener('click', save);
         showMessage(`成功同步 ${cards.length} 张卡片到每日笔记`);
     }
 
-    // 保存写拉送卡片到指定文档
+    // 保存写拉松卡片到指定文档
     async saveWriteathonCardsToSingleDoc(cards) {
         const docId = this.writeathonConfig.syncDocId;
         if (!docId) {
