@@ -320,12 +320,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         `;
 
 
-        const pluginContainer = this.container?.querySelector('.north-shuoshuo-container');
-        if (pluginContainer) {
-            pluginContainer.appendChild(overlay);
-        } else {
-            document.body.appendChild(overlay);
-        }
+        document.body.appendChild(overlay);
 
         const input = overlay.querySelector('#quick-overlay-input');
         const panel = overlay.querySelector('#quick-overlay-panel');
@@ -2413,7 +2408,7 @@ document.getElementById('btn-save').addEventListener('click', save);
 
         listEl.innerHTML = `
             <div class="north-shuoshuo-random-bg">
-                <div class="north-shuoshuo-review-card" id="memoCard">
+                <div class="north-shuoshuo-review-card" id="memoCard" data-id="">
                     <div class="north-shuoshuo-review-header">
                         <div class="north-shuoshuo-header-left">
                             <svg class="north-shuoshuo-icon-wander" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -2422,11 +2417,18 @@ document.getElementById('btn-save').addEventListener('click', save);
                             </svg>
                             <span class="north-shuoshuo-review-title">随机漫步</span>
                         </div>
-                        <span class="north-shuoshuo-review-date" id="memoDate"></span>
+                        <div class="north-shuoshuo-review-header-right">
+                            <span class="north-shuoshuo-review-date" id="memoDate"></span>
+                            <div class="north-shuoshuo-random-actions">
+                                <span class="north-shuoshuo-random-action-btn" data-action="edit" title="编辑">${ICONS.edit}</span>
+                                <span class="north-shuoshuo-random-action-btn" data-action="comment" title="批注">${ICONS.comment}</span>
+                            </div>
+                        </div>
                     </div>
                     <div class="north-shuoshuo-review-body">
                         <div class="north-shuoshuo-review-content" id="memoContent"></div>
                     </div>
+                    <div class="north-shuoshuo-random-relations" id="memoRelations"></div>
                     <div class="north-shuoshuo-review-footer">
                         <span class="north-shuoshuo-review-tag" id="memoTag"></span>
                         <span class="north-shuoshuo-page-indicator">
@@ -2434,6 +2436,29 @@ document.getElementById('btn-save').addEventListener('click', save);
                             <span style="margin: 0 3px; opacity: 0.5;">/</span>
                             <span id="memoPageTotal"></span>
                         </span>
+                    </div>
+                    <div class="north-shuoshuo-random-comment-box" id="memoCommentBox" style="display:none;">
+                        <div class="north-shuoshuo-random-comment-input-wrap">
+                            <textarea class="north-shuoshuo-random-comment-field" id="memoCommentInput" placeholder="写下批注..." rows="2"></textarea>
+                        </div>
+                        <div class="north-shuoshuo-random-comment-toolbar">
+                            <div class="north-shuoshuo-toolbar-left">
+                                <span class="north-shuoshuo-toolbar-icon" data-action="tag" title="标签">#</span>
+                                <span class="north-shuoshuo-toolbar-icon" data-action="image" title="图片">${ICONS.image}</span>
+                                <span class="north-shuoshuo-toolbar-divider"></span>
+                                <span class="north-shuoshuo-toolbar-icon" data-action="ul" title="无序列表">
+                                    <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+                                </span>
+                                <span class="north-shuoshuo-toolbar-icon" data-action="ol" title="有序列表">
+                                    <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2 6h2v2H2V6zm4 0h14v2H6V6zM2 11h2v2H2v-2zm4 0h14v2H6v-2zM2 16h2v2H2v-2zm4 0h14v2H6v-2z"/></svg>
+                                </span>
+                                <span class="north-shuoshuo-toolbar-icon" data-action="at" title="快速引用">${ICONS.at}</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <button class="north-shuoshuo-inline-edit-cancel" id="memoCommentCancel">取消</button>
+                                <button class="north-shuoshuo-send-btn north-shuoshuo-inline-save active" id="memoCommentSave">${ICONS.send}</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -2466,8 +2491,14 @@ document.getElementById('btn-save').addEventListener('click', save);
         };
 
         const renderNote = (note, currentNum) => {
+            memoCard.dataset.id = note.id;
             memoDate.textContent = this.formatDate(note.created);
             memoContent.innerHTML = this.renderNoteContent(note.content, { hideTags: true });
+            // 渲染关联关系
+            const relationsContainer = memoCard.querySelector('#memoRelations');
+            if (relationsContainer) {
+                relationsContainer.innerHTML = this.renderMemoRelations(note.content);
+            }
             const tags = note.tags || [];
             if (tags.length > 0) {
                 memoTag.innerHTML = `<span class="north-shuoshuo-tag-dot"></span>${this.escapeHtml(tags[0])}`;
@@ -2478,6 +2509,14 @@ document.getElementById('btn-save').addEventListener('click', save);
             }
             memoPageCurrent.textContent = currentNum;
             memoPageTotal.textContent = total;
+            // 切换笔记时隐藏批注框
+            const commentBox = memoCard.querySelector('#memoCommentBox');
+            const commentInput = memoCard.querySelector('#memoCommentInput');
+            if (commentBox) commentBox.style.display = 'none';
+            if (commentInput) {
+                commentInput.value = '';
+                commentInput.style.height = 'auto';
+            }
         };
 
         const init = () => {
@@ -2505,6 +2544,105 @@ document.getElementById('btn-save').addEventListener('click', save);
 
         // 初始化
         init();
+
+        // 编辑按钮
+        memoCard.querySelector('.north-shuoshuo-random-actions [data-action="edit"]').addEventListener('click', () => {
+            const id = memoCard.dataset.id;
+            if (id) this.editNote(id);
+        });
+
+        // 批注按钮
+        memoCard.querySelector('.north-shuoshuo-random-actions [data-action="comment"]').addEventListener('click', () => {
+            const commentBox = memoCard.querySelector('#memoCommentBox');
+            const commentInput = memoCard.querySelector('#memoCommentInput');
+            if (commentBox.style.display === 'none') {
+                commentBox.style.display = 'block';
+                commentInput.focus();
+            } else {
+                commentBox.style.display = 'none';
+            }
+        });
+
+        // 批注输入框
+        const commentInput = memoCard.querySelector('#memoCommentInput');
+        commentInput.addEventListener('input', () => {
+            commentInput.style.height = 'auto';
+            commentInput.style.height = Math.max(60, commentInput.scrollHeight) + 'px';
+            this.handleMentionInput(commentInput);
+        });
+        commentInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                memoCard.querySelector('#memoCommentSave').click();
+            }
+        });
+
+        // 批注工具栏
+        memoCard.querySelector('#memoCommentBox [data-action="tag"]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showTagPicker(commentInput);
+        });
+        memoCard.querySelector('#memoCommentBox [data-action="image"]').addEventListener('click', () => {
+            this.insertImage(commentInput);
+        });
+        memoCard.querySelector('#memoCommentBox [data-action="ul"]').addEventListener('click', () => {
+            this.insertText(commentInput, '• ', '');
+            commentInput.focus();
+        });
+        memoCard.querySelector('#memoCommentBox [data-action="ol"]').addEventListener('click', () => {
+            const lines = commentInput.value.substring(0, commentInput.selectionStart).split('\n');
+            const currentLine = lines[lines.length - 1];
+            const match = currentLine.match(/^(\d+)\.\s/);
+            const num = match ? parseInt(match[1]) + 1 : 1;
+            this.insertText(commentInput, num + '. ', '');
+            commentInput.focus();
+        });
+        memoCard.querySelector('#memoCommentBox [data-action="at"]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showMentionPicker(commentInput);
+        });
+
+        // 批注取消
+        memoCard.querySelector('#memoCommentCancel').addEventListener('click', () => {
+            const commentBox = memoCard.querySelector('#memoCommentBox');
+            commentBox.style.display = 'none';
+            commentInput.value = '';
+            commentInput.style.height = 'auto';
+        });
+
+        // 批注保存
+        memoCard.querySelector('#memoCommentSave').addEventListener('click', async () => {
+            const id = memoCard.dataset.id;
+            const text = commentInput.value.trim();
+            if (!text || !id) return;
+
+            const note = this.shuoshuos.find(s => s.id === id);
+            if (!note) return;
+
+            let preview = (note.content || '').replace(/\[MEMO:[^\]]+\]/g, '').trim();
+            preview = preview.split('\n')[0];
+            preview = preview.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim().replace(/\s+/g, ' ');
+            preview = preview.substring(0, 60) + (preview.length > 60 ? '...' : '');
+
+            const fullContent = `${preview} [MEMO:${id}]\n${text}`;
+            const tags = this.extractTags(fullContent);
+            const shuoshuo = {
+                id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+                content: fullContent,
+                tags: tags,
+                pinned: false,
+                created: Date.now(),
+                updated: Date.now()
+            };
+            this.shuoshuos.unshift(shuoshuo);
+            await this.saveShuoshuos();
+
+            const commentBox = memoCard.querySelector('#memoCommentBox');
+            commentBox.style.display = 'none';
+            commentInput.value = '';
+            commentInput.style.height = 'auto';
+            showMessage('批注已保存');
+        });
 
         // 键盘事件
         if (this._randomKeyHandler) {
@@ -4891,7 +5029,7 @@ document.getElementById('btn-save').addEventListener('click', save);
 
         const contentEl = card
             ? targetCard.querySelector('.north-shuoshuo-note-content')
-            : targetCard.querySelector('.north-shuoshuo-review-card-content');
+            : targetCard.querySelector('.north-shuoshuo-review-card-content, .north-shuoshuo-review-content');
         const relationsEl = card ? targetCard.querySelector('.north-shuoshuo-memo-relations') : null;
 
         if (!contentEl || targetCard.querySelector('.north-shuoshuo-inline-edit')) return;
@@ -4928,9 +5066,9 @@ document.getElementById('btn-save').addEventListener('click', save);
         if (relationsEl) {
             targetCard.insertBefore(editBox, relationsEl);
         } else if (contentEl.nextSibling) {
-            targetCard.insertBefore(editBox, contentEl.nextSibling);
+            contentEl.parentElement.insertBefore(editBox, contentEl.nextSibling);
         } else {
-            targetCard.appendChild(editBox);
+            contentEl.parentElement.appendChild(editBox);
         }
 
         const textarea = editBox.querySelector('.north-shuoshuo-inline-edit-field');
@@ -5065,7 +5203,9 @@ document.getElementById('btn-save').addEventListener('click', save);
             await this.saveShuoshuos();
             this.renderNotes();
             this.renderTags();
-            if (reviewCard) {
+            if (this.currentMainView === 'random') {
+                this.renderRandom();
+            } else if (reviewCard) {
                 this.renderReview();
             }
             showMessage("已保存");
@@ -5453,7 +5593,8 @@ document.getElementById('btn-save').addEventListener('click', save);
                 // 重建选项
                 let html = '<option value="">请选择笔记?..</option>';
                 notebooks.forEach(nb => {
-                    const icon = nb.icon ? String.fromCodePoint(parseInt(nb.icon, 16)) : '📒';
+                    const code = nb.icon ? parseInt(nb.icon, 16) : NaN;
+                    const icon = !isNaN(code) ? String.fromCodePoint(code) : '📒';
                     const selected = nb.id === this.notebookId ? 'selected' : '';
                     html += `<option value="${nb.id}" ${selected}>${icon} ${nb.name}</option>`;
                 });
@@ -6537,7 +6678,8 @@ document.getElementById('btn-save').addEventListener('click', save);
                 
                 let html = '<option value="">请选择笔记本...</option>';
                 notebooks.forEach(nb => {
-                    const icon = nb.icon ? String.fromCodePoint(parseInt(nb.icon, 16)) : '📒';
+                    const code = nb.icon ? parseInt(nb.icon, 16) : NaN;
+                    const icon = !isNaN(code) ? String.fromCodePoint(code) : '📒';
                     html += `<option value="${nb.id}">${icon} ${nb.name}</option>`;
                 });
                 select.innerHTML = html;
@@ -6565,7 +6707,8 @@ document.getElementById('btn-save').addEventListener('click', save);
                 
                 let html = '<option value="">请选择笔记本...</option>';
                 notebooks.forEach(nb => {
-                    const icon = nb.icon ? String.fromCodePoint(parseInt(nb.icon, 16)) : '📒';
+                    const code = nb.icon ? parseInt(nb.icon, 16) : NaN;
+                    const icon = !isNaN(code) ? String.fromCodePoint(code) : '📒';
                     html += `<option value="${nb.id}">${icon} ${nb.name}</option>`;
                 });
                 select.innerHTML = html;
@@ -8843,7 +8986,8 @@ document.getElementById('btn-save').addEventListener('click', save);
                 
                 let html = '<option value="">请选择笔记本...</option>';
                 notebooks.forEach(nb => {
-                    const icon = nb.icon ? String.fromCodePoint(parseInt(nb.icon, 16)) : '📒';
+                    const code = nb.icon ? parseInt(nb.icon, 16) : NaN;
+                    const icon = !isNaN(code) ? String.fromCodePoint(code) : '📒';
                     html += `<option value="${nb.id}">${icon} ${nb.name}</option>`;
                 });
                 select.innerHTML = html;

@@ -7364,6 +7364,105 @@
     color: #999;
 }
 
+/* 随机漫步卡片操作按钮 */
+.north-shuoshuo-review-header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.north-shuoshuo-random-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.north-shuoshuo-random-action-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+    color: #c4b8a8;
+    transition: all 0.2s;
+}
+
+.north-shuoshuo-random-action-btn:hover {
+    background: rgba(0,0,0,0.04);
+    color: #a89888;
+}
+
+.north-shuoshuo-random-action-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 随机漫步批注输入框 */
+.north-shuoshuo-random-comment-box {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px dashed #e8e4dc;
+    animation: north-shuoshuo-commentFadeIn 0.25s ease;
+}
+
+@keyframes north-shuoshuo-commentFadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.north-shuoshuo-random-comment-input-wrap {
+    margin-bottom: 10px;
+}
+
+.north-shuoshuo-random-comment-field {
+    width: 100%;
+    min-height: 60px;
+    border: 1px solid #e8e4dc;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.8;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+    background: #fdfcfa;
+    color: #3a3a3a;
+    box-sizing: border-box;
+}
+
+.north-shuoshuo-random-comment-field:focus {
+    border-color: #c4b8a8;
+    box-shadow: 0 0 0 2px rgba(196, 184, 168, 0.15);
+}
+
+.north-shuoshuo-random-comment-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 随机漫步关联关系 */
+.north-shuoshuo-random-relations {
+    margin-top: 8px;
+}
+
+.north-shuoshuo-random-relations .north-shuoshuo-memo-relations {
+    border-top: 1px dashed #e8e4dc;
+    margin-top: 0;
+    padding-top: 12px;
+}
+
+.north-shuoshuo-random-relations .north-shuoshuo-memo-relation-icon {
+    border-color: #c4b8a8;
+    color: #c4b8a8;
+}
+
+.north-shuoshuo-random-relations .north-shuoshuo-memo-relation-info {
+    color: #a89888;
+}
+
 /* ========== 随机漫步 - 适配主题 & 莫兰迪主题 ========== */
 
 .theme-siyuan .north-shuoshuo-random-bg,
@@ -7489,6 +7588,51 @@
 
 .theme-siyuan .north-shuoshuo-random-empty-hint,
 .theme-morandi .north-shuoshuo-random-empty-hint {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-siyuan .north-shuoshuo-random-action-btn,
+.theme-morandi .north-shuoshuo-random-action-btn {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-siyuan .north-shuoshuo-random-action-btn:hover,
+.theme-morandi .north-shuoshuo-random-action-btn:hover {
+    background: var(--b3-list-hover);
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-siyuan .north-shuoshuo-random-comment-box,
+.theme-morandi .north-shuoshuo-random-comment-box {
+    border-top-color: var(--b3-border-color);
+}
+
+.theme-siyuan .north-shuoshuo-random-comment-field,
+.theme-morandi .north-shuoshuo-random-comment-field {
+    background: var(--b3-theme-background);
+    border-color: var(--b3-border-color);
+    color: var(--b3-theme-on-background);
+}
+
+.theme-siyuan .north-shuoshuo-random-comment-field:focus,
+.theme-morandi .north-shuoshuo-random-comment-field:focus {
+    border-color: var(--b3-theme-primary);
+    box-shadow: 0 0 0 2px var(--b3-theme-primary-lightest);
+}
+
+.theme-siyuan .north-shuoshuo-random-relations .north-shuoshuo-memo-relations,
+.theme-morandi .north-shuoshuo-random-relations .north-shuoshuo-memo-relations {
+    border-top-color: var(--b3-border-color);
+}
+
+.theme-siyuan .north-shuoshuo-random-relations .north-shuoshuo-memo-relation-icon,
+.theme-morandi .north-shuoshuo-random-relations .north-shuoshuo-memo-relation-icon {
+    border-color: var(--b3-theme-on-surface-light);
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-siyuan .north-shuoshuo-random-relations .north-shuoshuo-memo-relation-info,
+.theme-morandi .north-shuoshuo-random-relations .north-shuoshuo-memo-relation-info {
     color: var(--b3-theme-on-surface-light);
 }
 

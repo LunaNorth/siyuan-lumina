@@ -2,7 +2,7 @@
     "name": "siyuan-lumina",
     "author": "LunaNorth",
     "url": "https://github.com/LunaNorth/siyuan-lumina",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "minAppVersion": "3.3.3",
     "disabledInPublish": true,
     "backends": ["all"],
