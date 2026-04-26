@@ -239,12 +239,19 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     const formData = new FormData();
                     formData.append('assetsDirPath', '/assets/');
                     formData.append('file[]', file);
-                    const response = await fetch(apiBaseUrl + '/api/asset/upload', { method: 'POST', body: formData });
+                    
+                    const token = window.siyuan?.config?.api?.token || '';
+                    const headers = {};
+                    if (token) {
+                        headers['Authorization'] = `Token ${token}`;
+                    }
+                    
+                    const response = await fetch(apiBaseUrl + '/api/asset/upload', { method: 'POST', body: formData, headers });
                     const result = await response.json();
                     if (result.code === 0 && result.data.succMap && Object.keys(result.data.succMap).length > 0) {
                         return { success: true, url: Object.values(result.data.succMap)[0] };
                     }
-                    return { success: false, error: '上传失败' };
+                    return { success: false, error: result.msg || '上传失败' };
                 } catch (e) {
                     return { success: false, error: e.message };
                 }
@@ -603,6 +610,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         }
 
         const baseUrl = window.location.origin;
+        const token = window.siyuan?.config?.api?.token || '';
 
         return `<!DOCTYPE html>
 <html data-theme="${themeMode}">
@@ -947,6 +955,7 @@ body {
 <script>
 const { ipcRenderer } = require('electron');
 const BASE_URL = '${baseUrl}';
+const SIYUAN_TOKEN = '${token}';
 const editor = document.getElementById('editor');
 editor.focus();
 
@@ -1077,7 +1086,11 @@ document.getElementById('btn-image').addEventListener('click', () => {
             const formData = new FormData();
             formData.append('assetsDirPath', '/assets/');
             formData.append('file[]', file);
-            const response = await fetch(BASE_URL + '/api/asset/upload', { method: 'POST', body: formData });
+            const headers = {};
+            if (SIYUAN_TOKEN) {
+                headers['Authorization'] = 'Token ' + SIYUAN_TOKEN;
+            }
+            const response = await fetch(BASE_URL + '/api/asset/upload', { method: 'POST', body: formData, headers });
             const result = await response.json();
             if (result.code === 0) {
                 const succMap = result.data.succMap;
@@ -4743,9 +4756,15 @@ ipcRenderer.on('lumina-close', () => {
                 formData.append('assetsDirPath', '/assets/');
                 formData.append('file[]', file);
                 
+                const token = window.siyuan?.config?.api?.token || '';
+                const headers = {};
+                if (token) {
+                    headers['Authorization'] = `Token ${token}`;
+                }
                 const response = await fetch('/api/asset/upload', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    headers
                 });
                 const result = await response.json();
                 if (result.code === 0) {
@@ -5717,9 +5736,15 @@ ipcRenderer.on('lumina-close', () => {
 
             try {
                 showMessage("正在上传...");
+                const token = window.siyuan?.config?.api?.token || '';
+                const headers = {};
+                if (token) {
+                    headers['Authorization'] = `Token ${token}`;
+                }
                 const response = await fetch('/api/asset/upload', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    headers
                 });
                 const result = await response.json();
                 if (result.code === 0) {
@@ -7950,9 +7975,15 @@ ipcRenderer.on('lumina-close', () => {
             formData.append('assetsDirPath', '/assets/');
             formData.append('file[]', file);
             
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = {};
+            if (token) {
+                headers['Authorization'] = `Token ${token}`;
+            }
             const uploadResponse = await fetch('/api/asset/upload', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers
             });
             
             const result = await uploadResponse.json();
