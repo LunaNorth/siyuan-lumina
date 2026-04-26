@@ -85,6 +85,70 @@ const ICONS = {
     clock: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`
 };
 
+// ============ 轻语速记独立窗口管理类 ============
+class QuickWindow {
+    static instance = null;
+    static getInstance(plugin) {
+        if (!QuickWindow.instance) {
+            QuickWindow.instance = new QuickWindow(plugin);
+        }
+        return QuickWindow.instance;
+    }
+
+    constructor(plugin) {
+        this.plugin = plugin;
+        this.win = null;
+    }
+
+    async createWindow() {
+        if (this.win && !this.win.isDestroyed()) {
+            // 窗口已存在：发送关闭指令，子窗口会检查内容并自动保存后关闭
+            this.win.webContents.send('lumina-close');
+            return;
+        }
+
+        try {
+            const { BrowserWindow } = require('@electron/remote');
+
+            this.win = new BrowserWindow({
+                width: 520,
+                height: 400,
+                frame: false,
+                alwaysOnTop: true,
+                skipTaskbar: false,
+                resizable: true,
+                transparent: true,
+                webPreferences: {
+                    nodeIntegration: true,
+                    contextIsolation: false,
+                    sandbox: false,
+                },
+                show: false,
+            });
+
+            const html = this.plugin.getQuickWindowHTML();
+            await this.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+
+            this.win.show();
+            this.win.focus();
+
+            this.win.on('closed', () => {
+                this.win = null;
+                QuickWindow.instance = null;
+            });
+        } catch (e) {
+            console.error('创建轻语速记窗口失败', e);
+            this.plugin.openQuickOverlay();
+        }
+    }
+
+    close() {
+        if (this.win && !this.win.isDestroyed()) {
+            this.win.close();
+        }
+    }
+}
+
 module.exports = class ShuoshuoPlugin extends Plugin {
     onload() {
         const frontEnd = getFrontend();
@@ -135,23 +199,67 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             }
         });
 
-        // 快捷键唤起快速记录浮层
+        // 全局快捷键唤起轻语速记窗口
+        const quickWindowCallback = () => {
+            try {
+                if (this.isMobile) {
+                    showMessage('移动端不支持轻语速记窗口');
+                    return;
+                }
+                QuickWindow.getInstance(this).createWindow();
+            } catch (e) {
+                console.error('打开轻语速记窗口失败', e);
+            }
+        };
         this.addCommand({
             langKey: "openQuickWindow",
-            langText: "打开快速记录窗口",
+            langText: "打开轻语速记窗口",
             hotkey: "⌥⌘U",
-            callback: () => {
-                try {
-                    if (this.isMobile) {
-                        showMessage('移动端不支持快速记录窗口');
-                        return;
-                    }
-                    this.openQuickWindow();
-                } catch (e) {
-                    console.error('打开快速记录窗口失败', e);
-                }
-            }
+            callback: quickWindowCallback,
+            globalCallback: quickWindowCallback
         });
+
+        // 注册 IPC 监听器（注册前先移除可能已存在的同名 handler，防止重复注册报错）
+        try {
+            const { ipcMain } = require('@electron/remote');
+            const apiBaseUrl = window.location.origin;
+
+            this._ipcSaveHandler = (event, data) => {
+                this.addQuickNote(data.content);
+            };
+            // 先移除再注册，避免插件重载时重复
+            try { ipcMain.removeListener('lumina-quick-save', this._ipcSaveHandler); } catch (e) {}
+            ipcMain.on('lumina-quick-save', this._ipcSaveHandler);
+
+            this._ipcUploadHandler = async (event, data) => {
+                try {
+                    const base64Response = await fetch(data.base64);
+                    const blob = await base64Response.blob();
+                    const file = new File([blob], data.name, { type: blob.type });
+                    const formData = new FormData();
+                    formData.append('assetsDirPath', '/assets/');
+                    formData.append('file[]', file);
+                    const response = await fetch(apiBaseUrl + '/api/asset/upload', { method: 'POST', body: formData });
+                    const result = await response.json();
+                    if (result.code === 0 && result.data.succMap && Object.keys(result.data.succMap).length > 0) {
+                        return { success: true, url: Object.values(result.data.succMap)[0] };
+                    }
+                    return { success: false, error: '上传失败' };
+                } catch (e) {
+                    return { success: false, error: e.message };
+                }
+            };
+            try { ipcMain.removeHandler('lumina-quick-upload'); } catch (e) {}
+            ipcMain.handle('lumina-quick-upload', this._ipcUploadHandler);
+
+            this._ipcTagsHandler = (event) => {
+                return this.extractAllTags();
+            };
+            try { ipcMain.removeHandler('lumina-quick-tags'); } catch (e) {}
+            ipcMain.handle('lumina-quick-tags', this._ipcTagsHandler);
+        } catch (e) {
+            console.log('注册 IPC 监听器失败', e);
+        }
 
         console.log("Shuoshuo plugin loaded");
     }
@@ -168,6 +276,19 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     }
 
     onunload() {
+        // 关闭轻语速记独立窗口
+        QuickWindow.getInstance(this).close();
+
+        // 移除 IPC 监听器
+        try {
+            const { ipcMain } = require('@electron/remote');
+            if (this._ipcSaveHandler) ipcMain.removeListener('lumina-quick-save', this._ipcSaveHandler);
+            if (this._ipcUploadHandler) ipcMain.removeHandler('lumina-quick-upload');
+            if (this._ipcTagsHandler) ipcMain.removeHandler('lumina-quick-tags');
+        } catch (e) {
+            // 忽略
+        }
+
         console.log("Shuoshuo plugin unloaded");
     }
 
@@ -183,7 +304,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         });
     }
 
-    // 打开快速记录浮层（复用说说输入框功能）
+    // 打开轻语速记浮层（复用说说输入框功能）
     openQuickOverlay() {
         const existing = document.querySelector('.north-shuoshuo-quick-overlay');
         if (existing) {
@@ -202,7 +323,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         overlay.className = `north-shuoshuo-quick-overlay ${themeClass}${morandiClass}`;
         overlay.innerHTML = `
             <div class="north-shuoshuo-quick-overlay-content" id="quick-overlay-panel">
-                <div class="quick-overlay-header" id="quick-overlay-header">快速记录</div>
+                <div class="quick-overlay-header" id="quick-overlay-header">轻语速记</div>
                 <div class="quick-overlay-body">
                     <textarea id="quick-overlay-input" placeholder="记录此刻的想法..."></textarea>
                 </div>
@@ -395,14 +516,812 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         input.focus();
     }
 
-    // 打开/聚焦快速记录窗口
+    // 打开/聚焦轻语速记窗口
     openQuickWindow() {
-        this.openQuickOverlay();
+        if (this.isMobile) {
+            showMessage('移动端不支持轻语速记窗口');
+            return;
+        }
+        QuickWindow.getInstance(this).createWindow();
     }
 
+    // 构建轻语速记窗口的 HTML
+    getQuickWindowHTML() {
+        const notesJson = JSON.stringify(this.shuoshuos.map(n => ({
+            id: n.id,
+            content: (n.content || '').split('\n')[0].substring(0, 60),
+            created: n.created
+        })));
 
+        // 根据插件主题模式计算颜色变量
+        const themeMode = this.themeMode || 'original';
+        const morandiColor = this.morandiColor;
+        let primaryColor, bgColor, textColor, borderColor, placeholderColor;
+        let toolBtnText, toolBtnHover, btnCloseText, btnCloseHover;
+        let pickerBg, pickerBorder, pickerText, pickerHover, pickerPlaceholder;
 
-    // 快速记录保存到说说列表
+        if (themeMode === 'original') {
+            primaryColor = '#00B96B';
+            bgColor = '#FFFFFF';
+            textColor = '#262626';
+            borderColor = '#F0F0F0';
+            placeholderColor = '#BFBFBF';
+            toolBtnText = '#8C8C8C';
+            toolBtnHover = '#F5F5F5';
+            btnCloseText = '#8C8C8C';
+            btnCloseHover = '#F5F5F5';
+            pickerBg = '#fff';
+            pickerBorder = '#e8e8e8';
+            pickerText = '#555';
+            pickerHover = '#f5f5f5';
+            pickerPlaceholder = '#999';
+        } else if (themeMode === 'siyuan') {
+            const computed = window.getComputedStyle(document.documentElement);
+            primaryColor = computed.getPropertyValue('--b3-theme-primary').trim() || '#00B96B';
+            bgColor = computed.getPropertyValue('--b3-theme-background').trim() || '#FFFFFF';
+            textColor = computed.getPropertyValue('--b3-theme-on-background').trim() || '#262626';
+            borderColor = computed.getPropertyValue('--b3-border-color').trim() || '#F0F0F0';
+            placeholderColor = computed.getPropertyValue('--b3-theme-on-surface-light').trim() || '#BFBFBF';
+            toolBtnText = computed.getPropertyValue('--b3-theme-on-surface-light').trim() || '#8C8C8C';
+            toolBtnHover = computed.getPropertyValue('--b3-list-hover').trim() || '#F5F5F5';
+            btnCloseText = computed.getPropertyValue('--b3-theme-on-surface-light').trim() || '#8C8C8C';
+            btnCloseHover = computed.getPropertyValue('--b3-list-hover').trim() || '#F5F5F5';
+            pickerBg = computed.getPropertyValue('--b3-theme-surface').trim() || '#fff';
+            pickerBorder = computed.getPropertyValue('--b3-border-color').trim() || '#e8e8e8';
+            pickerText = computed.getPropertyValue('--b3-theme-on-surface').trim() || '#555';
+            pickerHover = computed.getPropertyValue('--b3-list-hover').trim() || '#f5f5f5';
+            pickerPlaceholder = computed.getPropertyValue('--b3-theme-on-surface-light').trim() || '#999';
+        } else if (themeMode === 'morandi') {
+            const color = MORANDI_COLORS.find(c => c.key === morandiColor) || MORANDI_COLORS[0];
+            primaryColor = color.color;
+            bgColor = color.bg;
+            textColor = '#262626';
+            borderColor = '#F0F0F0';
+            placeholderColor = '#BFBFBF';
+            toolBtnText = '#8C8C8C';
+            toolBtnHover = '#F5F5F5';
+            btnCloseText = '#8C8C8C';
+            btnCloseHover = '#F5F5F5';
+            pickerBg = '#fff';
+            pickerBorder = '#e8e8e8';
+            pickerText = '#555';
+            pickerHover = '#f5f5f5';
+            pickerPlaceholder = '#999';
+        }
+
+        // 字体大小
+        let fontSize;
+        switch (this.fontSizeConfig.mode) {
+            case 'siyuan':
+                fontSize = 'var(--b3-font-size-editor)';
+                break;
+            case 'custom':
+                fontSize = `${this.fontSizeConfig.customSize || 14.5}px`;
+                break;
+            default:
+                fontSize = '14.5px';
+        }
+
+        const baseUrl = window.location.origin;
+
+        return `<!DOCTYPE html>
+<html data-theme="${themeMode}">
+<head>
+<meta charset="UTF-8">
+<style>
+:root {
+    --primary-color: ${primaryColor};
+    --card-bg: ${bgColor};
+    --card-text: ${textColor};
+    --card-border: ${borderColor};
+    --placeholder-color: ${placeholderColor};
+    --tool-btn-text: ${toolBtnText};
+    --tool-btn-hover: ${toolBtnHover};
+    --btn-close-text: ${btnCloseText};
+    --btn-close-hover: ${btnCloseHover};
+    --picker-bg: ${pickerBg};
+    --picker-border: ${pickerBorder};
+    --picker-text: ${pickerText};
+    --picker-hover: ${pickerHover};
+    --picker-placeholder: ${pickerPlaceholder};
+    --font-size: ${fontSize};
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+.quick-note-card {
+    width: 100%;
+    height: 100%;
+    background: var(--card-bg);
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.card-header {
+    padding: 24px 28px 0 28px;
+    display: flex;
+    align-items: center;
+    -webkit-app-region: drag;
+    gap: 12px;
+}
+.header-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-color) 100%);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+}
+.header-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--card-text);
+    letter-spacing: -0.2px;
+}
+.card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 28px 0 28px;
+    min-height: 0;
+}
+.editor-area {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    border: none;
+    padding: 16px 4px;
+    font-size: var(--font-size);
+    line-height: 1.8;
+    color: var(--card-text);
+    background: transparent;
+    resize: none;
+    outline: none;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+.editor-area::placeholder {
+    color: var(--placeholder-color);
+    font-size: var(--font-size);
+}
+.divider {
+    height: 1px;
+    background: var(--card-border);
+    margin: 0 28px;
+}
+.card-footer {
+    padding: 12px 28px 16px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.toolbar {
+    display: flex;
+    gap: 4px;
+}
+.tool-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--tool-btn-text);
+    font-size: 15px;
+    transition: all 0.2s ease;
+    position: relative;
+}
+.tool-btn:hover {
+    background: var(--tool-btn-hover);
+    color: var(--card-text);
+}
+.tool-btn:active {
+    transform: scale(0.95);
+}
+.tool-btn .tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--tooltip-bg);
+    color: white;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    pointer-events: none;
+    font-weight: 500;
+}
+.tool-btn:hover .tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+.action-btns {
+    display: flex;
+    gap: 8px;
+}
+.btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.btn-close {
+    background: transparent;
+    color: var(--btn-close-text);
+}
+.btn-close:hover {
+    background: var(--btn-close-hover);
+    color: var(--card-text);
+}
+.btn-save {
+    background: var(--primary-color);
+    color: white;
+}
+.btn-save:hover {
+    opacity: 0.9;
+}
+.btn-save:active {
+    transform: scale(0.98);
+}
+/* 保留的 tag-picker 和 mention-picker 样式 */
+.tag-picker {
+    position: fixed;
+    background: var(--picker-bg);
+    border: 1px solid var(--picker-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 99999;
+    width: 260px;
+    padding: 8px 0;
+}
+.tag-picker-input-wrapper {
+    display: flex;
+    align-items: center;
+    padding: 0 12px 6px;
+    border-bottom: 1px solid var(--picker-border);
+    margin-bottom: 4px;
+}
+.tag-picker-prefix {
+    color: var(--picker-placeholder);
+    font-size: 14px;
+    margin-right: 4px;
+}
+.tag-picker-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    padding: 4px 0;
+    color: var(--picker-text);
+    background: transparent;
+    font-family: inherit;
+}
+.tag-picker-item {
+    padding: 7px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--picker-text);
+}
+.tag-picker-item:hover, .tag-picker-item.selected {
+    background: var(--picker-hover);
+}
+.tag-picker-create {
+    border-top: 1px dashed var(--picker-border);
+    margin-top: 2px;
+    padding-top: 7px;
+}
+.tag-picker-create-hint {
+    font-size: 11px;
+    color: var(--picker-placeholder);
+    margin-right: 6px;
+}
+.tag-picker-empty {
+    padding: 12px;
+    font-size: 13px;
+    color: var(--picker-placeholder);
+    text-align: center;
+}
+.mention-picker {
+    position: fixed;
+    background: var(--picker-bg);
+    border: 1px solid var(--picker-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 99999;
+    width: 280px;
+}
+.mention-search {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--picker-border);
+    font-size: 12px;
+    color: var(--picker-placeholder);
+    background: transparent;
+}
+.mention-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--picker-text);
+    border-bottom: 1px solid var(--picker-border);
+}
+.mention-item:hover, .mention-item.selected {
+    background: var(--picker-hover);
+}
+.mention-item:last-child {
+    border-bottom: none;
+}
+.mention-item.hidden {
+    display: none;
+}
+.mention-date {
+    font-size: 11px;
+    color: var(--picker-placeholder);
+    margin-bottom: 2px;
+}
+</style>
+</head>
+<body>
+<div class="quick-note-card">
+    <div class="card-header">
+        <div class="header-icon">✎</div>
+        <div class="header-title">轻语速记</div>
+    </div>
+    <div class="card-body">
+        <textarea class="editor-area" id="editor" placeholder="记录此刻的想法..." spellcheck="false"></textarea>
+    </div>
+    <div class="divider"></div>
+    <div class="card-footer">
+        <div class="toolbar">
+            <button class="tool-btn" id="btn-tag">
+                <span style="font-weight:600;">#</span>
+                <span class="tooltip">标签</span>
+            </button>
+            <button class="tool-btn" id="btn-image">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span class="tooltip">图片</span>
+            </button>
+            <button class="tool-btn" id="btn-ul">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="10" y1="6" x2="21" y2="6"/>
+                    <line x1="10" y1="12" x2="21" y2="12"/>
+                    <line x1="10" y1="18" x2="21" y2="18"/>
+                    <line x1="4" y1="6" x2="4" y2="6.01"/>
+                    <line x1="4" y1="12" x2="4" y2="12.01"/>
+                    <line x1="4" y1="18" x2="4" y2="18.01"/>
+                </svg>
+                <span class="tooltip">无序列表</span>
+            </button>
+            <button class="tool-btn" id="btn-ol">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6"/>
+                    <line x1="8" y1="12" x2="21" y2="12"/>
+                    <line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/>
+                    <line x1="3" y1="12" x2="3.01" y2="12"/>
+                    <line x1="3" y1="18" x2="3.01" y2="18"/>
+                </svg>
+                <span class="tooltip">有序列表</span>
+            </button>
+            <button class="tool-btn" id="btn-at">
+                <span style="font-weight:600;">@</span>
+                <span class="tooltip">提及</span>
+            </button>
+        </div>
+        <div class="action-btns">
+            <button class="btn btn-close" id="btn-close">取消</button>
+            <button class="btn btn-save" id="btn-save">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const { ipcRenderer } = require('electron');
+const BASE_URL = '${baseUrl}';
+const editor = document.getElementById('editor');
+editor.focus();
+
+const NOTES = ${notesJson};
+let ALL_TAGS = [];
+let tagPicker = null;
+let mentionPicker = null;
+
+// 预加载标签列表
+ipcRenderer.invoke('lumina-quick-tags').then(tags => {
+    ALL_TAGS = tags || [];
+}).catch(() => {
+    ALL_TAGS = [];
+});
+
+function insertTextAtCursor(before, after) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const text = editor.value;
+    const selected = text.substring(start, end);
+    editor.value = text.substring(0, start) + before + selected + after + text.substring(end);
+    const newPos = start + before.length + selected.length;
+    editor.setSelectionRange(newPos, newPos);
+    editor.focus();
+}
+
+function insertText(text) {
+    insertTextAtCursor(text, '');
+}
+
+// 标签选择器
+document.getElementById('btn-tag').addEventListener('click', (e) => {
+    e.stopPropagation();
+    showTagPicker();
+});
+
+function showTagPicker() {
+    if (tagPicker) { tagPicker.remove(); tagPicker = null; return; }
+    tagPicker = document.createElement('div');
+    tagPicker.className = 'tag-picker';
+    const rect = document.getElementById('btn-tag').getBoundingClientRect();
+    tagPicker.style.left = rect.left + 'px';
+    // 先隐藏并插入文档以测量实际高度，再向上定位（工具栏在窗口底部，向下会被截断）
+    tagPicker.style.visibility = 'hidden';
+
+    tagPicker.innerHTML = \`
+        <div class="tag-picker-input-wrapper">
+            <span class="tag-picker-prefix">#</span>
+            <input type="text" class="tag-picker-input" placeholder="选择或创建标签..." autocomplete="off">
+        </div>
+        <div class="tag-picker-list"></div>
+    \`;
+    document.body.appendChild(tagPicker);
+    const height = tagPicker.offsetHeight;
+    tagPicker.style.top = (rect.top - height - 6) + 'px';
+    tagPicker.style.visibility = 'visible';
+
+    const pickerInput = tagPicker.querySelector('.tag-picker-input');
+    const pickerList = tagPicker.querySelector('.tag-picker-list');
+    pickerInput.focus();
+
+    function renderList(value) {
+        const v = (value || '').trim().toLowerCase();
+        let html = '';
+        const filtered = v ? ALL_TAGS.filter(t => t.toLowerCase().includes(v)) : ALL_TAGS;
+        const isNew = v && !ALL_TAGS.some(t => t.toLowerCase() === v);
+        if (isNew) {
+            html += \`<div class="tag-picker-item tag-picker-create" data-tag="\${v}"><span class="tag-picker-create-hint">创建标签</span><span class="tag-picker-item-name">#\${v}</span></div>\`;
+        }
+        html += filtered.map(tag => \`<div class="tag-picker-item" data-tag="\${tag}"><span class="tag-picker-item-name">\${tag}</span></div>\`).join('');
+        if (!html) html = '<div class="tag-picker-empty">输入创建新标签</div>';
+        pickerList.innerHTML = html;
+    }
+    renderList();
+
+    pickerInput.addEventListener('input', () => renderList(pickerInput.value));
+    pickerInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const v = pickerInput.value.trim();
+            if (v) { insertTag(v); tagPicker.remove(); tagPicker = null; }
+        } else if (e.key === 'Escape') {
+            tagPicker.remove(); tagPicker = null;
+        }
+    });
+
+    pickerList.addEventListener('click', (ev) => {
+        const item = ev.target.closest('.tag-picker-item');
+        if (item) { insertTag(item.dataset.tag); tagPicker.remove(); tagPicker = null; }
+    });
+
+    setTimeout(() => {
+        document.addEventListener('click', function closeOnClick(ev) {
+            if (!tagPicker) return;
+            if (!tagPicker.contains(ev.target) && !ev.target.closest('#btn-tag')) {
+                tagPicker.remove(); tagPicker = null;
+                document.removeEventListener('click', closeOnClick);
+            }
+        });
+    }, 0);
+}
+
+function insertTag(tag) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const text = editor.value;
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+    const needsHash = before.length === 0 || before.endsWith(' ') || before.endsWith('\\n');
+    const tagText = needsHash ? '#' + tag + ' ' : tag + ' ';
+    editor.value = before + tagText + after;
+    editor.setSelectionRange(start + tagText.length, start + tagText.length);
+    editor.focus();
+}
+
+// 图片上传
+document.getElementById('btn-image').addEventListener('click', () => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+    fileInput.onchange = async () => {
+        const file = fileInput.files[0];
+        if (!file) { document.body.removeChild(fileInput); return; }
+        if (!file.type.startsWith('image/')) { alert('请选择图片文件'); document.body.removeChild(fileInput); return; }
+        try {
+            const formData = new FormData();
+            formData.append('assetsDirPath', '/assets/');
+            formData.append('file[]', file);
+            const response = await fetch(BASE_URL + '/api/asset/upload', { method: 'POST', body: formData });
+            const result = await response.json();
+            if (result.code === 0) {
+                const succMap = result.data.succMap;
+                const newPath = succMap[file.name];
+                if (newPath) {
+                    const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                    insertTextAtCursor(\`![图片](\${imgPath})\`, '');
+                    editor.focus();
+                }
+            } else {
+                alert('上传失败：' + (result.msg || '未知错误'));
+            }
+        } catch (err) {
+            alert('上传失败：' + err.message);
+        } finally {
+            if (fileInput.parentNode) document.body.removeChild(fileInput);
+        }
+    };
+    fileInput.click();
+});
+
+// 无序列表
+document.getElementById('btn-ul').addEventListener('click', () => {
+    insertTextAtCursor('• ', '');
+    editor.focus();
+});
+
+// 有序列表
+document.getElementById('btn-ol').addEventListener('click', () => {
+    const lines = editor.value.substring(0, editor.selectionStart).split('\\n');
+    const currentLine = lines[lines.length - 1];
+    const match = currentLine.match(/^(\\d+)\\.\\s/);
+    const num = match ? parseInt(match[1]) + 1 : 1;
+    insertTextAtCursor(num + '. ', '');
+    editor.focus();
+});
+
+// @ 引用
+document.getElementById('btn-at').addEventListener('click', (e) => {
+    e.stopPropagation();
+    showMentionPicker();
+});
+
+function showMentionPicker(triggerPos) {
+    if (mentionPicker) { mentionPicker.remove(); mentionPicker = null; }
+    const pos = triggerPos !== undefined ? triggerPos : editor.selectionStart;
+    let atPos = pos;
+    if (triggerPos === undefined) {
+        const value = editor.value;
+        if (value.substring(pos - 1, pos) !== '@') {
+            editor.value = value.substring(0, pos) + '@' + value.substring(pos);
+            editor.setSelectionRange(pos + 1, pos + 1);
+            atPos = pos;
+        } else {
+            atPos = pos - 1;
+        }
+    }
+    mentionPicker = document.createElement('div');
+    mentionPicker.className = 'mention-picker';
+    const rect = document.getElementById('btn-at').getBoundingClientRect();
+    mentionPicker.style.left = rect.left + 'px';
+    mentionPicker.style.top = (rect.top - Math.min(NOTES.length * 40 + 10, 200)) + 'px';
+    mentionPicker.dataset.triggerPos = atPos;
+
+    if (NOTES.length === 0) {
+        mentionPicker.innerHTML = '<div class="mention-item">暂无笔记</div>';
+    } else {
+        mentionPicker.innerHTML = '<div class="mention-search">输入搜索笔记...</div>' + NOTES.map(n => {
+            const date = new Date(n.created).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            return '<div class="mention-item" data-id="' + n.id + '"><div class="mention-date">' + date + '</div><div>' + (n.content || '无内容') + '</div></div>';
+        }).join('');
+    }
+    document.body.appendChild(mentionPicker);
+
+    mentionPicker.querySelectorAll('.mention-item[data-id]').forEach(item => {
+        item.addEventListener('click', () => {
+            const savedCursorPos = editor.selectionStart;
+            editor.focus();
+            const memoText = '[MEMO:' + item.dataset.id + ']';
+            const value = editor.value;
+            const tp = parseInt(mentionPicker.dataset.triggerPos, 10);
+            const before = value.substring(0, tp);
+            // 点击 picker 时 editor 可能已失焦，selectionStart 不可靠；
+            // 若保存的光标位置有效则用它，否则只替换 @ 本身
+            const cursorPos = (savedCursorPos > tp) ? savedCursorPos : tp + 1;
+            const after = value.substring(cursorPos);
+            editor.value = before + memoText + after;
+            editor.setSelectionRange(tp + memoText.length, tp + memoText.length);
+            mentionPicker.remove(); mentionPicker = null;
+            editor.focus();
+        });
+    });
+}
+
+function filterMentionPicker(searchText) {
+    if (!mentionPicker) return;
+    const items = mentionPicker.querySelectorAll('.mention-item[data-id]');
+    const st = searchText.toLowerCase();
+    items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.classList.toggle('hidden', !text.includes(st));
+    });
+}
+
+// 点击外部关闭 picker
+document.addEventListener('click', (e) => {
+    if (tagPicker && !tagPicker.contains(e.target) && !e.target.closest('#btn-tag')) {
+        tagPicker.remove(); tagPicker = null;
+    }
+    if (mentionPicker && !mentionPicker.contains(e.target) && !e.target.closest('#btn-at')) {
+        mentionPicker.remove(); mentionPicker = null;
+    }
+});
+
+// 输入事件：自动转列表符 + 处理 @ 引用 + 自动调整高度
+editor.addEventListener('input', () => {
+    const cursorPos = editor.selectionStart;
+    const value = editor.value;
+    const beforeCursor = value.substring(0, cursorPos);
+    const afterCursor = value.substring(cursorPos);
+    const lines = beforeCursor.split('\\n');
+    const currentLine = lines[lines.length - 1];
+
+    // 自动将行首 - / * 转换为 •
+    if (currentLine === '- ' || currentLine === '* ') {
+        lines[lines.length - 1] = '• ';
+        editor.value = lines.join('\\n') + afterCursor;
+        editor.setSelectionRange(cursorPos, cursorPos);
+    }
+
+    // 处理 @ 快速引用
+    handleMentionInput();
+});
+
+function handleMentionInput() {
+    const existing = document.querySelector('.mention-picker');
+    if (!existing) {
+        const cursorPos = editor.selectionStart;
+        const value = editor.value;
+        const beforeCursor = value.substring(0, cursorPos);
+        const currentLine = beforeCursor.split('\\n').pop();
+        const atIndex = currentLine.lastIndexOf('@');
+        if (atIndex >= 0) {
+            const afterAt = currentLine.substring(atIndex + 1);
+            if (!afterAt.includes('@')) {
+                const lineStartPos = cursorPos - currentLine.length;
+                showMentionPicker(lineStartPos + atIndex);
+            }
+        }
+        return;
+    }
+    const triggerPos = parseInt(existing.dataset.triggerPos, 10);
+    const cursorPos = editor.selectionStart;
+    const value = editor.value;
+    if (cursorPos <= triggerPos) { existing.remove(); mentionPicker = null; return; }
+    if (value.substring(triggerPos, triggerPos + 1) !== '@') { existing.remove(); mentionPicker = null; return; }
+    const searchText = value.substring(triggerPos + 1, cursorPos);
+    filterMentionPicker(searchText);
+}
+
+// 键盘事件
+editor.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+        const cursorPos = editor.selectionStart;
+        const value = editor.value;
+        const beforeCursor = value.substring(0, cursorPos);
+        const afterCursor = value.substring(cursorPos);
+        const lines = beforeCursor.split('\\n');
+        const currentLine = lines[lines.length - 1];
+
+        const unorderedMatch = currentLine.match(/^(•\\s|-\\s|\\*\\s)(.*)$/);
+        const orderedMatch = currentLine.match(/^(\\d+)\\.\\s(.*)$/);
+
+        if (unorderedMatch) {
+            if (!unorderedMatch[2].trim()) {
+                e.preventDefault();
+                lines[lines.length - 1] = '';
+                editor.value = lines.join('\\n') + '\\n' + afterCursor;
+                const newPos = lines.join('\\n').length + 1;
+                editor.setSelectionRange(newPos, newPos);
+                return;
+            }
+            e.preventDefault();
+            const newLine = '\\n• ';
+            editor.value = beforeCursor + newLine + afterCursor;
+            editor.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+            return;
+        }
+
+        if (orderedMatch) {
+            if (!orderedMatch[2].trim()) {
+                e.preventDefault();
+                lines[lines.length - 1] = '';
+                editor.value = lines.join('\\n') + '\\n' + afterCursor;
+                const newPos = lines.join('\\n').length + 1;
+                editor.setSelectionRange(newPos, newPos);
+                return;
+            }
+            e.preventDefault();
+            const nextNum = parseInt(orderedMatch[1]) + 1;
+            const newLine = '\\n' + nextNum + '. ';
+            editor.value = beforeCursor + newLine + afterCursor;
+            editor.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+            return;
+        }
+    }
+
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        save();
+    }
+    if (e.key === 'Escape') {
+        window.close();
+    }
+});
+
+// 关闭
+document.getElementById('btn-close').addEventListener('click', () => window.close());
+
+// 保存
+function save() {
+    const text = editor.value.trim();
+    if (!text) return;
+    ipcRenderer.send('lumina-quick-save', { content: text });
+    // 保存后清空输入框并聚焦，窗口保持打开以便连续记录
+    editor.value = '';
+    editor.focus();
+}
+document.getElementById('btn-save').addEventListener('click', save);
+
+// 接收主窗口的关闭指令（有内容则先保存再关闭）
+ipcRenderer.on('lumina-close', () => {
+    const text = editor.value.trim();
+    if (text) {
+        ipcRenderer.send('lumina-quick-save', { content: text });
+    }
+    window.close();
+});
+<\/script>
+</body>
+</html>`;
+    }
+
+    // 轻语速记保存到说说列表
     async addQuickNote(content) {
         if (!content || !content.trim()) return;
 
@@ -6627,7 +7546,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         if (container) {
             container.style.setProperty('--shuoshuo-content-font-size', fontSize);
         }
-        // 同时设置到根元素，让快速记录浮层等也能使用
+        // 同时设置到根元素，让轻语速记浮层等也能使用
         document.documentElement.style.setProperty('--shuoshuo-content-font-size', fontSize);
     }
 
