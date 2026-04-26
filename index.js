@@ -539,6 +539,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             content: (n.content || '').split('\n')[0].substring(0, 60),
             created: n.created
         })));
+        const tagsJson = JSON.stringify(this.extractAllTags());
 
         // 根据插件主题模式计算颜色变量
         const themeMode = this.themeMode || 'original';
@@ -960,16 +961,16 @@ const editor = document.getElementById('editor');
 editor.focus();
 
 const NOTES = ${notesJson};
-let ALL_TAGS = [];
+let ALL_TAGS = ${tagsJson};
 let tagPicker = null;
 let mentionPicker = null;
 
-// 预加载标签列表
+// 异步刷新标签列表（获取最新数据）
 ipcRenderer.invoke('lumina-quick-tags').then(tags => {
-    ALL_TAGS = tags || [];
-}).catch(() => {
-    ALL_TAGS = [];
-});
+    if (tags && tags.length > 0) {
+        ALL_TAGS = tags;
+    }
+}).catch(() => {});
 
 function insertTextAtCursor(before, after) {
     const start = editor.selectionStart;
@@ -1009,13 +1010,9 @@ function showTagPicker() {
         <div class="tag-picker-list"></div>
     \`;
     document.body.appendChild(tagPicker);
-    const height = tagPicker.offsetHeight;
-    tagPicker.style.top = (rect.top - height - 6) + 'px';
-    tagPicker.style.visibility = 'visible';
 
     const pickerInput = tagPicker.querySelector('.tag-picker-input');
     const pickerList = tagPicker.querySelector('.tag-picker-list');
-    pickerInput.focus();
 
     function renderList(value) {
         const v = (value || '').trim().toLowerCase();
@@ -1029,7 +1026,13 @@ function showTagPicker() {
         if (!html) html = '<div class="tag-picker-empty">输入创建新标签</div>';
         pickerList.innerHTML = html;
     }
+
+    // 先渲染列表内容，再测量实际高度并定位
     renderList();
+    const height = tagPicker.offsetHeight;
+    tagPicker.style.top = (rect.top - height - 6) + 'px';
+    tagPicker.style.visibility = 'visible';
+    pickerInput.focus();
 
     pickerInput.addEventListener('input', () => renderList(pickerInput.value));
     pickerInput.addEventListener('keydown', (e) => {
@@ -1373,6 +1376,11 @@ ipcRenderer.on('lumina-close', () => {
         if (!this.container) return;
 
         this.container.innerHTML = `
+            <svg style="position:absolute;width:0;height:0;overflow:hidden;" aria-hidden="true">
+                <symbol id="lumina-icon-ref" viewBox="0 0 32 32">
+                    <path d="M2.545 28.491q-1.055 0-1.8-0.745t-0.745-1.8 0.745-1.8 1.8-0.745q0.182 0 0.364 0.018t0.473 0.091l7.273-7.273q-0.073-0.291-0.091-0.473t-0.018-0.364q0-1.055 0.745-1.8t1.8-0.745 1.8 0.745 0.745 1.8q0 0.073-0.109 0.836l4 4q0.291-0.073 0.473-0.091t0.364-0.018 0.364 0.018 0.473 0.091l5.818-5.818q-0.073-0.291-0.091-0.473t-0.018-0.364q0-1.055 0.745-1.8t1.8-0.745 1.8 0.745 0.745 1.8-0.745 1.8-1.8 0.745q-0.182 0-0.364-0.018t-0.473-0.091l-5.818 5.818q0.073 0.291 0.091 0.473t0.018 0.364q0 1.055-0.745 1.8t-1.8 0.745-1.8-0.745-0.745-1.8q0-0.182 0.018-0.364t0.091-0.473l-4-4q-0.291 0.073-0.473 0.091t-0.364 0.018q-0.073 0-0.836-0.109l-7.273 7.273q0.073 0.291 0.091 0.473t0.018 0.364q0 1.055-0.745 1.8t-1.8 0.745zM4.364 12.418l-0.727-1.6-1.6-0.727 1.6-0.727 0.727-1.6 0.727 1.6 1.6 0.727-1.6 0.727zM20.363 10.564l-1.127-2.4-2.4-1.127 2.4-1.127 1.127-2.4 1.127 2.4 2.4 1.127-2.4 1.127z"></path>
+                </symbol>
+            </svg>
             <div class="north-shuoshuo-container">
                 <!-- 最左侧导航栏（微信风格 - 保持不变）-->
                 <div class="north-shuoshuo-sidebar">
@@ -2398,7 +2406,7 @@ ipcRenderer.on('lumina-close', () => {
             if (match) {
                 oldFormatSource = `
                     <div class="north-shuoshuo-memo-relation-item">
-                        <svg class="icon"><use xlink:href="#iconRef"></use></svg>
+                        <svg class="icon"><use xlink:href="#lumina-icon-ref"></use></svg>
                         <span class="north-shuoshuo-memo-relation-info">${this.escapeHtml(match[1].trim())}</span>
                     </div>
                 `;
@@ -2430,7 +2438,7 @@ ipcRenderer.on('lumina-close', () => {
 
                     return `
                         <div class="north-shuoshuo-memo-relation-item" data-id="${id}">
-                            <span class="north-shuoshuo-memo-relation-icon">${isComment ? '<svg class="icon"><use xlink:href="#iconRef"></use></svg>' : ''}</span>
+                            <span class="north-shuoshuo-memo-relation-icon">${isComment ? '<svg class="icon"><use xlink:href="#lumina-icon-ref"></use></svg>' : ''}</span>
                             <span class="north-shuoshuo-memo-relation-info">${dateStr}: ${infoText}</span>
                         </div>
                     `;
@@ -3196,13 +3204,13 @@ ipcRenderer.on('lumina-close', () => {
                     const desc = item.description_zh_cn || item.description || '';
                     const keywords = item.keywords || '';
                     
-                    // 调试：检查看起来无效的 unicode 值
-                    if (unicode && !unicode.match(/^[\da-fA-F\s_\-U\+]+$/)) {
-                        console.warn('Emoji 包含非十六进制字符:', unicode, '描述:', desc);
-                    }
-                    
                     // 自定义 emoji 是图片路径，内置 emoji 是 unicode 十六进制代码
                     const isCustomEmoji = /\.(png|gif|jpg|jpeg|webp)$/i.test(unicode);
+                    
+                    // 调试：检查看起来无效的 unicode 值（排除自定义 emoji 图片路径）
+                    if (unicode && !isCustomEmoji && !unicode.match(/^[\da-fA-F\s_\-U\+]+$/)) {
+                        console.warn('Emoji 包含非十六进制字符:', unicode, '描述:', desc);
+                    }
                     
                     if (isCustomEmoji) {
                         // 自定义 emoji 图片
@@ -5230,9 +5238,18 @@ ipcRenderer.on('lumina-close', () => {
         // 定位菜单
         const rect = triggerEl.getBoundingClientRect();
         menu.style.position = 'fixed';
-        menu.style.top = `${rect.bottom + 4}px`;
-        menu.style.left = `${rect.left - 120}px`;
         menu.style.zIndex = '99999';
+
+        const menuHeight = menu.offsetHeight;
+        const viewportHeight = window.innerHeight;
+
+        // 检测菜单是否会超出视口底部，若超出则向上显示
+        if (rect.bottom + 4 + menuHeight > viewportHeight) {
+            menu.style.top = `${rect.top - menuHeight - 4}px`;
+        } else {
+            menu.style.top = `${rect.bottom + 4}px`;
+        }
+        menu.style.left = `${rect.left - 120}px`;
 
         // 绑定事件
         menu.addEventListener('click', async (e) => {
