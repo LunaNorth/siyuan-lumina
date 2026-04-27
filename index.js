@@ -88,6 +88,11 @@ const ICONS = {
 // ============ 轻语速记独立窗口管理类 ============
 class QuickWindow {
     static instance = null;
+    static creatingPromise = null;
+    static windowIds = new Set();
+    static LOCK_KEY = '__lumina_quick_lock__';
+    static WINDOW_ID_KEY = '__lumina_quick_window_id__';
+
     static getInstance(plugin) {
         if (!QuickWindow.instance) {
             QuickWindow.instance = new QuickWindow(plugin);
@@ -95,20 +100,184 @@ class QuickWindow {
         return QuickWindow.instance;
     }
 
+    // 创建后去重：扫描所有 Electron 窗口，关闭除第一个外的所有轻语速记窗口
+    // 这是最后一道防线，不管前面多少层锁都失效，它也能把重复窗口关掉
+    static deduplicateWindows() {
+        setTimeout(() => {
+            try {
+                const { BrowserWindow } = require('@electron/remote');
+                const all = BrowserWindow.getAllWindows();
+                const targets = [];
+                for (const w of all) {
+                    try {
+                        if (w.getTitle && w.getTitle() === '__lumina_quick__') {
+                            targets.push(w);
+                        }
+                    } catch (e) {}
+                }
+                // 保留第一个，关闭其余所有重复窗口
+                for (let i = 1; i < targets.length; i++) {
+                    try {
+                        if (!targets[i].isDestroyed()) {
+                            targets[i].close();
+                        }
+                    } catch (e) {}
+                }
+                // 把存活窗口的 ID 写回 localStorage
+                if (targets.length > 0 && targets[0] && !targets[0].isDestroyed()) {
+                    localStorage.setItem(QuickWindow.WINDOW_ID_KEY, String(targets[0].id));
+                } else {
+                    localStorage.removeItem(QuickWindow.WINDOW_ID_KEY);
+                }
+            } catch (e) {
+                console.error('轻语速记去重失败', e);
+            }
+        }, 50);
+    }
+
+    // localStorage 锁：尝试获取锁，带验证（防止竞态覆盖）
+    static acquireLock() {
+        const now = Date.now();
+        const myId = Math.random().toString(36).slice(2) + '_' + now;
+        const existing = localStorage.getItem(QuickWindow.LOCK_KEY);
+
+        if (existing) {
+            const [, time] = existing.split(':');
+            if (now - parseInt(time) < 2000) {
+                return { acquired: false, myId };
+            }
+        }
+
+        localStorage.setItem(QuickWindow.LOCK_KEY, `${myId}:${now}`);
+
+        // 验证：立即读回，确认没有被其他上下文覆盖
+        const check = localStorage.getItem(QuickWindow.LOCK_KEY);
+        if (check === `${myId}:${now}`) {
+            return { acquired: true, myId };
+        }
+        return { acquired: false, myId };
+    }
+
+    static releaseLock() {
+        localStorage.removeItem(QuickWindow.LOCK_KEY);
+    }
+
+    // 查找当前是否已有轻语速记窗口存在
+    static findExistingWindow() {
+        try {
+            // 先检查 localStorage 中保存的窗口 ID
+            const savedId = localStorage.getItem(QuickWindow.WINDOW_ID_KEY);
+            if (savedId) {
+                const { BrowserWindow } = require('@electron/remote');
+                const w = BrowserWindow.fromId(parseInt(savedId));
+                if (w && !w.isDestroyed()) {
+                    return w;
+                }
+            }
+
+            // 再检查静态集合
+            const { BrowserWindow } = require('@electron/remote');
+            for (const id of QuickWindow.windowIds) {
+                const w = BrowserWindow.fromId(id);
+                if (w && !w.isDestroyed()) {
+                    return w;
+                }
+            }
+
+            // 兜底：遍历所有窗口按标题匹配
+            const all = BrowserWindow.getAllWindows();
+            for (const w of all) {
+                try {
+                    if (w.getTitle && w.getTitle() === '__lumina_quick__') {
+                        return w;
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {
+            console.error('查找轻语速记窗口失败', e);
+        }
+        return null;
+    }
+
     constructor(plugin) {
         this.plugin = plugin;
         this.win = null;
+        this.isCreating = false;
+        this.lastCreateTime = 0;
+    }
+
+    isOpen() {
+        return !!(this.win && !this.win.isDestroyed() && this.win.isVisible());
     }
 
     async createWindow() {
-        if (this.win && !this.win.isDestroyed()) {
-            // 窗口已存在：发送关闭指令，子窗口会检查内容并自动保存后关闭
-            this.win.webContents.send('lumina-close');
+        // 1) 时间锁：800ms 内快速拒绝
+        const now = Date.now();
+        if (now - this.lastCreateTime < 800) {
+            return;
+        }
+        this.lastCreateTime = now;
+
+        // 2) 内存级并发标志
+        if (this.isCreating) {
+            return;
+        }
+
+        // 3) localStorage 跨上下文锁
+        const lock = QuickWindow.acquireLock();
+        if (!lock.acquired) {
+            // 被锁住了，尝试聚焦已有窗口
+            const existing = QuickWindow.findExistingWindow();
+            if (existing) {
+                existing.focus();
+            }
             return;
         }
 
         try {
+            // 4) Promise 锁：如果另一个创建正在进行，等待它完成
+            if (QuickWindow.creatingPromise) {
+                try {
+                    await QuickWindow.creatingPromise;
+                } catch (e) {}
+                const existing = QuickWindow.findExistingWindow();
+                if (existing) {
+                    existing.focus();
+                    return;
+                }
+                return;
+            }
+
+            // 5) 再次确认没有已存在的窗口
+            const existing = QuickWindow.findExistingWindow();
+            if (existing) {
+                this.win = existing;
+                existing.focus();
+                return;
+            }
+
+            // 6) 真正创建窗口
+            QuickWindow.creatingPromise = this._doCreateWindow();
+            await QuickWindow.creatingPromise;
+        } finally {
+            QuickWindow.creatingPromise = null;
+            // 延迟释放锁，给创建后去重留出时间
+            setTimeout(() => QuickWindow.releaseLock(), 300);
+        }
+    }
+
+    async _doCreateWindow() {
+        this.isCreating = true;
+        try {
             const { BrowserWindow } = require('@electron/remote');
+
+            // 获取锁之后再检查一次
+            const doubleCheck = QuickWindow.findExistingWindow();
+            if (doubleCheck) {
+                this.win = doubleCheck;
+                doubleCheck.focus();
+                return;
+            }
 
             this.win = new BrowserWindow({
                 width: 520,
@@ -118,6 +287,7 @@ class QuickWindow {
                 skipTaskbar: false,
                 resizable: true,
                 transparent: true,
+                title: '__lumina_quick__',
                 webPreferences: {
                     nodeIntegration: true,
                     contextIsolation: false,
@@ -126,24 +296,56 @@ class QuickWindow {
                 show: false,
             });
 
+            // 立即保存窗口 ID 到 localStorage
+            QuickWindow.windowIds.add(this.win.id);
+            localStorage.setItem(QuickWindow.WINDOW_ID_KEY, String(this.win.id));
+
             const html = this.plugin.getQuickWindowHTML();
             await this.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 
             this.win.show();
             this.win.focus();
 
+            // 启动创建后去重（最后一道防线）
+            QuickWindow.deduplicateWindows();
+
             this.win.on('closed', () => {
+                localStorage.removeItem(QuickWindow.WINDOW_ID_KEY);
+                QuickWindow.windowIds.delete(this.win.id);
                 this.win = null;
                 QuickWindow.instance = null;
             });
         } catch (e) {
             console.error('创建轻语速记窗口失败', e);
             this.plugin.openQuickOverlay();
+        } finally {
+            this.isCreating = false;
+        }
+    }
+
+    async saveAndClose() {
+        if (!this.win || this.win.isDestroyed()) {
+            this.win = null;
+            QuickWindow.instance = null;
+            return;
+        }
+        try {
+            const content = await this.win.webContents.executeJavaScript('document.getElementById("editor")?.value || ""');
+            const trimmed = (content || '').trim();
+            if (trimmed) {
+                await this.plugin.addQuickNote(trimmed);
+            }
+        } catch (e) {
+            console.error('保存轻语速记内容失败', e);
+        } finally {
+            this.close();
         }
     }
 
     close() {
         if (this.win && !this.win.isDestroyed()) {
+            localStorage.removeItem(QuickWindow.WINDOW_ID_KEY);
+            QuickWindow.windowIds.delete(this.win.id);
             this.win.close();
         }
     }
@@ -200,14 +402,27 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             }
         });
 
-        // 全局快捷键唤起轻语速记窗口
+        // 全局快捷键唤起轻语速记窗口（toggle：第一次唤起，第二次保存并退出）
+        // 注意：只注册 globalCallback，不注册 callback。
+        // 若同时注册 callback + globalCallback，当与其他插件冲突时，
+        // 思源笔记的事件系统可能同时触发两者，导致窗口被创建两次。
         const quickWindowCallback = () => {
             try {
                 if (this.isMobile) {
                     showMessage('移动端不支持轻语速记窗口');
                     return;
                 }
-                QuickWindow.getInstance(this).createWindow();
+                const qw = QuickWindow.getInstance(this);
+                // 如果窗口已打开，则保存内容并关闭（toggle 逻辑）
+                if (qw.isOpen()) {
+                    qw.saveAndClose();
+                    return;
+                }
+                // 如果正在创建中，忽略重复触发
+                if (qw.isCreating) {
+                    return;
+                }
+                qw.createWindow();
             } catch (e) {
                 console.error('打开轻语速记窗口失败', e);
             }
@@ -216,7 +431,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             langKey: "openQuickWindow",
             langText: "打开轻语速记窗口",
             hotkey: "⌥⌘U",
-            callback: quickWindowCallback,
+            // 只保留全局回调，避免与编辑器内 callback 重复触发
             globalCallback: quickWindowCallback
         });
 
@@ -1307,12 +1522,22 @@ editor.addEventListener('keydown', (e) => {
         save();
     }
     if (e.key === 'Escape') {
+        const text = editor.value.trim();
+        if (text) {
+            ipcRenderer.send('lumina-quick-save', { content: text });
+        }
         window.close();
     }
 });
 
-// 关闭
-document.getElementById('btn-close').addEventListener('click', () => window.close());
+// 关闭（有内容则先保存再关闭）
+document.getElementById('btn-close').addEventListener('click', () => {
+    const text = editor.value.trim();
+    if (text) {
+        ipcRenderer.send('lumina-quick-save', { content: text });
+    }
+    window.close();
+});
 
 // 保存
 function save() {
@@ -3295,6 +3520,51 @@ ipcRenderer.on('lumina-close', () => {
         return boxId;
     }
 
+    // 获取分页页码数组（简洁模式：显示当前页前后和首尾）
+    getPaginationPages(currentPage, totalPages) {
+        const pages = [];
+        const delta = 1; // 当前页前后显示的页数
+        
+        if (totalPages <= 5) {
+            // 页数较少，全部显示
+            for (let i = 1; i <= totalPages; i++) {
+                pages.push(i);
+            }
+            return pages;
+        }
+        
+        // 页数较多，使用简洁模式
+        // 计算要显示的页码范围
+        let left = Math.max(1, currentPage - delta);
+        let right = Math.min(totalPages, currentPage + delta);
+        
+        // 调整范围，确保显示固定数量的页码
+        if (currentPage <= delta + 1) {
+            right = Math.min(totalPages, 2 + delta * 2);
+        } else if (currentPage >= totalPages - delta) {
+            left = Math.max(1, totalPages - 1 - delta * 2);
+        }
+        
+        // 添加第一页
+        if (left > 1) {
+            pages.push(1);
+            if (left > 2) pages.push('...');
+        }
+        
+        // 添加中间页码
+        for (let i = left; i <= right; i++) {
+            pages.push(i);
+        }
+        
+        // 添加最后一页
+        if (right < totalPages) {
+            if (right < totalPages - 1) pages.push('...');
+            pages.push(totalPages);
+        }
+        
+        return pages;
+    }
+
     // 渲染博客内容（支持筛选和分页）
     renderBlogContent(blogContainer) {
         if (!this.blogData) return;
@@ -3359,9 +3629,12 @@ ipcRenderer.on('lumina-close', () => {
                     ${totalPages > 1 ? `
                         <div class="blog-pagination">
                             <button class="blog-page-btn ${currentPage === 1 ? 'disabled' : ''}" data-page="prev">‹</button>
-                            ${Array.from({length: totalPages}, (_, i) => i + 1).map(i => `
-                                <button class="blog-page-btn ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>
-                            `).join('')}
+                            ${this.getPaginationPages(currentPage, totalPages).map(item => {
+                                if (item === '...') {
+                                    return `<span class="blog-page-ellipsis">...</span>`;
+                                }
+                                return `<button class="blog-page-btn ${item === currentPage ? 'active' : ''}" data-page="${item}">${item}</button>`;
+                            }).join('')}
                             <button class="blog-page-btn ${currentPage === totalPages ? 'disabled' : ''}" data-page="next">›</button>
                         </div>
                     ` : ''}
@@ -4660,11 +4933,15 @@ ipcRenderer.on('lumina-close', () => {
 
     // 提取标签（支持多级标?#??孙）
     extractTags(content) {
-        const tagRegex = /#([^\s\d][^\s]*(?:\/[^\s]+)*)/g;
+        const tagRegex = /#([\w\/\u4e00-\u9fa5-]+)(?![\w\/\u4e00-\u9fa5-])(?!#)/g;
         const tags = [];
         let match;
         while ((match = tagRegex.exec(content)) !== null) {
-            tags.push(match[1]); // 不包?# 符号
+            const tag = match[1].trim();
+            // 过滤掉纯数字、空字符串
+            if (tag && !/^\d+$/.test(tag)) {
+                tags.push(tag);
+            }
         }
         return [...new Set(tags)]; // 去重
     }
@@ -5448,46 +5725,77 @@ ipcRenderer.on('lumina-close', () => {
         try {
             const timeStr = this.formatTimeForDiary(timestamp);
             
-            // 提取标签并重新组织格?
-            const tags = this.extractTags(content);
-            let diaryContent;
-            
-            if (tags.length > 0) {
-                // 有标签时：时?标签：纯内容（去掉标签）
-                let pureContent = content;
-                tags.forEach(tag => {
-                    pureContent = pureContent.replace(new RegExp(`#${tag}\\s*`, 'g'), '');
-                });
-                pureContent = pureContent.trim();
-                
-                const tagStr = tags.join(' ');
-                diaryContent = `${timeStr} ${tagStr}：${pureContent}`;
-            } else {
-                // 无标签时：时间：内容
-                diaryContent = `${timeStr}：${content}`;
+            // 提取 #高亮内容# 格式
+            const highlightRegex = /#([\w\/\u4e00-\u9fa5-]+)#/g;
+            const highlights = [];
+            let match;
+            while ((match = highlightRegex.exec(content)) !== null) {
+                highlights.push(match[1]);
             }
-
-            // 清理可能的零宽字符和特殊空格
-            diaryContent = diaryContent
-                .replace(/\u200B|\u200C|\u200D|\uFEFF/g, '') // 移除零宽字符
-                .replace(/\s+/g, ' ') // 将多个空格合并为单个
+            
+            // 提取普通标签 #标签
+            const tags = this.extractTags(content);
+            
+            let pureContent = content;
+            
+            // 移除所有 #高亮内容# 格式，但先记录下来
+            highlights.forEach(h => {
+                pureContent = pureContent.replace(new RegExp(`#${h}#\\s*`, 'g'), '');
+            });
+            
+            // 移除所有普通标签
+            tags.forEach(tag => {
+                pureContent = pureContent.replace(new RegExp(`#${tag}\\s*`, 'g'), '');
+            });
+            
+            pureContent = pureContent.trim();
+            
+            // 清理空格但保留换行
+            pureContent = pureContent
+                .replace(/\u200B|\u200C|\u200D|\uFEFF/g, '')
                 .trim();
             
-            // 末尾加空格，帮助其他插件识别
+            // 将内容按行分割
+            const lines = pureContent.split('\n').map(line => line.trim());
+            
+            if (lines.length === 0 || (lines.length === 1 && !lines[0])) return;
+            
+            // 构建日记内容
+            let diaryContent;
+            if (tags.length > 0 && highlights.length > 0) {
+                const tagStr = tags.join(' ');
+                const highlightStr = highlights.map(h => `#${h}`).join(' ');
+                diaryContent = `${timeStr} ${tagStr}：${lines[0]} ${highlightStr}`;
+            } else if (highlights.length > 0) {
+                const highlightStr = highlights.join(' ');
+                diaryContent = `${timeStr} ${highlightStr}：${lines[0]}`;
+            } else if (tags.length > 0) {
+                const tagStr = tags.join(' ');
+                diaryContent = `${timeStr} ${tagStr}：${lines[0]}`;
+            } else {
+                diaryContent = `${timeStr}：${lines[0]}`;
+            }
+            
+            // 如果有更多行，添加换行和后续内容
+            if (lines.length > 1) {
+                const remainingContent = lines.slice(1).join('\n\n');
+                if (remainingContent) {
+                    diaryContent = diaryContent + '\n\n' + remainingContent;
+                }
+            }
+            
             diaryContent = diaryContent + ' ';
 
             const response = await fetch('/api/block/appendDailyNoteBlock', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     notebook: this.notebookId,
                     dataType: 'markdown',
-                    data: `${diaryContent}`
+                    data: diaryContent
                 })
             });
-
+            
             const result = await response.json();
             if (result.code !== 0) {
                 console.warn("插入日记失败:", result.msg);
@@ -5611,10 +5919,13 @@ ipcRenderer.on('lumina-close', () => {
         
         // 处理换行
         html = html.replace(/\n/g, '<br>');
-        
+
+        // #高亮内容# 转换为高亮样式
+        html = html.replace(/#([\w\/\u4e00-\u9fa5-]+)#/g, '<span class="north-shuoshuo-highlight">#$1#</span>');
+
         // ?#标签?转换为标签样?
         // ?#标签?转换为标签样式（支持多级标签 #??孙）
-        html = html.replace(/#([^\s\d][^\s]*(?:\/[^\s]+)*)/g, '<span class="north-shuoshuo-tag">#$1</span>');
+        html = html.replace(/#([\w\/\u4e00-\u9fa5-]+)(?![\w\/\u4e00-\u9fa5-])(?!#)/g, '<span class="north-shuoshuo-tag">#$1</span>');
         
         // 移除批注的引用头部，不在正文显示
         // 支持新格式：文章预览 [MEMO:xxx]<br>...
@@ -8627,10 +8938,13 @@ ipcRenderer.on('lumina-close', () => {
             
             // 先从内容中提取所有已有的标签
             const existingTags = new Set();
-            const tagRegex = /#([^\s\d][^\s]*(?:\/[^\s]+)*)/g;
+            const tagRegex = /#([\w\/\u4e00-\u9fa5-]+)(?![\w\/\u4e00-\u9fa5-])(?!#)/g;
             let match;
             while ((match = tagRegex.exec(contentTrimmed)) !== null) {
-                existingTags.add(match[1]); // 存储标签名（不含#）
+                const tag = match[1].trim();
+                if (tag && !/^\d+$/.test(tag)) {
+                    existingTags.add(tag); // 存储标签名（不含#）
+                }
             }
             
             // 过滤掉已存在的标签

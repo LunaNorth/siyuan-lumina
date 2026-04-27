@@ -931,6 +931,20 @@
     background-color: var(--b3-theme-primary-lighter);
 }
 
+/* #高亮内容# 样式 */
+.north-shuoshuo-note-content .north-shuoshuo-highlight {
+    display: inline-block;
+    background: linear-gradient(120deg, #ffeaa7 0%, #fdcb6e 100%);
+    color: #2d3436;
+    font-size: 12px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin: 0 2px;
+    font-weight: 500;
+    cursor: default;
+    line-height: 1.4;
+}
+
 /* Markdown 样式 - 更自然的内联样式 */
 .north-shuoshuo-note-content h1,
 .north-shuoshuo-note-content h2,
@@ -3121,6 +3135,11 @@
 .north-shuoshuo-sticky-note-content .north-shuoshuo-tag {
     background: rgba(0,0,0,0.08);
     color: rgba(0,0,0,0.6);
+}
+
+.north-shuoshuo-sticky-note-content .north-shuoshuo-highlight {
+    background: linear-gradient(120deg, #ffeaa7 0%, #fdcb6e 100%);
+    color: #2d3436;
 }
 
 /* 图片在便利贴中限制大小 */
@@ -7003,6 +7022,11 @@
     color: rgba(0,0,0,0.6);
 }
 
+.north-shuoshuo-cork-note-content .north-shuoshuo-highlight {
+    background: linear-gradient(120deg, #ffeaa7 0%, #fdcb6e 100%);
+    color: #2d3436;
+}
+
 .north-shuoshuo-cork-note-content .north-shuoshuo-image-grid img,
 .north-shuoshuo-cork-note-content .north-shuoshuo-markdown-img {
     max-height: 130px;
@@ -8157,6 +8181,18 @@
     opacity: 0.5;
     cursor: not-allowed;
     background: var(--b3-theme-surface);
+}
+
+.blog-page-ellipsis {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 14px;
+    font-weight: 500;
+    user-select: none;
 }
 
 /* 博客侧边栏 */
