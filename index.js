@@ -173,6 +173,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
         this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
         this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
+        this.blogConfig = { itemsPerPage: 9 }; // 博客分页配置
         this.loadShuoshuos();
         this.loadConfig();
 
@@ -1392,6 +1393,9 @@ ipcRenderer.on('lumina-close', () => {
                         <button class="north-shuoshuo-nav-item active" data-view="notes" title="说说">
                             <img src="/plugins/${this.name}/icons/消息.svg" class="north-shuoshuo-nav-icon" />
                         </button>
+                        <button class="north-shuoshuo-nav-item" data-view="blog" title="博客">
+                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h4v2H4zm0 5h4v2H4zm0 5h4v2H4zm6-10h10v2H10zm0 5h10v2H10zm0 5h10v2H10z"/></svg>
+                        </button>
                         <button class="north-shuoshuo-nav-item" data-view="stats" title="统计">
                             <img src="/plugins/${this.name}/icons/统计.svg" class="north-shuoshuo-nav-icon" />
                         </button>
@@ -1484,6 +1488,12 @@ ipcRenderer.on('lumina-close', () => {
                     </div>
                 </div>
 
+
+                <!-- 博客视图（和说说视图同级）- 独立布局 -->
+                <div class="north-shuoshuo-blog-area" id="shuoshuo-blog-area" style="display: none;">
+                    <div class="north-shuoshuo-blog-container" id="shuoshuo-blog-container"></div>
+                </div>
+
                 <!-- 设置视图（和说说视图同级）- Obsidian 风格两栏布局 -->
                 <div class="north-shuoshuo-settings-area" id="shuoshuo-settings-area" style="display: none;">
                     <!-- 左侧：设置分类菜单 -->
@@ -1530,6 +1540,12 @@ ipcRenderer.on('lumina-close', () => {
                                 <path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/>
                             </svg>
                             <span>回顾设置</span>
+                        </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="blog">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M4 6h4v2H4zm0 5h4v2H4zm0 5h4v2H4zm6-10h10v2H10zm0 5h10v2H10zm0 5h10v2H10z"/>
+                            </svg>
+                            <span>博客设置</span>
                         </div>
                     </div>
 
@@ -2198,6 +2214,38 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                 </div>
                             </div>
+
+                        
+
+                        
+                        
+
+                        
+                        
+                    </div>
+
+                        <!-- 博客设置 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-blog" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">分页设置</div>
+                                        <div class="north-shuoshuo-section-desc">控制博客视图每页展示的文档数量</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <label class="north-shuoshuo-form-label">每页数量</label>
+                                    <div class="north-shuoshuo-radio-group" id="blog-page-size-group">
+                                        ${[6, 9, 12, 15, 18, 21, 24].map(size => `
+                                            <label class="north-shuoshuo-radio-item ${(this.blogConfig && this.blogConfig.itemsPerPage) === size ? 'selected' : ''}" data-value="${size}">
+                                                <input type="radio" name="blog-page-size" value="${size}" ${(this.blogConfig && this.blogConfig.itemsPerPage) === size ? 'checked' : ''}>
+                                                <span class="north-shuoshuo-radio-check"></span>
+                                                <span class="north-shuoshuo-radio-label">${size} 篇</span>
+                                            </label>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- 底部操作 -->
@@ -2205,7 +2253,8 @@ ipcRenderer.on('lumina-close', () => {
                             <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="settings-cancel">取消</button>
                             <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="settings-save">保存设置</button>
                         </div>
-                    </div>
+
+                        
                 </div>
             </div>
         `;
@@ -3036,7 +3085,439 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
-    // 显示功能详情视图
+    
+    // 渲染博客视图
+    async renderBlog() {
+        const blogContainer = this.container.querySelector('#shuoshuo-blog-container');
+        if (!blogContainer) return;
+
+        // 设置当前视图状态
+        this.currentView = 'blog';
+
+        blogContainer.innerHTML = `
+            <div class="blog-loading">
+                <div class="blog-loading-spinner"></div>
+                <div class="blog-loading-text">正在加载博客文档...</div>
+            </div>
+        `;
+
+        try {
+            // 查询所有文档
+            const response = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stmt: `SELECT * FROM blocks WHERE type = 'd' ORDER BY created DESC LIMIT -1`
+                })
+            });
+            const result = await response.json();
+            const allDocs = result.data || [];
+
+            // 获取 API Token
+            const getApiToken = () => {
+                if (window.siyuan?.config?.api?.token) {
+                    return window.siyuan.config.api.token;
+                }
+                return localStorage.getItem('siyuan-api-token') || '';
+            };
+
+            // 带认证的请求
+            const requestWithAuth = async (apiPath, payload) => {
+                const token = getApiToken();
+                const resp = await fetch(apiPath, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Token ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                return await resp.json();
+            };
+
+            // 提取图片路径
+            const extractImagePath = (titleImgValue) => {
+                if (!titleImgValue) return null;
+                if (titleImgValue.startsWith('assets/')) return titleImgValue;
+                if (titleImgValue.startsWith('/assets/')) return titleImgValue.substring(1);
+
+                const urlMatch = titleImgValue.match(/url\s*\(\s*["']?([^"')\s]+)["']?\s*\)/i);
+                if (urlMatch && urlMatch[1]) {
+                    let path = urlMatch[1];
+                    if (path.startsWith('/assets/')) return path.substring(1);
+                    if (path.startsWith('assets/')) return path;
+                }
+
+                const assetsMatch = titleImgValue.match(/(assets\/[^"')\s]+)/i);
+                if (assetsMatch && assetsMatch[1]) return assetsMatch[1];
+
+                return null;
+            };
+
+            // 博客状态
+            let notebookStats = {};
+            let tagStats = {};
+            let archiveStats = {};
+
+            // 处理文档数据
+            const docsWithContent = await Promise.all(allDocs.map(async (doc) => {
+                try {
+                    let notebookName = '未分类';
+                    try {
+                        notebookName = await this.getNotebookName(doc.box) || '未分类';
+                    } catch(e) {
+                        notebookName = '未分类';
+                    }
+
+                    notebookStats[notebookName] = (notebookStats[notebookName] || 0) + 1;
+
+                    let docTags = [];
+                    let titleImg = null;
+                    try {
+                        const attrResp = await requestWithAuth('/api/attr/getBlockAttrs', { id: doc.id });
+                        if (attrResp.code === 0 && attrResp.data) {
+                            const tagsStr = attrResp.data['tags'] || attrResp.data['custom-tags'] || '';
+                            if (tagsStr) {
+                                docTags = tagsStr.split(',').map(t => t.trim()).filter(t => t);
+                            }
+                            if (attrResp.data['title-img']) {
+                                titleImg = extractImagePath(attrResp.data['title-img']);
+                            }
+                        }
+                    } catch(e) {
+                        console.warn(`获取标签失败:`, e);
+                    }
+
+                    docTags.forEach(tag => {
+                        tagStats[tag] = (tagStats[tag] || 0) + 1;
+                    });
+
+                    let createdDate = '';
+                    let archiveKey = '';
+                    if (doc.created) {
+                        const year = doc.created.substring(0, 4);
+                        const month = doc.created.substring(4, 6);
+                        const day = doc.created.substring(6, 8);
+                        createdDate = `${year}-${month}-${day}`;
+                        archiveKey = `${year}-${month}`;
+                        archiveStats[archiveKey] = (archiveStats[archiveKey] || 0) + 1;
+                    }
+
+                    let updatedDate = '';
+                    if (doc.updated) {
+                        updatedDate = `${doc.updated.substring(0, 4)}-${doc.updated.substring(4, 6)}-${doc.updated.substring(6, 8)}`;
+                    }
+
+                    let coverImage = '';
+                    if (titleImg) {
+                        coverImage = titleImg;
+                    } else {
+                        const gradients = [
+                            'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                            'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                            'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+                            'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+                            'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)'
+                        ];
+                        coverImage = gradients[Math.floor(Math.random() * gradients.length)];
+                    }
+
+                    return {
+                        ...doc,
+                        createdDate,
+                        updatedDate,
+                        title: doc.name || doc.content || '无标题',
+                        coverImage,
+                        isGradient: coverImage.startsWith('linear-gradient'),
+                        notebookName,
+                        tags: docTags,
+                        archiveKey
+                    };
+                } catch (e) {
+                    return {
+                        ...doc,
+                        createdDate: '',
+                        updatedDate: '',
+                        title: doc.name || '无标题',
+                        coverImage: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        isGradient: true,
+                        notebookName: '未分类',
+                        tags: [],
+                        archiveKey: ''
+                    };
+                }
+            }));
+
+            // 保存数据供后续筛选使用
+            this.blogData = {
+                docs: docsWithContent,
+                notebookStats,
+                tagStats,
+                archiveStats,
+                filterType: 'all',
+                filterValue: '',
+                currentPage: 1,
+                itemsPerPage: (this.blogConfig && this.blogConfig.itemsPerPage) || 9
+            };
+
+            // 渲染博客视图
+            this.renderBlogContent(blogContainer);
+
+        } catch (error) {
+            console.error('加载博客文档失败:', error);
+            blogContainer.innerHTML = `
+                <div class="blog-error">
+                    <div class="blog-error-icon">⚠️</div>
+                    <div class="blog-error-text">加载博客文档失败</div>
+                    <div class="blog-error-detail">${error.message}</div>
+                </div>
+            `;
+        }
+    }
+
+    // 获取笔记本名称
+    async getNotebookName(boxId) {
+        try {
+            const response = await fetch('/api/notebook/lsNotebooks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const result = await response.json();
+            if (result.code === 0 && result.data?.notebooks) {
+                const notebook = result.data.notebooks.find(nb => nb.id === boxId);
+                return notebook ? notebook.name : boxId;
+            }
+        } catch (e) {
+            console.warn('获取笔记本名称失败:', e);
+        }
+        return boxId;
+    }
+
+    // 渲染博客内容（支持筛选和分页）
+    renderBlogContent(blogContainer) {
+        if (!this.blogData) return;
+
+        const { docs, notebookStats, tagStats, archiveStats, filterType, filterValue, currentPage, itemsPerPage } = this.blogData;
+
+        // 筛选
+        const filteredDocs = docs.filter(doc => {
+            if (filterType === 'all') return true;
+            if (filterType === 'notebook') return doc.notebookName === filterValue;
+            if (filterType === 'tag') return doc.tags.includes(filterValue);
+            if (filterType === 'archive') return doc.archiveKey === filterValue;
+            return true;
+        });
+
+        const totalPages = Math.ceil(filteredDocs.length / itemsPerPage);
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const pageDocs = filteredDocs.slice(startIndex, endIndex);
+
+        const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', 
+                          '七月', '八月', '九月', '十月', '十一月', '十二月'];
+
+        const tagColors = [
+            '#4CAF50', '#2196F3', '#FF9800', '#E91E63', 
+            '#9C27B0', '#00BCD4', '#FF5722', '#795548'
+        ];
+
+        let html = `
+            <div class="blog-container">
+                <!-- 博客主内容区 -->
+                <div class="blog-main">
+                    ${filterType !== 'all' ? `
+                        <div class="blog-filter-tip">
+                            <span>当前筛选: <strong>${filterValue}</strong> (${filteredDocs.length} 篇)</span>
+                            <span class="blog-clear-filter" data-action="clear-filter">清除筛选</span>
+                        </div>
+                    ` : ''}
+
+                    <div class="blog-grid">
+                        ${pageDocs.length === 0 ? `
+                            <div class="blog-empty">暂无符合条件的文档</div>
+                        ` : pageDocs.map(doc => `
+                            <div class="blog-card" data-doc-id="${doc.id}">
+                                <div class="blog-card-image" style="${doc.isGradient ? `background: ${doc.coverImage}` : 'background: var(--b3-theme-surface);'}">
+                                    ${!doc.isGradient ? `<img src="${doc.coverImage}" loading="lazy" onerror="this.style.display='none'; this.parentElement.style.background='linear-gradient(135deg, var(--b3-theme-primary) 0%, var(--b3-theme-primary-light) 100%)'">` : ''}
+                                </div>
+                                <div class="blog-card-content">
+                                    <h3 class="blog-card-title" title="${doc.title}">${doc.title}</h3>
+                                    <div class="blog-card-meta">
+                                        <span>${doc.notebookName}</span>
+                                        <span class="blog-meta-sep">|</span>
+                                        <span>发表 ${doc.createdDate}</span>
+                                        <span class="blog-meta-sep">|</span>
+                                        <span>更新 ${doc.updatedDate}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    ${totalPages > 1 ? `
+                        <div class="blog-pagination">
+                            <button class="blog-page-btn ${currentPage === 1 ? 'disabled' : ''}" data-page="prev">‹</button>
+                            ${Array.from({length: totalPages}, (_, i) => i + 1).map(i => `
+                                <button class="blog-page-btn ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>
+                            `).join('')}
+                            <button class="blog-page-btn ${currentPage === totalPages ? 'disabled' : ''}" data-page="next">›</button>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <!-- 博客侧边栏 -->
+                <div class="blog-sidebar">
+                    <!-- 笔记本筛选 -->
+                    ${Object.keys(notebookStats).length > 0 ? `
+                        <div class="blog-sidebar-section">
+                            <div class="blog-sidebar-title">📁 笔记本</div>
+                            <div class="blog-sidebar-grid">
+                                ${Object.entries(notebookStats)
+                                    .sort((a, b) => b[1] - a[1])
+                                    .map(([name, count]) => {
+                                        const isActive = filterType === 'notebook' && filterValue === name;
+                                        const cleanName = name.replace(/^\d+-/, '');
+                                        return `
+                                            <div class="blog-sidebar-item ${isActive ? 'active' : ''}" data-filter-type="notebook" data-filter-value="${name}">
+                                                <div class="blog-sidebar-item-name">${cleanName}</div>
+                                                <div class="blog-sidebar-item-count">${count} 篇</div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- 标签筛选 -->
+                    ${Object.keys(tagStats).length > 0 ? `
+                        <div class="blog-sidebar-section">
+                            <div class="blog-sidebar-title">🏷️ 标签</div>
+                            <div class="blog-tag-cloud">
+                                ${Object.entries(tagStats)
+                                    .sort((a, b) => b[1] - a[1])
+                                    .map(([name, count], index) => {
+                                        const color = tagColors[index % tagColors.length];
+                                        const isActive = filterType === 'tag' && filterValue === name;
+                                        return `
+                                            <span class="blog-tag-item ${isActive ? 'active' : ''}" 
+                                                  data-filter-type="tag" 
+                                                  data-filter-value="${name}"
+                                                  style="background: ${isActive ? color : color + '20'}; color: ${isActive ? '#fff' : color}; border-color: ${color}40;">
+                                                ${name}<sup>${count}</sup>
+                                            </span>
+                                        `;
+                                    }).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- 归档筛选 -->
+                    ${Object.keys(archiveStats).length > 0 ? `
+                        <div class="blog-sidebar-section">
+                            <div class="blog-sidebar-title">📅 归档</div>
+                            <div class="blog-sidebar-grid">
+                                ${Object.entries(archiveStats)
+                                    .sort((a, b) => b[0].localeCompare(a[0]))
+                                    .map(([key, count]) => {
+                                        const [year, month] = key.split('-');
+                                        const monthName = monthNames[parseInt(month) - 1];
+                                        const isActive = filterType === 'archive' && filterValue === key;
+                                        return `
+                                            <div class="blog-sidebar-item ${isActive ? 'active' : ''}" data-filter-type="archive" data-filter-value="${key}">
+                                                <div class="blog-sidebar-item-name">${monthName} ${year}</div>
+                                                <div class="blog-sidebar-item-count">${count} 篇</div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+
+        blogContainer.innerHTML = html;
+
+        // 绑定博客视图事件
+        this.bindBlogEvents(blogContainer);
+    }
+
+    // 绑定博客视图事件
+    bindBlogEvents(blogContainer) {
+        // 卡片点击 - 打开文档
+        blogContainer.querySelectorAll('.blog-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const docId = card.dataset.docId;
+                if (docId) {
+                    this.openDoc(docId);
+                }
+            });
+        });
+
+        // 清除筛选
+        const clearFilterBtn = blogContainer.querySelector('[data-action="clear-filter"]');
+        if (clearFilterBtn) {
+            clearFilterBtn.addEventListener('click', () => {
+                this.blogData.filterType = 'all';
+                this.blogData.filterValue = '';
+                this.blogData.currentPage = 1;
+                this.renderBlogContent(blogContainer);
+            });
+        }
+
+        // 侧边栏筛选项点击
+        blogContainer.querySelectorAll('[data-filter-type]').forEach(item => {
+            item.addEventListener('click', () => {
+                const type = item.dataset.filterType;
+                const value = item.dataset.filterValue;
+                const isActive = item.classList.contains('active');
+
+                if (isActive) {
+                    this.blogData.filterType = 'all';
+                    this.blogData.filterValue = '';
+                } else {
+                    this.blogData.filterType = type;
+                    this.blogData.filterValue = value;
+                }
+                this.blogData.currentPage = 1;
+                this.renderBlogContent(blogContainer);
+            });
+        });
+
+        // 分页按钮
+        blogContainer.querySelectorAll('.blog-page-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const page = btn.dataset.page;
+                if (page === 'prev') {
+                    if (this.blogData.currentPage > 1) {
+                        this.blogData.currentPage--;
+                        this.renderBlogContent(blogContainer);
+                    }
+                } else if (page === 'next') {
+                    const totalPages = Math.ceil(
+                        this.blogData.docs.filter(doc => {
+                            if (this.blogData.filterType === 'all') return true;
+                            if (this.blogData.filterType === 'notebook') return doc.notebookName === this.blogData.filterValue;
+                            if (this.blogData.filterType === 'tag') return doc.tags.includes(this.blogData.filterValue);
+                            if (this.blogData.filterType === 'archive') return doc.archiveKey === this.blogData.filterValue;
+                            return true;
+                        }).length / this.blogData.itemsPerPage
+                    );
+                    if (this.blogData.currentPage < totalPages) {
+                        this.blogData.currentPage++;
+                        this.renderBlogContent(blogContainer);
+                    }
+                } else {
+                    this.blogData.currentPage = parseInt(page);
+                    this.renderBlogContent(blogContainer);
+                }
+            });
+        });
+    }
+
+// 显示功能详情视图
     showFeatureView(feature) {
         const titles = {
             'tag-tree': '标签树',
@@ -3087,6 +3568,22 @@ ipcRenderer.on('lumina-close', () => {
         modal.querySelector('.north-shuoshuo-modal-overlay').addEventListener('click', () => {
             modal.remove();
         });
+    }
+
+    // 打开指定文档
+    openDoc(docId) {
+        try {
+            openTab({
+                app: this.app,
+                doc: {
+                    id: docId,
+                    action: ["cb-get-all"]
+                }
+            });
+        } catch (e) {
+            console.error('打开文档失败:', e);
+            showMessage('打开文档失败: ' + e.message);
+        }
     }
 
     // 获取 Emoji 配置
@@ -5801,6 +6298,7 @@ ipcRenderer.on('lumina-close', () => {
     switchMainView(view, navItem) {
         const flomoArea = this.container.querySelector('.north-shuoshuo-flomo-area');
         const settingsArea = this.container.querySelector('#shuoshuo-settings-area');
+        const blogArea = this.container.querySelector('#shuoshuo-blog-area');
 
         // 更新左侧边栏选中状态
         this.container.querySelectorAll('.north-shuoshuo-sidebar .north-shuoshuo-nav-item').forEach(item => {
@@ -5823,42 +6321,42 @@ ipcRenderer.on('lumina-close', () => {
 
         this.currentMainView = view;
 
-        const notesList = this.container.querySelector('#shuoshuo-notes-list');
-
         switch (view) {
             case 'notes':
-                // 显示说说视图
                 if (flomoArea) flomoArea.style.display = 'flex';
                 if (settingsArea) settingsArea.style.display = 'none';
-                if (notesList) notesList.style.overflowY = '';
+                if (blogArea) blogArea.style.display = 'none';
                 this.renderNotes();
                 break;
             case 'review':
-                // 显示每日回顾视图
                 if (flomoArea) flomoArea.style.display = 'flex';
                 if (settingsArea) settingsArea.style.display = 'none';
-                if (notesList) notesList.style.overflowY = '';
+                if (blogArea) blogArea.style.display = 'none';
                 this.renderReview();
                 break;
             case 'random':
-                // 显示随机漫步视图
                 if (flomoArea) flomoArea.style.display = 'flex';
                 if (settingsArea) settingsArea.style.display = 'none';
-                if (notesList) notesList.style.overflowY = 'hidden';
+                if (blogArea) blogArea.style.display = 'none';
                 this.renderRandom();
                 break;
             case 'stats':
-                // 显示统计视图
                 if (flomoArea) flomoArea.style.display = 'flex';
                 if (settingsArea) settingsArea.style.display = 'none';
-                if (notesList) notesList.style.overflowY = '';
+                if (blogArea) blogArea.style.display = 'none';
                 this.renderStats();
                 break;
+            case 'blog':
+                // 博客视图 —— 完全独立的视图
+                if (flomoArea) flomoArea.style.display = 'none';
+                if (settingsArea) settingsArea.style.display = 'none';
+                if (blogArea) blogArea.style.display = 'flex';
+                this.renderBlog();
+                break;
             case 'settings':
-                // 显示设置视图
                 if (flomoArea) flomoArea.style.display = 'none';
                 if (settingsArea) settingsArea.style.display = 'flex';
-                if (notesList) notesList.style.overflowY = '';
+                if (blogArea) blogArea.style.display = 'none';
                 this.bindSettingsEvents();
                 break;
         }
@@ -6124,6 +6622,11 @@ ipcRenderer.on('lumina-close', () => {
                     dailyCount: reviewDailyCount,
                     theme: reviewTheme
                 };
+
+                // 保存博客设置
+                const blogPageSize = parseInt(this.container.querySelector('input[name="blog-page-size"]:checked')?.value || '9');
+                this.blogConfig.itemsPerPage = blogPageSize;
+
                 await this.saveConfig();
 
                 showMessage('设置已保存');
@@ -6161,6 +6664,38 @@ ipcRenderer.on('lumina-close', () => {
                 });
             };
         }
+
+        // ==================== 博客设置事件绑定 ====================
+        const blogPageSizeItems = this.container.querySelectorAll('#blog-page-size-group .north-shuoshuo-radio-item');
+        blogPageSizeItems.forEach(item => {
+            item.addEventListener('click', async () => {
+                const size = parseInt(item.dataset.value);
+                this.blogConfig.itemsPerPage = size;
+
+                // 更新选中状态
+                blogPageSizeItems.forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+
+                // 更新 radio 输入
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+
+                // 保存设置
+                await this.saveConfig();
+
+                // 如果当前在博客视图，刷新以应用新设置
+                if (this.currentMainView === 'blog' && this.blogData) {
+                    this.blogData.itemsPerPage = size;
+                    this.blogData.currentPage = 1;
+                    const blogContainer = this.container.querySelector('#shuoshuo-blog-container');
+                    if (blogContainer) {
+                        this.renderBlogContent(blogContainer);
+                    }
+                }
+
+                showMessage(`每页展示数量已设置为 ${size} 篇`);
+            });
+        });
 
         // ==================== 回顾设置事件绑定 ====================
         this.bindReviewSettingsEvents();
@@ -7092,6 +7627,7 @@ ipcRenderer.on('lumina-close', () => {
             this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
             this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
             this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...(data.fontSizeConfig || data.fontSize || {}) };
+            this.blogConfig = { itemsPerPage: 9, ...(data.blogConfig || data.blog || {}) };
         } catch (e) {
             console.warn("加载配置失败", e);
         }
@@ -7113,7 +7649,8 @@ ipcRenderer.on('lumina-close', () => {
             pinnedTags: 'shuoshuo-tag-pinned',
             themeMode: 'shuoshuo-theme-mode',
             morandiColor: 'shuoshuo-morandi-color',
-            fontSizeConfig: 'shuoshuo-font-size-config'
+            fontSizeConfig: 'shuoshuo-font-size-config',
+            blogConfig: 'shuoshuo-blog-config'
         };
         for (const [key, storageKey] of Object.entries(oldKeys)) {
             try {
@@ -7145,7 +7682,8 @@ ipcRenderer.on('lumina-close', () => {
                 pinnedTags: this.pinnedTags,
                 themeMode: this.themeMode,
                 morandiColor: this.morandiColor,
-                fontSizeConfig: this.fontSizeConfig
+                fontSizeConfig: this.fontSizeConfig,
+                blogConfig: this.blogConfig
             });
         } catch (e) {
             console.warn("保存配置失败", e);

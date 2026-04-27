@@ -1,6 +1,6 @@
 
 
-
+问题反馈：[轻语 & 问题反馈](https://ld246.com/article/1777266791604)
 <div style="margin: 0 auto; font-family: var(--b3-font-family); color: var(--b3-theme-on-background); line-height: 1.7;">
 
 
@@ -90,6 +90,9 @@
 </div>
 
 ## 更新日志
+
+### v1.1.4
+- 新增博客视图
 
 ### v1.1.3
 - 修复批注引用图标在其他主题不显示的问题
