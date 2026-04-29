@@ -412,6 +412,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
         this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
         this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
+        this._refreshTimer = null; // 防抖刷新定时器
+        this._boundBlockIdsCache = new Set(); // 已绑定块ID的缓存（用于快速查找）
         this.loadShuoshuos();
         this.loadConfig();
 
@@ -521,6 +523,36 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             console.log('注册 IPC 监听器失败', e);
         }
 
+        // ===== 思源 transaction 事件：实时同步块内容到属性 =====
+        // 思源每次编辑操作都会触发 transaction 自定义事件
+        this._transactionHandler = (e) => {
+            try {
+                const doOperations = e?.detail?.doOperations;
+                if (!doOperations || !Array.isArray(doOperations)) return;
+                for (const op of doOperations) {
+                    if (op.action === 'update' && op.id && this._isBoundBlockId(op.id)) {
+                        this._debouncedSyncBoundAttr(op.id);
+                    }
+                }
+            } catch (e) {}
+        };
+        window.addEventListener('transaction', this._transactionHandler);
+
+        // 备用：MutationObserver 监听编辑器 DOM 变化
+        this._startMutationObserver();
+
+        // ws-main 事件作为补充
+        this._wsHandler = (event) => {
+            try {
+                const data = (event?.detail?.cmd !== undefined) ? event.detail : event;
+                if (!data?.cmd) return;
+                if (data.cmd === 'saved' || data.cmd === 'setblockattrs') {
+                    this._debouncedRefreshBound();
+                }
+            } catch (e) {}
+        };
+        this.eventBus.on('ws-main', this._wsHandler);
+
         console.log("Shuoshuo plugin loaded");
     }
 
@@ -533,6 +565,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 this.openShuoshuoTab();
             }
         });
+
+        // 布局就绪后，异步刷新绑定的思源块数据
+        setTimeout(() => {
+            this.refreshBoundBlocks();
+        }, 1000);
+
+        // 在 onLayoutReady 中也触发一次数据加载（补充保障）
+        // 主要数据刷新机制在 switchMainView 视图切换时已实现
     }
 
     onunload() {
@@ -549,6 +589,36 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             // 忽略
         }
 
+        // 移除 transaction 事件监听
+        if (this._transactionHandler) {
+            try { window.removeEventListener('transaction', this._transactionHandler); } catch (e) {}
+            this._transactionHandler = null;
+        }
+
+        // 移除 ws-main 事件监听
+        if (this._wsHandler) {
+            try { this.eventBus.off('ws-main', this._wsHandler); } catch (e) {}
+            this._wsHandler = null;
+        }
+
+        // 断开 MutationObserver
+        if (this._protyleObserver) {
+            try { this._protyleObserver.disconnect(); } catch (e) {}
+            this._protyleObserver = null;
+        }
+
+        // 清除所有防抖定时器
+        if (this._refreshTimer) {
+            clearTimeout(this._refreshTimer);
+            this._refreshTimer = null;
+        }
+        if (this._syncAttrTimer) {
+            for (const key of Object.keys(this._syncAttrTimer)) {
+                clearTimeout(this._syncAttrTimer[key]);
+            }
+            this._syncAttrTimer = null;
+        }
+
         console.log("Shuoshuo plugin unloaded");
     }
 
@@ -562,6 +632,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 id: this.name + TAB_TYPE
             }
         });
+        // 打开说说标签时，异步加载思源最新数据
+        setTimeout(() => {
+            this.loadShuoshuos();
+        }, 500);
     }
 
     // 打开轻语速记浮层（复用说说输入框功能）
@@ -1603,7 +1677,7 @@ ipcRenderer.on('lumina-close', () => {
         if (this._lastSavedNote &&
             this._lastSavedNote.content === processed &&
             (now - this._lastSavedNote.time) < 1500) {
-            console.log('[轻语] 检测到重复保存，已跳过');
+            // console.log('[轻语] 检测到重复保存，已跳过');
             return;
         }
         this._lastSavedNote = { content: processed, time: now };
@@ -1623,7 +1697,11 @@ ipcRenderer.on('lumina-close', () => {
         await this.saveShuoshuos();
 
         if (this.autoSync) {
-            await this.appendToDailyNote(processed, shuoshuo.created);
+            const blockId = await this.appendToDailyNote(processed, shuoshuo.created);
+            if (blockId) {
+                shuoshuo.boundBlockId = blockId;
+                await this.saveShuoshuos();
+            }
         }
 
         if (this.container) {
@@ -1690,6 +1768,9 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                             <button class="north-shuoshuo-filter-btn" id="shuoshuo-filter-btn" title="按日期筛选">
                                 <img src="/plugins/${this.name}/icons/日历.svg" class="north-shuoshuo-nav-icon" />
+                            </button>
+                            <button class="north-shuoshuo-filter-btn" id="shuoshuo-refresh-btn" title="从思源同步绑定块数据" style="font-size:16px;font-weight:bold;">
+                                ${ICONS.sync}
                             </button>
                         </div>
 
@@ -2505,8 +2586,13 @@ ipcRenderer.on('lumina-close', () => {
             </div>
         `;
 
-        this.renderNotes();
-        this.renderTags();
+        // 标记当前视图为 notes（供 _syncBoundBlockAttr 等函数检测）
+        this.currentMainView = 'notes';
+        // 先从思源加载最新绑定数据，再渲染
+        this.loadShuoshuos().then(() => {
+            this.renderNotes();
+            this.renderTags();
+        });
         // 应用主题模式（默认为原主题）
         setTimeout(() => {
             this.applyThemeMode();
@@ -5034,9 +5120,13 @@ ipcRenderer.on('lumina-close', () => {
         this.shuoshuos.push(shuoshuo);
         await this.saveShuoshuos();
 
-        // 只有开启自动同步时才插入日?
+        // 只有开启自动同步时才插入日记，并保存 blockId
         if (this.autoSync) {
-            await this.appendToDailyNote(content, shuoshuo.created);
+            const blockId = await this.appendToDailyNote(content, shuoshuo.created);
+            if (blockId) {
+                shuoshuo.boundBlockId = blockId;
+                await this.saveShuoshuos();
+            }
         }
 
         this.renderNotes();
@@ -5088,7 +5178,25 @@ ipcRenderer.on('lumina-close', () => {
         const searchClear = this.container.querySelector('#shuoshuo-search-clear');
         const datePicker = this.container.querySelector('#shuoshuo-date-picker');
         const filterBtn = this.container.querySelector('#shuoshuo-filter-btn');
+        const refreshBtn = this.container.querySelector('#shuoshuo-refresh-btn');
         const searchBar = this.container.querySelector('#shuoshuo-search-bar');
+
+        // 手动刷新按钮
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                refreshBtn.style.opacity = '0.5';
+                refreshBtn.style.pointerEvents = 'none';
+                showMessage('正在同步思源块数据...');
+                await this.refreshBoundBlocks();
+                if (this.currentMainView === 'notes') {
+                    this.renderNotes();
+                    this.renderTags();
+                }
+                refreshBtn.style.opacity = '1';
+                refreshBtn.style.pointerEvents = 'auto';
+                showMessage('同步完成');
+            });
+        }
 
         if (searchInput) {
             searchInput.addEventListener('input', () => {
@@ -6089,14 +6197,17 @@ ipcRenderer.on('lumina-close', () => {
                     content: pureContent,
                     tag: tags.concat(highlights).join(' ')
                 });
-                if (!attrResult) {
-                    console.warn('[轻语] 块属性设置可能未成功，blockId:', blockId);
-                }
-            } else {
-                console.warn('[轻语] 无法获取插入块的 ID，跳过属性设置。data:', result.data);
+                // if (!attrResult) {
+                //     console.warn('[轻语] 块属性设置可能未成功，blockId:', blockId);
+                // }
+            // } else {
+                // console.warn('[轻语] 无法获取插入块的 ID，跳过属性设置。data:', result.data);
             }
+
+            return blockId; // 返回 blockId，供调用方保存到说说对象
         } catch (e) {
             console.error("插入日记失败", e);
+            return null;
         }
     }
 
@@ -6120,14 +6231,14 @@ ipcRenderer.on('lumina-close', () => {
 
             const result = await response.json();
             if (result.code === 0) {
-                console.log('[轻语] 块属性设置成功，blockId:', blockId);
+                // console.log('[轻语] 块属性设置成功，blockId:', blockId);
                 return true;
             } else {
-                console.warn('[轻语] 块属性设置失败:', result.msg, 'blockId:', blockId);
+                // console.warn('[轻语] 块属性设置失败:', result.msg, 'blockId:', blockId);
                 return false;
             }
         } catch (e) {
-            console.error('[轻语] 设置块属性请求异常:', e);
+            // console.error('[轻语] 设置块属性请求异常:', e);
             return false;
         }
     }
@@ -6259,6 +6370,41 @@ ipcRenderer.on('lumina-close', () => {
         // 转义 HTML
         html = this.escapeHtml(html);
         
+        // ★ 批注 MEMO 处理：在 Markdown 渲染之前，先处理原始文本
+        // 这样避免操作 HTML 导致的标签残缺问题
+        // 批注格式：[MEMO:xxx]\n第一行批注\n第二行批注...
+        if (html.includes('[MEMO:')) {
+            const memoLines = html.split('\n');
+            let memoLineIdx = -1;
+            let memoColIdx = -1;
+            for (let i = 0; i < memoLines.length; i++) {
+                memoColIdx = memoLines[i].indexOf('[MEMO:');
+                if (memoColIdx !== -1) {
+                    memoLineIdx = i;
+                    break;
+                }
+            }
+            if (memoLineIdx !== -1) {
+                // 找到 MEMO 标记结束位置
+                const memoEnd = memoLines[memoLineIdx].indexOf(']', memoColIdx);
+                // 提取 MEMO 标记之后同行的内容（纯文本批注开头）
+                let commentText = memoLines[memoLineIdx].substring(memoEnd + 1).trim();
+                memoLines[memoLineIdx] = commentText;
+                // 保留 MEMO 行及之后（批注内容），移除之前的原文引用
+                html = memoLines.slice(memoLineIdx).join('\n').trim();
+            }
+        }
+
+        // 移除旧格式批注的引用头部
+        html = html.replace(/^关联自：[^\n]*(\n|$)/m, '');
+
+        // 移除 lumina MEMO 链接和 MEMO 引用标记
+        html = html.replace(/lumina:\/\/memo\/[a-zA-Z0-9]+/g, '');
+        html = html.replace(/\[MEMO:[^\]]+\]/g, '');
+
+        // 清理多余空行（在 Markdown 渲染前清理，效果更好）
+        html = html.replace(/\n{3,}/g, '\n\n');
+
         // 处理 Markdown 语法（完整块级解析器，正确处理段落、列表、代码块等）
         html = this.renderMarkdown(html);
 
@@ -6267,46 +6413,6 @@ ipcRenderer.on('lumina-close', () => {
 
         // #标签?转换为标签样式（支持多级标签 #??孙）
         html = html.replace(/#([\w\/\u4e00-\u9fa5-]+)(?![\w\/\u4e00-\u9fa5-])(?!#)/g, '<span class="north-shuoshuo-tag">#$1</span>');
-
-        // 处理批注内容：如果是批注（包含 MEMO 引用），只显示批注内容
-        // 批注格式：((id 'title')) 原文 [MEMO:xxx]\n第一行批注\n第二行批注...
-        // MEMO 标记之前是被批注的原文，MEMO 标记所在行及之后是批注内容
-        
-        // 找到 MEMO 标记所在的行
-        const lines = html.split('\n');
-        let memoLineIndex = -1;
-        let memoIndexInLine = -1;
-        for (let i = 0; i < lines.length; i++) {
-            memoIndexInLine = lines[i].indexOf('[MEMO:');
-            if (memoIndexInLine !== -1) {
-                memoLineIndex = i;
-                break;
-            }
-        }
-        
-        if (memoLineIndex !== -1) {
-            // 是批注
-            // 找到 MEMO 标记结束的位置
-            const memoEndIndex = lines[memoLineIndex].indexOf(']', memoIndexInLine);
-            // 提取 MEMO 标记之后的内容（第一行批注内容，可能为空）
-            let commentContent = lines[memoLineIndex].substring(memoEndIndex + 1).trim();
-            // 更新 MEMO 标记所在行为批注内容
-            lines[memoLineIndex] = commentContent;
-            // 保留 MEMO 标记所在行及之后的所有行（批注内容），移除之前的行（原文引用）
-            html = lines.slice(memoLineIndex).join('\n').trim();
-        }
-        
-        // 移除旧格式批注的引用头部
-        html = html.replace(/^关联自：.*?(?:\[MEMO:[^\]]+\])?(?:\n|<br\/?>)+/m, '');
-        
-        // 移除正文中的 lumina MEMO 链接，统一在底部显示
-        html = html.replace(/lumina:\/\/memo\/[a-zA-Z0-9]+/g, '');
-        
-        // 移除正文中的 MEMO 引用，统一在底部显示
-        html = html.replace(/\[MEMO:[^\]]+\]/g, '');
-        
-        // 清理可能因移除引用产生的多余空行
-        html = html.replace(/(<br>){3,}/g, '<br><br>');
         
         // 还原图片标签（这里保留单张图片的处理，用于兼容纯图片内容?
         images.forEach((img, index) => {
@@ -6597,10 +6703,17 @@ ipcRenderer.on('lumina-close', () => {
                 <span class="north-shuoshuo-menu-icon">${ICONS.comment}</span>
                 <span class="north-shuoshuo-menu-text">批注</span>
             </div>
+            ${item.boundBlockId ? `
+            <div class="north-shuoshuo-menu-item" data-action="sync">
+                <span class="north-shuoshuo-menu-icon">${ICONS.sync}</span>
+                <span class="north-shuoshuo-menu-text">同步到思源块</span>
+            </div>
+            ` : `
             <div class="north-shuoshuo-menu-item" data-action="sync">
                 <span class="north-shuoshuo-menu-icon">${ICONS.sync}</span>
                 <span class="north-shuoshuo-menu-text">插入今日日记</span>
             </div>
+            `}
             <div class="north-shuoshuo-menu-divider"></div>
             <div class="north-shuoshuo-menu-item danger" data-action="delete">
                 <span class="north-shuoshuo-menu-icon">${ICONS.delete}</span>
@@ -6645,7 +6758,13 @@ ipcRenderer.on('lumina-close', () => {
                     this.commentOnNote(id);
                     break;
                 case 'sync':
-                    await this.syncToDailyNote(id);
+                    if (item.boundBlockId) {
+                        // 已绑定的说说：手动触发重新同步到思源块
+                        await this.syncShuoshuoToSiyuan(item);
+                        showMessage('已同步到思源块');
+                    } else {
+                        await this.syncToDailyNote(id);
+                    }
                     break;
                 case 'delete':
                     this.deleteShuoshuo(id);
@@ -6852,6 +6971,12 @@ ipcRenderer.on('lumina-close', () => {
             item.tags = this.extractTags(newContent);
             item.updated = Date.now();
             await this.saveShuoshuos();
+
+            // 如果此说说已绑定到思源块，同步更新块内容和属性
+            if (item.boundBlockId) {
+                await this.syncShuoshuoToSiyuan(item);
+            }
+
             this.renderNotes();
             this.renderTags();
             if (this.currentMainView === 'random') {
@@ -6951,6 +7076,12 @@ ipcRenderer.on('lumina-close', () => {
             item.tags = this.extractTags(newContent);
             item.updated = Date.now();
             await this.saveShuoshuos();
+
+            // 如果此说说已绑定到思源块，同步更新块内容和属性
+            if (item.boundBlockId) {
+                await this.syncShuoshuoToSiyuan(item);
+            }
+
             this.renderNotes();
             this.renderTags();
             overlay.remove();
@@ -7068,7 +7199,206 @@ ipcRenderer.on('lumina-close', () => {
         document.body.removeChild(input);
     }
 
-    // 同步到今日日?
+    // ===== 思源笔记双向绑定相关函数 =====
+
+    /**
+     * 从思源笔记中查询所有绑定了 Lumina 属性的块，加载为说说列表
+     * 通过 SQL 查询具有 custom-lumina-content 属性的块，获取其内容和属性
+     */
+    async loadShuoshuosFromSiyuan() {
+        try {
+            // 查询所有具有 custom-lumina-content 属性且内容非空的块
+            const sqlResponse = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stmt: `SELECT b.id, b.content, b.updated
+                           FROM blocks b
+                           WHERE b.id IN (
+                               SELECT a.block_id
+                               FROM attributes a
+                               WHERE a.name = 'custom-lumina-content' AND a.value != ''
+                           )
+                           ORDER BY b.updated DESC`
+                })
+            });
+            const sqlResult = await sqlResponse.json();
+            if (sqlResult.code !== 0 || !Array.isArray(sqlResult.data)) {
+                return [];
+            }
+
+            const boundShuoshuos = [];
+            for (const row of sqlResult.data) {
+                const blockId = row.id;
+                try {
+                    // 获取块的自定义属性
+                    const attrResponse = await fetch('/api/attr/getBlockAttrs', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: blockId })
+                    });
+                    const attrResult = await attrResponse.json();
+                    if (attrResult.code !== 0) continue;
+
+                    const attrs = attrResult.data || {};
+                    const attrContent = attrs['custom-lumina-content'] || '';
+                    const luminaDate = attrs['custom-lumina-date'] || '';
+                    const luminaTag = attrs['custom-lumina-tag'] || '';
+
+                    // 使用 custom-lumina-content 属性值（_syncBoundBlockAttr 已实时同步）
+                    // 属性值为空时回退到 SQL 内容
+                    let luminaContent = attrContent || (row.content || '').trim();
+                    if (!luminaContent) continue;
+
+                    // 如果块的真实内容（b.content）为空，说明用户在思源中删光了文字
+                    // 此时应跳过此块，并清除属性值以便下次 SQL 查询也跳过
+                    const rowContent = (row.content || '').trim();
+                    if (!rowContent && attrContent) {
+                        // 静默清除属性，让下次 SQL 不再查到
+                        this.setLuminaBlockAttrs(blockId, {
+                            content: '',
+                            date: luminaDate,
+                            tag: luminaTag
+                        }).catch(() => {});
+                        continue;
+                    }
+
+                    // 从属性中解析标签
+                    const tags = luminaTag ? luminaTag.split(/\s+/).filter(Boolean) : [];
+
+                    // 解析日期时间
+                    let created = Date.now();
+                    if (luminaDate) {
+                        const parsed = new Date(luminaDate.replace(/-/g, '/'));
+                        if (!isNaN(parsed.getTime())) {
+                            created = parsed.getTime();
+                        }
+                    }
+
+                    // 根据 row.updated 计算 updated 时间
+                    let updated = created;
+                    if (row.updated) {
+                        const updatedStr = String(row.updated);
+                        // 思源返回的 updated 格式为 YYYYMMDDHHmmss 或 YYYYMMDD
+                        if (/^\d{14}$/.test(updatedStr)) {
+                            const y = updatedStr.slice(0, 4);
+                            const M = updatedStr.slice(4, 6);
+                            const d = updatedStr.slice(6, 8);
+                            const h = updatedStr.slice(8, 10);
+                            const m = updatedStr.slice(10, 12);
+                            const s = updatedStr.slice(12, 14);
+                            updated = new Date(`${y}-${M}-${d}T${h}:${m}:${s}`).getTime();
+                        } else if (/^\d{8}$/.test(updatedStr)) {
+                            const y = updatedStr.slice(0, 4);
+                            const M = updatedStr.slice(4, 6);
+                            const d = updatedStr.slice(6, 8);
+                            updated = new Date(`${y}-${M}-${d}`).getTime();
+                        } else {
+                            const parsedUpdated = new Date(updatedStr.replace(/-/g, '/'));
+                            if (!isNaN(parsedUpdated.getTime())) {
+                                updated = parsedUpdated.getTime();
+                            }
+                        }
+                    }
+
+                    boundShuoshuos.push({
+                        id: blockId, // 使用块ID作为唯一标识
+                        content: luminaContent,
+                        tags: tags,
+                        pinned: false,
+                        created: created,
+                        updated: updated,
+                        boundBlockId: blockId // 标记已绑定到思源块
+                    });
+                } catch (e) {
+                    // console.warn('[轻语] 读取块属性失败:', blockId, e);
+                }
+            }
+            return boundShuoshuos;
+        } catch (e) {
+            // console.error('[轻语] 从思源查询绑定块失败:', e);
+            return [];
+        }
+    }
+
+    /**
+     * 将说说内容同步更新到绑定的思源块
+     * 同时更新块的内容和三个自定义属性
+     */
+    async syncShuoshuoToSiyuan(shuoshuo) {
+        if (!shuoshuo || !shuoshuo.boundBlockId) return false;
+
+        const blockId = shuoshuo.boundBlockId;
+        try {
+            // 1. 准备纯内容（去除标签标记等）
+            const tags = shuoshuo.tags || this.extractTags(shuoshuo.content);
+            let pureContent = shuoshuo.content;
+            // 移除所有 #标签# 高亮和 #标签（使用和 extractTags 一致的边界匹配）
+            const tagPattern = tags.map(t => this.escapeRegExp(t)).join('|');
+            if (tagPattern) {
+                pureContent = pureContent.replace(new RegExp(`#(?:${tagPattern})(?![\\w\/\\u4e00-\\u9fa5-])`, 'g'), '');
+            }
+            pureContent = pureContent.replace(/#([\w\/\u4e00-\u9fa5-]+)#\s*/g, '').trim();
+            pureContent = pureContent
+                .replace(/\u200B|\u200C|\u200D|\uFEFF/g, '')
+                .trim();
+
+            // 2. 更新块内容（使用 markdown 格式）
+            const updateResponse = await fetch('/api/block/updateBlock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    dataType: 'markdown',
+                    data: pureContent,
+                    id: blockId
+                })
+            });
+            const updateResult = await updateResponse.json();
+            if (updateResult.code !== 0) {
+                // console.warn('[轻语] 更新绑定块内容失败:', updateResult.msg);
+            }
+
+            // 3. 更新自定义属性
+            const dateTimeStr = this.formatDateTimeAttr(shuoshuo.created);
+            await this.setLuminaBlockAttrs(blockId, {
+                date: dateTimeStr,
+                content: pureContent,
+                tag: tags.join(' ')
+            });
+
+            return true;
+        } catch (e) {
+            // console.error('[轻语] 同步说说到思源块失败:', e);
+            return false;
+        }
+    }
+
+    /**
+     * 删除思源笔记中的块
+     */
+    async deleteSiyuanBlock(blockId) {
+        if (!blockId) return false;
+        try {
+            const response = await fetch('/api/block/deleteBlock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: blockId })
+            });
+            const result = await response.json();
+            if (result.code === 0) {
+                // console.log('[轻语] 已删除思源块:', blockId);
+                return true;
+            } else {
+                // console.warn('[轻语] 删除思源块失败:', result.msg);
+                return false;
+            }
+        } catch (e) {
+            // console.error('[轻语] 删除思源块请求异常:', e);
+            return false;
+        }
+    }
+
+    // 同步到今日日记（手动触发），并保存 blockId 实现绑定
     async syncToDailyNote(id) {
         const item = this.shuoshuos.find(s => s.id === id);
         if (!item) return;
@@ -7078,12 +7408,23 @@ ipcRenderer.on('lumina-close', () => {
             return;
         }
 
-        await this.appendToDailyNote(item.content, item.created);
-        showMessage("已插入今日日记");
+        const blockId = await this.appendToDailyNote(item.content, item.created);
+        if (blockId) {
+            item.boundBlockId = blockId;
+            await this.saveShuoshuos();
+            showMessage("已插入今日日记，并与此说说绑定");
+        } else {
+            showMessage("插入日记失败，请检查笔记本配置");
+        }
     }
 
     deleteShuoshuo(id) {
-        confirm("⚠️ 确认删除", "确定要删除这条笔记吗？", async () => {
+        const item = this.shuoshuos.find(s => s.id === id);
+        confirm("⚠️ 确认删除", "确定要删除这条笔记吗？\n\n如果已绑定到思源笔记块，将同时删除对应的块。", async () => {
+            // 如果有绑定的思源块，先删除块
+            if (item && item.boundBlockId) {
+                await this.deleteSiyuanBlock(item.boundBlockId);
+            }
             this.shuoshuos = this.shuoshuos.filter(s => s.id !== id);
             await this.saveShuoshuos();
             this.renderNotes();
@@ -7161,6 +7502,306 @@ ipcRenderer.on('lumina-close', () => {
         fileInput.click();
     }
 
+    // 刷新已绑定的思源块数据（从思源查询最新数据合并到本地列表）
+    async refreshBoundBlocks() {
+        try {
+            const boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
+            if (boundFromSiyuan.length === 0) return;
+
+            const boundMap = new Map();
+            boundFromSiyuan.forEach(s => boundMap.set(s.boundBlockId, s));
+
+            let changed = false;
+            this.shuoshuos = this.shuoshuos.map(local => {
+                if (local.boundBlockId && boundMap.has(local.boundBlockId)) {
+                    const siyuan = boundMap.get(local.boundBlockId);
+                    // 如果思源数据与本地不同，更新
+                    if (siyuan.content !== local.content ||
+                        JSON.stringify(siyuan.tags) !== JSON.stringify(local.tags)) {
+                        changed = true;
+                        return {
+                            ...siyuan,
+                            pinned: local.pinned || false,
+                            id: local.id
+                        };
+                    }
+                }
+                return local;
+            });
+
+            // 添加思源中有但本地没有的新绑定说说
+            const localBoundIds = new Set(
+                this.shuoshuos.filter(s => s.boundBlockId).map(s => s.boundBlockId)
+            );
+            boundFromSiyuan.forEach(siyuan => {
+                if (!localBoundIds.has(siyuan.boundBlockId)) {
+                    this.shuoshuos.push(siyuan);
+                    changed = true;
+                }
+            });
+
+            if (changed) {
+                await this.saveShuoshuos();
+                // 重新渲染当前视图（但避免递归调用）
+                if (this.currentMainView === 'notes') {
+                    this.renderNotes();
+                    this.renderTags();
+                }
+            }
+        } catch (e) {
+            // console.warn('[轻语] 刷新绑定的块失败:', e.message);
+        }
+    }
+
+    // 检查 blockId 是否是我们已绑定的块
+    _isBoundBlockId(blockId) {
+        if (!blockId) return false;
+        // 优先使用缓存查找
+        if (this._boundBlockIdsCache && this._boundBlockIdsCache.size > 0) {
+            return this._boundBlockIdsCache.has(blockId);
+        }
+        // 缓存未初始化，遍历查找
+        return this.shuoshuos && this.shuoshuos.some(s => s.boundBlockId === blockId);
+    }
+
+    // 更新已绑定块ID的缓存
+    _updateBoundCache() {
+        if (!this._boundBlockIdsCache) {
+            this._boundBlockIdsCache = new Set();
+        }
+        this._boundBlockIdsCache.clear();
+        if (this.shuoshuos) {
+            this.shuoshuos.forEach(s => {
+                if (s.boundBlockId) {
+                    this._boundBlockIdsCache.add(s.boundBlockId);
+                }
+            });
+        }
+    }
+
+    // 防抖：将绑定块的当前内容同步到 custom-lumina-content 属性
+    _debouncedSyncBoundAttr(blockId) {
+        if (!blockId) return;
+        if (!this._syncAttrTimer) this._syncAttrTimer = {};
+        if (this._syncAttrTimer[blockId]) {
+            clearTimeout(this._syncAttrTimer[blockId]);
+        }
+        this._syncAttrTimer[blockId] = setTimeout(async () => {
+            delete this._syncAttrTimer[blockId];
+            await this._syncBoundBlockAttr(blockId);
+        }, 600);
+    }
+
+    // 将绑定块的当前内容同步到 custom-lumina-content 属性
+    async _syncBoundBlockAttr(blockId) {
+        try {
+            // 1. 使用 getBlockKramdown 获取编辑器内存中的最新内容
+            //    注意：transaction 事件触发时数据库尚未提交，SQL 查的是旧数据
+            //    而 kramdown 来自编辑器内存，能反映用户刚输入的最新内容
+            const kramdownResponse = await fetch('/api/block/getBlockKramdown', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: blockId })
+            });
+            const kramdownResult = await kramdownResponse.json();
+            if (kramdownResult.code !== 0 || !kramdownResult.data) return;
+            const kramdown = kramdownResult.data.kramdown || '';
+
+            // 2. 从 kramdown 中提取纯文本内容
+            //    kramdown 格式: 可能包含属性行 {: key="val"}，后面跟实际内容
+            //    并且可能有 id/updated 等思源自带属性
+            let lines = kramdown.split('\n');
+            let blockContent = '';
+
+            // 找到第一个非属性行的内容行
+            let foundContent = false;
+            for (const line of lines) {
+                const trimmed = line.trim();
+                // 跳过空行和属性行（以 {: 开头）
+                if (!trimmed || trimmed.startsWith('{:')) continue;
+                blockContent = trimmed;
+                foundContent = true;
+                break;
+            }
+
+            // 如果找不到内容行，尝试用所有非属性行拼接
+            if (!foundContent) {
+                const contentLines = lines.filter(l => {
+                    const t = l.trim();
+                    return t && !t.startsWith('{:');
+                });
+                blockContent = contentLines.join('\n').trim();
+            }
+
+            // 3. 如果内容为空（用户删完了所有文字），清除属性并移除说说记录
+            if (!blockContent) {
+                const attrResponse = await fetch('/api/attr/getBlockAttrs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: blockId })
+                });
+                const attrResult = await attrResponse.json();
+                if (attrResult.code === 0) {
+                    const attrs = attrResult.data || {};
+                    await this.setLuminaBlockAttrs(blockId, {
+                        date: attrs['custom-lumina-date'] || '',
+                        content: '',
+                        tag: attrs['custom-lumina-tag'] || ''
+                    });
+                }
+                // 从本地列表中移除对应的说说
+                const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
+                if (index !== -1) {
+                    this.shuoshuos.splice(index, 1);
+                    await this.saveShuoshuos();
+                    if (this.container && this.container.isConnected) {
+                        const notesList = this.container.querySelector('#shuoshuo-notes-list');
+                        if (notesList) {
+                            this.renderNotes();
+                            this.renderTags();
+                        }
+                    }
+                }
+                return;
+            }
+
+            // 4. 获取当前属性
+            const attrResponse = await fetch('/api/attr/getBlockAttrs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: blockId })
+            });
+            const attrResult = await attrResponse.json();
+            if (attrResult.code !== 0) return;
+            const attrs = attrResult.data || {};
+            const oldContent = attrs['custom-lumina-content'] || '';
+
+            // 5. 如果内容变了，更新属性
+            if (blockContent !== oldContent) {
+                await this.setLuminaBlockAttrs(blockId, {
+                    date: attrs['custom-lumina-date'] || '',
+                    content: blockContent,
+                    tag: attrs['custom-lumina-tag'] || ''
+                });
+                // console.log('[轻语] 已自动同步块内容到属性:', blockId);
+
+                const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
+                if (index !== -1) {
+                    this.shuoshuos[index].content = blockContent;
+                    this.shuoshuos[index].updated = Date.now();
+                    await this.saveShuoshuos();
+                    if (this.container && this.container.isConnected) {
+                        const notesList = this.container.querySelector('#shuoshuo-notes-list');
+                        if (notesList) {
+                            this.renderNotes();
+                            this.renderTags();
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            // console.warn('[轻语] 同步块属性失败:', e.message);
+        }
+    }
+
+    // MutationObserver：监听 Protyle 编辑器 DOM 变化作为兜底
+    _startMutationObserver() {
+        try {
+            if (this._protyleObserver) return;
+            const targetNode = document.querySelector('.protyle-wysiwyg') ||
+                               document.querySelector('.protyle-content') ||
+                               document.getElementById('editor') ||
+                               document.querySelector('.fn__flex-1');
+            if (!targetNode) {
+                setTimeout(() => this._startMutationObserver(), 2000);
+                return;
+            }
+            this._protyleObserver = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    const blockEl = mutation.target?.closest?.('[data-node-id]');
+                    if (!blockEl) continue;
+                    const blockId = blockEl.getAttribute('data-node-id');
+                    if (!blockId || !this._isBoundBlockId(blockId)) continue;
+                    this._debouncedSyncBoundAttr(blockId);
+                    break;
+                }
+            });
+            this._protyleObserver.observe(targetNode, {
+                characterData: true,
+                childList: true,
+                subtree: true,
+                attributes: false
+            });
+            // console.log('[轻语] MutationObserver 已启动');
+        } catch (e) {
+            // console.warn('[轻语] MutationObserver 启动失败:', e.message);
+        }
+    }
+
+    // 防抖刷新绑定的块（避免频繁请求）
+    _debouncedRefreshBound(specificBlockId) {
+        if (this._refreshTimer) {
+            clearTimeout(this._refreshTimer);
+        }
+        this._refreshTimer = setTimeout(() => {
+            this._refreshTimer = null;
+            if (specificBlockId) {
+                this._refreshSingleBoundBlock(specificBlockId);
+            } else {
+                this.refreshBoundBlocks();
+            }
+        }, 800); // 800ms 防抖：用户连续修改时只触发一次
+    }
+
+    // 刷新单个绑定块的数据（更高效，只查一个块）
+    async _refreshSingleBoundBlock(blockId) {
+        try {
+            // 在说说列表中查找对应的说说
+            const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
+            if (index === -1) return;
+
+            const existing = this.shuoshuos[index];
+
+            // 获取该块的最新属性
+            const attrResponse = await fetch('/api/attr/getBlockAttrs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: blockId })
+            });
+            const attrResult = await attrResponse.json();
+            if (attrResult.code !== 0) return;
+
+            const attrs = attrResult.data || {};
+            const newContent = attrs['custom-lumina-content'] || '';
+            const newTag = attrs['custom-lumina-tag'] || '';
+
+            // 检查内容是否真的有变化
+            if (newContent === existing.content) return;
+
+            const newTags = newTag ? newTag.split(/\s+/).filter(Boolean) : [];
+
+            // 更新说说对象
+            this.shuoshuos[index] = {
+                ...existing,
+                content: newContent,
+                tags: newTags,
+                updated: Date.now()
+            };
+
+            await this.saveShuoshuos();
+
+            // 如果当前正在显示说说视图，重新渲染
+            if (this.currentMainView === 'notes' && this.container) {
+                this.renderNotes();
+                this.renderTags();
+            }
+
+            // console.log('[轻语] 已实时同步思源块变更:', blockId);
+        } catch (e) {
+            // console.warn('[轻语] 刷新单个绑定块失败:', e.message);
+        }
+    }
+
     // 切换主视图（说说视图 vs 设置视图）
     switchMainView(view, navItem) {
         const flomoArea = this.container.querySelector('.north-shuoshuo-flomo-area');
@@ -7187,37 +7828,35 @@ ipcRenderer.on('lumina-close', () => {
 
         this.currentMainView = view;
 
-        switch (view) {
-            case 'notes':
-                if (flomoArea) flomoArea.style.display = 'flex';
-                if (settingsArea) settingsArea.style.display = 'none';
-                this.renderNotes();
-                break;
-            case 'review':
-                if (flomoArea) flomoArea.style.display = 'flex';
-                if (settingsArea) settingsArea.style.display = 'none';
-                this.renderReview();
-                break;
-            case 'random':
-                if (flomoArea) flomoArea.style.display = 'flex';
-                if (settingsArea) settingsArea.style.display = 'none';
-                this.renderRandom();
-                break;
-            case 'table':
-                if (flomoArea) flomoArea.style.display = 'flex';
-                if (settingsArea) settingsArea.style.display = 'none';
-                this.renderTable();
-                break;
-            case 'stats':
-                if (flomoArea) flomoArea.style.display = 'flex';
-                if (settingsArea) settingsArea.style.display = 'none';
-                this.renderStats();
-                break;
-            case 'settings':
-                if (flomoArea) flomoArea.style.display = 'none';
-                if (settingsArea) settingsArea.style.display = 'flex';
-                this.bindSettingsEvents();
-                break;
+        // 重要：切换到说说相关视图时，先从思源SQL加载最新绑定块数据
+        // 确保思源中修改的内容能在说说视图中立即反映
+        const needsRefresh = ['notes', 'table', 'stats', 'review', 'random'];
+        if (needsRefresh.includes(view)) {
+            // 先显示视图框架，然后异步加载最新数据后渲染内容
+            if (flomoArea) flomoArea.style.display = 'flex';
+            if (settingsArea) settingsArea.style.display = 'none';
+            // 显示输入区域（仅 notes 视图）
+            const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
+            if (inputArea) inputArea.style.display = view === 'notes' ? 'block' : 'none';
+            const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
+            if (sidebar) sidebar.style.display = view === 'stats' || view === 'table' ? 'none' : '';
+            // 异步加载思源数据并渲染
+            this.loadShuoshuos().then(() => {
+                if (this.currentMainView === view) {
+                    switch (view) {
+                        case 'notes': this.renderNotes(); break;
+                        case 'review': this.renderReview(); break;
+                        case 'random': this.renderRandom(); break;
+                        case 'table': this.renderTable(); break;
+                        case 'stats': this.renderStats(); break;
+                    }
+                }
+            });
+        } else {
+            // settings 视图不需要刷新数据
+            if (flomoArea) flomoArea.style.display = 'none';
+            if (settingsArea) settingsArea.style.display = 'flex';
+            this.bindSettingsEvents();
         }
     }
 
@@ -8422,11 +9061,76 @@ ipcRenderer.on('lumina-close', () => {
 
     async loadShuoshuos() {
         try {
+            // 1. 先从本地加载未绑定的说说
             const data = await this.loadData(STORAGE_NAME);
-            this.shuoshuos = data || [];
+            const localShuoshuos = data || [];
+
+            // 2. 从思源笔记查询所有绑定的块（主要数据源）
+            //    思源SQL是最新的数据，确保思源改了说说视图也能看到
+            let boundFromSiyuan = [];
+            try {
+                boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
+            } catch (e) {
+                // console.warn('[轻语] 从思源加载绑定块失败，使用本地数据:', e.message);
+            }
+
+            if (boundFromSiyuan.length > 0) {
+                // 合并策略：
+                // - 已绑定的说说以思源SQL数据为准（覆盖本地缓存）
+                // - 未绑定的说说保留本地数据
+                // - 思源中有但本地没有的新绑定块，追加到列表
+                const boundMap = new Map();
+                boundFromSiyuan.forEach(s => boundMap.set(s.boundBlockId, s));
+
+                const merged = [];
+                const processedBoundIds = new Set();
+
+                // 遍历本地说说，已绑定的用思源数据替换
+                for (const local of localShuoshuos) {
+                    if (local.boundBlockId && boundMap.has(local.boundBlockId)) {
+                        const siyuan = boundMap.get(local.boundBlockId);
+                        merged.push({
+                            ...siyuan,
+                            pinned: local.pinned || false,
+                            id: local.id // 保留本地ID维持引用
+                        });
+                        processedBoundIds.add(local.boundBlockId);
+                    } else {
+                        merged.push(local);
+                    }
+                }
+
+                // 添加思源中有但本地没有的新绑定块
+                for (const siyuan of boundFromSiyuan) {
+                    if (!processedBoundIds.has(siyuan.boundBlockId)) {
+                        merged.push(siyuan);
+                    }
+                }
+
+                this.shuoshuos = merged;
+            } else {
+                // 没有绑定的块，直接使用本地数据
+                this.shuoshuos = localShuoshuos;
+            }
         } catch (e) {
             console.warn("加载笔记失败", e);
             this.shuoshuos = [];
+        }
+
+        // 更新已绑定块ID的缓存
+        this._updateBoundCache();
+    }
+
+    // 从思源SQL加载数据并刷新列表（渲染前调用，确保数据最新）
+    async syncAndRender(viewType) {
+        await this.loadShuoshuos(); // 重新加载（从SQL获取最新）
+        switch (viewType) {
+            case 'notes': this.renderNotes(); break;
+            case 'review': this.renderReview(); break;
+            case 'random': this.renderRandom(); break;
+            case 'table': this.renderTable(); break;
+            case 'stats': this.renderStats(); break;
+            default: this.renderNotes(); break;
         }
     }
 
@@ -8532,6 +9236,8 @@ ipcRenderer.on('lumina-close', () => {
     async saveShuoshuos() {
         try {
             await this.saveData(STORAGE_NAME, this.shuoshuos);
+            // 保存后更新已绑定块ID的缓存
+            this._updateBoundCache();
         } catch (e) {
             console.warn("保存笔记失败", e);
             showMessage("保存失败: " + e.message);
