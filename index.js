@@ -10141,6 +10141,17 @@ ipcRenderer.on('lumina-close', () => {
                 .replace(/<p>(.*?)<\/p>/gi, '$1\n\n')
                 .replace(/<b>(.*?)<\/b>/gi, '**$1**')
                 .replace(/<i>(.*?)<\/i>/gi, '*$1*')
+                // 处理无序列表 <ul><li>...</li></ul>
+                .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (match, listContent) => {
+                    return listContent.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n');
+                })
+                // 处理有序列表 <ol><li>...</li></ol>
+                .replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (match, listContent) => {
+                    let index = 1;
+                    return listContent.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (liMatch, itemContent) => {
+                        return `${index++}. ${itemContent}\n`;
+                    });
+                })
                 .replace(/<[^>]+>/g, ''); // 移除剩余标签
             
             // 处理图片 - 下载远程图片并替换为本地路径
@@ -10320,6 +10331,17 @@ ipcRenderer.on('lumina-close', () => {
                     .replace(/<p>(.*?)<\/p>/gi, '$1\n\n')
                     .replace(/<b>(.*?)<\/b>/gi, '**$1**')
                     .replace(/<i>(.*?)<\/i>/gi, '*$1*')
+                    // 处理无序列表 <ul><li>...</li></ul>
+                    .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (match, listContent) => {
+                        return listContent.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n');
+                    })
+                    // 处理有序列表 <ol><li>...</li></ol>
+                    .replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (match, listContent) => {
+                        let index = 1;
+                        return listContent.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (liMatch, itemContent) => {
+                            return `${index++}. ${itemContent}\n`;
+                        });
+                    })
                     .replace(/<[^>]+>/g, ''); // 移除剩余标签
                 
                 // 处理图片 - 直接使用远程 URL，后续统一转换
@@ -10385,6 +10407,17 @@ ipcRenderer.on('lumina-close', () => {
                     .replace(/<p>(.*?)<\/p>/gi, '$1\n\n')
                     .replace(/<b>(.*?)<\/b>/gi, '**$1**')
                     .replace(/<i>(.*?)<\/i>/gi, '*$1*')
+                    // 处理无序列表 <ul><li>...</li></ul>
+                    .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (match, listContent) => {
+                        return listContent.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n');
+                    })
+                    // 处理有序列表 <ol><li>...</li></ol>
+                    .replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (match, listContent) => {
+                        let index = 1;
+                        return listContent.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (liMatch, itemContent) => {
+                            return `${index++}. ${itemContent}\n`;
+                        });
+                    })
                     .replace(/<[^>]+>/g, '');
                 
                 // 处理图片 - 下载远程图片并替换为本地路径
