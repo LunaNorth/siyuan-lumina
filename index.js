@@ -533,7 +533,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 if (!doOperations || !Array.isArray(doOperations)) return;
                 
                 // 调试：打印第一个操作的信息
-                // console.log('[轻语] transaction事件:', doOperations.length, '个操作', doOperations[0]?.action, doOperations[0]?.id);
+                console.log('[轻语] transaction事件:', doOperations.length, '个操作', doOperations[0]?.action, doOperations[0]?.id);
                 
                 // 收集所有需要同步的绑定块ID（使用Set去重）
                 const blocksToSync = new Set();
@@ -557,9 +557,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     // 情况2：操作的是绑定块的子元素（如列表项）
                     // 检查 parentId 是否是绑定的块
                     if (op.parentId && this._isBoundBlockId(op.parentId)) {
-                        // console.log('[轻语] 找到绑定块的子元素:', op.id, '父块:', op.parentId);
+                        console.log('[轻语] transaction找到绑定块的子元素:', op.id, '父块:', op.parentId);
                         blocksToSync.add(op.parentId);
                         continue;
+                    }
+                    
+                    // 情况2b：parentId 不是绑定块，但可能是列表容器，需要进一步检查祖父块
+                    if (op.parentId) {
+                        needQueryIds.push(op.parentId);
                     }
                     
                     // 情况3：检查 previousId 或 nextId
@@ -581,7 +586,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 }
             } catch (e) {}
         };
+        // 使用 document 和 window 同时监听，因为不同版本思源可能使用不同方式
+        document.addEventListener('transaction', this._transactionHandler);
         window.addEventListener('transaction', this._transactionHandler);
+        console.log('[轻语] transaction 事件监听器已注册');
 
         // 备用：MutationObserver 监听编辑器 DOM 变化
         this._startMutationObserver();
@@ -7685,12 +7693,12 @@ ipcRenderer.on('lumina-close', () => {
         // 优先使用缓存查找
         if (this._boundBlockIdsCache && this._boundBlockIdsCache.size > 0) {
             const has = this._boundBlockIdsCache.has(blockId);
-            // console.log('[轻语] 缓存检查:', blockId, has, '缓存大小:', this._boundBlockIdsCache.size);
+            console.log('[轻语] 缓存检查:', blockId, has, '缓存大小:', this._boundBlockIdsCache.size);
             return has;
         }
         // 缓存未初始化，遍历查找
         const found = this.shuoshuos && this.shuoshuos.some(s => s.boundBlockId === blockId);
-        // console.log('[轻语] 遍历检查:', blockId, found);
+        console.log('[轻语] 遍历检查:', blockId, found);
         return found;
     }
 
@@ -7858,6 +7866,7 @@ ipcRenderer.on('lumina-close', () => {
         try {
             // 去重
             const uniqueIds = [...new Set(blockIds)];
+            console.log('[轻语] 检查父块，块IDs:', uniqueIds);
             
             // 批量查询父块
             const idList = uniqueIds.map(id => `'${id}'`).join(',');
@@ -7869,19 +7878,22 @@ ipcRenderer.on('lumina-close', () => {
                 })
             });
             const result = await response.json();
+            console.log('[轻语] 父块查询结果:', result);
             if (result.code !== 0 || !result.data) return;
             
             // 检查哪些父块是绑定的块
             const syncedBlocks = new Set();
             for (const row of result.data) {
                 const parentId = row.parent_id;
+                console.log('[轻语] 检查父块是否绑定:', parentId, this._isBoundBlockId(parentId));
                 if (parentId && this._isBoundBlockId(parentId) && !syncedBlocks.has(parentId)) {
+                    console.log('[轻语] 父块是绑定块，同步:', parentId);
                     this._debouncedSyncBoundAttr(parentId);
                     syncedBlocks.add(parentId);
                 }
             }
         } catch (e) {
-            // 查询失败，静默处理
+            console.warn('[轻语] 检查父块失败:', e);
         }
     }
 
@@ -7912,7 +7924,7 @@ ipcRenderer.on('lumina-close', () => {
             const kramdownResult = await kramdownResponse.json();
             if (kramdownResult.code !== 0 || !kramdownResult.data) return;
             const kramdown = kramdownResult.data.kramdown || '';
-            // console.log('[轻语] 父块kramdown:', JSON.stringify(kramdown));
+            console.log('[轻语] 父块kramdown:', JSON.stringify(kramdown));
 
             // 2. 从 kramdown 中提取纯文本内容
             //    kramdown 格式: 可能包含属性行 {: key="val"}，后面跟实际内容
@@ -8005,7 +8017,7 @@ ipcRenderer.on('lumina-close', () => {
             const oldContent = attrs['custom-lumina-content'] || '';
 
             // 6. 如果内容变了，更新属性
-            // console.log('[轻语] 提取内容:', JSON.stringify(blockContent), '旧内容:', JSON.stringify(oldContent));
+            console.log('[轻语] 提取内容:', JSON.stringify(blockContent), '旧内容:', JSON.stringify(oldContent));
             if (blockContent !== oldContent) {
                 await this.setLuminaBlockAttrs(blockId, {
                     date: attrs['custom-lumina-date'] || '',
@@ -8046,13 +8058,17 @@ ipcRenderer.on('lumina-close', () => {
                 return;
             }
             this._protyleObserver = new MutationObserver((mutations) => {
+                console.log('[轻语] MutationObserver 触发，变化数:', mutations.length);
                 for (const mutation of mutations) {
                     // 尝试获取直接包含 data-node-id 的元素
                     let blockEl = mutation.target?.closest?.('[data-node-id]');
                     let blockId = blockEl?.getAttribute('data-node-id');
                     
+                    console.log('[轻语] 检测到变化，目标:', mutation.target?.className, '块ID:', blockId, '类型:', mutation.type);
+                    
                     // 如果找到绑定块，直接同步
                     if (blockId && this._isBoundBlockId(blockId)) {
+                        console.log('[轻语] 找到绑定块，准备同步:', blockId);
                         this._debouncedSyncBoundAttr(blockId);
                         break;
                     }
@@ -8063,10 +8079,24 @@ ipcRenderer.on('lumina-close', () => {
                         // 检查是否是列表项 (.li 类) 或列表容器 (.list 类)
                         const listContainer = blockEl.closest?.('.list, [data-type="NodeList"]');
                         if (listContainer) {
-                            const parentBlockId = listContainer.getAttribute('data-node-id');
-                            if (parentBlockId && this._isBoundBlockId(parentBlockId)) {
-                                this._debouncedSyncBoundAttr(parentBlockId);
+                            const listBlockId = listContainer.getAttribute('data-node-id');
+                            console.log('[轻语] 找到列表容器，块ID:', listBlockId, '是否绑定:', this._isBoundBlockId(listBlockId));
+                            if (listBlockId && this._isBoundBlockId(listBlockId)) {
+                                console.log('[轻语] 列表容器是绑定块，准备同步:', listBlockId);
+                                this._debouncedSyncBoundAttr(listBlockId);
                                 break;
+                            }
+                            
+                            // 列表容器不是绑定块，向上查找列表的父级
+                            const listParentEl = listContainer.parentElement?.closest?.('[data-node-id]');
+                            if (listParentEl) {
+                                const listParentId = listParentEl.getAttribute('data-node-id');
+                                console.log('[轻语] 找到列表父级，块ID:', listParentId, '是否绑定:', this._isBoundBlockId(listParentId));
+                                if (listParentId && this._isBoundBlockId(listParentId)) {
+                                    console.log('[轻语] 列表父级是绑定块，准备同步:', listParentId);
+                                    this._debouncedSyncBoundAttr(listParentId);
+                                    break;
+                                }
                             }
                         }
                         
@@ -8074,9 +8104,23 @@ ipcRenderer.on('lumina-close', () => {
                         const parentEl = blockEl.parentElement?.closest?.('[data-node-id]');
                         if (parentEl) {
                             const parentId = parentEl.getAttribute('data-node-id');
+                            console.log('[轻语] 检查父元素，块ID:', parentId, '是否绑定:', this._isBoundBlockId(parentId));
                             if (parentId && this._isBoundBlockId(parentId)) {
+                                console.log('[轻语] 父元素是绑定块，准备同步:', parentId);
                                 this._debouncedSyncBoundAttr(parentId);
                                 break;
+                            }
+                            
+                            // 继续向上查找曾祖父元素
+                            const grandParentEl = parentEl.parentElement?.closest?.('[data-node-id]');
+                            if (grandParentEl) {
+                                const grandParentId = grandParentEl.getAttribute('data-node-id');
+                                console.log('[轻语] 检查曾祖父元素，块ID:', grandParentId, '是否绑定:', this._isBoundBlockId(grandParentId));
+                                if (grandParentId && this._isBoundBlockId(grandParentId)) {
+                                    console.log('[轻语] 曾祖父元素是绑定块，准备同步:', grandParentId);
+                                    this._debouncedSyncBoundAttr(grandParentId);
+                                    break;
+                                }
                             }
                         }
                     }
@@ -8088,9 +8132,9 @@ ipcRenderer.on('lumina-close', () => {
                 subtree: true,
                 attributes: false
             });
-            // console.log('[轻语] MutationObserver 已启动');
+            console.log('[轻语] MutationObserver 已启动，监听节点:', targetNode.className || targetNode.id);
         } catch (e) {
-            // console.warn('[轻语] MutationObserver 启动失败:', e.message);
+            console.warn('[轻语] MutationObserver 启动失败:', e.message);
         }
     }
 
