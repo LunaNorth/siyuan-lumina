@@ -92,6 +92,7 @@ const DEFAULT_NOTEBOOK_ID = "";
 // SVG 图标
 const ICONS = {
     shuoshuo: `<symbol id="iconShuoshuo" viewBox="0 0 1024 1024"><path d="M896 128H128c-35.3 0-64 28.7-64 64v640c0 35.3 28.7 64 64 64h768c35.3 0 64-28.7 64-64V192c0-35.3-28.7-64-64-64zM128 192h768v640H128V192z"/><path d="M256 384h512v64H256zM256 512h512v64H256zM256 640h320v64H256z"/><circle cx="768" cy="672" r="48"/></symbol>`,
+    lightWord: `<symbol id="iconLightWord" viewBox="0 0 1024 1024"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M33.248 887.349h225.296l591.398-591.398c28.828-28.828 46.659-68.657 46.659-112.646 0-87.983-71.325-159.306-159.306-159.306-43.992 0-83.819 17.833-112.646 46.659l-591.398 591.398v225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M568.318 126.981l225.296 225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M878.102 662.060l-112.646 168.971h225.296l-112.646 168.971"/></symbol>`,
     grid: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z"/></svg>`,
     star: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`,
     starOutline: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>`,
@@ -394,6 +395,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
 
         this.addIcons(ICONS.shuoshuo);
+        this.addIcons(ICONS.lightWord);
 
         this.shuoshuos = [];
         this.assistantAvatarUrl = null;
@@ -529,10 +531,53 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             try {
                 const doOperations = e?.detail?.doOperations;
                 if (!doOperations || !Array.isArray(doOperations)) return;
+                
+                // 调试：打印第一个操作的信息
+                // console.log('[轻语] transaction事件:', doOperations.length, '个操作', doOperations[0]?.action, doOperations[0]?.id);
+                
+                // 收集所有需要同步的绑定块ID（使用Set去重）
+                const blocksToSync = new Set();
+                // 收集可能需要异步查询的块ID
+                const needQueryIds = [];
+                
                 for (const op of doOperations) {
-                    if (op.action === 'update' && op.id && this._isBoundBlockId(op.id)) {
-                        this._debouncedSyncBoundAttr(op.id);
+                    if (!op.id) continue;
+                    
+                    // 处理多种操作类型：update、insert、delete、move等
+                    const syncActions = ['update', 'insert', 'delete', 'move', 'append', 'prepend'];
+                    if (!syncActions.includes(op.action)) continue;
+                    
+                    // 情况1：直接操作的是绑定的块
+                    if (this._isBoundBlockId(op.id)) {
+                        // console.log('[轻语] 找到绑定块:', op.id);
+                        blocksToSync.add(op.id);
+                        continue;
                     }
+                    
+                    // 情况2：操作的是绑定块的子元素（如列表项）
+                    // 检查 parentId 是否是绑定的块
+                    if (op.parentId && this._isBoundBlockId(op.parentId)) {
+                        // console.log('[轻语] 找到绑定块的子元素:', op.id, '父块:', op.parentId);
+                        blocksToSync.add(op.parentId);
+                        continue;
+                    }
+                    
+                    // 情况3：检查 previousId 或 nextId
+                    if (op.previousId) needQueryIds.push(op.previousId);
+                    if (op.nextId) needQueryIds.push(op.nextId);
+                }
+                
+                // 先同步已确认的绑定块
+                if (blocksToSync.size > 0) {
+                    // console.log('[轻语] 同步绑定块:', [...blocksToSync]);
+                }
+                blocksToSync.forEach(blockId => {
+                    this._debouncedSyncBoundAttr(blockId);
+                });
+                
+                // 异步查询其他可能的绑定块（处理列表项插入等情况）
+                if (needQueryIds.length > 0) {
+                    this._checkAndSyncBoundParents(needQueryIds);
                 }
             } catch (e) {}
         };
@@ -558,7 +603,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
     onLayoutReady() {
         this.addTopBar({
-            icon: "iconEdit",
+            icon: "iconLightWord",
             title: "轻语",
             position: "right",
             callback: () => {
@@ -626,7 +671,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         openTab({
             app: this.app,
             custom: {
-                icon: "iconEdit",
+                icon: "iconLightWord",
                 title: "轻语",
                 data: {},
                 id: this.name + TAB_TYPE
@@ -6127,21 +6172,45 @@ ipcRenderer.on('lumina-close', () => {
             if (lines.length === 0 || (lines.length === 1 && !lines[0])) return;
 
             // 构建日记内容
-            // 有 #xxx# 高亮标签时：时间 + 空格 + 高亮标签 + 冒号 + 内容
-            // 无高亮标签时：纯内容（不带时间前缀）
+            // 如果有 #类型# 高亮标签，使用原格式：21:40 类型：内容
+            // 如果没有高亮标签，使用引用块格式：> [!NOTE] ✏️ 2026-04-30 21:35\n> 内容
             let diaryContent;
-            if (hasHighlight) {
-                const highlightStr = highlights.join(' ');
-                diaryContent = `${timeStr} ${highlightStr}：${lines[0]}`;
-            } else {
-                diaryContent = lines[0];
-            }
 
-            // 如果有更多行，添加换行和后续内容
-            if (lines.length > 1) {
-                const remainingContent = lines.slice(1).join('\n\n');
-                if (remainingContent) {
-                    diaryContent = diaryContent + '\n\n' + remainingContent;
+            if (hasHighlight) {
+                // 有 #类型# 高亮标签，使用原格式
+                const highlightStr = highlights.join(' ');
+                // 第一行：时间 + 高亮标签 + 冒号 + 第一行内容
+                diaryContent = `${timeStr} ${highlightStr}：${lines[0]}`;
+
+                // 如果有更多行，添加换行和后续内容
+                if (lines.length > 1) {
+                    const remainingContent = lines.slice(1).join('\n\n');
+                    if (remainingContent) {
+                        diaryContent = diaryContent + '\n\n' + remainingContent;
+                    }
+                }
+            } else {
+                // 没有高亮标签，使用引用块格式
+                const dateStr = this.formatDateTimeAttr(timestamp).split(' ')[0]; // 获取日期部分 2026-04-30
+                const dateDisplay = dateStr; // 保持 YYYY-MM-DD 格式
+
+                // 构建引用块标题行
+                diaryContent = `> [!NOTE] ✏️ ${dateDisplay} ${timeStr}`;
+
+                // 添加内容行（每行前面加上 >，包括空行）
+                // 在段落之间插入空行（只有 > 的行）来分隔段落
+                const originalLines = pureContent.split('\n');
+                for (let i = 0; i < originalLines.length; i++) {
+                    const line = originalLines[i];
+                    const trimmedLine = line.trim();
+                    
+                    // 当前行
+                    diaryContent += '\n> ' + trimmedLine;
+                    
+                    // 如果不是最后一行，且下一行也是非空行，则添加空行分隔
+                    if (i < originalLines.length - 1 && trimmedLine && originalLines[i + 1].trim()) {
+                        diaryContent += '\n>';
+                    }
                 }
             }
 
@@ -6369,7 +6438,18 @@ ipcRenderer.on('lumina-close', () => {
         
         // 转义 HTML
         html = this.escapeHtml(html);
-        
+
+        // 清理可能残留的内联属性标记（思源笔记 kramdown 格式）
+        // 例如: "1. {: id=\"xxx\" updated=\"xxx\"}内容" -> "1. 内容"
+        // 注意：只移除 {:...} 本身，不移除前面的空格，避免误删列表标记后的空格
+        html = html.replace(/\{:([^}]+)\}/g, '');
+
+        // 清理引用块格式（从思源笔记同步回来的内容可能包含）
+        // 移除 > [!NOTE] ✏️ 2026-4-30 21:42 这样的标题行
+        html = html.replace(/^>\s*\[!NOTE\][^\n]*\n?/gm, '');
+        // 移除 > 开头的引用标记，保留内容
+        html = html.replace(/^>\s?/gm, '');
+
         // ★ 批注 MEMO 处理：在 Markdown 渲染之前，先处理原始文本
         // 这样避免操作 HTML 导致的标签残缺问题
         // 批注格式：[MEMO:xxx]\n第一行批注\n第二行批注...
@@ -7343,13 +7423,59 @@ ipcRenderer.on('lumina-close', () => {
                 .replace(/\u200B|\u200C|\u200D|\uFEFF/g, '')
                 .trim();
 
-            // 2. 更新块内容（使用 markdown 格式）
+            // 2. 获取当前块的 kramdown 内容，检查是否是引用块格式
+            const kramdownResponse = await fetch('/api/block/getBlockKramdown', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: blockId })
+            });
+            const kramdownResult = await kramdownResponse.json();
+            let isBlockquote = false;
+            let hasNoteCallout = false;
+            let blockquoteHeader = '';
+            
+            if (kramdownResult.code === 0 && kramdownResult.data) {
+                const kramdown = kramdownResult.data.kramdown || '';
+                // 检查是否是引用块格式
+                if (kramdown.includes('> [!NOTE]')) {
+                    isBlockquote = true;
+                    hasNoteCallout = true;
+                    // 提取标题行
+                    const headerMatch = kramdown.match(/^> \[!NOTE\][^\n]*/);
+                    if (headerMatch) {
+                        blockquoteHeader = headerMatch[0];
+                    }
+                } else if (kramdown.trim().startsWith('>')) {
+                    isBlockquote = true;
+                }
+            }
+
+            // 3. 构建更新内容
+            let updateContent;
+            if (isBlockquote && hasNoteCallout) {
+                // 如果是 [!NOTE] 引用块格式，保持格式更新内容
+                const lines = pureContent.split('\n');
+                updateContent = blockquoteHeader;
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    updateContent += '\n> ' + line;
+                    // 在段落之间添加空行分隔
+                    if (i < lines.length - 1 && line && lines[i + 1].trim()) {
+                        updateContent += '\n>';
+                    }
+                }
+            } else {
+                // 普通格式，直接使用纯内容
+                updateContent = pureContent;
+            }
+
+            // 4. 更新块内容（使用 markdown 格式）
             const updateResponse = await fetch('/api/block/updateBlock', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     dataType: 'markdown',
-                    data: pureContent,
+                    data: updateContent,
                     id: blockId
                 })
             });
@@ -7358,7 +7484,7 @@ ipcRenderer.on('lumina-close', () => {
                 // console.warn('[轻语] 更新绑定块内容失败:', updateResult.msg);
             }
 
-            // 3. 更新自定义属性
+            // 5. 更新自定义属性（属性中只保存纯内容）
             const dateTimeStr = this.formatDateTimeAttr(shuoshuo.created);
             await this.setLuminaBlockAttrs(blockId, {
                 date: dateTimeStr,
@@ -7558,10 +7684,14 @@ ipcRenderer.on('lumina-close', () => {
         if (!blockId) return false;
         // 优先使用缓存查找
         if (this._boundBlockIdsCache && this._boundBlockIdsCache.size > 0) {
-            return this._boundBlockIdsCache.has(blockId);
+            const has = this._boundBlockIdsCache.has(blockId);
+            // console.log('[轻语] 缓存检查:', blockId, has, '缓存大小:', this._boundBlockIdsCache.size);
+            return has;
         }
         // 缓存未初始化，遍历查找
-        return this.shuoshuos && this.shuoshuos.some(s => s.boundBlockId === blockId);
+        const found = this.shuoshuos && this.shuoshuos.some(s => s.boundBlockId === blockId);
+        // console.log('[轻语] 遍历检查:', blockId, found);
+        return found;
     }
 
     // 更新已绑定块ID的缓存
@@ -7576,6 +7706,182 @@ ipcRenderer.on('lumina-close', () => {
                     this._boundBlockIdsCache.add(s.boundBlockId);
                 }
             });
+        }
+    }
+
+    // 通过子块ID查找父块ID（用于transaction事件中的列表项操作）
+    // 返回父块ID，如果未找到则返回null
+    async _findParentBlockId(childBlockId) {
+        if (!childBlockId) return null;
+        
+        try {
+            // 使用思源API查询块的父块信息
+            const response = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stmt: `SELECT parent_id FROM blocks WHERE id = '${childBlockId}' LIMIT 1`
+                })
+            });
+            const result = await response.json();
+            if (result.code === 0 && result.data && result.data.length > 0) {
+                return result.data[0].parent_id || null;
+            }
+        } catch (e) {
+            // 查询失败，返回null
+        }
+        return null;
+    }
+
+    // 获取块的子块内容（用于列表块等包含子块的类型）
+    // 返回组合后的纯文本内容，包含列表格式
+    async _getBlockChildrenContent(parentBlockId) {
+        if (!parentBlockId) return null;
+        
+        try {
+            // 查询所有子块
+            const response = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stmt: `SELECT id, content, type, subtype FROM blocks WHERE parent_id = '${parentBlockId}' ORDER BY created ASC`
+                })
+            });
+            const result = await response.json();
+            if (result.code !== 0 || !result.data || result.data.length === 0) {
+                return null;
+            }
+
+            const children = result.data;
+            
+            // 判断父块类型
+            const parentResponse = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stmt: `SELECT type, subtype FROM blocks WHERE id = '${parentBlockId}' LIMIT 1`
+                })
+            });
+            const parentResult = await parentResponse.json();
+            const parentType = parentResult.code === 0 && parentResult.data?.length > 0 
+                ? parentResult.data[0].type 
+                : '';
+            const parentSubtype = parentResult.code === 0 && parentResult.data?.length > 0 
+                ? parentResult.data[0].subtype 
+                : '';
+
+            // 获取每个子块的 kramdown 内容
+            const contentLines = [];
+            let index = 1;
+            
+            for (const child of children) {
+                try {
+                    const kramdownResponse = await fetch('/api/block/getBlockKramdown', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: child.id })
+                    });
+                    const kramdownResult = await kramdownResponse.json();
+                    if (kramdownResult.code !== 0 || !kramdownResult.data) continue;
+                    
+                    const kramdown = kramdownResult.data.kramdown || '';
+                    // console.log('[轻语] 子块kramdown:', JSON.stringify(kramdown));
+                    const lines = kramdown.split('\n');
+                    
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed || trimmed.startsWith('{:')) continue;
+                        
+                        // 移除内联属性（只移除 {:...} 本身，不移除前面的空格）
+                        let cleanedLine = trimmed.replace(/\{:([^}]+)\}/g, '').trim();
+                        // console.log('[轻语] 清理后:', JSON.stringify(cleanedLine), 'parentSubtype:', parentSubtype);
+                        
+                        if (cleanedLine) {
+                            // 根据父块类型添加列表标记
+                            if (parentType === 'NodeList') {
+                                if (parentSubtype === 'o') {
+                                    // 有序列表：检查是否已经以数字.开头
+                                    if (/^\d+\.\s+/.test(cleanedLine)) {
+                                        contentLines.push(cleanedLine);
+                                    } else {
+                                        contentLines.push(`${index}. ${cleanedLine}`);
+                                        index++;
+                                    }
+                                } else if (parentSubtype === 'u') {
+                                    // 无序列表：检查是否已经以-或*或+开头
+                                    if (/^[-*+]\s+/.test(cleanedLine)) {
+                                        contentLines.push(cleanedLine);
+                                    } else {
+                                        contentLines.push(`- ${cleanedLine}`);
+                                    }
+                                } else if (parentSubtype === 't') {
+                                    // 任务列表：检查是否已经以- [ ]或- [x]开头
+                                    if (/^[-*+]\s+\[[xX\s]\]\s+/.test(cleanedLine)) {
+                                        // 已经是完整格式，直接使用
+                                        contentLines.push(cleanedLine);
+                                    } else if (/^\[[xX\s]\]\s+/.test(cleanedLine)) {
+                                        // 只有[x]标记，添加-前缀
+                                        contentLines.push(`- ${cleanedLine}`);
+                                    } else {
+                                        // 纯内容，构造任务列表格式
+                                        const isChecked = cleanedLine.startsWith('[x]') || cleanedLine.startsWith('[X]');
+                                        const taskContent = cleanedLine.replace(/^\[[xX\s]\]\s*/, '');
+                                        contentLines.push(`- [${isChecked ? 'x' : ' '}] ${taskContent}`);
+                                    }
+                                } else {
+                                    // 默认无序列表
+                                    if (/^[-*+]\s+/.test(cleanedLine)) {
+                                        contentLines.push(cleanedLine);
+                                    } else {
+                                        contentLines.push(`- ${cleanedLine}`);
+                                    }
+                                }
+                            } else {
+                                contentLines.push(cleanedLine);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // 单个子块处理失败，跳过
+                }
+            }
+            
+            return contentLines.length > 0 ? contentLines.join('\n').trim() : null;
+        } catch (e) {
+            // 查询失败，返回null
+            return null;
+        }
+    }
+
+    // 批量检查并同步绑定块的父块
+    async _checkAndSyncBoundParents(blockIds) {
+        try {
+            // 去重
+            const uniqueIds = [...new Set(blockIds)];
+            
+            // 批量查询父块
+            const idList = uniqueIds.map(id => `'${id}'`).join(',');
+            const response = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stmt: `SELECT id, parent_id FROM blocks WHERE id IN (${idList})`
+                })
+            });
+            const result = await response.json();
+            if (result.code !== 0 || !result.data) return;
+            
+            // 检查哪些父块是绑定的块
+            const syncedBlocks = new Set();
+            for (const row of result.data) {
+                const parentId = row.parent_id;
+                if (parentId && this._isBoundBlockId(parentId) && !syncedBlocks.has(parentId)) {
+                    this._debouncedSyncBoundAttr(parentId);
+                    syncedBlocks.add(parentId);
+                }
+            }
+        } catch (e) {
+            // 查询失败，静默处理
         }
     }
 
@@ -7606,34 +7912,56 @@ ipcRenderer.on('lumina-close', () => {
             const kramdownResult = await kramdownResponse.json();
             if (kramdownResult.code !== 0 || !kramdownResult.data) return;
             const kramdown = kramdownResult.data.kramdown || '';
+            // console.log('[轻语] 父块kramdown:', JSON.stringify(kramdown));
 
             // 2. 从 kramdown 中提取纯文本内容
             //    kramdown 格式: 可能包含属性行 {: key="val"}，后面跟实际内容
             //    并且可能有 id/updated 等思源自带属性
+            //    列表项格式: "1. {: id=\"...\" updated=\"...\"}内容" 或 "- {: id=\"...\"}内容"
             let lines = kramdown.split('\n');
             let blockContent = '';
 
-            // 找到第一个非属性行的内容行
-            let foundContent = false;
+            // 处理每一行：移除内联属性 {: ...}，并跳过纯属性行
+            const contentLines = [];
             for (const line of lines) {
-                const trimmed = line.trim();
-                // 跳过空行和属性行（以 {: 开头）
+                let trimmed = line.trim();
+                // 跳过空行和以 {: 开头的纯属性行
                 if (!trimmed || trimmed.startsWith('{:')) continue;
-                blockContent = trimmed;
-                foundContent = true;
-                break;
+                
+                // 移除引用块标记（> 开头的行），提取纯内容
+                // 处理格式：> [!NOTE] ✏️ 2026-4-30 21:42 或 > 内容
+                if (trimmed.startsWith('>')) {
+                    // 移除开头的 > 和可能的空格
+                    trimmed = trimmed.substring(1).trim();
+                    // 跳过引用块标题行（包含 [!NOTE]）
+                    if (trimmed.includes('[!NOTE]')) continue;
+                }
+                
+                // 移除行内的属性标记 {: id="..." updated="..."}
+                // 处理列表项中的内联属性，如: "1. {: id=\"...\"}内容" 或 "- {: id=\"...\"}内容"
+                // 注意：只移除 {:...} 本身，不移除前面的空格，避免误删列表标记后的空格
+                let cleanedLine = trimmed.replace(/\{:([^}]+)\}/g, '').trim();
+                
+                // 清理后如果只剩下列表标记（如"- "、"1. "），也跳过
+                if (!cleanedLine || /^\d+\.\s*$|^[-*+]\s*$/.test(cleanedLine)) continue;
+                
+                if (cleanedLine) {
+                    contentLines.push(cleanedLine);
+                }
+            }
+            
+            blockContent = contentLines.join('\n').trim();
+
+            // 3. 如果块内容是空的但有子块（如列表块），尝试获取子块内容
+            //    思源笔记的列表块（NodeList）的 kramdown 可能不包含子列表项内容
+            if (!blockContent || blockContent === '{:}' || /^\d+\.\s*$|^[-*+]\s*$/.test(blockContent)) {
+                const childContent = await this._getBlockChildrenContent(blockId);
+                if (childContent) {
+                    blockContent = childContent;
+                }
             }
 
-            // 如果找不到内容行，尝试用所有非属性行拼接
-            if (!foundContent) {
-                const contentLines = lines.filter(l => {
-                    const t = l.trim();
-                    return t && !t.startsWith('{:');
-                });
-                blockContent = contentLines.join('\n').trim();
-            }
-
-            // 3. 如果内容为空（用户删完了所有文字），清除属性并移除说说记录
+            // 4. 如果内容为空（用户删完了所有文字），清除属性并移除说说记录
             if (!blockContent) {
                 const attrResponse = await fetch('/api/attr/getBlockAttrs', {
                     method: 'POST',
@@ -7665,7 +7993,7 @@ ipcRenderer.on('lumina-close', () => {
                 return;
             }
 
-            // 4. 获取当前属性
+            // 5. 获取当前属性
             const attrResponse = await fetch('/api/attr/getBlockAttrs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -7676,7 +8004,8 @@ ipcRenderer.on('lumina-close', () => {
             const attrs = attrResult.data || {};
             const oldContent = attrs['custom-lumina-content'] || '';
 
-            // 5. 如果内容变了，更新属性
+            // 6. 如果内容变了，更新属性
+            // console.log('[轻语] 提取内容:', JSON.stringify(blockContent), '旧内容:', JSON.stringify(oldContent));
             if (blockContent !== oldContent) {
                 await this.setLuminaBlockAttrs(blockId, {
                     date: attrs['custom-lumina-date'] || '',
@@ -7718,12 +8047,39 @@ ipcRenderer.on('lumina-close', () => {
             }
             this._protyleObserver = new MutationObserver((mutations) => {
                 for (const mutation of mutations) {
-                    const blockEl = mutation.target?.closest?.('[data-node-id]');
-                    if (!blockEl) continue;
-                    const blockId = blockEl.getAttribute('data-node-id');
-                    if (!blockId || !this._isBoundBlockId(blockId)) continue;
-                    this._debouncedSyncBoundAttr(blockId);
-                    break;
+                    // 尝试获取直接包含 data-node-id 的元素
+                    let blockEl = mutation.target?.closest?.('[data-node-id]');
+                    let blockId = blockEl?.getAttribute('data-node-id');
+                    
+                    // 如果找到绑定块，直接同步
+                    if (blockId && this._isBoundBlockId(blockId)) {
+                        this._debouncedSyncBoundAttr(blockId);
+                        break;
+                    }
+                    
+                    // 如果没有直接找到，可能是列表项的情况
+                    // 尝试查找父元素，看是否是列表容器
+                    if (blockEl) {
+                        // 检查是否是列表项 (.li 类) 或列表容器 (.list 类)
+                        const listContainer = blockEl.closest?.('.list, [data-type="NodeList"]');
+                        if (listContainer) {
+                            const parentBlockId = listContainer.getAttribute('data-node-id');
+                            if (parentBlockId && this._isBoundBlockId(parentBlockId)) {
+                                this._debouncedSyncBoundAttr(parentBlockId);
+                                break;
+                            }
+                        }
+                        
+                        // 再检查祖父元素是否是绑定块（处理嵌套列表情况）
+                        const parentEl = blockEl.parentElement?.closest?.('[data-node-id]');
+                        if (parentEl) {
+                            const parentId = parentEl.getAttribute('data-node-id');
+                            if (parentId && this._isBoundBlockId(parentId)) {
+                                this._debouncedSyncBoundAttr(parentId);
+                                break;
+                            }
+                        }
+                    }
                 }
             });
             this._protyleObserver.observe(targetNode, {
@@ -10322,7 +10678,8 @@ ipcRenderer.on('lumina-close', () => {
         
         // 处理每一天的笔记
         for (const [date, dayMemos] of Object.entries(memosByDate)) {
-            let content = '';
+            // 按时间排序，从早到晚
+            dayMemos.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
             
             for (const memo of dayMemos) {
                 // 转换 HTML 为 Markdown（简化处理）
@@ -10351,11 +10708,19 @@ ipcRenderer.on('lumina-close', () => {
                     });
                 }
                 
-                content += `- ${memoContent.trim()}\n`;
+                // 提取 flomo 标签
+                const flomoTags = memo.tags || [];
+                const tagStr = flomoTags.length > 0 ? ' ' + flomoTags.map(t => `#${t}`).join(' ') : '';
+                
+                // 构建完整内容（标签 + 内容）
+                const fullContent = tagStr ? `${tagStr}\n${memoContent.trim()}` : memoContent.trim();
+                
+                // 使用 memo 的创建时间戳
+                const memoTimestamp = new Date(memo.created_at).getTime();
+                
+                // 每条笔记单独保存到每日笔记（使用引用块格式）
+                await this.appendToDailyNote(fullContent, memoTimestamp);
             }
-            
-            // 保存到每日笔记
-            await this.appendToDailyNote(content, new Date(date).getTime());
             
             // 获取每日笔记文档 ID 并转换图片
             const dateObj = new Date(date);
