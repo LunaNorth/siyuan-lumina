@@ -5190,9 +5190,10 @@ ipcRenderer.on('lumina-close', () => {
         }, 300);
     }
 
-    // 提取标签（支持多级标?#??孙）
+    // 提取标签（支持多级标签，格式：#标签#）
     extractTags(content) {
-        const tagRegex = /#([\w\/\u4e00-\u9fa5-]+)(?![\w\/\u4e00-\u9fa5-])(?!#)/g;
+        // 匹配 #标签# 格式（前后都有#号）
+        const tagRegex = /#([\w\/\u4e00-\u9fa5-]+)#/g;
         const tags = [];
         let match;
         while ((match = tagRegex.exec(content)) !== null) {
@@ -7421,12 +7422,13 @@ ipcRenderer.on('lumina-close', () => {
             // 1. 准备纯内容（去除标签标记等）
             const tags = shuoshuo.tags || this.extractTags(shuoshuo.content);
             let pureContent = shuoshuo.content;
-            // 移除所有 #标签# 高亮和 #标签（使用和 extractTags 一致的边界匹配）
-            const tagPattern = tags.map(t => this.escapeRegExp(t)).join('|');
-            if (tagPattern) {
-                pureContent = pureContent.replace(new RegExp(`#(?:${tagPattern})(?![\\w\/\\u4e00-\\u9fa5-])`, 'g'), '');
-            }
+            
+            // 移除所有 #标签# 格式（前后都有#号）
             pureContent = pureContent.replace(/#([\w\/\u4e00-\u9fa5-]+)#\s*/g, '').trim();
+            
+            // 移除可能残留的单个#号
+            pureContent = pureContent.replace(/\s*#\s*$/g, '').trim();
+            
             pureContent = pureContent
                 .replace(/\u200B|\u200C|\u200D|\uFEFF/g, '')
                 .trim();
@@ -7460,7 +7462,12 @@ ipcRenderer.on('lumina-close', () => {
 
             // 3. 构建更新内容
             let updateContent;
-            if (isBlockquote && hasNoteCallout) {
+            
+            // 如果有标签，构建 "时间 类型：内容" 格式
+            if (tags.length > 0) {
+                const timeStr = this.formatDateTimeAttr(shuoshuo.created).split(' ')[1]; // 获取时间 HH:mm
+                updateContent = `${timeStr} ${tags[0]}：${pureContent}`;
+            } else if (isBlockquote && hasNoteCallout) {
                 // 如果是 [!NOTE] 引用块格式，保持格式更新内容
                 const lines = pureContent.split('\n');
                 updateContent = blockquoteHeader;
@@ -8028,7 +8035,26 @@ ipcRenderer.on('lumina-close', () => {
 
                 const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
                 if (index !== -1) {
-                    this.shuoshuos[index].content = blockContent;
+                    // 保留说说视图中的标签格式
+                    const oldShuoshuoContent = this.shuoshuos[index].content;
+                    const oldTags = this.shuoshuos[index].tags || this.extractTags(oldShuoshuoContent);
+                    
+                    // 解析思源笔记格式："06:49 固：记录111" → 提取纯内容 "记录111"
+                    // 格式：时间 HH:mm + 空格 + 类型 + ：+ 内容
+                    let pureContent = blockContent;
+                    const typeMatch = blockContent.match(/^\d{2}:\d{2}\s+([^：:]+)[：:]\s*/);
+                    if (typeMatch) {
+                        // 是 "时间 类型：内容" 格式，提取纯内容部分
+                        pureContent = blockContent.substring(typeMatch[0].length).trim();
+                    }
+                    
+                    // 构建新内容：纯内容 + 原来的标签
+                    let newContent = pureContent;
+                    if (oldTags.length > 0) {
+                        newContent = pureContent + ' ' + oldTags.map(t => `#${t}#`).join(' ');
+                    }
+                    
+                    this.shuoshuos[index].content = newContent;
                     this.shuoshuos[index].updated = Date.now();
                     await this.saveShuoshuos();
                     if (this.container && this.container.isConnected) {
