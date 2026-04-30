@@ -7390,9 +7390,15 @@ ipcRenderer.on('lumina-close', () => {
                         }
                     }
 
+                    // 如果有标签，构建说说视图格式：纯内容 + #标签#
+                    let displayContent = luminaContent;
+                    if (tags.length > 0) {
+                        displayContent = luminaContent + ' ' + tags.map(t => `#${t}#`).join(' ');
+                    }
+
                     boundShuoshuos.push({
                         id: blockId, // 使用块ID作为唯一标识
-                        content: luminaContent,
+                        content: displayContent,
                         tags: tags,
                         pinned: false,
                         created: created,
