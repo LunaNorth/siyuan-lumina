@@ -5190,10 +5190,12 @@ ipcRenderer.on('lumina-close', () => {
         }, 300);
     }
 
-    // 提取标签（支持多级标签，格式：#标签#）
+    // 提取标签（格式：#标签，只有开头有#，结尾没有#）
     extractTags(content) {
-        // 匹配 #标签# 格式（前后都有#号）
-        const tagRegex = /#([\w\/\u4e00-\u9fa5-]+)#/g;
+        // 匹配 #标签 格式（只有开头有#，结尾没有#，这才是标签）
+        // 要求标签后面必须是：空格、换行、字符串结尾，或者是中文标点等分隔符
+        // 避免将 #类型# 中的部分内容（如 #学）误判为标签
+        const tagRegex = /#([\w\/\u4e00-\u9fa5-]+)(?=\s|\n|$|[，。！？；：""''（）【】])/g;
         const tags = [];
         let match;
         while ((match = tagRegex.exec(content)) !== null) {
@@ -6270,10 +6272,12 @@ ipcRenderer.on('lumina-close', () => {
 
             if (blockId && typeof blockId === 'string') {
                 // 设置自定义属性
+                // 将类型和标签分开保存，便于后续加载时区分
                 const attrResult = await this.setLuminaBlockAttrs(blockId, {
                     date: dateTimeStr,
                     content: pureContent,
-                    tag: tags.concat(highlights).join(' ')
+                    tag: tags.join(' '),  // 只保存标签
+                    type: highlights.join(' ')  // 保存类型（#类型# 格式中的类型名）
                 });
                 // if (!attrResult) {
                 //     console.warn('[轻语] 块属性设置可能未成功，blockId:', blockId);
@@ -6297,7 +6301,8 @@ ipcRenderer.on('lumina-close', () => {
                 attrs: {
                     'custom-lumina-date': attrs.date || '',
                     'custom-lumina-content': attrs.content || '',
-                    'custom-lumina-tag': attrs.tag || ''
+                    'custom-lumina-tag': attrs.tag || '',
+                    'custom-lumina-type': attrs.type || ''  // 类型（#类型# 格式中的类型名）
                 }
             };
 
@@ -7333,6 +7338,7 @@ ipcRenderer.on('lumina-close', () => {
                     const attrContent = attrs['custom-lumina-content'] || '';
                     const luminaDate = attrs['custom-lumina-date'] || '';
                     const luminaTag = attrs['custom-lumina-tag'] || '';
+                    const luminaType = attrs['custom-lumina-type'] || '';  // 类型（#类型# 格式中的类型名）
 
                     // 使用 custom-lumina-content 属性值（_syncBoundBlockAttr 已实时同步）
                     // 属性值为空时回退到 SQL 内容
@@ -7347,13 +7353,15 @@ ipcRenderer.on('lumina-close', () => {
                         this.setLuminaBlockAttrs(blockId, {
                             content: '',
                             date: luminaDate,
-                            tag: luminaTag
+                            tag: luminaTag,
+                            type: luminaType
                         }).catch(() => {});
                         continue;
                     }
 
-                    // 从属性中解析标签
+                    // 从属性中解析标签和类型
                     const tags = luminaTag ? luminaTag.split(/\s+/).filter(Boolean) : [];
+                    const types = luminaType ? luminaType.split(/\s+/).filter(Boolean) : [];
 
                     // 解析日期时间
                     let created = Date.now();
@@ -7390,10 +7398,17 @@ ipcRenderer.on('lumina-close', () => {
                         }
                     }
 
-                    // 如果有标签，构建说说视图格式：纯内容 + #标签#
+                    // 构建说说视图格式：#类型#（如果有）+ 纯内容 + #标签（如果有）
                     let displayContent = luminaContent;
+                    
+                    // 先添加类型（#类型# 格式）
+                    if (types.length > 0) {
+                        displayContent = types.map(t => `#${t}#`).join(' ') + ' ' + displayContent;
+                    }
+                    
+                    // 再添加标签（#标签 格式）
                     if (tags.length > 0) {
-                        displayContent = luminaContent + ' ' + tags.map(t => `#${t}#`).join(' ');
+                        displayContent = displayContent + ' ' + tags.map(t => `#${t}`).join(' ');
                     }
 
                     boundShuoshuos.push({
@@ -7425,12 +7440,18 @@ ipcRenderer.on('lumina-close', () => {
 
         const blockId = shuoshuo.boundBlockId;
         try {
-            // 1. 准备纯内容（去除标签标记等）
+            // 1. 准备纯内容（去除标签和类型标记等）
             const tags = shuoshuo.tags || this.extractTags(shuoshuo.content);
+            const types = this.extractType(shuoshuo.content);  // 提取类型（#类型# 格式）
             let pureContent = shuoshuo.content;
             
-            // 移除所有 #标签# 格式（前后都有#号）
+            // 移除所有 #类型# 格式（前后都有#号）
             pureContent = pureContent.replace(/#([\w\/\u4e00-\u9fa5-]+)#\s*/g, '').trim();
+            
+            // 移除所有 #标签 格式（只有开头有#号）
+            tags.forEach(tag => {
+                pureContent = pureContent.replace(new RegExp(`#${tag}\\s*`, 'g'), '');
+            });
             
             // 移除可能残留的单个#号
             pureContent = pureContent.replace(/\s*#\s*$/g, '').trim();
@@ -7468,11 +7489,14 @@ ipcRenderer.on('lumina-close', () => {
 
             // 3. 构建更新内容
             let updateContent;
+            const timeStr = this.formatDateTimeAttr(shuoshuo.created).split(' ')[1]; // 获取时间 HH:mm
             
-            // 如果有标签，构建 "时间 类型：内容" 格式
-            if (tags.length > 0) {
-                const timeStr = this.formatDateTimeAttr(shuoshuo.created).split(' ')[1]; // 获取时间 HH:mm
-                updateContent = `${timeStr} ${tags[0]}：${pureContent}`;
+            // 如果有类型，构建 "时间 类型：内容" 格式
+            if (types) {
+                updateContent = `${timeStr} ${types}：${pureContent}`;
+            } else if (tags.length > 0) {
+                // 如果有标签但没有类型，构建 "时间 #标签 内容" 格式
+                updateContent = `${timeStr} #${tags[0]} ${pureContent}`;
             } else if (isBlockquote && hasNoteCallout) {
                 // 如果是 [!NOTE] 引用块格式，保持格式更新内容
                 const lines = pureContent.split('\n');
@@ -7505,12 +7529,13 @@ ipcRenderer.on('lumina-close', () => {
                 // console.warn('[轻语] 更新绑定块内容失败:', updateResult.msg);
             }
 
-            // 5. 更新自定义属性（属性中只保存纯内容）
+            // 5. 更新自定义属性（属性中保存纯内容、标签和类型）
             const dateTimeStr = this.formatDateTimeAttr(shuoshuo.created);
             await this.setLuminaBlockAttrs(blockId, {
                 date: dateTimeStr,
                 content: pureContent,
-                tag: tags.join(' ')
+                tag: tags.join(' '),  // 保存标签
+                type: types  // 保存类型（#类型# 格式中的类型名）
             });
 
             return true;
@@ -8032,32 +8057,62 @@ ipcRenderer.on('lumina-close', () => {
             // 6. 如果内容变了，更新属性
             // console.log('[轻语] 提取内容:', JSON.stringify(blockContent), '旧内容:', JSON.stringify(oldContent));
             if (blockContent !== oldContent) {
+                // 从旧说说内容中提取类型，用于更新属性
+                const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
+                let currentType = attrs['custom-lumina-type'] || '';
+                if (index !== -1) {
+                    currentType = this.extractType(this.shuoshuos[index].content);
+                }
+                
                 await this.setLuminaBlockAttrs(blockId, {
                     date: attrs['custom-lumina-date'] || '',
                     content: blockContent,
-                    tag: attrs['custom-lumina-tag'] || ''
+                    tag: attrs['custom-lumina-tag'] || '',
+                    type: currentType
                 });
                 // console.log('[轻语] 已自动同步块内容到属性:', blockId);
 
-                const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
+                // index 已在上面声明，这里直接使用
                 if (index !== -1) {
-                    // 保留说说视图中的标签格式
+                    // 保留说说视图中的标签和类型格式
                     const oldShuoshuoContent = this.shuoshuos[index].content;
                     const oldTags = this.shuoshuos[index].tags || this.extractTags(oldShuoshuoContent);
+                    const oldType = this.extractType(oldShuoshuoContent); // 提取原来的类型（如 #固#）
                     
-                    // 解析思源笔记格式："06:49 固：记录111" → 提取纯内容 "记录111"
-                    // 格式：时间 HH:mm + 空格 + 类型 + ：+ 内容
+                    // 解析思源笔记格式，支持两种格式：
+                    // 1. "06:49 #标签 记录111" → 提取纯内容 "记录111"
+                    // 2. "06:49 固：激励理论" → 提取纯内容 "激励理论"
                     let pureContent = blockContent;
-                    const typeMatch = blockContent.match(/^\d{2}:\d{2}\s+([^：:]+)[：:]\s*/);
-                    if (typeMatch) {
-                        // 是 "时间 类型：内容" 格式，提取纯内容部分
-                        pureContent = blockContent.substring(typeMatch[0].length).trim();
+                    let detectedType = ''; // 从思源笔记检测到的类型
+                    
+                    // 先尝试匹配 "时间 #标签 内容" 格式
+                    const tagMatch = blockContent.match(/^\d{2}:\d{2}\s+#[\w\/\u4e00-\u9fa5-]+\s*/);
+                    if (tagMatch) {
+                        // 是 "时间 #标签 内容" 格式，提取纯内容部分
+                        pureContent = blockContent.substring(tagMatch[0].length).trim();
+                    } else {
+                        // 尝试匹配 "时间 类型：内容" 格式（类型可以是中文、英文、数字等）
+                        const typeMatch = blockContent.match(/^\d{2}:\d{2}\s+([^：:]+)[：:]\s*/);
+                        if (typeMatch) {
+                            // 是 "时间 类型：内容" 格式，提取纯内容部分
+                            pureContent = blockContent.substring(typeMatch[0].length).trim();
+                            detectedType = typeMatch[1].trim(); // 提取类型名称（如 "固"）
+                        }
                     }
                     
-                    // 构建新内容：纯内容 + 原来的标签
+                    // 构建新内容：类型（如果有）+ 纯内容 + 标签（如果有）
                     let newContent = pureContent;
+                    
+                    // 如果检测到了类型，使用 #类型# 格式；否则使用原来的类型
+                    if (detectedType) {
+                        newContent = `#${detectedType}# ${pureContent}`;
+                    } else if (oldType) {
+                        newContent = `#${oldType}# ${pureContent}`;
+                    }
+                    
+                    // 添加标签
                     if (oldTags.length > 0) {
-                        newContent = pureContent + ' ' + oldTags.map(t => `#${t}#`).join(' ');
+                        newContent = newContent + ' ' + oldTags.map(t => `#${t}`).join(' ');
                     }
                     
                     this.shuoshuos[index].content = newContent;
