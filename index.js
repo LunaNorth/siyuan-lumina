@@ -402,6 +402,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.userAvatarUrl = null;
         this.notebookId = DEFAULT_NOTEBOOK_ID;
         this.autoSync = false;
+        this.syncMode = 'dailynote'; // 'dailynote' 每日笔记, 'doc' 指定文档
+        this.syncDocId = ''; // 指定文档ID（syncMode为doc时使用）
         this.viewStyle = 'list'; // 'list' 平铺, 'card' 卡片
         this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
         this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
@@ -2143,12 +2145,70 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
 
                             <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">同步模式</div>
+                                        <div class="north-shuoshuo-section-desc">选择说说同步到思源笔记的方式</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <div class="north-shuoshuo-radio-group vertical" id="sync-mode-group">
+                                        <label class="north-shuoshuo-radio-item ${this.syncMode === 'dailynote' ? 'selected' : ''}" data-mode="dailynote">
+                                            <input type="radio" name="sync-mode" value="dailynote" ${this.syncMode === 'dailynote' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">同步到每日笔记</span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item ${this.syncMode === 'doc' ? 'selected' : ''}" data-mode="doc">
+                                            <input type="radio" name="sync-mode" value="doc" ${this.syncMode === 'doc' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">同步到指定文档</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row" id="sync-doc-id-row" style="display: ${this.syncMode === 'doc' ? 'flex' : 'none'};">
+                                    <label class="north-shuoshuo-form-label">文档 ID</label>
+                                    <div class="north-shuoshuo-input-group" style="width: 100%;">
+                                        <input type="text" id="settings-sync-doc-id" class="north-shuoshuo-input-field" placeholder="请输入思源文档块 ID" value="${this.syncDocId || ''}">
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint">
+                                        <span>💡</span> 打开目标文档，右键文档标题 → 复制文档块 ID
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
                                         <h4>自动同步</h4>
-                                        <p>发布说说时自动同步到日记</p>
+                                        <p>发布说说时自动同步</p>
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.autoSync ? 'on' : ''}" id="settings-auto-sync-switch"></div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">手动同步</div>
+                                        <div class="north-shuoshuo-section-desc">将现有说说批量同步到思源笔记</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: var(--b3-theme-on-surface);">
+                                        <input type="checkbox" id="settings-full-sync" style="width: 16px; height: 16px; cursor: pointer;">
+                                        <span>全量同步（包括已同步过的笔记）</span>
+                                    </label>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="settings-start-sync" style="width: 100%;">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                            <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97-.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                                        </svg>
+                                        开始同步
+                                    </button>
+                                </div>
+                                <div class="north-shuoshuo-form-hint">
+                                    <span>💡</span> 增量同步仅同步未绑定的笔记；全量同步会重新同步所有笔记（可能产生重复内容）
                                 </div>
                             </div>
                         </div>
@@ -3874,9 +3934,17 @@ ipcRenderer.on('lumina-close', () => {
                 confirm(confirmTitle, confirmMsg, async () => {
                     // 使用字符串比较来确保 id 匹配
                     const idsToDelete = new Set(checkedIds.map(id => String(id)));
+                    // 先删除绑定的思源块
+                    const notesToDelete = this.shuoshuos.filter(s => idsToDelete.has(String(s.id)));
+                    for (const note of notesToDelete) {
+                        if (note.boundBlockId) {
+                            await this.deleteSiyuanBlock(note.boundBlockId);
+                        }
+                    }
                     this.shuoshuos = this.shuoshuos.filter(s => !idsToDelete.has(String(s.id)));
                     await this.saveShuoshuos();
                     this.renderTable();
+                    this.renderTags();
                     showMessage(`已删除 ${checkedIds.length} 条笔记`);
                 });
             });
@@ -3906,9 +3974,14 @@ ipcRenderer.on('lumina-close', () => {
                 }
                 // 使用思源笔记的 confirm 函数格式：confirm(title, message, callback)
                 confirm('⚠️ 确认删除', `确定要删除这条笔记吗？\n\n${contentPreview}\n\n此操作不可恢复。`, async () => {
+                    const note = this.shuoshuos.find(s => String(s.id) === String(id));
+                    if (note && note.boundBlockId) {
+                        await this.deleteSiyuanBlock(note.boundBlockId);
+                    }
                     this.shuoshuos = this.shuoshuos.filter(s => String(s.id) !== String(id));
                     await this.saveShuoshuos();
                     this.renderTable();
+                    this.renderTags();
                     showMessage('已删除 1 条笔记');
                 });
             });
@@ -6138,7 +6211,8 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     async appendToDailyNote(content, timestamp) {
-        if (!this.notebookId) return;
+        if (this.syncMode === 'dailynote' && !this.notebookId) return;
+        if (this.syncMode === 'doc' && !this.syncDocId) return;
 
         try {
             const timeStr = this.formatTimeForDiary(timestamp);
@@ -6227,47 +6301,51 @@ ipcRenderer.on('lumina-close', () => {
 
             diaryContent = diaryContent + ' ';
 
-            const response = await fetch('/api/block/appendDailyNoteBlock', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    notebook: this.notebookId,
-                    dataType: 'markdown',
-                    data: diaryContent
-                })
-            });
-
-            const result = await response.json();
-            if (result.code !== 0) {
-                console.warn("插入日记失败:", result.msg);
-                return;
-            }
-
-            // 获取插入的块 ID
             let blockId = null;
 
-            // 处理 result.data 可能是多种结构的情况
-            // 情况1: data 是数组，包含 doOperations
-            if (Array.isArray(result.data) && result.data.length > 0) {
-                const firstItem = result.data[0];
-                if (firstItem.doOperations && Array.isArray(firstItem.doOperations) && firstItem.doOperations.length > 0) {
-                    // doOperations 中可能有 id 或 blockId
-                    const op = firstItem.doOperations[0];
-                    blockId = op.id || op.blockId || op.rootId || null;
+            if (this.syncMode === 'dailynote') {
+                // 每日笔记模式：按日期分发到对应日期的日记文档
+                const noteDate = new Date(timestamp);
+                const docId = await this.getOrCreateDailyNoteDoc(noteDate);
+                if (!docId) {
+                    console.warn('无法获取或创建日记文档');
+                    return null;
                 }
-            }
-            // 情况2: data 直接是对象
-            else if (result.data && typeof result.data === 'object') {
-                if (result.data.doOperations && Array.isArray(result.data.doOperations) && result.data.doOperations.length > 0) {
-                    const op = result.data.doOperations[0];
-                    blockId = op.id || op.blockId || op.rootId || null;
-                } else {
-                    blockId = result.data.id || result.data.blockId || result.data.rootId || null;
+                
+                const response = await fetch('/api/block/appendBlock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        parentID: docId,
+                        dataType: 'markdown',
+                        data: diaryContent
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.code !== 0) {
+                    console.warn('追加到日记文档失败:', result.msg);
+                    return null;
                 }
-            }
-            // 情况3: data 直接是字符串
-            else if (typeof result.data === 'string') {
-                blockId = result.data;
+                
+                // 提取 blockId
+                if (Array.isArray(result.data) && result.data.length > 0) {
+                    const firstItem = result.data[0];
+                    if (firstItem.doOperations && Array.isArray(firstItem.doOperations) && firstItem.doOperations.length > 0) {
+                        blockId = firstItem.doOperations[0].id || firstItem.doOperations[0].blockId || null;
+                    }
+                } else if (result.data && typeof result.data === 'object') {
+                    if (result.data.doOperations && Array.isArray(result.data.doOperations) && result.data.doOperations.length > 0) {
+                        blockId = result.data.doOperations[0].id || result.data.doOperations[0].blockId || null;
+                    } else {
+                        blockId = result.data.id || result.data.blockId || null;
+                    }
+                } else if (typeof result.data === 'string') {
+                    blockId = result.data;
+                }
+            } else if (this.syncMode === 'doc') {
+                // 指定文档模式：按日期分组追加
+                blockId = await this.appendToDocWithDateGroup(this.syncDocId, diaryContent, timestamp);
             }
 
             if (blockId && typeof blockId === 'string') {
@@ -6279,16 +6357,11 @@ ipcRenderer.on('lumina-close', () => {
                     tag: tags.join(' '),  // 只保存标签
                     type: highlights.join(' ')  // 保存类型（#类型# 格式中的类型名）
                 });
-                // if (!attrResult) {
-                //     console.warn('[轻语] 块属性设置可能未成功，blockId:', blockId);
-                // }
-            // } else {
-                // console.warn('[轻语] 无法获取插入块的 ID，跳过属性设置。data:', result.data);
             }
 
             return blockId; // 返回 blockId，供调用方保存到说说对象
         } catch (e) {
-            console.error("插入日记失败", e);
+            console.error("同步到思源失败", e);
             return null;
         }
     }
@@ -6342,6 +6415,235 @@ ipcRenderer.on('lumina-close', () => {
         const hours = date.getHours().toString().padStart(2, '0');
         const minutes = date.getMinutes().toString().padStart(2, '0');
         return `${hours}:${minutes}`;
+    }
+
+    // 渲染日记路径模板，将 Go template 日期格式替换为实际日期
+    renderDailyNotePath(template, date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const monthNoPad = String(date.getMonth() + 1);
+        const dayNoPad = String(date.getDate());
+        
+        let path = template;
+        // 按从长到短替换，避免短格式先替换导致长格式无法匹配
+        path = path.replace(/{{\s*now\s*\|\s*date\s*["']2006-01-02["']\s*}}/g, `${year}-${month}-${day}`);
+        path = path.replace(/{{\s*now\s*\|\s*date\s*["']2006\/01\/02["']\s*}}/g, `${year}\/${month}\/${day}`);
+        path = path.replace(/{{\s*now\s*\|\s*date\s*["']2006-01["']\s*}}/g, `${year}-${month}`);
+        path = path.replace(/{{\s*now\s*\|\s*date\s*["']2006\/01["']\s*}}/g, `${year}\/${month}`);
+        path = path.replace(/{{\s*now\s*\|\s*date\s*["']2006["']\s*}}/g, String(year));
+        path = path.replace(/{{\s*now\s*\|\s*date\s*["']01["']\s*}}/g, month);
+        path = path.replace(/{{\s*now\s*\|\s*date\s*["']02["']\s*}}/g, day);
+        path = path.replace(/{{\s*now\s*\|\s*date\s*["']1["']\s*}}/g, monthNoPad);
+        path = path.replace(/{{\s*now\s*\|\s*date\s*["']2["']\s*}}/g, dayNoPad);
+        
+        return path.trim();
+    }
+
+    // 获取或创建对应日期的日记文档
+    async getOrCreateDailyNoteDoc(date) {
+        try {
+            // 1. 获取笔记本配置的日记保存路径模板
+            const confResponse = await fetch('/api/notebook/getNotebookConf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notebook: this.notebookId })
+            });
+            const confResult = await confResponse.json();
+            if (confResult.code !== 0) return null;
+            
+            const template = confResult.data?.conf?.dailyNoteSavePath || '';
+            if (!template) return null;
+            
+            // 2. 渲染模板为实际路径
+            const hPath = this.renderDailyNotePath(template, date);
+            
+            // 3. 查找文档ID
+            const idsResponse = await fetch('/api/filetree/getIDsByHPath', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    notebook: this.notebookId,
+                    path: hPath
+                })
+            });
+            const idsResult = await idsResponse.json();
+            if (idsResult.code === 0 && idsResult.data && idsResult.data.length > 0) {
+                return idsResult.data[0];
+            }
+            
+            // 4. 文档不存在，创建它
+            const createResponse = await fetch('/api/filetree/createDocWithMd', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    notebook: this.notebookId,
+                    path: hPath,
+                    markdown: ''
+                })
+            });
+            const createResult = await createResponse.json();
+            if (createResult.code === 0 && createResult.data) {
+                return createResult.data.id || createResult.data;
+            }
+            return null;
+        } catch (e) {
+            console.error('获取或创建日记文档失败:', e);
+            return null;
+        }
+    }
+
+    // 向指定文档按日期分组追加内容
+    async appendToDocWithDateGroup(docId, content, timestamp) {
+        try {
+            const dateStr = this.formatDateTimeAttr(timestamp).split(' ')[0];
+            
+            // 1. 查找文档中是否已有对应日期的 h2 标题
+            const h2Response = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stmt: `SELECT id, created FROM blocks 
+                           WHERE root_id = '${docId}' AND type = 'h' AND subtype = 'h2' AND content LIKE '${dateStr}%'
+                           ORDER BY created LIMIT 1`
+                })
+            });
+            const h2Result = await h2Response.json();
+            
+            let previousId = null;
+            
+            if (h2Result.code === 0 && h2Result.data && h2Result.data.length > 0) {
+                const h2Id = h2Result.data[0].id;
+                const h2Created = h2Result.data[0].created;
+                
+                // 查找下一个 h2 标题
+                const nextH2Response = await fetch('/api/query/sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        stmt: `SELECT created FROM blocks 
+                               WHERE root_id = '${docId}' AND type = 'h' AND subtype = 'h2' AND created > '${h2Created}'
+                               ORDER BY created LIMIT 1`
+                    })
+                });
+                const nextH2Result = await nextH2Response.json();
+                const nextH2Created = (nextH2Result.code === 0 && nextH2Result.data && nextH2Result.data.length > 0) 
+                    ? nextH2Result.data[0].created 
+                    : null;
+                
+                // 查找该 h2 到下一个 h2 之间的最后一个块
+                let lastBlockQuery = `SELECT id, created FROM blocks 
+                                      WHERE root_id = '${docId}' AND type != 'd' AND created > '${h2Created}'`;
+                if (nextH2Created) {
+                    lastBlockQuery += ` AND created < '${nextH2Created}'`;
+                }
+                lastBlockQuery += ` ORDER BY created DESC LIMIT 1`;
+                
+                const lastBlockResponse = await fetch('/api/query/sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stmt: lastBlockQuery })
+                });
+                const lastBlockResult = await lastBlockResponse.json();
+                
+                if (lastBlockResult.code === 0 && lastBlockResult.data && lastBlockResult.data.length > 0) {
+                    previousId = lastBlockResult.data[0].id;
+                } else {
+                    previousId = h2Id;
+                }
+            } else {
+                // 没有对应日期的 h2，创建它
+                const lastBlockResponse = await fetch('/api/query/sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        stmt: `SELECT id, created FROM blocks 
+                               WHERE root_id = '${docId}' AND type != 'd' 
+                               ORDER BY created DESC LIMIT 1`
+                    })
+                });
+                const lastBlockResult = await lastBlockResponse.json();
+                
+                const h2Data = `## ${dateStr}\n\n`;
+                
+                if (lastBlockResult.code === 0 && lastBlockResult.data && lastBlockResult.data.length > 0) {
+                    const insertResponse = await fetch('/api/block/insertBlock', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            dataType: 'markdown',
+                            data: h2Data,
+                            previousID: lastBlockResult.data[0].id
+                        })
+                    });
+                    const insertResult = await insertResponse.json();
+                    if (insertResult.code === 0 && insertResult.data && insertResult.data.length > 0) {
+                        const ops = insertResult.data[0].doOperations;
+                        if (ops && ops.length > 0) {
+                            previousId = ops[ops.length - 1].id;
+                        }
+                    }
+                } else {
+                    const appendResponse = await fetch('/api/block/appendBlock', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            dataType: 'markdown',
+                            data: h2Data,
+                            parentID: docId
+                        })
+                    });
+                    const appendResult = await appendResponse.json();
+                    if (appendResult.code === 0 && appendResult.data && appendResult.data.length > 0) {
+                        const ops = appendResult.data[0].doOperations;
+                        if (ops && ops.length > 0) {
+                            previousId = ops[ops.length - 1].id;
+                        }
+                    }
+                }
+            }
+            
+            // 插入实际内容
+            if (previousId) {
+                const response = await fetch('/api/block/insertBlock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        dataType: 'markdown',
+                        data: content,
+                        previousID: previousId
+                    })
+                });
+                const result = await response.json();
+                if (result.code === 0 && result.data && result.data.length > 0) {
+                    const ops = result.data[0].doOperations;
+                    if (ops && ops.length > 0) {
+                        return ops[ops.length - 1].id;
+                    }
+                }
+            } else {
+                const response = await fetch('/api/block/appendBlock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        dataType: 'markdown',
+                        data: content,
+                        parentID: docId
+                    })
+                });
+                const result = await response.json();
+                if (result.code === 0 && result.data && result.data.length > 0) {
+                    const ops = result.data[0].doOperations;
+                    if (ops && ops.length > 0) {
+                        return ops[ops.length - 1].id;
+                    }
+                }
+            }
+            return null;
+        } catch (e) {
+            console.error('向指定文档追加内容失败:', e);
+            return null;
+        }
     }
 
     formatDate(timestamp) {
@@ -7575,8 +7877,12 @@ ipcRenderer.on('lumina-close', () => {
         const item = this.shuoshuos.find(s => s.id === id);
         if (!item) return;
 
-        if (!this.notebookId) {
-            showMessage("请先设置日记笔记本ID");
+        if (this.syncMode === 'dailynote' && !this.notebookId) {
+            showMessage("请先设置日记笔记本");
+            return;
+        }
+        if (this.syncMode === 'doc' && !this.syncDocId) {
+            showMessage("请先设置同步目标文档ID");
             return;
         }
 
@@ -7584,9 +7890,53 @@ ipcRenderer.on('lumina-close', () => {
         if (blockId) {
             item.boundBlockId = blockId;
             await this.saveShuoshuos();
-            showMessage("已插入今日日记，并与此说说绑定");
+            showMessage(this.syncMode === 'dailynote' ? "已同步到日记，并与此说说绑定" : "已同步到指定文档，并与此说说绑定");
         } else {
-            showMessage("插入日记失败，请检查笔记本配置");
+            showMessage("同步失败，请检查配置");
+        }
+    }
+
+    // 批量同步说说到思源笔记
+    // isFullSync: 是否全量同步（包括已同步过的笔记）
+    async batchSyncToSiyuan(isFullSync = false) {
+        const itemsToSync = isFullSync ? [...this.shuoshuos] : this.shuoshuos.filter(s => !s.boundBlockId);
+        if (itemsToSync.length === 0) {
+            showMessage('所有笔记已同步，无需重复操作');
+            return;
+        }
+
+        const total = itemsToSync.length;
+        let successCount = 0;
+        let failCount = 0;
+
+        showMessage(`开始同步 ${total} 条笔记...`);
+
+        for (let i = 0; i < itemsToSync.length; i++) {
+            const item = itemsToSync[i];
+            try {
+                const blockId = await this.appendToDailyNote(item.content, item.created);
+                if (blockId) {
+                    item.boundBlockId = blockId;
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            } catch (e) {
+                failCount++;
+                console.error('同步笔记失败:', item.id, e);
+            }
+            // 每同步 5 条显示一次进度
+            if ((i + 1) % 5 === 0 || i === itemsToSync.length - 1) {
+                showMessage(`同步进度: ${i + 1}/${total} (${successCount} 成功${failCount > 0 ? `, ${failCount} 失败` : ''})`);
+            }
+        }
+
+        await this.saveShuoshuos();
+
+        if (failCount === 0) {
+            showMessage(`✅ 全部同步完成！共 ${successCount} 条笔记`);
+        } else {
+            showMessage(`同步完成：${successCount} 条成功，${failCount} 条失败`);
         }
     }
 
@@ -8578,6 +8928,23 @@ ipcRenderer.on('lumina-close', () => {
         const exportBtn = this.container.querySelector('#settings-export');
         const clearBtn = this.container.querySelector('#settings-clear');
 
+        // 绑定同步模式切换事件
+        const syncModeItems = this.container.querySelectorAll('#sync-mode-group .north-shuoshuo-radio-item');
+        const syncDocIdRow = this.container.querySelector('#sync-doc-id-row');
+        syncModeItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const mode = item.dataset.mode;
+                this.syncMode = mode;
+                syncModeItems.forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+                if (syncDocIdRow) {
+                    syncDocIdRow.style.display = mode === 'doc' ? 'flex' : 'none';
+                }
+            });
+        });
+
         if (saveBtn) {
             saveBtn.onclick = async () => {
                 const notebookId = this.container.querySelector('#settings-notebook-select')?.value || '';
@@ -8587,6 +8954,10 @@ ipcRenderer.on('lumina-close', () => {
                 // 获取选中的视图样式
                 const selectedRadio = this.container.querySelector('input[name="view-style"]:checked');
                 this.viewStyle = selectedRadio?.value || 'list';
+                // 获取同步模式和指定文档ID
+                const selectedSyncMode = this.container.querySelector('input[name="sync-mode"]:checked');
+                this.syncMode = selectedSyncMode?.value || 'dailynote';
+                this.syncDocId = this.container.querySelector('#settings-sync-doc-id')?.value?.trim() || '';
 
                 this.notebookId = notebookId;
                 this.autoSync = autoSync;
@@ -8611,6 +8982,26 @@ ipcRenderer.on('lumina-close', () => {
                 await this.saveConfig();
 
                 showMessage('设置已保存');
+            };
+        }
+
+        // 开始同步按钮
+        const startSyncBtn = this.container.querySelector('#settings-start-sync');
+        const fullSyncCheckbox = this.container.querySelector('#settings-full-sync');
+        if (startSyncBtn) {
+            startSyncBtn.onclick = async () => {
+                if (this.syncMode === 'dailynote' && !this.notebookId) {
+                    showMessage('请先设置日记笔记本');
+                    return;
+                }
+                if (this.syncMode === 'doc' && !this.syncDocId) {
+                    showMessage('请先设置同步目标文档ID');
+                    return;
+                }
+                const isFullSync = fullSyncCheckbox?.checked || false;
+                await this.batchSyncToSiyuan(isFullSync);
+                // 同步完成后取消勾选全量同步
+                if (fullSyncCheckbox) fullSyncCheckbox.checked = false;
             };
         }
 
@@ -9631,6 +10022,8 @@ ipcRenderer.on('lumina-close', () => {
             this.userAvatarUrl = data.userAvatarUrl ?? null;
             this.notebookId = data.notebookId ?? DEFAULT_NOTEBOOK_ID;
             this.autoSync = data.autoSync === true || data.autoSync === 'true' || data.autoSync === 1;
+            this.syncMode = data.syncMode === 'doc' ? 'doc' : 'dailynote';
+            this.syncDocId = data.syncDocId || '';
             this.viewStyle = data.viewStyle === 'card' ? 'card' : 'list';
             this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', ...(data.flomoConfig || data.flomo || {}) };
             this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
@@ -9653,6 +10046,8 @@ ipcRenderer.on('lumina-close', () => {
             userAvatarUrl: 'shuoshuo-avatar-user',
             notebookId: 'shuoshuo-notebook-id',
             autoSync: 'shuoshuo-auto-sync',
+            syncMode: 'shuoshuo-sync-mode',
+            syncDocId: 'shuoshuo-sync-doc-id',
             viewStyle: 'shuoshuo-view-style',
             flomoConfig: 'shuoshuo-flomo-config',
             writeathonConfig: 'shuoshuo-writeathon-config',
@@ -9685,6 +10080,8 @@ ipcRenderer.on('lumina-close', () => {
                 userAvatarUrl: this.userAvatarUrl,
                 notebookId: this.notebookId,
                 autoSync: this.autoSync,
+                syncMode: this.syncMode,
+                syncDocId: this.syncDocId,
                 viewStyle: this.viewStyle,
                 flomoConfig: this.flomoConfig,
                 writeathonConfig: this.writeathonConfig,
