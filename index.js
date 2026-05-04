@@ -2,6 +2,8 @@ const { Plugin, showMessage, openTab, getFrontend, confirm } = require("siyuan")
 
 const STORAGE_NAME = "shuoshuo-data";
 const CONFIG_STORAGE_NAME = "shuoshuo-config";
+const MOMENTS_STORAGE_NAME = "lumina-moments-data";
+const MOMENTS_CONFIG_NAME = "lumina-moments-config";
 const TAB_TYPE = "shuoshuo-tab";
 
 // 莫兰迪配色方案
@@ -418,8 +420,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
         this._refreshTimer = null; // 防抖刷新定时器
         this._boundBlockIdsCache = new Set(); // 已绑定块ID的缓存（用于快速查找）
+        this.moments = []; // 朋友圈数据
+        this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null };
         this.loadShuoshuos();
         this.loadConfig();
+        // 异步加载朋友圈数据，确保切换时更丝滑
+        this.loadMoments();
 
         const plugin = this;
 
@@ -1796,6 +1802,9 @@ ipcRenderer.on('lumina-close', () => {
                         <button class="north-shuoshuo-nav-item" data-view="stats" title="统计">
                             <img src="/plugins/${this.name}/icons/统计.svg" class="north-shuoshuo-nav-icon" />
                         </button>
+                        <button class="north-shuoshuo-nav-item" data-view="moments" title="朋友圈">
+                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                        </button>
                     </div>
                     
                     <div class="north-shuoshuo-nav-bottom">
@@ -1952,6 +1961,12 @@ ipcRenderer.on('lumina-close', () => {
                                 <path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/>
                             </svg>
                             <span>回顾设置</span>
+                        </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="moments">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                            </svg>
+                            <span>朋友圈设置</span>
                         </div>
                     </div>
 
@@ -2687,6 +2702,26 @@ ipcRenderer.on('lumina-close', () => {
                         
                         
                     </div>
+
+                        <!-- 朋友圈设置 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-moments" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">个人信息</div>
+                                        <div class="north-shuoshuo-section-desc">设置朋友圈中展示的昵称和签名</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <label class="north-shuoshuo-form-label">昵称</label>
+                                    <input type="text" class="north-shuoshuo-input-field" id="moments-nickname-input" placeholder="输入昵称..." value="${this.momentsConfig?.nickname || '月亮'}">
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <label class="north-shuoshuo-form-label">个性签名</label>
+                                    <input type="text" class="north-shuoshuo-input-field" id="moments-signature-input" placeholder="输入个性签名..." value="${this.momentsConfig?.signature || '言念君子 温其如玉'}">
+                                </div>
+                            </div>
+                        </div>
 
                         <!-- 底部操作 -->
                         <div class="north-shuoshuo-actions">
@@ -4129,6 +4164,707 @@ ipcRenderer.on('lumina-close', () => {
                 this.renderStats(parseInt(e.target.value));
             });
         }
+    }
+
+    // ============ 朋友圈视图 ============
+    renderMoments() {
+        const container = this.container;
+        if (!container) return;
+        // 直接渲染视图（数据已在 onload 中预加载）
+        this._doRenderMoments();
+        // 后台刷新数据
+        this.loadMoments().then(() => {
+            if (this.currentMainView !== 'moments') return;
+            this._doRenderMoments();
+        });
+    }
+
+    _doRenderMoments() {
+        const listEl = this.container.querySelector('#shuoshuo-notes-list');
+        if (!listEl) return;
+        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout');
+
+        const cfg = this.momentsConfig || {};
+        const nickname = cfg.nickname || '月亮';
+        const signature = cfg.signature || '言念君子 温其如玉';
+        const avatar = this.userAvatarUrl || `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='70' height='70'%3E%3Crect width='70' height='70' fill='%234CAF50'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='28' font-family='Arial'%3E我%3C/text%3E%3C/svg%3E`;
+        const cover = cfg.cover || null;
+
+        // 构建朋友圈列表HTML
+        let momentsHtml = this.moments.map(m => this._renderMomentItem(m, avatar, nickname)).join('');
+        if (!momentsHtml) {
+            momentsHtml = `<div style="padding:40px;text-align:center;color:#999;font-size:14px;">暂无朋友圈，点击右上角相机发表吧~</div>`;
+        }
+
+        listEl.style.padding = '0';
+        listEl.innerHTML = `
+            <div class="lumina-moments-container">
+                <div class="lumina-moments-main" id="momentsMainPage">
+                    <div class="lumina-moments-nav" id="momentsNavBar">
+                        <div class="lumina-moments-nav-left"></div>
+                        <div class="lumina-moments-nav-right" id="momentsCameraBtn" title="发表">
+                            <div class="lumina-moments-camera-icon"></div>
+                        </div>
+                    </div>
+                    <div class="lumina-moments-cover" id="momentsCoverSection">
+                        ${cover ? `<img class="lumina-moments-cover-img" src="${cover}" alt="cover">` : `<svg class="lumina-moments-cover-img" viewBox="0 0 375 320" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="momentsCoverGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#1a2980"/><stop offset="50%" style="stop-color:#26d0ce"/><stop offset="100%" style="stop-color:#1a2980"/></linearGradient><pattern id="momentsPattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100%" height="100%" fill="url(#momentsCoverGrad)"/><rect width="100%" height="100%" fill="url(#momentsPattern)"/><circle cx="300" cy="80" r="60" fill="rgba(255,255,255,0.05)"/><circle cx="80" cy="200" r="40" fill="rgba(255,255,255,0.03)"/></svg>`}
+                        <div class="lumina-moments-cover-user">
+                            <span class="lumina-moments-cover-name">${nickname}</span>
+                            <img class="lumina-moments-cover-avatar" id="momentsCoverAvatar" src="${avatar}" alt="avatar">
+                        </div>
+                        <input type="file" id="momentsCoverInput" class="lumina-moments-file-input" accept="image/*">
+                    </div>
+                    <div class="lumina-moments-signature">
+                        <div class="lumina-moments-signature-text">${signature}</div>
+                    </div>
+                    <div class="lumina-moments-list" id="momentsList">${momentsHtml}</div>
+                    <div class="lumina-moments-bottom-space"></div>
+                </div>
+
+                <!-- 评论输入栏 -->
+                <div class="lumina-moments-comment-bar" id="momentsCommentBar">
+                    <input type="text" class="lumina-moments-comment-input" id="momentsCommentInput" placeholder="评论...">
+                    <div class="lumina-moments-comment-send disabled" id="momentsCommentSend">发送</div>
+                </div>
+
+                <!-- 发表页面 -->
+                <div class="lumina-moments-publish" id="momentsPublishPage">
+                    <div class="lumina-moments-publish-nav">
+                        <div class="lumina-moments-publish-back" id="momentsPublishBack"></div>
+                        <div class="lumina-moments-publish-title">发表</div>
+                        <button class="lumina-moments-publish-submit" id="momentsPublishSubmit">发表</button>
+                    </div>
+                    <div class="lumina-moments-publish-content">
+                        <textarea class="lumina-moments-publish-textarea" id="momentsPublishText" placeholder="这一刻的想法..."></textarea>
+                        <div class="lumina-moments-publish-images" id="momentsPublishImages">
+                            <div class="lumina-moments-publish-add" id="momentsPublishAdd"></div>
+                        </div>
+                        <div class="lumina-moments-publish-section" id="momentsPublishFileSection">
+                            <div class="lumina-moments-publish-toggle" id="momentsPublishFileToggle">
+                                <div style="width:20px;height:20px;border:1.5px solid #576B95;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#576B95;font-weight:bold;">📎</div>
+                                <span>添加文件</span>
+                            </div>
+                            <div class="lumina-moments-publish-file-preview" id="momentsPublishFilePreview">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <div style="width:40px;height:40px;background-color:#fff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;">📄</div>
+                                    <div style="flex:1;min-width:0;">
+                                        <div id="momentsPublishFileName" style="font-size:14px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+                                        <div id="momentsPublishFileSize" style="font-size:12px;color:#999;margin-top:2px;"></div>
+                                    </div>
+                                    <div id="momentsPublishFileDelete" style="width:18px;height:18px;background-color:#FA5151;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;">
+                                        <div style="position:absolute;width:10px;height:1.5px;background-color:#fff;transform:rotate(45deg);"></div>
+                                        <div style="position:absolute;width:10px;height:1.5px;background-color:#fff;transform:rotate(-45deg);"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="lumina-moments-publish-section">
+                            <div class="lumina-moments-publish-toggle" id="momentsPublishLinkToggle">
+                                <div class="lumina-moments-publish-link-icon">🔗</div>
+                                <span>添加链接</span>
+                            </div>
+                            <div class="lumina-moments-publish-link-form" id="momentsPublishLinkForm">
+                                <input type="text" class="lumina-moments-publish-link-input" id="momentsPublishLinkTitle" placeholder="链接标题">
+                                <input type="text" class="lumina-moments-publish-link-input" id="momentsPublishLinkUrl" placeholder="链接地址 (https://...)">
+                            </div>
+                        </div>
+                    </div>
+                    <input type="file" id="momentsPublishImageInput" class="lumina-moments-file-input" accept="image/*" multiple>
+                    <input type="file" id="momentsPublishFileInput" class="lumina-moments-file-input">
+                </div>
+
+                <!-- 编辑页面 -->
+                <div class="lumina-moments-edit" id="momentsEditPage">
+                    <div class="lumina-moments-edit-nav">
+                        <div class="lumina-moments-edit-back" id="momentsEditBack"></div>
+                        <div class="lumina-moments-edit-title">修改</div>
+                        <button class="lumina-moments-edit-save" id="momentsEditSave">保存</button>
+                    </div>
+                    <div class="lumina-moments-edit-content">
+                        <textarea class="lumina-moments-edit-textarea" id="momentsEditText" placeholder="这一刻的想法..."></textarea>
+                        <div class="lumina-moments-edit-images" id="momentsEditImages">
+                            <div class="lumina-moments-edit-add" id="momentsEditAdd"></div>
+                        </div>
+                        <div class="lumina-moments-edit-section" id="momentsEditFileSection">
+                            <div class="lumina-moments-edit-toggle" id="momentsEditFileToggle">
+                                <div style="width:20px;height:20px;border:1.5px solid #576B95;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#576B95;font-weight:bold;">📎</div>
+                                <span>添加文件</span>
+                            </div>
+                            <div class="lumina-moments-edit-file-preview" id="momentsEditFilePreview">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <div style="width:40px;height:40px;background-color:#fff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;">📄</div>
+                                    <div style="flex:1;min-width:0;">
+                                        <div id="momentsEditFileName" style="font-size:14px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+                                        <div id="momentsEditFileSize" style="font-size:12px;color:#999;margin-top:2px;"></div>
+                                    </div>
+                                    <div id="momentsEditFileDelete" style="width:18px;height:18px;background-color:#FA5151;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;">
+                                        <div style="position:absolute;width:10px;height:1.5px;background-color:#fff;transform:rotate(45deg);"></div>
+                                        <div style="position:absolute;width:10px;height:1.5px;background-color:#fff;transform:rotate(-45deg);"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="lumina-moments-edit-section">
+                            <div class="lumina-moments-edit-toggle" id="momentsEditLinkToggle">
+                                <div class="lumina-moments-publish-link-icon">🔗</div>
+                                <span>添加链接</span>
+                            </div>
+                            <div class="lumina-moments-edit-link-form" id="momentsEditLinkForm">
+                                <input type="text" class="lumina-moments-edit-link-input" id="momentsEditLinkTitle" placeholder="链接标题">
+                                <input type="text" class="lumina-moments-edit-link-input" id="momentsEditLinkUrl" placeholder="链接地址 (https://...)">
+                            </div>
+                        </div>
+                    </div>
+                    <input type="file" id="momentsEditImageInput" class="lumina-moments-file-input" accept="image/*" multiple>
+                    <input type="file" id="momentsEditFileInput" class="lumina-moments-file-input">
+                </div>
+            </div>
+        `;
+
+        this._bindMomentsEvents(avatar, nickname, listEl);
+    }
+
+    _renderMomentItem(m, avatar, nickname) {
+        const timeStr = this.formatMomentTime(m.created);
+        const myName = this.momentsConfig.nickname || '月亮';
+        const liked = (m.likes || []).includes(myName);
+        const likeText = liked ? '取消' : '点赞';
+
+        let mediaHtml = '';
+        if (m.images && m.images.length > 0) {
+            let gridClass = 'single';
+            if (m.images.length === 2) gridClass = 'double';
+            else if (m.images.length === 3) gridClass = 'triple';
+            else if (m.images.length === 4) gridClass = 'four';
+            else if (m.images.length >= 5 && m.images.length <= 6) gridClass = 'six';
+            else if (m.images.length >= 7) gridClass = 'nine';
+            const imgsHtml = m.images.map(src => `<img class="lumina-moments-grid-img" src="${src}" alt="photo">`).join('');
+            mediaHtml += `<div class="lumina-moments-media"><div class="lumina-moments-image-grid ${gridClass}">${imgsHtml}</div></div>`;
+        }
+        if (m.file) {
+            mediaHtml += `<div class="lumina-moments-link-card">
+                <div style="width:40px;height:40px;background-color:#e0e0e0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-right:8px;flex-shrink:0;">📄</div>
+                <div style="flex:1;min-width:0;"><div class="lumina-moments-link-title">${m.file.name}</div><div style="font-size:11px;color:#999;margin-top:2px;">${m.file.size}</div></div>
+            </div>`;
+        }
+        if (m.link && m.link.title) {
+            mediaHtml += `<div class="lumina-moments-link-card">
+                <img class="lumina-moments-link-thumb" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' fill='%23ecf0f1'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%237f8c8d' font-size='10'%3E📄%3C/text%3E%3C/svg%3E" alt="thumb">
+                <div class="lumina-moments-link-info"><div class="lumina-moments-link-title">${m.link.title}</div></div>
+            </div>`;
+        }
+
+        let interactionHtml = '';
+        const hasLikes = (m.likes || []).length > 0;
+        const hasComments = (m.comments || []).length > 0;
+        if (hasLikes || hasComments) {
+            const likesClass = hasComments ? '' : ' no-comments';
+            const likesHtml = hasLikes ? `<div class="lumina-moments-likes-section${likesClass}"><div class="lumina-moments-heart-icon"><svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></div><div class="lumina-moments-likes-text">${m.likes.join('、')}</div></div>` : '';
+            const commentsHtml = hasComments ? `<div class="lumina-moments-comments-section">${m.comments.map(c => {
+                if (c.replyTo) {
+                    return `<div class="lumina-moments-comment-item"><span class="lumina-moments-comment-author">${c.author}</span><span class="lumina-moments-comment-sep">回复</span><span class="lumina-moments-comment-author">${c.replyTo}</span><span class="lumina-moments-comment-sep">：</span><span class="lumina-moments-comment-text">${c.text}</span></div>`;
+                }
+                return `<div class="lumina-moments-comment-item"><span class="lumina-moments-comment-author">${c.author}</span><span class="lumina-moments-comment-sep">：</span><span class="lumina-moments-comment-text">${c.text}</span></div>`;
+            }).join('')}</div>` : '';
+            interactionHtml = `<div class="lumina-moments-interaction-box" data-mid="${m.id}">${likesHtml}${commentsHtml}</div>`;
+        }
+
+        return `
+            <div class="lumina-moments-item" data-mid="${m.id}">
+                <img class="lumina-moments-item-avatar" src="${avatar}" alt="avatar">
+                <div class="lumina-moments-item-content">
+                    <div class="lumina-moments-item-name">${nickname}</div>
+                    <div class="lumina-moments-item-text">${m.text || ''}</div>
+                    ${mediaHtml}
+                    <div class="lumina-moments-item-meta">
+                        <span class="lumina-moments-item-time">${timeStr}</span>
+                        <div class="lumina-moments-item-actions">
+                            <div class="lumina-moments-more-btn" data-mid="${m.id}"></div>
+                            <div class="lumina-moments-action-popup" data-mid="${m.id}">
+                                <div class="lumina-moments-action-popup-btn like-btn" data-mid="${m.id}"><span class="icon">❤️</span><span class="like-text">${likeText}</span></div>
+                                <div class="lumina-moments-action-popup-btn comment-btn" data-mid="${m.id}"><span class="icon">💬</span>评论</div>
+                                <div class="lumina-moments-action-popup-btn delete-btn" data-mid="${m.id}"><span class="icon">🗑️</span>删除</div>
+                                <div class="lumina-moments-action-popup-btn edit-btn" data-mid="${m.id}"><span class="icon">✏️</span>修改</div>
+                            </div>
+                        </div>
+                    </div>
+                    ${interactionHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    _bindMomentsEvents(avatar, nickname, scrollContainer) {
+        const container = this.container.querySelector('.lumina-moments-container');
+        if (!container) return;
+
+        // 导航栏滚动效果
+        const navBar = container.querySelector('#momentsNavBar');
+        if (scrollContainer && navBar) {
+            scrollContainer.addEventListener('scroll', () => {
+                if (scrollContainer.scrollTop > 200) {
+                    navBar.classList.add('scrolled');
+                } else {
+                    navBar.classList.remove('scrolled');
+                }
+            }, { passive: true });
+        }
+
+        // 图片双击查看
+        let viewer = container.querySelector('.lumina-moments-image-viewer');
+        if (!viewer) {
+            viewer = document.createElement('div');
+            viewer.className = 'lumina-moments-image-viewer';
+            const viewerImg = document.createElement('img');
+            viewerImg.alt = 'preview';
+            viewer.appendChild(viewerImg);
+            container.appendChild(viewer);
+            viewer.addEventListener('click', () => viewer.classList.remove('active'));
+        }
+        container.addEventListener('click', (e) => {
+            const img = e.target.closest('.lumina-moments-grid-img');
+            if (img) {
+                const viewerImg = viewer.querySelector('img');
+                viewerImg.src = img.src;
+                viewer.classList.add('active');
+            }
+        });
+
+        // 背景图上传
+        const coverSection = container.querySelector('#momentsCoverSection');
+        const coverInput = container.querySelector('#momentsCoverInput');
+        const coverAvatar = container.querySelector('#momentsCoverAvatar');
+        if (coverSection && coverInput) {
+            coverSection.addEventListener('click', (e) => {
+                if (e.target === coverAvatar || e.target.closest('#momentsCoverAvatar')) return;
+                coverInput.click();
+            });
+            coverInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        const img = document.createElement('img');
+                        img.src = ev.target.result;
+                        img.className = 'lumina-moments-cover-img';
+                        const oldSvg = coverSection.querySelector('svg.lumina-moments-cover-img');
+                        const oldImg = coverSection.querySelector('img.lumina-moments-cover-img');
+                        if (oldSvg) coverSection.replaceChild(img, oldSvg);
+                        else if (oldImg) coverSection.replaceChild(img, oldImg);
+                        else coverSection.insertBefore(img, coverSection.firstChild);
+                        this.momentsConfig.cover = ev.target.result;
+                        this.saveMoments();
+                    };
+                    reader.readAsDataURL(file);
+                }
+                coverInput.value = '';
+            });
+        }
+
+        // more按钮 & 弹出菜单
+        const myName = this.momentsConfig.nickname || '月亮';
+        let activeMid = null;
+
+        container.addEventListener('click', (e) => {
+            const moreBtn = e.target.closest('.lumina-moments-more-btn');
+            if (moreBtn) {
+                e.stopPropagation();
+                const mid = moreBtn.dataset.mid;
+                const popup = container.querySelector(`.lumina-moments-action-popup[data-mid="${mid}"]`);
+                const isActive = popup?.classList.contains('active');
+                container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
+                if (!isActive && popup) {
+                    popup.classList.add('active');
+                    const m = this.moments.find(x => x.id === mid);
+                    const liked = m && (m.likes || []).includes(myName);
+                    const likeText = popup.querySelector('.like-text');
+                    if (likeText) likeText.textContent = liked ? '取消' : '点赞';
+                }
+                return;
+            }
+
+            // 点赞
+            const likeBtn = e.target.closest('.like-btn');
+            if (likeBtn) {
+                e.stopPropagation();
+                const mid = likeBtn.dataset.mid;
+                const m = this.moments.find(x => x.id === mid);
+                if (!m) return;
+                if (!m.likes) m.likes = [];
+                const idx = m.likes.indexOf(myName);
+                if (idx > -1) m.likes.splice(idx, 1);
+                else m.likes.push(myName);
+                this.saveMoments();
+                this._doRenderMoments();
+                return;
+            }
+
+            // 评论
+            const commentBtn = e.target.closest('.comment-btn');
+            if (commentBtn) {
+                e.stopPropagation();
+                activeMid = commentBtn.dataset.mid;
+                const bar = container.querySelector('#momentsCommentBar');
+                const input = container.querySelector('#momentsCommentInput');
+                const send = container.querySelector('#momentsCommentSend');
+                bar.classList.add('active');
+                input.value = '';
+                input.focus();
+                send.classList.add('disabled');
+                container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
+                return;
+            }
+
+            // 删除
+            const deleteBtn = e.target.closest('.delete-btn');
+            if (deleteBtn) {
+                e.stopPropagation();
+                const mid = deleteBtn.dataset.mid;
+                this.moments = this.moments.filter(x => x.id !== mid);
+                this.saveMoments();
+                this._doRenderMoments();
+                return;
+            }
+
+            // 编辑
+            const editBtn = e.target.closest('.edit-btn');
+            if (editBtn) {
+                e.stopPropagation();
+                this._openMomentEdit(editBtn.dataset.mid);
+                return;
+            }
+
+            // 点击空白关闭popup
+            container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
+        });
+
+        // 评论输入
+        const commentInput = container.querySelector('#momentsCommentInput');
+        const commentSend = container.querySelector('#momentsCommentSend');
+        const commentBar = container.querySelector('#momentsCommentBar');
+        if (commentInput && commentSend) {
+            commentInput.addEventListener('input', () => {
+                commentSend.classList.toggle('disabled', !commentInput.value.trim());
+            });
+            commentSend.addEventListener('click', () => {
+                const text = commentInput.value.trim();
+                if (!text || !activeMid) return;
+                const m = this.moments.find(x => x.id === activeMid);
+                if (m) {
+                    if (!m.comments) m.comments = [];
+                    m.comments.push({ author: myName, text });
+                    this.saveMoments();
+                    this._doRenderMoments();
+                }
+                commentBar.classList.remove('active');
+                commentInput.value = '';
+                activeMid = null;
+            });
+            commentInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !commentSend.classList.contains('disabled')) {
+                    commentSend.click();
+                }
+            });
+        }
+        // 点击外部关闭评论栏
+        container.addEventListener('click', (e) => {
+            if (commentBar && commentBar.classList.contains('active') && !commentBar.contains(e.target) && !e.target.closest('.comment-btn')) {
+                commentBar.classList.remove('active');
+                activeMid = null;
+            }
+        });
+
+        // 发表页面
+        const cameraBtn = container.querySelector('#momentsCameraBtn');
+        const publishPage = container.querySelector('#momentsPublishPage');
+        const publishBack = container.querySelector('#momentsPublishBack');
+        const publishSubmit = container.querySelector('#momentsPublishSubmit');
+        const publishText = container.querySelector('#momentsPublishText');
+        const publishImages = container.querySelector('#momentsPublishImages');
+        const publishAddBtn = container.querySelector('#momentsPublishAdd');
+        const publishImageInput = container.querySelector('#momentsPublishImageInput');
+        const publishFileInput = container.querySelector('#momentsPublishFileInput');
+        const publishFileToggle = container.querySelector('#momentsPublishFileToggle');
+        const publishFilePreview = container.querySelector('#momentsPublishFilePreview');
+        const publishFileDelete = container.querySelector('#momentsPublishFileDelete');
+        const publishLinkToggle = container.querySelector('#momentsPublishLinkToggle');
+        const publishLinkForm = container.querySelector('#momentsPublishLinkForm');
+
+        let pubImages = [];
+        let pubFile = null;
+
+        const mainPage = container.querySelector('#momentsMainPage');
+        if (cameraBtn && publishPage) {
+            cameraBtn.addEventListener('click', () => {
+                if (scrollContainer) scrollContainer.scrollTop = 0;
+                if (mainPage) mainPage.style.visibility = 'hidden';
+                publishPage.classList.add('active');
+                publishText.value = '';
+                pubImages = [];
+                pubFile = null;
+                publishLinkForm.classList.remove('active');
+                publishFilePreview.classList.remove('active');
+                this._renderPublishImages(pubImages, publishImages);
+                publishText.focus();
+            });
+        }
+        if (publishBack && publishPage) {
+            publishBack.addEventListener('click', () => {
+                publishPage.classList.remove('active');
+                if (mainPage) mainPage.style.visibility = '';
+            });
+        }
+        if (publishLinkToggle && publishLinkForm) {
+            publishLinkToggle.addEventListener('click', () => publishLinkForm.classList.toggle('active'));
+        }
+        if (publishFileToggle && publishFileInput) {
+            publishFileToggle.addEventListener('click', () => publishFileInput.click());
+            publishFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    pubFile = file;
+                    container.querySelector('#momentsPublishFileName').textContent = file.name;
+                    container.querySelector('#momentsPublishFileSize').textContent = this._formatFileSize(file.size);
+                    publishFilePreview.classList.add('active');
+                }
+                publishFileInput.value = '';
+            });
+        }
+        if (publishFileDelete) {
+            publishFileDelete.addEventListener('click', () => {
+                pubFile = null;
+                publishFilePreview.classList.remove('active');
+            });
+        }
+        if (publishAddBtn && publishImageInput) {
+            publishAddBtn.addEventListener('click', () => publishImageInput.click());
+            publishImageInput.addEventListener('change', (e) => {
+                const files = Array.from(e.target.files);
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        pubImages.push(ev.target.result);
+                        this._renderPublishImages(pubImages, publishImages);
+                    };
+                    reader.readAsDataURL(file);
+                });
+                publishImageInput.value = '';
+            });
+        }
+        if (publishSubmit) {
+            publishSubmit.addEventListener('click', () => {
+                const text = publishText.value.trim();
+                const linkTitle = container.querySelector('#momentsPublishLinkTitle')?.value.trim() || '';
+                if (!text && pubImages.length === 0 && !linkTitle && !pubFile) return;
+                const mid = this.getMomentNextId();
+                const newMoment = {
+                    id: mid,
+                    text: text || '',
+                    images: [...pubImages],
+                    file: pubFile ? { name: pubFile.name, size: this._formatFileSize(pubFile.size) } : null,
+                    link: linkTitle ? { title: linkTitle, url: container.querySelector('#momentsPublishLinkUrl')?.value.trim() || '' } : null,
+                    likes: [],
+                    comments: [],
+                    created: Date.now(),
+                    updated: Date.now()
+                };
+                this.moments.unshift(newMoment);
+                this.saveMoments();
+                publishPage.classList.remove('active');
+                this._doRenderMoments();
+                // 滚动到顶部
+                if (scrollContainer) scrollContainer.scrollTop = 0;
+            });
+        }
+
+        // 编辑页面
+        const editPage = container.querySelector('#momentsEditPage');
+        const editBack = container.querySelector('#momentsEditBack');
+        const editSave = container.querySelector('#momentsEditSave');
+        const editText = container.querySelector('#momentsEditText');
+        const editImages = container.querySelector('#momentsEditImages');
+        const editAddBtn = container.querySelector('#momentsEditAdd');
+        const editImageInput = container.querySelector('#momentsEditImageInput');
+        const editFileInput = container.querySelector('#momentsEditFileInput');
+        const editFileToggle = container.querySelector('#momentsEditFileToggle');
+        const editFilePreview = container.querySelector('#momentsEditFilePreview');
+        const editFileDelete = container.querySelector('#momentsEditFileDelete');
+        const editLinkToggle = container.querySelector('#momentsEditLinkToggle');
+        const editLinkForm = container.querySelector('#momentsEditLinkForm');
+
+        let editMid = null;
+        let editImgs = [];
+        let editFile = null;
+        let editHasLink = false;
+
+        if (editBack && editPage) {
+            editBack.addEventListener('click', () => {
+                editPage.classList.remove('active');
+                if (mainPage) mainPage.style.visibility = '';
+                editMid = null;
+                editImgs = [];
+                editFile = null;
+                editHasLink = false;
+            });
+        }
+        if (editLinkToggle && editLinkForm) {
+            editLinkToggle.addEventListener('click', () => editLinkForm.classList.toggle('active'));
+        }
+        if (editFileToggle && editFileInput) {
+            editFileToggle.addEventListener('click', () => editFileInput.click());
+            editFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    editFile = file;
+                    container.querySelector('#momentsEditFileName').textContent = file.name;
+                    container.querySelector('#momentsEditFileSize').textContent = this._formatFileSize(file.size);
+                    editFilePreview.classList.add('active');
+                    editHasLink = false;
+                    editLinkForm.classList.remove('active');
+                }
+                editFileInput.value = '';
+            });
+        }
+        if (editFileDelete) {
+            editFileDelete.addEventListener('click', () => {
+                editFile = null;
+                editFilePreview.classList.remove('active');
+            });
+        }
+        if (editAddBtn && editImageInput) {
+            editAddBtn.addEventListener('click', () => editImageInput.click());
+            editImageInput.addEventListener('change', (e) => {
+                const files = Array.from(e.target.files);
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        editImgs.push(ev.target.result);
+                        this._renderEditImages(editImgs, editImages);
+                    };
+                    reader.readAsDataURL(file);
+                });
+                editImageInput.value = '';
+            });
+        }
+        if (editSave) {
+            editSave.addEventListener('click', () => {
+                if (!editMid) return;
+                const m = this.moments.find(x => x.id === editMid);
+                if (!m) return;
+                m.text = editText.value.trim();
+                m.images = [...editImgs];
+                if (editFile) {
+                    m.file = { name: editFile.name, size: this._formatFileSize(editFile.size) };
+                    m.link = null;
+                } else {
+                    m.file = null;
+                }
+                const editLinkTitleVal = container.querySelector('#momentsEditLinkTitle')?.value.trim() || '';
+                if (editLinkTitleVal && editHasLink) {
+                    m.link = { title: editLinkTitleVal, url: container.querySelector('#momentsEditLinkUrl')?.value.trim() || '' };
+                    m.file = null;
+                } else if (!editLinkTitleVal) {
+                    m.link = null;
+                }
+                m.updated = Date.now();
+                this.saveMoments();
+                editPage.classList.remove('active');
+                editMid = null;
+                editImgs = [];
+                editFile = null;
+                editHasLink = false;
+                this._doRenderMoments();
+            });
+        }
+
+        // 暴露编辑打开方法到实例
+        this._openMomentEdit = (mid) => {
+            const m = this.moments.find(x => x.id === mid);
+            if (!m) return;
+            editMid = mid;
+            editText.value = m.text || '';
+            editImgs = m.images ? [...m.images] : [];
+            this._renderEditImages(editImgs, editImages);
+            editFile = null;
+            editHasLink = false;
+            if (m.file) {
+                editFile = m.file;
+                container.querySelector('#momentsEditFileName').textContent = m.file.name;
+                container.querySelector('#momentsEditFileSize').textContent = m.file.size;
+                editFilePreview.classList.add('active');
+                editLinkForm.classList.remove('active');
+            } else if (m.link && m.link.title) {
+                editHasLink = true;
+                container.querySelector('#momentsEditLinkTitle').value = m.link.title;
+                container.querySelector('#momentsEditLinkUrl').value = m.link.url || '';
+                editLinkForm.classList.add('active');
+                editFilePreview.classList.remove('active');
+            } else {
+                editLinkForm.classList.remove('active');
+                editFilePreview.classList.remove('active');
+            }
+            if (mainPage) mainPage.style.visibility = 'hidden';
+            editPage.classList.add('active');
+            if (scrollContainer) scrollContainer.scrollTop = 0;
+            container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
+        };
+    }
+
+    _renderPublishImages(images, containerEl) {
+        if (!containerEl) return;
+        const addBtn = containerEl.querySelector('#momentsPublishAdd');
+        containerEl.innerHTML = '';
+        images.forEach((src, index) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'lumina-moments-publish-img-wrapper';
+            const img = document.createElement('img');
+            img.className = 'lumina-moments-publish-img-item';
+            img.src = src;
+            const del = document.createElement('div');
+            del.className = 'lumina-moments-publish-img-del';
+            del.addEventListener('click', (e) => {
+                e.stopPropagation();
+                images.splice(index, 1);
+                this._renderPublishImages(images, containerEl);
+            });
+            wrapper.appendChild(img);
+            wrapper.appendChild(del);
+            containerEl.appendChild(wrapper);
+        });
+        if (addBtn) containerEl.appendChild(addBtn);
+    }
+
+    _renderEditImages(images, containerEl) {
+        if (!containerEl) return;
+        const addBtn = containerEl.querySelector('#momentsEditAdd');
+        containerEl.innerHTML = '';
+        images.forEach((src, index) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'lumina-moments-edit-img-wrapper';
+            const img = document.createElement('img');
+            img.className = 'lumina-moments-edit-img-item';
+            img.src = src;
+            const del = document.createElement('div');
+            del.className = 'lumina-moments-edit-img-del';
+            del.addEventListener('click', (e) => {
+                e.stopPropagation();
+                images.splice(index, 1);
+                this._renderEditImages(images, containerEl);
+            });
+            wrapper.appendChild(img);
+            wrapper.appendChild(del);
+            containerEl.appendChild(wrapper);
+        });
+        if (addBtn) containerEl.appendChild(addBtn);
+    }
+
+    _formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        if (typeof bytes === 'string') return bytes;
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     }
 
 
@@ -8668,7 +9404,18 @@ ipcRenderer.on('lumina-close', () => {
         // 重要：切换到说说相关视图时，先从思源SQL加载最新绑定块数据
         // 确保思源中修改的内容能在说说视图中立即反映
         const needsRefresh = ['notes', 'table', 'stats', 'review', 'random'];
-        if (needsRefresh.includes(view)) {
+        if (view === 'moments') {
+            // 朋友圈视图独立渲染，不等待 loadShuoshuos，切换更丝滑
+            if (flomoArea) flomoArea.style.display = 'flex';
+            if (settingsArea) settingsArea.style.display = 'none';
+            const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
+            if (inputArea) inputArea.style.display = 'none';
+            const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
+            if (sidebar) sidebar.style.display = 'none';
+            this.renderMoments();
+            // 后台同步说说数据（不影响朋友圈视图）
+            this.loadShuoshuos().catch(() => {});
+        } else if (needsRefresh.includes(view)) {
             // 先显示视图框架，然后异步加载最新数据后渲染内容
             if (flomoArea) flomoArea.style.display = 'flex';
             if (settingsArea) settingsArea.style.display = 'none';
@@ -8677,6 +9424,9 @@ ipcRenderer.on('lumina-close', () => {
             if (inputArea) inputArea.style.display = view === 'notes' ? 'block' : 'none';
             const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
             if (sidebar) sidebar.style.display = view === 'stats' || view === 'table' ? 'none' : '';
+            // 恢复 notes-list 的 padding（朋友圈会清除它）
+            const notesList = this.container.querySelector('#shuoshuo-notes-list');
+            if (notesList) notesList.style.padding = '';
             // 异步加载思源数据并渲染
             this.loadShuoshuos().then(() => {
                 if (this.currentMainView === view) {
@@ -8733,9 +9483,16 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 绑定设置页面事件
-    bindSettingsEvents() {
+    async bindSettingsEvents() {
         // 加载笔记本列表
         this.loadNotebooks();
+
+        // 加载朋友圈配置并更新输入框
+        await this.loadMoments();
+        const momentsNicknameInput = this.container.querySelector('#moments-nickname-input');
+        const momentsSignatureInput = this.container.querySelector('#moments-signature-input');
+        if (momentsNicknameInput) momentsNicknameInput.value = this.momentsConfig?.nickname || '月亮';
+        if (momentsSignatureInput) momentsSignatureInput.value = this.momentsConfig?.signature || '言念君子 温其如玉';
 
         // 初始化开关状态 - 关键：根据当前 autoSync 值设置 UI
         const autoSyncSwitch = this.container.querySelector('#settings-auto-sync-switch');
@@ -8980,6 +9737,14 @@ ipcRenderer.on('lumina-close', () => {
                 };
 
                 await this.saveConfig();
+
+                // 保存朋友圈设置
+                const momentsNickname = this.container.querySelector('#moments-nickname-input')?.value?.trim() || '月亮';
+                const momentsSignature = this.container.querySelector('#moments-signature-input')?.value?.trim() || '言念君子 温其如玉';
+                if (!this.momentsConfig) this.momentsConfig = {};
+                this.momentsConfig.nickname = momentsNickname;
+                this.momentsConfig.signature = momentsSignature;
+                await this.saveMoments();
 
                 showMessage('设置已保存');
             };
@@ -10010,6 +10775,54 @@ ipcRenderer.on('lumina-close', () => {
             case 'stats': this.renderStats(); break;
             default: this.renderNotes(); break;
         }
+    }
+
+    // ============ 朋友圈数据管理 ============
+    async loadMoments() {
+        try {
+            const data = await this.loadData(MOMENTS_STORAGE_NAME);
+            this.moments = data?.moments || [];
+            this.momentsConfig = data?.config || {
+                nickname: '月亮',
+                signature: '言念君子 温其如玉',
+                avatar: null,
+                cover: null
+            };
+        } catch (e) {
+            this.moments = [];
+            this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null };
+        }
+    }
+
+    async saveMoments() {
+        try {
+            await this.saveData(MOMENTS_STORAGE_NAME, {
+                moments: this.moments,
+                config: this.momentsConfig
+            });
+        } catch (e) {
+            console.error('保存朋友圈失败', e);
+        }
+    }
+
+    getMomentNextId() {
+        const ids = this.moments.map(m => parseInt(m.id) || 0);
+        return (Math.max(0, ...ids) + 1).toString();
+    }
+
+    formatMomentTime(timestamp) {
+        const now = Date.now();
+        const diff = now - timestamp;
+        const minute = 60 * 1000;
+        const hour = 60 * minute;
+        const day = 24 * hour;
+        if (diff < minute) return '刚刚';
+        if (diff < hour) return Math.floor(diff / minute) + '分钟前';
+        if (diff < day) return Math.floor(diff / hour) + '小时前';
+        if (diff < 2 * day) return '昨天';
+        if (diff < 3 * day) return '前天';
+        const d = new Date(timestamp);
+        return `${d.getMonth() + 1}月${d.getDate()}日`;
     }
 
     async loadConfig() {
