@@ -421,7 +421,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._refreshTimer = null; // 防抖刷新定时器
         this._boundBlockIdsCache = new Set(); // 已绑定块ID的缓存（用于快速查找）
         this.moments = []; // 朋友圈数据
-        this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null };
+        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null };
         this.loadShuoshuos();
         this.loadConfig();
         // 异步加载朋友圈数据，确保切换时更丝滑
@@ -1794,13 +1794,13 @@ ipcRenderer.on('lumina-close', () => {
                     
                     <div class="north-shuoshuo-nav-icons">
                         <button class="north-shuoshuo-nav-item active" data-view="notes" title="说说">
-                            <img src="/plugins/${this.name}/icons/消息.svg" class="north-shuoshuo-nav-icon" />
+                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1161 1024" fill="currentColor"><path d="M820.429215 0H115.980949A116.091291 116.091291 0 0 0 0 115.980949v538.581496a116.102325 116.102325 0 0 0 115.980949 115.991983h101.150923v68.986099a74.591496 74.591496 0 0 0 116.40025 61.791772L527.105881 770.653736h293.323334A116.091291 116.091291 0 0 0 936.476369 654.672787v-538.691838A116.091291 116.091291 0 0 0 820.429215 0z m41.444624 654.562445a41.477727 41.477727 0 0 1-41.444624 41.444624H504.198789L291.668197 839.540527V696.007069H115.980949a41.477727 41.477727 0 0 1-41.43359-41.444624v-538.581496a41.488761 41.488761 0 0 1 41.43359-41.444624h704.448266a41.488761 41.488761 0 0 1 41.444624 41.444624z m0 0"/><path d="M177.816857 378.176677a66.326846 66.326846 0 1 0 33.168941-57.466347 66.326846 66.326846 0 0 0-33.168941 57.444279z m0 0M401.88927 378.176677a66.326846 66.326846 0 1 0 33.157906-57.466347 66.315812 66.315812 0 0 0-33.157906 57.444279z m0 0M624.207237 378.176677a66.326846 66.326846 0 1 0 66.359949-66.293743 66.315812 66.315812 0 0 0-66.359949 66.293743z m0 0"/></svg>
                         </button>
                         <button class="north-shuoshuo-nav-item" data-view="table" title="表格">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v18H3V3zm2 2v5h14V5H5zm14 7H5v5h14v-5zM5 10h4v2H5v-2zm6 0h4v2h-4v-2z"/></svg>
                         </button>
                         <button class="north-shuoshuo-nav-item" data-view="stats" title="统计">
-                            <img src="/plugins/${this.name}/icons/统计.svg" class="north-shuoshuo-nav-icon" />
+                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M341.333333 938.666667H128a42.666667 42.666667 0 0 1-42.666667-42.666667V405.333333a42.666667 42.666667 0 0 1 42.666667-42.666666h213.333333V128a42.666667 42.666667 0 0 1 42.666667-42.666667h256a42.666667 42.666667 0 0 1 42.666667 42.666667v405.333333h213.333333a42.666667 42.666667 0 0 1 42.56 39.466667L938.666667 576v320a42.666667 42.666667 0 0 1-39.466667 42.56L896 938.666667H341.333333z m0-512H149.333333v448h192V426.666667z m533.333334 170.666666h-192v277.333334h192V597.333333zM618.666667 149.333333H405.333333v725.333334h213.333334V149.333333z"/></svg>
                         </button>
                         <button class="north-shuoshuo-nav-item" data-view="moments" title="朋友圈">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
@@ -1809,7 +1809,7 @@ ipcRenderer.on('lumina-close', () => {
                     
                     <div class="north-shuoshuo-nav-bottom">
                         <button class="north-shuoshuo-nav-item" data-view="settings" title="设置">
-                             <img src="/plugins/${this.name}/icons/设置.svg" class="north-shuoshuo-nav-icon" />
+                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L3.16 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
                         </button>
                     </div>
                 </div>
@@ -1831,7 +1831,7 @@ ipcRenderer.on('lumina-close', () => {
                                 </button>
                             </div>
                             <button class="north-shuoshuo-filter-btn" id="shuoshuo-filter-btn" title="按日期筛选">
-                                <img src="/plugins/${this.name}/icons/日历.svg" class="north-shuoshuo-nav-icon" />
+                                <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M898.5 876.51H133.09V196.93H898.5z m-685.41-80H818.5V276.93H213.09z"/><path d="M305.67 143h80v187h-80zM636.44 143h80v187h-80zM295.06 657.98h78.61v80h-78.61zM295.06 532.98h78.61v80h-78.61zM479.06 532.98h78.61v80h-78.61zM661.06 532.98h78.61v80h-78.61zM173.69 393h675.76v80H173.69zM479.12 657.98h78.61v80h-78.61zM661.4 657.98h78.61v80H661.4z"/></svg>
                             </button>
                             <button class="north-shuoshuo-filter-btn" id="shuoshuo-refresh-btn" title="从思源同步绑定块数据" style="font-size:16px;font-weight:bold;">
                                 ${ICONS.sync}
@@ -2766,10 +2766,9 @@ ipcRenderer.on('lumina-close', () => {
                 
                 // 根据数量确定等级
                 let level = 0;
-                if (count >= 1) level = 1;
-                if (count >= 3) level = 2;
-                if (count >= 5) level = 3;
-                if (count >= 8) level = 4;
+                if (count >= 1) level = 2;
+                if (count >= 3) level = 3;
+                if (count >= 5) level = 4;
                 
                 const tooltip = count > 0 
                     ? `${count}条 ${date.getMonth() + 1}月${date.getDate()}日`
@@ -4202,8 +4201,13 @@ ipcRenderer.on('lumina-close', () => {
                 <div class="lumina-moments-main" id="momentsMainPage">
                     <div class="lumina-moments-nav" id="momentsNavBar">
                         <div class="lumina-moments-nav-left"></div>
-                        <div class="lumina-moments-nav-right" id="momentsCameraBtn" title="发表">
-                            <div class="lumina-moments-camera-icon"></div>
+                        <div class="lumina-moments-nav-actions">
+                            <div class="lumina-moments-camera-btn" id="momentsCameraBtn" title="发表">
+                                <div class="lumina-moments-camera-icon"></div>
+                            </div>
+                            <div class="lumina-moments-calendar-btn" id="momentsCalendarBtn" title="日历">
+                                <div class="lumina-moments-calendar-icon"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="lumina-moments-cover" id="momentsCoverSection">
@@ -4219,12 +4223,6 @@ ipcRenderer.on('lumina-close', () => {
                     </div>
                     <div class="lumina-moments-list" id="momentsList">${momentsHtml}</div>
                     <div class="lumina-moments-bottom-space"></div>
-                </div>
-
-                <!-- 评论输入栏 -->
-                <div class="lumina-moments-comment-bar" id="momentsCommentBar">
-                    <input type="text" class="lumina-moments-comment-input" id="momentsCommentInput" placeholder="评论...">
-                    <div class="lumina-moments-comment-send disabled" id="momentsCommentSend">发送</div>
                 </div>
 
                 <!-- 发表页面 -->
@@ -4318,6 +4316,21 @@ ipcRenderer.on('lumina-close', () => {
                     <input type="file" id="momentsEditImageInput" class="lumina-moments-file-input" accept="image/*" multiple>
                     <input type="file" id="momentsEditFileInput" class="lumina-moments-file-input">
                 </div>
+
+                <!-- 日历弹窗 -->
+                <div class="lumina-moments-calendar-modal" id="momentsCalendarModal">
+                    <div class="lumina-moments-calendar-overlay" id="momentsCalendarOverlay"></div>
+                    <div class="lumina-moments-calendar-content">
+                        <div class="lumina-moments-calendar-header">
+                            <div class="lumina-moments-calendar-title">
+                                <span>朋友圈日历</span>
+                                <select class="lumina-moments-calendar-year" id="momentsCalendarYear"></select>
+                            </div>
+                            <div class="lumina-moments-calendar-close" id="momentsCalendarClose">×</div>
+                        </div>
+                        <div class="lumina-moments-calendar-body" id="momentsCalendarBody"></div>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -4325,10 +4338,7 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     _renderMomentItem(m, avatar, nickname) {
-        const timeStr = this.formatMomentTime(m.created);
-        const myName = this.momentsConfig.nickname || '月亮';
-        const liked = (m.likes || []).includes(myName);
-        const likeText = liked ? '取消' : '点赞';
+        const dateStr = this.formatMomentDate(m.created);
 
         let mediaHtml = '';
         if (m.images && m.images.length > 0) {
@@ -4354,41 +4364,24 @@ ipcRenderer.on('lumina-close', () => {
             </div>`;
         }
 
-        let interactionHtml = '';
-        const hasLikes = (m.likes || []).length > 0;
-        const hasComments = (m.comments || []).length > 0;
-        if (hasLikes || hasComments) {
-            const likesClass = hasComments ? '' : ' no-comments';
-            const likesHtml = hasLikes ? `<div class="lumina-moments-likes-section${likesClass}"><div class="lumina-moments-heart-icon"><svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></div><div class="lumina-moments-likes-text">${m.likes.join('、')}</div></div>` : '';
-            const commentsHtml = hasComments ? `<div class="lumina-moments-comments-section">${m.comments.map(c => {
-                if (c.replyTo) {
-                    return `<div class="lumina-moments-comment-item"><span class="lumina-moments-comment-author">${c.author}</span><span class="lumina-moments-comment-sep">回复</span><span class="lumina-moments-comment-author">${c.replyTo}</span><span class="lumina-moments-comment-sep">：</span><span class="lumina-moments-comment-text">${c.text}</span></div>`;
-                }
-                return `<div class="lumina-moments-comment-item"><span class="lumina-moments-comment-author">${c.author}</span><span class="lumina-moments-comment-sep">：</span><span class="lumina-moments-comment-text">${c.text}</span></div>`;
-            }).join('')}</div>` : '';
-            interactionHtml = `<div class="lumina-moments-interaction-box" data-mid="${m.id}">${likesHtml}${commentsHtml}</div>`;
-        }
-
+        const dateKey = this.formatDateKey(new Date(m.created));
         return `
-            <div class="lumina-moments-item" data-mid="${m.id}">
+            <div class="lumina-moments-item" data-mid="${m.id}" data-date="${dateKey}">
                 <img class="lumina-moments-item-avatar" src="${avatar}" alt="avatar">
                 <div class="lumina-moments-item-content">
                     <div class="lumina-moments-item-name">${nickname}</div>
                     <div class="lumina-moments-item-text">${m.text || ''}</div>
                     ${mediaHtml}
                     <div class="lumina-moments-item-meta">
-                        <span class="lumina-moments-item-time">${timeStr}</span>
+                        <span class="lumina-moments-item-date">${dateStr}</span>
                         <div class="lumina-moments-item-actions">
                             <div class="lumina-moments-more-btn" data-mid="${m.id}"></div>
                             <div class="lumina-moments-action-popup" data-mid="${m.id}">
-                                <div class="lumina-moments-action-popup-btn like-btn" data-mid="${m.id}"><span class="icon">❤️</span><span class="like-text">${likeText}</span></div>
-                                <div class="lumina-moments-action-popup-btn comment-btn" data-mid="${m.id}"><span class="icon">💬</span>评论</div>
                                 <div class="lumina-moments-action-popup-btn delete-btn" data-mid="${m.id}"><span class="icon">🗑️</span>删除</div>
                                 <div class="lumina-moments-action-popup-btn edit-btn" data-mid="${m.id}"><span class="icon">✏️</span>修改</div>
                             </div>
                         </div>
                     </div>
-                    ${interactionHtml}
                 </div>
             </div>
         `;
@@ -4462,9 +4455,6 @@ ipcRenderer.on('lumina-close', () => {
         }
 
         // more按钮 & 弹出菜单
-        const myName = this.momentsConfig.nickname || '月亮';
-        let activeMid = null;
-
         container.addEventListener('click', (e) => {
             const moreBtn = e.target.closest('.lumina-moments-more-btn');
             if (moreBtn) {
@@ -4475,43 +4465,7 @@ ipcRenderer.on('lumina-close', () => {
                 container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
                 if (!isActive && popup) {
                     popup.classList.add('active');
-                    const m = this.moments.find(x => x.id === mid);
-                    const liked = m && (m.likes || []).includes(myName);
-                    const likeText = popup.querySelector('.like-text');
-                    if (likeText) likeText.textContent = liked ? '取消' : '点赞';
                 }
-                return;
-            }
-
-            // 点赞
-            const likeBtn = e.target.closest('.like-btn');
-            if (likeBtn) {
-                e.stopPropagation();
-                const mid = likeBtn.dataset.mid;
-                const m = this.moments.find(x => x.id === mid);
-                if (!m) return;
-                if (!m.likes) m.likes = [];
-                const idx = m.likes.indexOf(myName);
-                if (idx > -1) m.likes.splice(idx, 1);
-                else m.likes.push(myName);
-                this.saveMoments();
-                this._doRenderMoments();
-                return;
-            }
-
-            // 评论
-            const commentBtn = e.target.closest('.comment-btn');
-            if (commentBtn) {
-                e.stopPropagation();
-                activeMid = commentBtn.dataset.mid;
-                const bar = container.querySelector('#momentsCommentBar');
-                const input = container.querySelector('#momentsCommentInput');
-                const send = container.querySelector('#momentsCommentSend');
-                bar.classList.add('active');
-                input.value = '';
-                input.focus();
-                send.classList.add('disabled');
-                container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
                 return;
             }
 
@@ -4538,41 +4492,104 @@ ipcRenderer.on('lumina-close', () => {
             container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
         });
 
-        // 评论输入
-        const commentInput = container.querySelector('#momentsCommentInput');
-        const commentSend = container.querySelector('#momentsCommentSend');
-        const commentBar = container.querySelector('#momentsCommentBar');
-        if (commentInput && commentSend) {
-            commentInput.addEventListener('input', () => {
-                commentSend.classList.toggle('disabled', !commentInput.value.trim());
+        // 日历弹窗
+        const calendarBtn = container.querySelector('#momentsCalendarBtn');
+        const calendarModal = container.querySelector('#momentsCalendarModal');
+        const calendarOverlay = container.querySelector('#momentsCalendarOverlay');
+        const calendarClose = container.querySelector('#momentsCalendarClose');
+        const calendarBody = container.querySelector('#momentsCalendarBody');
+        const calendarYear = container.querySelector('#momentsCalendarYear');
+
+        const renderCalendarBody = (year) => {
+            if (!calendarBody) return;
+            const heatmap = this.generateMomentsCalendar(year);
+            calendarBody.innerHTML = `
+                <div class="lumina-moments-calendar-grid">
+                    <div class="lumina-moments-calendar-columns">${heatmap.columns}</div>
+                    <div class="lumina-moments-calendar-months">${heatmap.months}</div>
+                </div>
+            `;
+        };
+
+        const initCalendarYearOptions = () => {
+            if (!calendarYear) return;
+            const years = new Set();
+            this.moments.forEach(m => years.add(new Date(m.created).getFullYear()));
+            const currentYear = new Date().getFullYear();
+            years.add(currentYear);
+            const sortedYears = Array.from(years).sort((a, b) => b - a);
+            calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
+            calendarYear.value = currentYear;
+        };
+
+        if (calendarBtn && calendarModal && calendarBody) {
+            calendarBtn.addEventListener('click', () => {
+                initCalendarYearOptions();
+                renderCalendarBody(calendarYear?.value ? parseInt(calendarYear.value) : new Date().getFullYear());
+                calendarModal.classList.add('active');
             });
-            commentSend.addEventListener('click', () => {
-                const text = commentInput.value.trim();
-                if (!text || !activeMid) return;
-                const m = this.moments.find(x => x.id === activeMid);
-                if (m) {
-                    if (!m.comments) m.comments = [];
-                    m.comments.push({ author: myName, text });
-                    this.saveMoments();
-                    this._doRenderMoments();
-                }
-                commentBar.classList.remove('active');
-                commentInput.value = '';
-                activeMid = null;
+        }
+
+        if (calendarYear) {
+            calendarYear.addEventListener('change', () => {
+                renderCalendarBody(parseInt(calendarYear.value));
             });
-            commentInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !commentSend.classList.contains('disabled')) {
-                    commentSend.click();
+        }
+
+        if (calendarOverlay) {
+            calendarOverlay.addEventListener('click', () => {
+                calendarModal?.classList.remove('active');
+            });
+        }
+
+        if (calendarClose) {
+            calendarClose.addEventListener('click', () => {
+                calendarModal?.classList.remove('active');
+            });
+        }
+
+        // 日历弹窗拖动
+        const calendarContent = container.querySelector('.lumina-moments-calendar-content');
+        const calendarHeader = container.querySelector('.lumina-moments-calendar-header');
+        if (calendarHeader && calendarContent) {
+            calendarHeader.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.lumina-moments-calendar-close') || e.target.closest('#momentsCalendarYear')) return;
+                const rect = calendarContent.getBoundingClientRect();
+                const offsetX = e.clientX - rect.left;
+                const offsetY = e.clientY - rect.top;
+                calendarContent.style.position = 'fixed';
+                calendarContent.style.top = rect.top + 'px';
+                calendarContent.style.left = rect.left + 'px';
+                calendarContent.style.transform = 'none';
+                calendarContent.style.margin = '0';
+                const onMouseMove = (ev) => {
+                    calendarContent.style.top = (ev.clientY - offsetY) + 'px';
+                    calendarContent.style.left = (ev.clientX - offsetX) + 'px';
+                };
+                const onMouseUp = () => {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        // 点击日历格子跳转到对应日期
+        if (calendarBody) {
+            calendarBody.addEventListener('click', (e) => {
+                const cell = e.target.closest('.lumina-moments-calendar-cell[data-date]');
+                if (!cell) return;
+                const date = cell.dataset.date;
+                calendarModal?.classList.remove('active');
+                const targetItem = container.querySelector(`.lumina-moments-item[data-date="${date}"]`);
+                if (targetItem) {
+                    targetItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    targetItem.classList.add('lumina-moments-item-highlight');
+                    setTimeout(() => targetItem.classList.remove('lumina-moments-item-highlight'), 2000);
                 }
             });
         }
-        // 点击外部关闭评论栏
-        container.addEventListener('click', (e) => {
-            if (commentBar && commentBar.classList.contains('active') && !commentBar.contains(e.target) && !e.target.closest('.comment-btn')) {
-                commentBar.classList.remove('active');
-                activeMid = null;
-            }
-        });
 
         // 发表页面
         const cameraBtn = container.querySelector('#momentsCameraBtn');
@@ -5551,10 +5568,9 @@ ipcRenderer.on('lumina-close', () => {
                 if (date.getFullYear() === targetYear) {
                     const count = this.getNoteCountByDate(date);
                     let level = 0;
-                    if (count >= 1) level = 1;
-                    if (count >= 3) level = 2;
-                    if (count >= 5) level = 3;
-                    if (count >= 8) level = 4;
+                    if (count >= 1) level = 2;
+                    if (count >= 3) level = 3;
+                    if (count >= 5) level = 4;
 
                     const dateStr = this.formatDateKey(date);
                     const tooltip = `${dateStr}: ${count}条记录`;
@@ -10823,6 +10839,102 @@ ipcRenderer.on('lumina-close', () => {
         if (diff < 3 * day) return '前天';
         const d = new Date(timestamp);
         return `${d.getMonth() + 1}月${d.getDate()}日`;
+    }
+
+    formatMomentDate(timestamp) {
+        const d = new Date(timestamp);
+        return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+    }
+
+    generateMomentsCalendar(year = null) {
+        const targetYear = year || new Date().getFullYear();
+
+        // 确定起始日期（该年1月1日之前的第一个周日）
+        const yearStart = new Date(targetYear, 0, 1);
+        const startDate = new Date(yearStart);
+        startDate.setDate(yearStart.getDate() - yearStart.getDay());
+
+        // 确定结束日期（该年12月31日）
+        const yearEnd = new Date(targetYear, 11, 31);
+
+        // 计算总天数和周数
+        const totalDays = Math.floor((yearEnd - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        const weeks = Math.ceil(totalDays / 7);
+
+        // 统计朋友圈每天的发布数量
+        const dayCounts = {};
+        this.moments.forEach(m => {
+            const d = new Date(m.created);
+            if (d.getFullYear() === targetYear) {
+                const key = this.formatDateKey(d);
+                dayCounts[key] = (dayCounts[key] || 0) + 1;
+            }
+        });
+
+        // 生成每列（每周）
+        let columnsHtml = '';
+        const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+        for (let week = 0; week < weeks; week++) {
+            let columnCells = '';
+
+            for (let day = 0; day < 7; day++) {
+                const date = new Date(startDate);
+                date.setDate(startDate.getDate() + week * 7 + day);
+
+                if (date.getFullYear() === targetYear) {
+                    const key = this.formatDateKey(date);
+                    const count = dayCounts[key] || 0;
+                    let level = 0;
+                    if (count >= 1) level = 2;
+                    if (count >= 3) level = 3;
+                    if (count >= 5) level = 4;
+
+                    const dateStr = `${date.getMonth() + 1}月${date.getDate()}日`;
+                    const tooltip = count > 0 ? `${dateStr}: ${count}条朋友圈` : dateStr;
+                    columnCells += `<div class="lumina-moments-calendar-cell level-${level}" data-date="${key}" title="${tooltip}"></div>`;
+                } else {
+                    columnCells += `<div class="lumina-moments-calendar-cell level-empty"></div>`;
+                }
+            }
+
+            columnsHtml += `<div class="lumina-moments-calendar-column">${columnCells}</div>`;
+        }
+
+        // 计算月份标签位置
+        const monthStartWeek = new Array(12).fill(-1);
+        const monthEndWeek = new Array(12).fill(-1);
+
+        for (let week = 0; week < weeks; week++) {
+            for (let day = 0; day < 7; day++) {
+                const date = new Date(startDate);
+                date.setDate(startDate.getDate() + week * 7 + day);
+                if (date.getFullYear() === targetYear) {
+                    const m = date.getMonth();
+                    if (monthStartWeek[m] === -1) monthStartWeek[m] = week;
+                    monthEndWeek[m] = week;
+                }
+            }
+        }
+
+        const monthLabels = [];
+        for (let m = 0; m < 12; m++) {
+            if (monthStartWeek[m] !== -1) {
+                const midWeek = (monthStartWeek[m] + monthEndWeek[m]) / 2;
+                const leftPercent = ((midWeek + 0.5) / weeks * 100).toFixed(2) + '%';
+                monthLabels.push({ name: monthNames[m], left: leftPercent });
+            }
+        }
+
+        const monthsHtml = monthLabels.map(l =>
+            `<span class="lumina-moments-calendar-month-label" style="left: ${l.left};">${l.name}</span>`
+        ).join('');
+
+        return {
+            columns: columnsHtml,
+            months: monthsHtml,
+            weeks: weeks
+        };
     }
 
     async loadConfig() {

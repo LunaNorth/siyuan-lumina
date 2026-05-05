@@ -9323,14 +9323,136 @@
     width: 100%;
     min-height: 100%;
     height: 100%;
-    background: #fff;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    color: #333;
+    background: var(--moments-bg);
+    font-family: inherit;
+    color: var(--moments-text);
+    --moments-bg: #fff;
+    --moments-text: #333;
+    --moments-text-secondary: #666;
+    --moments-border: #f0f0f0;
+    --moments-card-bg: #fff;
+    --moments-card-border: #f0f0f0;
+    --moments-name-color: #262626;
+    --moments-date-color: #B2B2B2;
+    --moments-nav-icon: #fff;
+    --moments-nav-icon-scrolled: #000;
+    --moments-signature-bg: #fff;
+    --moments-signature-text: #666;
+    --moments-modal-overlay: rgba(0, 0, 0, 0.5);
+    --moments-modal-bg: #fff;
+    --moments-modal-header-border: #f0f0f0;
+    --moments-close-color: #999;
+    --moments-close-hover-bg: #f5f5f5;
+    --moments-close-hover-color: #333;
+    --moments-year-color: #576B95;
+    --moments-cell-bg: #e5e5e5;
+    --moments-cell-level-1: #8fd4a8;
+    --moments-cell-level-2: #5ec88f;
+    --moments-cell-level-3: #3ac652;
+    --moments-cell-level-4: #07C160;
+    --moments-publish-bg: #fff;
+    --moments-publish-nav-border: #E5E5E5;
+    --moments-publish-text: #333;
+    --moments-publish-placeholder: #B2B2B2;
+    --moments-publish-add-border: #D9D9D9;
+    --moments-link-card-bg: #F7F7F7;
+    --moments-interaction-bg: #F7F7F7;
+    --moments-action-popup-bg: #4C4C4C;
+    --moments-action-popup-text: #fff;
+    --moments-action-popup-border: #3a3a3a;
+    --moments-action-popup-active-bg: #3a3a3a;
+    --moments-comment-bar-bg: #F7F7F7;
+    --moments-comment-input-bg: #fff;
+    --moments-highlight: rgba(7, 193, 96, 0.4);
 }
 
 .lumina-moments-main {
     width: 100%;
     overflow-x: hidden;
+}
+
+/* 思源主题适配 */
+.theme-siyuan .lumina-moments-container {
+    --moments-bg: var(--b3-theme-background);
+    --moments-text: var(--b3-theme-on-background);
+    --moments-text-secondary: var(--b3-theme-on-surface);
+    --moments-border: var(--b3-border-color);
+    --moments-card-bg: var(--b3-theme-surface);
+    --moments-card-border: var(--b3-border-color);
+    --moments-name-color: var(--b3-theme-on-background);
+    --moments-date-color: var(--b3-theme-on-surface-light);
+    --moments-nav-icon: #fff;
+    --moments-nav-icon-scrolled: var(--b3-theme-on-background);
+    --moments-signature-bg: var(--b3-theme-background);
+    --moments-signature-text: var(--b3-theme-on-surface);
+    --moments-modal-overlay: rgba(0, 0, 0, 0.6);
+    --moments-modal-bg: var(--b3-theme-background);
+    --moments-modal-header-border: var(--b3-border-color);
+    --moments-close-color: var(--b3-theme-on-surface-light);
+    --moments-close-hover-bg: var(--b3-list-hover);
+    --moments-close-hover-color: var(--b3-theme-on-background);
+    --moments-year-color: var(--b3-theme-primary);
+    --moments-cell-bg: var(--b3-theme-surface-lighter);
+    --moments-cell-level-1: var(--b3-theme-primary-lightest);
+    --moments-cell-level-2: var(--b3-theme-primary-lighter);
+    --moments-cell-level-3: var(--b3-theme-primary-light);
+    --moments-cell-level-4: var(--b3-theme-primary);
+    --moments-publish-bg: var(--b3-theme-background);
+    --moments-publish-nav-border: var(--b3-border-color);
+    --moments-publish-text: var(--b3-theme-on-background);
+    --moments-publish-placeholder: var(--b3-theme-on-surface-light);
+    --moments-publish-add-border: var(--b3-border-color);
+    --moments-link-card-bg: var(--b3-theme-surface);
+    --moments-interaction-bg: var(--b3-theme-surface);
+    --moments-action-popup-bg: var(--b3-theme-surface);
+    --moments-action-popup-text: var(--b3-theme-on-background);
+    --moments-action-popup-border: var(--b3-border-color);
+    --moments-action-popup-active-bg: var(--b3-list-hover);
+    --moments-comment-bar-bg: var(--b3-theme-surface);
+    --moments-comment-input-bg: var(--b3-theme-background);
+    --moments-highlight: var(--b3-theme-primary-lighter);
+}
+
+/* 莫兰迪主题适配 */
+.theme-morandi .lumina-moments-container {
+    --moments-bg: #fff;
+    --moments-text: #333;
+    --moments-text-secondary: #666;
+    --moments-border: #f0f0f0;
+    --moments-card-bg: #fff;
+    --moments-card-border: #f0f0f0;
+    --moments-name-color: #262626;
+    --moments-date-color: #B2B2B2;
+    --moments-nav-icon: #fff;
+    --moments-nav-icon-scrolled: #000;
+    --moments-signature-bg: #fff;
+    --moments-signature-text: #666;
+    --moments-modal-overlay: rgba(0, 0, 0, 0.5);
+    --moments-modal-bg: #fff;
+    --moments-modal-header-border: #f0f0f0;
+    --moments-close-color: #999;
+    --moments-close-hover-bg: #f5f5f5;
+    --moments-close-hover-color: #333;
+    --moments-year-color: var(--b3-theme-primary);
+    --moments-cell-bg: #e5e5e5;
+    --moments-cell-level-1: var(--b3-theme-primary-lightest);
+    --moments-cell-level-2: var(--b3-theme-primary-lighter);
+    --moments-cell-level-3: var(--b3-theme-primary-light);
+    --moments-cell-level-4: var(--b3-theme-primary);
+    --moments-publish-bg: #fff;
+    --moments-publish-nav-border: #E5E5E5;
+    --moments-publish-text: #333;
+    --moments-publish-placeholder: #B2B2B2;
+    --moments-publish-add-border: #D9D9D9;
+    --moments-link-card-bg: #F7F7F7;
+    --moments-interaction-bg: #F7F7F7;
+    --moments-action-popup-bg: #4C4C4C;
+    --moments-action-popup-text: #fff;
+    --moments-action-popup-border: #3a3a3a;
+    --moments-action-popup-active-bg: #3a3a3a;
+    --moments-comment-bar-bg: #F7F7F7;
+    --moments-comment-input-bg: #fff;
+    --moments-highlight: rgba(0, 0, 0, 0.15);
 }
 
 .lumina-moments-file-input {
@@ -9361,7 +9483,7 @@
     background-color: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    border-bottom: 0.5px solid #E5E5E5;
+    border-bottom: 0.5px solid var(--moments-border);
 }
 
 .lumina-moments-nav-left {
@@ -9372,7 +9494,66 @@
     font-weight: 500;
 }
 
-.lumina-moments-nav-right {
+.lumina-moments-nav-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-top: 25px;
+}
+
+.lumina-moments-calendar-btn {
+    width: 24px;
+    height: 24px;
+    position: relative;
+    cursor: pointer;
+}
+
+.lumina-moments-calendar-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 18px;
+    border: 1.5px solid var(--moments-nav-icon);
+    border-radius: 3px;
+    background: transparent;
+}
+
+.lumina-moments-calendar-icon::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px;
+    height: 4px;
+    border-left: 1.5px solid var(--moments-nav-icon);
+    border-right: 1.5px solid var(--moments-nav-icon);
+    background: transparent;
+}
+
+.lumina-moments-calendar-icon::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    left: 2px;
+    right: 2px;
+    height: 1.5px;
+    background-color: var(--moments-nav-icon);
+}
+
+.lumina-moments-nav.scrolled .lumina-moments-calendar-icon,
+.lumina-moments-nav.scrolled .lumina-moments-calendar-icon::before {
+    border-color: var(--moments-nav-icon-scrolled);
+}
+
+.lumina-moments-nav.scrolled .lumina-moments-calendar-icon::after {
+    background-color: var(--moments-nav-icon-scrolled);
+}
+
+.lumina-moments-camera-btn {
     width: 24px;
     height: 24px;
     position: relative;
@@ -9386,7 +9567,7 @@
     transform: translate(-50%, -50%);
     width: 22px;
     height: 18px;
-    border: 1.5px solid #fff;
+    border: 1.5px solid var(--moments-nav-icon);
     border-radius: 3px;
     background: transparent;
     transition: border-color 0.2s ease;
@@ -9400,7 +9581,7 @@
     transform: translateX(-50%);
     width: 8px;
     height: 4px;
-    border: 1.5px solid #fff;
+    border: 1.5px solid var(--moments-nav-icon);
     border-bottom: none;
     border-radius: 2px 2px 0 0;
     transition: border-color 0.2s ease;
@@ -9414,7 +9595,7 @@
     transform: translate(-50%, -50%);
     width: 6px;
     height: 6px;
-    border: 1.5px solid #fff;
+    border: 1.5px solid var(--moments-nav-icon);
     border-radius: 50%;
     transition: border-color 0.2s ease;
 }
@@ -9422,7 +9603,7 @@
 .lumina-moments-nav.scrolled .lumina-moments-camera-icon,
 .lumina-moments-nav.scrolled .lumina-moments-camera-icon::before,
 .lumina-moments-nav.scrolled .lumina-moments-camera-icon::after {
-    border-color: #000;
+    border-color: var(--moments-nav-icon-scrolled);
 }
 
 /* 封面区域 */
@@ -9465,7 +9646,7 @@
     width: 70px;
     height: 70px;
     border-radius: 6px;
-    background-color: #f0f0f0;
+    background-color: var(--moments-border);
     object-fit: cover;
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     cursor: pointer;
@@ -9478,47 +9659,45 @@
 
 /* 个性签名 */
 .lumina-moments-signature {
-    background-color: #fff;
+    background-color: var(--moments-signature-bg);
     padding: 24px 16px 4px;
     text-align: right;
 }
 
 .lumina-moments-signature-text {
     font-size: 13px;
-    color: #666;
+    color: var(--moments-signature-text);
     line-height: 1.5;
 }
 
 /* 朋友圈列表 */
 .lumina-moments-list {
-    background-color: #fff;
-    padding-top: 0;
+    background-color: var(--moments-bg);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
 }
 
 .lumina-moments-item {
     display: flex;
-    padding: 20px 16px;
+    background-color: var(--moments-card-bg);
+    border-radius: 8px;
+    padding: 16px;
     position: relative;
-}
-
-.lumina-moments-item + .lumina-moments-item::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 0.5px;
-    background-color: #E5E5E5;
+    border: 1px solid var(--moments-card-border);
+    width: 73%;
 }
 
 .lumina-moments-item-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 4px;
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
     object-fit: cover;
     flex-shrink: 0;
     margin-right: 12px;
-    background-color: #f0f0f0;
+    background-color: var(--moments-border);
 }
 
 .lumina-moments-item-content {
@@ -9527,19 +9706,21 @@
 }
 
 .lumina-moments-item-name {
-    font-size: 14px;
-    color: #576B95;
+    font-size: 16px;
+    color: var(--moments-name-color);
     font-weight: 600;
     line-height: 1.4;
     margin-bottom: 4px;
 }
 
 .lumina-moments-item-text {
-    font-size: 14px;
-    color: #333;
-    line-height: 1.6;
-    margin-bottom: 8px;
+    font-size: var(--b3-font-size-editor, 15px);
+    color: var(--moments-text);
+    line-height: 1.8;
+    margin-bottom: 12px;
     word-wrap: break-word;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .lumina-moments-media {
@@ -9562,7 +9743,7 @@
     width: 100%;
     aspect-ratio: 1;
     object-fit: cover;
-    background-color: #f0f0f0;
+    background-color: var(--moments-border);
     display: block;
 }
 
@@ -9575,7 +9756,7 @@
 .lumina-moments-link-card {
     display: flex;
     align-items: center;
-    background-color: #F7F7F7;
+    background-color: var(--moments-link-card-bg);
     padding: 8px;
     border-radius: 4px;
     margin-bottom: 8px;
@@ -9599,7 +9780,7 @@
 
 .lumina-moments-link-title {
     font-size: 13px;
-    color: #333;
+    color: var(--moments-text);
     line-height: 1.4;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -9613,12 +9794,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-top: 4px;
+    margin-top: 8px;
 }
 
-.lumina-moments-item-time {
+.lumina-moments-item-date {
     font-size: 12px;
-    color: #B2B2B2;
+    color: var(--moments-date-color);
 }
 
 .lumina-moments-item-actions {
@@ -9629,28 +9810,48 @@
 }
 
 .lumina-moments-more-btn {
-    width: 36px;
-    height: 24px;
-    background-color: #F7F7F7;
+    width: 28px;
+    height: 20px;
+    background-color: transparent;
     border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     position: relative;
+    opacity: 0;
+    transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+.lumina-moments-item:hover .lumina-moments-more-btn {
+    opacity: 1;
+}
+
+.lumina-moments-more-btn:hover {
+    background-color: var(--moments-interaction-bg);
 }
 
 .lumina-moments-more-btn::before,
 .lumina-moments-more-btn::after {
     content: '';
-    width: 4px;
-    height: 4px;
-    background-color: #576B95;
+    width: 3px;
+    height: 3px;
+    background-color: var(--moments-close-color);
     border-radius: 50%;
 }
 
 .lumina-moments-more-btn::before {
     margin-right: 3px;
+}
+
+.lumina-moments-item-highlight {
+    animation: momentHighlight 2s ease;
+}
+
+@keyframes momentHighlight {
+    0% { box-shadow: 0 0 0 0 var(--moments-highlight); }
+    30% { box-shadow: 0 0 0 4px rgba(7, 193, 96, 0.2); }
+    100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 /* 互动弹出菜单 */
@@ -9659,7 +9860,7 @@
     right: 40px;
     top: 50%;
     transform: translateY(-50%);
-    background-color: #4C4C4C;
+    background-color: var(--moments-action-popup-bg);
     border-radius: 4px;
     display: none;
     align-items: center;
@@ -9675,13 +9876,13 @@
 .lumina-moments-action-popup-btn {
     padding: 8px 12px;
     font-size: 13px;
-    color: #fff;
+    color: var(--moments-action-popup-text);
     white-space: nowrap;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 4px;
-    border-right: 1px solid #3a3a3a;
+    border-right: 1px solid var(--moments-action-popup-border);
 }
 
 .lumina-moments-action-popup-btn:last-child {
@@ -9689,7 +9890,7 @@
 }
 
 .lumina-moments-action-popup-btn:active {
-    background-color: #3a3a3a;
+    background-color: var(--moments-action-popup-active-bg);
 }
 
 .lumina-moments-action-popup-btn .icon {
@@ -9698,7 +9899,7 @@
 
 /* 互动框 */
 .lumina-moments-interaction-box {
-    background-color: #F7F7F7;
+    background-color: var(--moments-interaction-bg);
     border-radius: 4px;
     margin-top: 8px;
     padding: 8px 12px;
@@ -9714,7 +9915,7 @@
     height: 0;
     border-left: 6px solid transparent;
     border-right: 6px solid transparent;
-    border-bottom: 6px solid #F7F7F7;
+    border-bottom: 6px solid var(--moments-interaction-bg);
 }
 
 .lumina-moments-likes-section {
@@ -9722,7 +9923,7 @@
     align-items: flex-start;
     gap: 6px;
     padding-bottom: 6px;
-    border-bottom: 0.5px solid #E5E5E5;
+    border-bottom: 0.5px solid var(--moments-border);
     margin-bottom: 6px;
 }
 
@@ -9742,12 +9943,12 @@
 .lumina-moments-heart-icon svg {
     width: 100%;
     height: 100%;
-    fill: #576B95;
+    fill: var(--moments-year-color);
 }
 
 .lumina-moments-likes-text {
     font-size: 13px;
-    color: #576B95;
+    color: var(--moments-year-color);
     line-height: 1.5;
     word-wrap: break-word;
 }
@@ -9765,15 +9966,15 @@
 }
 
 .lumina-moments-comment-author {
-    color: #576B95;
+    color: var(--moments-year-color);
 }
 
 .lumina-moments-comment-sep {
-    color: #333;
+    color: var(--moments-text);
 }
 
 .lumina-moments-comment-text {
-    color: #333;
+    color: var(--moments-text);
 }
 
 .lumina-moments-bottom-space {
@@ -9786,9 +9987,9 @@
     bottom: 0;
     left: 0;
     right: 0;
-    background-color: #F7F7F7;
+    background-color: var(--moments-comment-bar-bg);
     padding: 8px 12px;
-    border-top: 0.5px solid #E5E5E5;
+    border-top: 0.5px solid var(--moments-border);
     display: none;
     align-items: center;
     gap: 8px;
@@ -9804,7 +10005,7 @@
     height: 36px;
     border: none;
     border-radius: 4px;
-    background-color: #fff;
+    background-color: var(--moments-comment-input-bg);
     padding: 0 12px;
     font-size: 14px;
     outline: none;
@@ -9813,7 +10014,7 @@
 
 .lumina-moments-comment-send {
     font-size: 14px;
-    color: #07C160;
+    color: var(--moments-cell-level-4);
     font-weight: 500;
     padding: 6px 12px;
     cursor: pointer;
@@ -9821,7 +10022,172 @@
 }
 
 .lumina-moments-comment-send.disabled {
-    color: #B2B2B2;
+    color: var(--moments-publish-placeholder);
+}
+
+/* 日历弹窗 */
+.lumina-moments-calendar-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+}
+
+.lumina-moments-calendar-modal.active {
+    display: flex;
+}
+
+.lumina-moments-calendar-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--moments-modal-overlay);
+}
+
+.lumina-moments-calendar-content {
+    position: relative;
+    background-color: var(--moments-modal-bg);
+    border-radius: 12px;
+    width: 94%;
+    max-width: 1200px;
+    min-width: 680px;
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 101;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.lumina-moments-calendar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--moments-modal-header-border);
+    cursor: move;
+    user-select: none;
+}
+
+.lumina-moments-calendar-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lumina-moments-calendar-title span {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--moments-text);
+}
+
+.lumina-moments-calendar-year {
+    font-size: 13px;
+    color: var(--moments-year-color);
+    background: transparent;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-family: inherit;
+}
+
+.lumina-moments-calendar-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    color: var(--moments-close-color);
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.lumina-moments-calendar-close:hover {
+    background-color: var(--moments-close-hover-bg);
+    color: var(--moments-close-hover-color);
+}
+
+.lumina-moments-calendar-body {
+    padding: 16px;
+}
+
+.lumina-moments-calendar-grid {
+    width: 100%;
+}
+
+.lumina-moments-calendar-columns {
+    display: flex;
+    gap: 4px;
+}
+
+.lumina-moments-calendar-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.lumina-moments-calendar-cell {
+    width: 100%;
+    min-width: 12px;
+    aspect-ratio: 1;
+    border-radius: 3px;
+    background-color: var(--moments-cell-bg);
+    transition: all 0.15s;
+    cursor: pointer;
+}
+
+.lumina-moments-calendar-cell:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 1px var(--moments-cell-level-4);
+}
+
+.lumina-moments-calendar-cell.level-empty {
+    background-color: var(--moments-cell-bg);
+    opacity: 0.5;
+}
+
+.lumina-moments-calendar-cell.level-empty:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.lumina-moments-calendar-cell.level-1 {
+    background-color: var(--moments-cell-level-1);
+}
+
+.lumina-moments-calendar-cell.level-2 {
+    background-color: var(--moments-cell-level-2);
+}
+
+.lumina-moments-calendar-cell.level-3 {
+    background-color: var(--moments-cell-level-3);
+}
+
+.lumina-moments-calendar-cell.level-4 {
+    background-color: var(--moments-cell-level-4);
+}
+
+.lumina-moments-calendar-months {
+    position: relative;
+    margin-top: 8px;
+    height: 20px;
+}
+
+.lumina-moments-calendar-month-label {
+    position: absolute;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--moments-close-color);
+    white-space: nowrap;
 }
 
 /* 发表页面 */
@@ -9833,7 +10199,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #fff;
+    background-color: var(--moments-publish-bg);
     z-index: 8;
     overflow-y: auto;
 }
@@ -9850,13 +10216,13 @@
     left: 0;
     right: 0;
     height: 44px;
-    background-color: #fff;
+    background-color: var(--moments-publish-bg);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
     z-index: 2001;
-    border-bottom: 0.5px solid #E5E5E5;
+    border-bottom: 0.5px solid var(--moments-publish-nav-border);
 }
 
 .lumina-moments-publish-back,
@@ -9875,8 +10241,8 @@
     top: 50%;
     width: 10px;
     height: 10px;
-    border-left: 2px solid #000;
-    border-bottom: 2px solid #000;
+    border-left: 2px solid var(--moments-nav-icon-scrolled);
+    border-bottom: 2px solid var(--moments-nav-icon-scrolled);
     transform: translateY(-50%) rotate(45deg);
 }
 
@@ -9884,7 +10250,7 @@
 .lumina-moments-edit-title {
     font-size: 17px;
     font-weight: 600;
-    color: #000;
+    color: var(--moments-name-color);
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
@@ -9893,8 +10259,8 @@
 .lumina-moments-publish-submit,
 .lumina-moments-edit-save {
     font-size: 15px;
-    color: #fff;
-    background-color: #07C160;
+    color: var(--moments-nav-icon);
+    background-color: var(--moments-cell-level-4);
     padding: 6px 16px;
     border-radius: 4px;
     border: none;
@@ -9904,7 +10270,7 @@
 
 .lumina-moments-publish-submit:disabled,
 .lumina-moments-edit-save:disabled {
-    background-color: #B2B2B2;
+    background-color: var(--moments-publish-placeholder);
     cursor: not-allowed;
 }
 
@@ -9921,7 +10287,7 @@
     outline: none;
     font-size: 16px;
     line-height: 1.6;
-    color: #333;
+    color: var(--moments-publish-text);
     resize: none;
     font-family: inherit;
     background: transparent;
@@ -9929,7 +10295,7 @@
 
 .lumina-moments-publish-textarea::placeholder,
 .lumina-moments-edit-textarea::placeholder {
-    color: #B2B2B2;
+    color: var(--moments-publish-placeholder);
 }
 
 .lumina-moments-publish-images,
@@ -9996,7 +10362,7 @@
 .lumina-moments-edit-add {
     width: 80px;
     height: 80px;
-    border: 1px dashed #D9D9D9;
+    border: 1px dashed var(--moments-publish-add-border);
     border-radius: 4px;
     display: flex;
     align-items: center;
@@ -10013,7 +10379,7 @@
 .lumina-moments-edit-add::after {
     content: '';
     position: absolute;
-    background-color: #D9D9D9;
+    background-color: var(--moments-publish-add-border);
 }
 
 .lumina-moments-publish-add::before,
@@ -10033,7 +10399,7 @@
 .lumina-moments-edit-section {
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 0.5px solid #E5E5E5;
+    border-top: 0.5px solid var(--moments-publish-nav-border);
 }
 
 .lumina-moments-publish-toggle,
@@ -10042,7 +10408,7 @@
     align-items: center;
     gap: 8px;
     font-size: 14px;
-    color: #576B95;
+    color: var(--moments-year-color);
     cursor: pointer;
     padding: 8px 0;
 }
@@ -10052,7 +10418,7 @@
     display: none;
     margin-top: 8px;
     padding: 12px;
-    background-color: #F7F7F7;
+    background-color: var(--moments-link-card-bg);
     border-radius: 8px;
 }
 
@@ -10065,13 +10431,13 @@
 .lumina-moments-edit-link-icon {
     width: 20px;
     height: 20px;
-    border: 1.5px solid #576B95;
+    border: 1.5px solid var(--moments-year-color);
     border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 12px;
-    color: #576B95;
+    color: var(--moments-year-color);
     font-weight: bold;
 }
 
@@ -10080,7 +10446,7 @@
     display: none;
     margin-top: 8px;
     padding: 12px;
-    background-color: #F7F7F7;
+    background-color: var(--moments-link-card-bg);
     border-radius: 8px;
 }
 
@@ -10094,10 +10460,10 @@
     width: 100%;
     height: 36px;
     border: none;
-    border-bottom: 0.5px solid #E5E5E5;
+    border-bottom: 0.5px solid var(--moments-publish-nav-border);
     background: transparent;
     font-size: 14px;
-    color: #333;
+    color: var(--moments-publish-text);
     outline: none;
     margin-bottom: 8px;
     font-family: inherit;
@@ -10105,7 +10471,7 @@
 
 .lumina-moments-publish-link-input::placeholder,
 .lumina-moments-edit-link-input::placeholder {
-    color: #B2B2B2;
+    color: var(--moments-publish-placeholder);
 }
 
 /* 图片预览 */
