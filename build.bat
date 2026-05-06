@@ -41,9 +41,10 @@ if exist "%TEMP_DIR%\build.bat" del /q "%TEMP_DIR%\build.bat" >nul 2>&1
 if exist "%TEMP_DIR%\.hotreload" del /q "%TEMP_DIR%\.hotreload" >nul 2>&1
 if exist "%TEMP_DIR%\update.sh" del /q "%TEMP_DIR%\update.sh" >nul 2>&1
 
-REM ✅ 按用户要求排除：i18n 文件夹 和 README_zh_CN.md
+REM ✅ 按用户要求排除：i18n 文件夹、README_zh_CN.md 和 icons 文件夹
 if exist "%TEMP_DIR%\i18n" rd /s /q "%TEMP_DIR%\i18n" >nul 2>&1
 if exist "%TEMP_DIR%\README_zh_CN.md" del /q "%TEMP_DIR%\README_zh_CN.md" >nul 2>&1
+if exist "%TEMP_DIR%\icons" rd /s /q "%TEMP_DIR%\icons" >nul 2>&1
 
 REM 删除 LICENSE（保留历史排除逻辑）
 if exist "%TEMP_DIR%\LICENSE" del /q "%TEMP_DIR%\LICENSE" >nul 2>&1

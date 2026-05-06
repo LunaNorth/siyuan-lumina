@@ -112,7 +112,9 @@ const ICONS = {
     at: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10h5v-2h-5c-4.34 0-8-3.66-8-8s3.66-8 8-8 8 3.66 8 8v1.43c0 .79-.71 1.57-1.5 1.57s-1.5-.78-1.5-1.57V12c0-2.76-2.24-5-5-5s-5 2.24-5 5 2.24 5 5 5c1.38 0 2.64-.56 3.54-1.47.65.89 1.77 1.47 2.96 1.47 1.97 0 3.5-1.6 3.5-3.57V12c0-5.52-4.48-10-10-10zm0 13c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/></svg>`,
     refresh: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>`,
     moreH: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`,
-    comment: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"/></svg>`,
+    pin: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1.5c.83 0 1.5-.67 1.5-1.5S18.33 1 17.5 1h-11C5.67 1 5 1.67 5 2.5S5.67 4 6.5 4H8v8c0 2.21-1.79 4-4 4v2h6v6h2v-6h6v-2c-2.21 0-4-1.79-4-4z"/></svg>`,
+    pinOutline: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 12V4h1.5c.83 0 1.5-.67 1.5-1.5S18.33 1 17.5 1h-11C5.67 1 5 1.67 5 2.5S5.67 4 6.5 4H8v8c0 2.21-1.79 4-4 4v2h6v6h2v-6h6v-2c-2.21 0-4-1.79-4-4z"/></svg>`,
+    comment: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>`,
     link: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>`,
     clock: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`
 };
@@ -1867,6 +1869,10 @@ ipcRenderer.on('lumina-close', () => {
                                 <span class="north-shuoshuo-menu-icon">${ICONS.grid}</span>
                                 <span class="north-shuoshuo-menu-text">全部笔记</span>
                             </div>
+                            <div class="north-shuoshuo-menu-item" data-view="week">
+                                <span class="north-shuoshuo-menu-icon"><svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></span>
+                                <span class="north-shuoshuo-menu-text">本周记录</span>
+                            </div>
                             <div class="north-shuoshuo-menu-item" data-view="review">
                                 <span class="north-shuoshuo-menu-icon">${ICONS.star}</span>
                                 <span class="north-shuoshuo-menu-text">每日回顾</span>
@@ -1968,6 +1974,12 @@ ipcRenderer.on('lumina-close', () => {
                             </svg>
                             <span>朋友圈设置</span>
                         </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="theme">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                            </svg>
+                            <span>主题设置</span>
+                        </div>
                     </div>
 
                     <!-- 右侧：具体设置内容 -->
@@ -2023,70 +2035,6 @@ ipcRenderer.on('lumina-close', () => {
                                             <input type="radio" name="view-style" value="card" ${this.viewStyle === 'card' ? 'checked' : ''}>
                                             <span class="north-shuoshuo-radio-check"></span>
                                         </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- 主题模式设置 -->
-                            <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header">
-                                    <div>
-                                        <div class="north-shuoshuo-section-title">主题模式</div>
-                                        <div class="north-shuoshuo-section-desc">选择使用哪种主题样式</div>
-                                    </div>
-                                </div>
-                                
-                                <div class="north-shuoshuo-form-row">
-                                    <div class="north-shuoshuo-radio-group" id="theme-mode-grid">
-                                        <label class="north-shuoshuo-radio-item ${this.themeMode === 'original' ? 'selected' : ''}" data-mode="original">
-                                            <div class="north-shuoshuo-radio-preview original-theme-preview"></div>
-                                            <div class="north-shuoshuo-radio-info">
-                                                <div class="north-shuoshuo-radio-name">原主题</div>
-                                                <div class="north-shuoshuo-radio-desc">经典绿色配色，怀旧专属</div>
-                                            </div>
-                                            <input type="radio" name="theme-mode" value="original" ${this.themeMode === 'original' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                        </label>
-                                        <label class="north-shuoshuo-radio-item ${this.themeMode === 'siyuan' ? 'selected' : ''}" data-mode="siyuan">
-                                            <div class="north-shuoshuo-radio-preview siyuan-theme-preview"></div>
-                                            <div class="north-shuoshuo-radio-info">
-                                                <div class="north-shuoshuo-radio-name">适配主题</div>
-                                                <div class="north-shuoshuo-radio-desc">自动适配思源主题颜色</div>
-                                            </div>
-                                            <input type="radio" name="theme-mode" value="siyuan" ${this.themeMode === 'siyuan' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                        </label>
-                                        <label class="north-shuoshuo-radio-item ${this.themeMode === 'morandi' ? 'selected' : ''}" data-mode="morandi">
-                                            <div class="north-shuoshuo-radio-preview morandi-theme-preview"></div>
-                                            <div class="north-shuoshuo-radio-info">
-                                                <div class="north-shuoshuo-radio-name">莫兰迪主题</div>
-                                                <div class="north-shuoshuo-radio-desc">低饱和度柔和配色，优雅舒适</div>
-                                            </div>
-                                            <input type="radio" name="theme-mode" value="morandi" ${this.themeMode === 'morandi' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                        </label>
-                                    </div>
-                                    <div class="north-shuoshuo-form-hint" id="theme-mode-hint-original" style="display: ${this.themeMode === 'original' ? 'flex' : 'none'};">
-                                        <span>💡</span> 经典绿色主题，熟悉的配方
-                                    </div>
-                                    <div class="north-shuoshuo-form-hint" id="theme-mode-hint-siyuan" style="display: ${this.themeMode === 'siyuan' ? 'flex' : 'none'};">
-                                        <span>💡</span> 选择「适配主题」后，插件将自动跟随思源笔记的亮/暗主题
-                                    </div>
-                                    <div class="north-shuoshuo-form-hint" id="theme-mode-hint-morandi" style="display: ${this.themeMode === 'morandi' ? 'flex' : 'none'};">
-                                        <span>💡</span> 莫兰迪色系，温和不刺眼
-                                    </div>
-                                </div>
-
-                                <!-- 莫兰迪配色选择 -->
-                                <div class="north-shuoshuo-form-row" id="morandi-color-row" style="display: ${this.themeMode === 'morandi' ? 'block' : 'none'};">
-                                    <label class="north-shuoshuo-form-label">选择配色</label>
-                                    <div class="north-shuoshuo-morandi-grid">
-                                        ${MORANDI_COLORS.map(c => `
-                                            <div class="north-shuoshuo-morandi-option ${this.morandiColor === c.key ? 'selected' : ''}" data-color="${c.key}" title="${c.name}">
-                                                <div class="north-shuoshuo-morandi-color" style="background-color: ${c.color};"></div>
-                                                <div class="north-shuoshuo-morandi-name">${c.name}</div>
-                                            </div>
-                                        `).join('')}
                                     </div>
                                 </div>
                             </div>
@@ -2723,6 +2671,72 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                         </div>
 
+                        <!-- 主题设置 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-theme" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">主题模式</div>
+                                        <div class="north-shuoshuo-section-desc">选择使用哪种主题样式</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="north-shuoshuo-form-row">
+                                    <div class="north-shuoshuo-radio-group" id="theme-mode-grid">
+                                        <label class="north-shuoshuo-radio-item ${this.themeMode === 'original' ? 'selected' : ''}" data-mode="original">
+                                            <div class="north-shuoshuo-radio-preview original-theme-preview"></div>
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">原主题</div>
+                                                <div class="north-shuoshuo-radio-desc">经典绿色配色，怀旧专属</div>
+                                            </div>
+                                            <input type="radio" name="theme-mode" value="original" ${this.themeMode === 'original' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item ${this.themeMode === 'siyuan' ? 'selected' : ''}" data-mode="siyuan">
+                                            <div class="north-shuoshuo-radio-preview siyuan-theme-preview"></div>
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">适配主题</div>
+                                                <div class="north-shuoshuo-radio-desc">自动适配思源主题颜色</div>
+                                            </div>
+                                            <input type="radio" name="theme-mode" value="siyuan" ${this.themeMode === 'siyuan' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item ${this.themeMode === 'morandi' ? 'selected' : ''}" data-mode="morandi">
+                                            <div class="north-shuoshuo-radio-preview morandi-theme-preview"></div>
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">莫兰迪主题</div>
+                                                <div class="north-shuoshuo-radio-desc">低饱和度柔和配色，优雅舒适</div>
+                                            </div>
+                                            <input type="radio" name="theme-mode" value="morandi" ${this.themeMode === 'morandi' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint" id="theme-mode-hint-original" style="display: ${this.themeMode === 'original' ? 'flex' : 'none'};">
+                                        <span>💡</span> 经典绿色主题，熟悉的配方
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint" id="theme-mode-hint-siyuan" style="display: ${this.themeMode === 'siyuan' ? 'flex' : 'none'};">
+                                        <span>💡</span> 选择「适配主题」后，插件将自动跟随思源笔记的亮/暗主题
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint" id="theme-mode-hint-morandi" style="display: ${this.themeMode === 'morandi' ? 'flex' : 'none'};">
+                                        <span>💡</span> 莫兰迪色系，温和不刺眼
+                                    </div>
+                                </div>
+
+                                <!-- 莫兰迪配色选择 -->
+                                <div class="north-shuoshuo-form-row" id="morandi-color-row" style="display: ${this.themeMode === 'morandi' ? 'block' : 'none'};">
+                                    <label class="north-shuoshuo-form-label">选择配色</label>
+                                    <div class="north-shuoshuo-morandi-grid">
+                                        ${MORANDI_COLORS.map(c => `
+                                            <div class="north-shuoshuo-morandi-option ${this.morandiColor === c.key ? 'selected' : ''}" data-color="${c.key}" title="${c.name}">
+                                                <div class="north-shuoshuo-morandi-color" style="background-color: ${c.color};"></div>
+                                                <div class="north-shuoshuo-morandi-name">${c.name}</div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 底部操作 -->
                         <div class="north-shuoshuo-actions">
                             <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="settings-cancel">取消</button>
@@ -2841,6 +2855,20 @@ ipcRenderer.on('lumina-close', () => {
         // 根据选中日期、标签或搜索关键词筛选
         let filtered = this.shuoshuos;
 
+        // 本周筛选（本周记录视图）
+        if (this.currentMainView === 'week') {
+            const now = new Date();
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - now.getDay() + 1); // 周一
+            weekStart.setHours(0, 0, 0, 0);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 7); // 下周一 00:00
+            filtered = filtered.filter(s => {
+                const noteDate = new Date(s.created);
+                return noteDate >= weekStart && noteDate < weekEnd;
+            });
+        }
+
         // 日期筛选
         if (this.selectedDate) {
             filtered = filtered.filter(s => {
@@ -2877,7 +2905,14 @@ ipcRenderer.on('lumina-close', () => {
         });
 
         if (sorted.length === 0) {
-            const emptyMsg = searchText ? '没有找到匹配的说说' : '还没有笔记，在上方输入框写下第一条想法吧~';
+            let emptyMsg;
+            if (searchText) {
+                emptyMsg = '没有找到匹配的说说';
+            } else if (this.currentMainView === 'week') {
+                emptyMsg = '本周还没有记录，快去写下第一条想法吧~';
+            } else {
+                emptyMsg = '还没有笔记，在上方输入框写下第一条想法吧~';
+            }
             listEl.innerHTML = `
                 <div class="north-shuoshuo-note-card" style="text-align: center; color: #999; padding: 40px;">
                     ${emptyMsg}
@@ -2965,7 +3000,7 @@ ipcRenderer.on('lumina-close', () => {
     // 渲染单个笔记卡片
     renderNoteCard(item) {
         const dateStr = this.formatDate(item.created);
-        const pinnedIcon = item.pinned ? `<span class="north-shuoshuo-note-pinned">${ICONS.star}</span>` : '';
+        const pinnedIcon = item.pinned ? `<span class="north-shuoshuo-note-pinned">${ICONS.pin}</span>` : '';
         const memoRelations = this.renderMemoRelations(item.content);
         return `
             <div class="north-shuoshuo-note-card ${item.pinned ? 'pinned' : ''}" data-id="${item.id}">
@@ -4128,15 +4163,6 @@ ipcRenderer.on('lumina-close', () => {
                     <!-- 贡献图 -->
                     <div class="north-shuoshuo-contribution-section">
                         <div class="north-shuoshuo-contribution-body">
-                            <div class="north-shuoshuo-contribution-weekdays">
-                                <span></span>
-                                <span>一</span>
-                                <span></span>
-                                <span>三</span>
-                                <span></span>
-                                <span>五</span>
-                                <span></span>
-                            </div>
                             <div class="north-shuoshuo-contribution-main">
                                 <div class="north-shuoshuo-contribution-columns">
                                     ${heatmap.columns}
@@ -4148,9 +4174,19 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
                     </div>
 
-                    <!-- 字数分布直接展示 -->
+                    <!-- 月度分布 -->
+                    <div class="north-shuoshuo-monthly-distribution-section">
+                        ${this.generateMonthlyDistributionContent(year)}
+                    </div>
+
+                    <!-- 最常用标签 Top 10 -->
                     <div class="north-shuoshuo-word-distribution-section">
-                        ${this.generateWordDistributionContent()}
+                        ${this.generateTopTagsContent()}
+                    </div>
+
+                    <!-- 标签云 -->
+                    <div class="north-shuoshuo-tag-cloud-section">
+                        ${this.generateTagCloudContent()}
                     </div>
                 </div>
             </div>
@@ -5425,39 +5461,154 @@ ipcRenderer.on('lumina-close', () => {
         return html;
     }
 
-    // 生成字数分布内容
-    generateWordDistributionContent() {
-        const distribution = { '0-50': 0, '51-100': 0, '101-200': 0, '201-500': 0, '500+': 0 };
+    // 生成月度分布内容
+    generateMonthlyDistributionContent(year) {
+        const monthlyCounts = new Array(12).fill(0);
         this.shuoshuos.forEach(note => {
-            const len = note.content ? note.content.length : 0;
-            if (len <= 50) distribution['0-50']++;
-            else if (len <= 100) distribution['51-100']++;
-            else if (len <= 200) distribution['101-200']++;
-            else if (len <= 500) distribution['201-500']++;
-            else distribution['500+']++;
+            const date = new Date(note.created);
+            if (date.getFullYear() === year) {
+                monthlyCounts[date.getMonth()]++;
+            }
         });
-        
-        const maxCount = Math.max(...Object.values(distribution));
-        
-        let html = `
-            <div class="north-shuoshuo-distribution-section">
-                <div class="north-shuoshuo-distribution-header">字数分布</div>
-                <div class="north-shuoshuo-word-distribution">
-        `;
-        Object.entries(distribution).forEach(([range, count]) => {
+
+        const totalYear = monthlyCounts.reduce((a, b) => a + b, 0);
+        const maxCount = Math.max(...monthlyCounts);
+        const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+        let barsHtml = '';
+        monthlyCounts.forEach((count, index) => {
             const percentage = maxCount > 0 ? (count / maxCount * 100) : 0;
-            html += `
-                <div class="north-shuoshuo-word-bar">
-                    <span class="north-shuoshuo-word-label">${range} 字</span>
-                    <div class="north-shuoshuo-word-bar-bg">
-                        <div class="north-shuoshuo-word-bar-fill" style="width: ${percentage}%"></div>
+            const monthNum = (index + 1).toString().padStart(2, '0');
+            const tooltip = `${year}-${monthNum}: ${count}条`;
+            barsHtml += `
+                <div class="north-shuoshuo-monthly-bar" data-tooltip="${tooltip}">
+                    <div class="north-shuoshuo-monthly-bar-bg">
+                        <div class="north-shuoshuo-monthly-bar-fill" style="height: ${percentage}%"></div>
                     </div>
-                    <span class="north-shuoshuo-word-count">${count} 条</span>
+                    <span class="north-shuoshuo-monthly-bar-count">${count > 0 ? count : '0'}</span>
+                    <span class="north-shuoshuo-monthly-bar-label">${months[index]}</span>
                 </div>
             `;
         });
+
+        return `
+            <div class="north-shuoshuo-distribution-section">
+                <div class="north-shuoshuo-distribution-header">
+                    <span>月度分布</span>
+                    <span class="north-shuoshuo-distribution-subtitle">${year} 年共 ${totalYear} 条</span>
+                </div>
+                <div class="north-shuoshuo-monthly-distribution">
+                    ${barsHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    // 获取标签图标 HTML
+    getTagIconHtml(tagName) {
+        const iconConfig = this.tagIcons[tagName] || '';
+        if (iconConfig && iconConfig.startsWith('icon:')) {
+            const parts = iconConfig.substring(5).split(':');
+            const type = parts[0];
+            if (type === 'dynamic') {
+                const dynamicType = parts[1] || '1';
+                return `<img class="north-shuoshuo-tag-dynamic-icon" src="/api/icon/getDynamicIcon?type=${dynamicType}&color=%232ecc71" alt="icon">`;
+            } else if (type === 'customEmoji') {
+                const emojiPath = decodeURIComponent(parts[1] || '');
+                return `<img class="north-shuoshuo-tag-dynamic-icon" src="/emojis/${emojiPath}" alt="emoji">`;
+            } else {
+                let content = decodeURIComponent(parts[0] || '');
+                const color = parts[1] || '#2ecc71';
+                content = this.convertHexToEmoji(content);
+                const isEmoji = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(content);
+                if (isEmoji) {
+                    return `<span class="north-shuoshuo-tag-emoji">${content}</span>`;
+                } else {
+                    return `<img class="north-shuoshuo-tag-dynamic-icon" src="/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(color)}&content=${encodeURIComponent(content)}" alt="${content}">`;
+                }
+            }
+        }
+        return `<span class="north-shuoshuo-tag-icon-default">#</span>`;
+    }
+
+    // 生成最常用标签 Top 10
+    generateTopTagsContent() {
+        const tagCounts = {};
+        this.shuoshuos.forEach(note => {
+            if (note.tags && note.tags.length > 0) {
+                note.tags.forEach(tag => {
+                    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                });
+            }
+        });
+
+        const sortedTags = Object.entries(tagCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10);
+
+        const maxCount = sortedTags.length > 0 ? sortedTags[0][1] : 0;
+
+        let html = `
+            <div class="north-shuoshuo-distribution-section">
+                <div class="north-shuoshuo-distribution-header">最常用标签 Top 10</div>
+                <div class="north-shuoshuo-word-distribution">
+        `;
+        if (sortedTags.length === 0) {
+            html += `<div style="text-align:center;color:var(--b3-theme-on-surface-light);padding:20px 0;">暂无标签数据</div>`;
+        } else {
+            sortedTags.forEach(([tag, count]) => {
+                const percentage = maxCount > 0 ? (count / maxCount * 100) : 0;
+                const iconHtml = this.getTagIconHtml(tag);
+                html += `
+                    <div class="north-shuoshuo-word-bar">
+                        <span class="north-shuoshuo-word-label">${iconHtml} ${tag}</span>
+                        <div class="north-shuoshuo-word-bar-bg">
+                            <div class="north-shuoshuo-word-bar-fill" style="width: ${percentage}%"></div>
+                        </div>
+                        <span class="north-shuoshuo-word-count">${count} 条</span>
+                    </div>
+                `;
+            });
+        }
         html += '</div></div>';
         return html;
+    }
+
+    // 生成标签云
+    generateTagCloudContent() {
+        const tagCounts = {};
+        this.shuoshuos.forEach(note => {
+            if (note.tags && note.tags.length > 0) {
+                note.tags.forEach(tag => {
+                    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                });
+            }
+        });
+
+        const sortedTags = Object.entries(tagCounts)
+            .sort((a, b) => b[1] - a[1]);
+
+        if (sortedTags.length === 0) {
+            return `<div class="north-shuoshuo-distribution-section">
+                <div class="north-shuoshuo-distribution-header">标签云</div>
+                <div style="text-align:center;color:var(--b3-theme-on-surface-light);padding:20px 0;">暂无标签数据</div>
+            </div>`;
+        }
+
+        const tagsHtml = sortedTags.map(([tag, count]) => {
+            const iconHtml = this.getTagIconHtml(tag);
+            const style = this.getTagColorStyle(tag);
+            return `<span class="north-shuoshuo-tag-cloud-item" style="${style}">${iconHtml} ${tag}<sup class="north-shuoshuo-tag-cloud-count">${count}</sup></span>`;
+        }).join('');
+
+        return `
+            <div class="north-shuoshuo-distribution-section">
+                <div class="north-shuoshuo-distribution-header">标签云</div>
+                <div class="north-shuoshuo-tag-cloud">
+                    ${tagsHtml}
+                </div>
+            </div>
+        `;
     }
 
     // 生成时间分布内容
@@ -6069,7 +6220,7 @@ ipcRenderer.on('lumina-close', () => {
                 refreshBtn.style.pointerEvents = 'none';
                 showMessage('正在同步思源块数据...');
                 await this.refreshBoundBlocks();
-                if (this.currentMainView === 'notes') {
+                if (this.currentMainView === 'notes' || this.currentMainView === 'week') {
                     this.renderNotes();
                     this.renderTags();
                 }
@@ -7014,9 +7165,9 @@ ipcRenderer.on('lumina-close', () => {
             let diaryContent;
 
             if (hasHighlight) {
-                // 有 #类型# 高亮标签，使用原格式
+                // 有 #类型# 高亮标签，思源笔记格式：时间 类型：内容
                 const highlightStr = highlights.join(' ');
-                // 第一行：时间 + 高亮标签 + 冒号 + 第一行内容
+                // 第一行：时间 + 类型 + 冒号 + 内容
                 diaryContent = `${timeStr} ${highlightStr}：${lines[0]}`;
 
                 // 如果有更多行，添加换行和后续内容
@@ -7839,7 +7990,7 @@ ipcRenderer.on('lumina-close', () => {
         menu.className = 'north-shuoshuo-note-menu-dropdown';
         menu.innerHTML = `
             <div class="north-shuoshuo-menu-item" data-action="pin">
-                <span class="north-shuoshuo-menu-icon">${item.pinned ? ICONS.star : ICONS.starOutline}</span>
+                <span class="north-shuoshuo-menu-icon">${item.pinned ? ICONS.pin : ICONS.pinOutline}</span>
                 <span class="north-shuoshuo-menu-text">${item.pinned ? '取消置顶' : '置顶'}</span>
             </div>
             <div class="north-shuoshuo-menu-item" data-action="edit">
@@ -8399,6 +8550,20 @@ ipcRenderer.on('lumina-close', () => {
                     let luminaContent = attrContent || (row.content || '').trim();
                     if (!luminaContent) continue;
 
+                    // 清理 luminaContent：移除可能的时间前缀和类型前缀
+                    // 处理格式："08:51 学习： 内容" 或 "08:51 #标签 内容" → 提取纯内容
+                    // 先尝试匹配 "时间 #标签 内容" 格式
+                    const tagMatch = luminaContent.match(/^\d{2}:\d{2}\s+#[\w\/\u4e00-\u9fa5-]+\s*/);
+                    if (tagMatch) {
+                        luminaContent = luminaContent.substring(tagMatch[0].length).trim();
+                    } else {
+                        // 尝试匹配 "时间 类型：内容" 格式
+                        const typeMatch = luminaContent.match(/^\d{2}:\d{2}\s+([^：:]+)[：:]\s*/);
+                        if (typeMatch) {
+                            luminaContent = luminaContent.substring(typeMatch[0].length).trim();
+                        }
+                    }
+
                     // 如果块的真实内容（b.content）为空，说明用户在思源中删光了文字
                     // 此时应跳过此块，并清除属性值以便下次 SQL 查询也跳过
                     const rowContent = (row.content || '').trim();
@@ -8452,15 +8617,15 @@ ipcRenderer.on('lumina-close', () => {
                         }
                     }
 
-                    // 构建说说视图格式：#类型#（如果有）+ 纯内容 + #标签（如果有）
+                    // 构建说说视图格式：纯内容 + #类型#（如果有）+ #标签（如果有）
                     let displayContent = luminaContent;
                     
-                    // 先添加类型（#类型# 格式）
+                    // 添加类型（#类型# 格式，放在内容后面）
                     if (types.length > 0) {
-                        displayContent = types.map(t => `#${t}#`).join(' ') + ' ' + displayContent;
+                        displayContent = displayContent + ' ' + types.map(t => `#${t}#`).join(' ');
                     }
                     
-                    // 再添加标签（#标签 格式）
+                    // 添加标签（#标签 格式，放在最后）
                     if (tags.length > 0) {
                         displayContent = displayContent + ' ' + tags.map(t => `#${t}`).join(' ');
                     }
@@ -8817,7 +8982,7 @@ ipcRenderer.on('lumina-close', () => {
             if (changed) {
                 await this.saveShuoshuos();
                 // 重新渲染当前视图（但避免递归调用）
-                if (this.currentMainView === 'notes') {
+                if (this.currentMainView === 'notes' || this.currentMainView === 'week') {
                     this.renderNotes();
                     this.renderTags();
                 }
@@ -9202,14 +9367,14 @@ ipcRenderer.on('lumina-close', () => {
                         }
                     }
                     
-                    // 构建新内容：类型（如果有）+ 纯内容 + 标签（如果有）
+                    // 构建新内容：纯内容 + 类型（如果有）+ 标签（如果有）
                     let newContent = pureContent;
                     
-                    // 如果检测到了类型，使用 #类型# 格式；否则使用原来的类型
+                    // 如果检测到了类型，使用 #类型# 格式放在内容后面；否则使用原来的类型
                     if (detectedType) {
-                        newContent = `#${detectedType}# ${pureContent}`;
+                        newContent = `${pureContent} #${detectedType}#`;
                     } else if (oldType) {
-                        newContent = `#${oldType}# ${pureContent}`;
+                        newContent = `${pureContent} #${oldType}#`;
                     }
                     
                     // 添加标签
@@ -9380,7 +9545,7 @@ ipcRenderer.on('lumina-close', () => {
             await this.saveShuoshuos();
 
             // 如果当前正在显示说说视图，重新渲染
-            if (this.currentMainView === 'notes' && this.container) {
+            if ((this.currentMainView === 'notes' || this.currentMainView === 'week') && this.container) {
                 this.renderNotes();
                 this.renderTags();
             }
@@ -9400,7 +9565,7 @@ ipcRenderer.on('lumina-close', () => {
         this.container.querySelectorAll('.north-shuoshuo-sidebar .north-shuoshuo-nav-item').forEach(item => {
             item.classList.remove('active');
         });
-        const sidebarView = (view === 'review' || view === 'random') ? 'notes' : view;
+        const sidebarView = (view === 'review' || view === 'random' || view === 'week') ? 'notes' : view;
         const targetNav = navItem || this.container.querySelector(`.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="${sidebarView}"]`);
         if (targetNav) {
             targetNav.classList.add('active');
@@ -9419,7 +9584,7 @@ ipcRenderer.on('lumina-close', () => {
 
         // 重要：切换到说说相关视图时，先从思源SQL加载最新绑定块数据
         // 确保思源中修改的内容能在说说视图中立即反映
-        const needsRefresh = ['notes', 'table', 'stats', 'review', 'random'];
+        const needsRefresh = ['notes', 'week', 'table', 'stats', 'review', 'random'];
         if (view === 'moments') {
             // 朋友圈视图独立渲染，不等待 loadShuoshuos，切换更丝滑
             if (flomoArea) flomoArea.style.display = 'flex';
@@ -9437,7 +9602,7 @@ ipcRenderer.on('lumina-close', () => {
             if (settingsArea) settingsArea.style.display = 'none';
             // 显示输入区域（仅 notes 视图）
             const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
-            if (inputArea) inputArea.style.display = view === 'notes' ? 'block' : 'none';
+            if (inputArea) inputArea.style.display = (view === 'notes' || view === 'week') ? 'block' : 'none';
             const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
             if (sidebar) sidebar.style.display = view === 'stats' || view === 'table' ? 'none' : '';
             // 恢复 notes-list 的 padding（朋友圈会清除它）
@@ -9447,7 +9612,8 @@ ipcRenderer.on('lumina-close', () => {
             this.loadShuoshuos().then(() => {
                 if (this.currentMainView === view) {
                     switch (view) {
-                        case 'notes': this.renderNotes(); break;
+                        case 'notes':
+                        case 'week': this.renderNotes(); break;
                         case 'review': this.renderReview(); break;
                         case 'random': this.renderRandom(); break;
                         case 'table': this.renderTable(); break;
@@ -10940,7 +11106,8 @@ ipcRenderer.on('lumina-close', () => {
     async loadConfig() {
         try {
             let data = await this.loadData(CONFIG_STORAGE_NAME);
-            if (!data) {
+            // 如果 data 为空或没有实质内容，尝试从旧配置迁移
+            if (!data || Object.keys(data).length === 0) {
                 data = await this.migrateOldConfig();
             }
             this.assistantAvatarUrl = data.assistantAvatarUrl ?? null;
@@ -10954,7 +11121,20 @@ ipcRenderer.on('lumina-close', () => {
             this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
             this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.memosConfig || data.memos || {}) };
             this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...(data.reviewConfig || data.review || {}) };
-            this.tagIcons = data.tagIcons || {};
+            // 优先保留已有的 tagIcons（防止意外覆盖），只有在 data.tagIcons 有值时才更新
+            if (data.tagIcons && Object.keys(data.tagIcons).length > 0) {
+                this.tagIcons = data.tagIcons;
+            } else {
+                // 如果主配置中没有 tagIcons，尝试从备份恢复
+                try {
+                    const backup = await this.loadData('shuoshuo-tag-icons-backup');
+                    if (backup && Object.keys(backup).length > 0) {
+                        this.tagIcons = backup;
+                    }
+                } catch (e) {
+                    // 忽略备份读取失败
+                }
+            }
             this.pinnedTags = Array.isArray(data.pinnedTags) ? data.pinnedTags : [];
             this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
             this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
@@ -11000,7 +11180,19 @@ ipcRenderer.on('lumina-close', () => {
 
     async saveConfig() {
         try {
-            await this.saveData(CONFIG_STORAGE_NAME, {
+            // 如果 tagIcons 为空但之前有值，尝试从备份恢复
+            if (!this.tagIcons || Object.keys(this.tagIcons).length === 0) {
+                try {
+                    const backup = await this.loadData('shuoshuo-tag-icons-backup');
+                    if (backup && Object.keys(backup).length > 0) {
+                        this.tagIcons = backup;
+                    }
+                } catch (e) {
+                    // 忽略备份读取失败
+                }
+            }
+
+            const config = {
                 assistantAvatarUrl: this.assistantAvatarUrl,
                 userAvatarUrl: this.userAvatarUrl,
                 notebookId: this.notebookId,
@@ -11017,7 +11209,14 @@ ipcRenderer.on('lumina-close', () => {
                 themeMode: this.themeMode,
                 morandiColor: this.morandiColor,
                 fontSizeConfig: this.fontSizeConfig
-            });
+            };
+
+            await this.saveData(CONFIG_STORAGE_NAME, config);
+
+            // 同时备份 tagIcons，防止丢失
+            if (this.tagIcons && Object.keys(this.tagIcons).length > 0) {
+                await this.saveData('shuoshuo-tag-icons-backup', this.tagIcons);
+            }
         } catch (e) {
             console.warn("保存配置失败", e);
         }

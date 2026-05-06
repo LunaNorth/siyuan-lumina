@@ -1458,11 +1458,11 @@
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-item {
     display: flex;
     align-items: center;
-    padding: 10px 16px;
+    padding: 6px 14px;
     cursor: pointer;
     transition: background-color 0.2s;
     color: var(--b3-theme-on-background);
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-item:hover {
@@ -3861,7 +3861,7 @@
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 20px;
-    margin-bottom: 28px;
+    margin-bottom: 16px;
 }
 
 .north-shuoshuo-stat-card {
@@ -3985,7 +3985,7 @@
     background: var(--b3-theme-surface);
     border-radius: 12px;
     padding: 24px;
-    margin-bottom: 28px;
+    margin-bottom: 16px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
@@ -4318,6 +4318,67 @@
     border-radius: 12px;
     padding: 24px;
     box-shadow: var(--b3-point-shadow);
+    margin-bottom: 16px;
+}
+
+/* 标签云区域 */
+.north-shuoshuo-tag-cloud-section {
+    background: var(--b3-theme-surface);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--b3-point-shadow);
+}
+
+.north-shuoshuo-tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    padding: 4px 0;
+}
+
+.north-shuoshuo-tag-cloud-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 14px;
+    cursor: default;
+    transition: all 0.2s ease;
+    line-height: 1.4;
+}
+
+.north-shuoshuo-tag-cloud-item:hover {
+    opacity: 0.85;
+    transform: translateY(-1px);
+}
+
+.north-shuoshuo-tag-cloud-item .north-shuoshuo-tag-emoji,
+.north-shuoshuo-tag-cloud-item .north-shuoshuo-tag-dynamic-icon,
+.north-shuoshuo-tag-cloud-item .north-shuoshuo-tag-icon-default {
+    font-size: 14px;
+}
+
+.north-shuoshuo-tag-cloud-item .north-shuoshuo-tag-dynamic-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.north-shuoshuo-tag-cloud-count {
+    font-size: 11px;
+    font-weight: 500;
+    margin-left: 2px;
+    opacity: 0.8;
+}
+
+/* 月度分布区域 */
+.north-shuoshuo-monthly-distribution-section {
+    background: var(--b3-theme-surface);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--b3-point-shadow);
+    margin-bottom: 16px;
 }
 
 .north-shuoshuo-distribution-header {
@@ -4327,6 +4388,90 @@
     margin-bottom: 20px;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--b3-border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.north-shuoshuo-distribution-subtitle {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* 月度分布 */
+.north-shuoshuo-monthly-distribution {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px;
+    height: 220px;
+    padding: 0 4px;
+}
+
+.north-shuoshuo-monthly-bar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-width: 24px;
+    gap: 6px;
+    position: relative;
+}
+
+.north-shuoshuo-monthly-bar::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--b3-theme-primary);
+    color: #fff;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.north-shuoshuo-monthly-bar:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+.north-shuoshuo-monthly-bar-bg {
+    width: 100%;
+    max-width: 40px;
+    height: 160px;
+    background: var(--b3-theme-surface-lighter);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+}
+
+.north-shuoshuo-monthly-bar-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(180deg, var(--b3-theme-primary), var(--b3-theme-primary-light));
+    border-radius: 4px;
+    transition: height 0.3s ease;
+}
+
+.north-shuoshuo-monthly-bar-count {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface);
+    font-weight: 500;
+}
+
+.north-shuoshuo-monthly-bar-label {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
 }
 
 /* 字数分布 */
@@ -4342,7 +4487,7 @@
 }
 
 .north-shuoshuo-word-label {
-    font-size: 13px;
+    font-size: 14.5px;
     color: var(--b3-theme-on-surface);
     width: 80px;
     text-align: right;
@@ -5839,9 +5984,39 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
+.theme-original .north-shuoshuo-tag-cloud-section {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.theme-original .north-shuoshuo-monthly-distribution-section {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
 .theme-original .north-shuoshuo-distribution-header {
     color: #1d1d1f;
     border-bottom: 1px solid #f0f0f0;
+}
+
+.theme-original .north-shuoshuo-distribution-subtitle {
+    color: #86868b;
+}
+
+.theme-original .north-shuoshuo-monthly-bar-bg {
+    background: #f0f0f0;
+}
+
+.theme-original .north-shuoshuo-monthly-bar-fill {
+    background: linear-gradient(180deg, #56c596, #4ab386);
+}
+
+.theme-original .north-shuoshuo-monthly-bar-count {
+    color: #666;
+}
+
+.theme-original .north-shuoshuo-monthly-bar-label {
+    color: #999;
 }
 
 .theme-original .north-shuoshuo-word-label {
