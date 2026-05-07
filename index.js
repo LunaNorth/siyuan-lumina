@@ -112,9 +112,9 @@ const ICONS = {
     at: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10h5v-2h-5c-4.34 0-8-3.66-8-8s3.66-8 8-8 8 3.66 8 8v1.43c0 .79-.71 1.57-1.5 1.57s-1.5-.78-1.5-1.57V12c0-2.76-2.24-5-5-5s-5 2.24-5 5 2.24 5 5 5c1.38 0 2.64-.56 3.54-1.47.65.89 1.77 1.47 2.96 1.47 1.97 0 3.5-1.6 3.5-3.57V12c0-5.52-4.48-10-10-10zm0 13c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/></svg>`,
     refresh: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>`,
     moreH: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`,
-    pin: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1.5c.83 0 1.5-.67 1.5-1.5S18.33 1 17.5 1h-11C5.67 1 5 1.67 5 2.5S5.67 4 6.5 4H8v8c0 2.21-1.79 4-4 4v2h6v6h2v-6h6v-2c-2.21 0-4-1.79-4-4z"/></svg>`,
-    pinOutline: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 12V4h1.5c.83 0 1.5-.67 1.5-1.5S18.33 1 17.5 1h-11C5.67 1 5 1.67 5 2.5S5.67 4 6.5 4H8v8c0 2.21-1.79 4-4 4v2h6v6h2v-6h6v-2c-2.21 0-4-1.79-4-4z"/></svg>`,
-    comment: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>`,
+    pin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M8 4h8"/><path d="M9 4v6l-2 4"/><path d="M15 4v6l2 4"/><path d="M7 14h10"/></svg>`,
+    pinOutline: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M8 4h8"/><path d="M9 4v6l-2 4"/><path d="M15 4v6l2 4"/><path d="M7 14h10"/></svg>`,
+    comment: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M12 11h.01"/><path d="M16 11h.01"/><path d="M8 11h.01"/></svg>`,
     link: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>`,
     clock: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`
 };
@@ -822,7 +822,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                         return;
                     }
                     e.preventDefault();
-                    const newLine = '\n• ';
+                    const newLine = '\n' + unorderedMatch[1];
                     input.value = beforeCursor + newLine + afterCursor;
                     input.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
                     return;
@@ -861,7 +861,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             this.insertImage(input);
         });
         overlay.querySelector('[data-action="ul"]').addEventListener('click', () => {
-            this.insertText(input, '• ', '');
+            this.insertText(input, '- ', '');
             input.focus();
         });
         overlay.querySelector('[data-action="ol"]').addEventListener('click', () => {
@@ -1507,7 +1507,7 @@ document.getElementById('btn-image').addEventListener('click', () => {
 
 // 无序列表
 document.getElementById('btn-ul').addEventListener('click', () => {
-    insertTextAtCursor('• ', '');
+    insertTextAtCursor('- ', '');
     editor.focus();
 });
 
@@ -1653,7 +1653,7 @@ editor.addEventListener('keydown', (e) => {
                 return;
             }
             e.preventDefault();
-            const newLine = '\\n• ';
+            const newLine = '\\n' + unorderedMatch[1];
             editor.value = beforeCursor + newLine + afterCursor;
             editor.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
             return;
@@ -1850,7 +1850,7 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-stat-label">标签</div>
                             </div>
                             <div class="north-shuoshuo-stat-item">
-                                <div class="north-shuoshuo-stat-number">1</div>
+                                <div class="north-shuoshuo-stat-number" id="shuoshuo-day-count">0</div>
                                 <div class="north-shuoshuo-stat-label">天</div>
                             </div>
                         </div>
@@ -2941,6 +2941,23 @@ ipcRenderer.on('lumina-close', () => {
 
         // 应用视图样式（异步，但不阻塞）
         this.applyViewStyle();
+
+        // 更新热力图
+        const heatmapEl = this.container.querySelector('.north-shuoshuo-heatmap');
+        if (heatmapEl) {
+            heatmapEl.innerHTML = this.generateHeatmap();
+            // 恢复选中状态
+            if (this.selectedDate) {
+                const selectedCell = heatmapEl.querySelector(`[data-date="${this.selectedDate}"]`);
+                if (selectedCell) {
+                    selectedCell.classList.add('selected');
+                }
+            }
+        }
+        const monthsEl = this.container.querySelector('.north-shuoshuo-months');
+        if (monthsEl) {
+            monthsEl.innerHTML = this.generateHeatmapMonths();
+        }
     }
 
     // 绑定块引用点击事件
@@ -3517,7 +3534,7 @@ ipcRenderer.on('lumina-close', () => {
             this.insertImage(commentInput);
         });
         memoCard.querySelector('#memoCommentBox [data-action="ul"]').addEventListener('click', () => {
-            this.insertText(commentInput, '• ', '');
+            this.insertText(commentInput, '- ', '');
             commentInput.focus();
         });
         memoCard.querySelector('#memoCommentBox [data-action="ol"]').addEventListener('click', () => {
@@ -5840,7 +5857,7 @@ ipcRenderer.on('lumina-close', () => {
                         
                         // 自动延续无序列表
                         e.preventDefault();
-                        const newLine = '\n• ';
+                        const newLine = '\n' + unorderedMatch[1];
                         input.value = beforeCursor + newLine + afterCursor;
                         input.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
                         return;
@@ -5990,12 +6007,26 @@ ipcRenderer.on('lumina-close', () => {
                 if (toggleBtn) {
                     e.stopPropagation();
                     const targetId = toggleBtn.dataset.target;
+                    if (!targetId) return;
                     const childrenEl = document.getElementById(targetId);
                     const tagItem = toggleBtn.closest('.north-shuoshuo-tag-tree-item');
                     if (childrenEl) {
-                        const isExpanded = childrenEl.style.display !== 'none';
-                        childrenEl.style.display = isExpanded ? 'none' : 'block';
-                        toggleBtn.textContent = isExpanded ? '▸' : '▾';
+                        const isExpanded = childrenEl.classList.contains('expanded');
+                        if (isExpanded) {
+                            childrenEl.classList.remove('expanded');
+                            childrenEl.style.maxHeight = '0';
+                        } else {
+                            childrenEl.classList.add('expanded');
+                            // 先设置实际高度以获得丝滑动画
+                            const height = childrenEl.scrollHeight;
+                            childrenEl.style.maxHeight = height + 'px';
+                            // 动画结束后移除高度限制，确保内容可自适应
+                            setTimeout(() => {
+                                if (childrenEl.classList.contains('expanded')) {
+                                    childrenEl.style.maxHeight = 'none';
+                                }
+                            }, 350);
+                        }
                         if (tagItem) {
                             tagItem.classList.toggle('expanded', !isExpanded);
                         }
@@ -6322,7 +6353,7 @@ ipcRenderer.on('lumina-close', () => {
         const ulBtn = this.container.querySelector('#toolbar-ul');
         if (ulBtn) {
             ulBtn.addEventListener('click', () => {
-                this.insertText(input, '• ', '');
+                this.insertText(input, '- ', '');
                 input.focus();
             });
         }
@@ -6590,59 +6621,85 @@ ipcRenderer.on('lumina-close', () => {
             .sort((a, b) => (b.created || 0) - (a.created || 0));
         
         const overlay = document.createElement('div');
-        overlay.className = 'north-shuoshuo-memo-detail-modal';
+        const themeClass = `theme-${this.themeMode || 'original'}`;
+        const morandiClass = this.themeMode === 'morandi' && this.morandiColor ? ` morandi-${this.morandiColor}` : '';
+        overlay.className = `north-shuoshuo-memo-detail-modal ${themeClass}${morandiClass}`;
+        
+        const noteSummary = (note.content || '').split('\n')[0].substring(0, 30) + ((note.content || '').length > 30 ? '...' : '');
+        const noteDate = this.formatDate(note.created);
+        
+        const renderLinkCard = (linkNote) => {
+            const date = this.formatDate(linkNote.created);
+            const tags = this.extractTags(linkNote.content);
+            let content = (linkNote.content || '').trim();
+            let quote = '';
+            let thought = content;
+            
+            const lines = content.split('\n');
+            const isCommentFormat = lines[0] && lines[0].includes(`[MEMO:${noteId}]`);
+            
+            thought = content.replace(new RegExp(`\\[MEMO:${noteId}\\]`, 'g'), '').trim();
+            
+            if (lines[0] && lines[0].startsWith('关联自：')) {
+                thought = lines.slice(1).join('\n').trim();
+            } else if (isCommentFormat && lines.length > 1) {
+                const restLines = lines.slice(1);
+                const emptyIndex = restLines.findIndex(l => l.trim() === '');
+                if (emptyIndex > 0) {
+                    quote = restLines.slice(0, emptyIndex).join('\n').trim();
+                    thought = restLines.slice(emptyIndex + 1).join('\n').trim();
+                } else {
+                    thought = restLines.join('\n').trim();
+                }
+            }
+            
+            const tagsHtml = tags.length > 0 
+                ? `<div class="north-shuoshuo-note-tags">${tags.map(t => `<span class="north-shuoshuo-note-tag">${this.escapeHtml(t)}</span>`).join('')}</div>` 
+                : '';
+            
+            const quoteHtml = quote 
+                ? `<div class="north-shuoshuo-note-quote">${this.renderNoteContent(quote)}</div>` 
+                : '';
+            
+            const thoughtHtml = thought 
+                ? `<div class="north-shuoshuo-note-thought">${this.renderNoteContent(thought)}</div>` 
+                : '';
+            
+            return `
+                <div class="north-shuoshuo-note-card" data-id="${linkNote.id}">
+                    <div class="north-shuoshuo-note-header">
+                        <span class="north-shuoshuo-note-time">${date}</span>
+                        <div class="north-shuoshuo-note-type highlight">▌ 关联</div>
+                    </div>
+                    ${tagsHtml}
+                    ${thoughtHtml}
+                    ${quoteHtml}
+                </div>
+            `;
+        };
         
         overlay.innerHTML = `
             <div class="north-shuoshuo-modal-overlay"></div>
             <div class="north-shuoshuo-modal-content">
                 <div class="north-shuoshuo-modal-header">
-                    <div class="north-shuoshuo-modal-title">详情</div>
-                    <div class="north-shuoshuo-modal-actions">
-                        <button class="north-shuoshuo-memo-detail-save" style="display:none;">保存</button>
-                        <div class="north-shuoshuo-modal-close">×</div>
+                    <button class="north-shuoshuo-modal-back">←</button>
+                    <div class="north-shuoshuo-modal-book-info">
+                        <div class="north-shuoshuo-modal-book-meta">${noteDate} · ${linkingNotes.length} 条关联</div>
                     </div>
+                    <button class="north-shuoshuo-memo-detail-save" style="display:none;">保存</button>
                 </div>
-                <div class="north-shuoshuo-modal-body north-shuoshuo-memo-detail-body">
-                    <div class="north-shuoshuo-memo-detail-scroll">
-                        <div class="north-shuoshuo-memo-detail-header">
-                            <div class="north-shuoshuo-memo-detail-date">${this.formatDate(note.created)}</div>
+                <div class="north-shuoshuo-modal-body">
+                    <div class="north-shuoshuo-masonry">
+                        <div class="north-shuoshuo-note-card north-shuoshuo-note-card-original">
+                            <div class="north-shuoshuo-note-header">
+                                <span class="north-shuoshuo-note-time">${noteDate}</span>
+                            </div>
+                            <div class="north-shuoshuo-note-type idea">📌 原文</div>
+                            <div class="north-shuoshuo-memo-detail-content">${this.renderNoteContent(note.content)}</div>
+                            <textarea class="north-shuoshuo-memo-detail-textarea" style="display:none;">${this.escapeHtml(note.content)}</textarea>
                         </div>
-                        <div class="north-shuoshuo-memo-detail-content">${this.renderNoteContent(note.content)}</div>
-                        <textarea class="north-shuoshuo-memo-detail-textarea" style="display:none;">${this.escapeHtml(note.content)}</textarea>
+                        ${linkingNotes.map(linkNote => renderLinkCard(linkNote)).join('')}
                     </div>
-                    ${linkingNotes.length > 0 ? `
-                    <div class="north-shuoshuo-memo-detail-links">
-                        <div class="north-shuoshuo-memo-detail-links-title">${linkingNotes.length} 条链接至此的 MEMO</div>
-                        <div class="north-shuoshuo-memo-detail-links-list">
-                            ${linkingNotes.map(linkNote => {
-                                let content = (linkNote.content || '').trim();
-                                const lines = content.split('\n');
-                                
-                                // 判断是否是批注格式：第一行包含被引用的 MEMO 标记
-                                const isCommentFormat = lines[0] && lines[0].includes(`[MEMO:${noteId}]`);
-                                
-                                // 去掉当前 MEMO 引用标记
-                                let preview = content.replace(new RegExp(`\\[MEMO:${noteId}\\]`, 'g'), '').trim();
-                                
-                                // 如果是批注，去掉第一行的引用预览，保留实际批注内容
-                                if (lines[0] && lines[0].startsWith('关联自：')) {
-                                    preview = lines.slice(1).join('\n').trim();
-                                } else if (isCommentFormat && lines.length > 1) {
-                                    preview = lines.slice(1).join('\n').trim();
-                                }
-                                preview = preview.split('\n')[0];
-                                preview = preview.substring(0, 120) + (preview.length > 120 ? '...' : '');
-                                preview = this.escapeHtml(preview).replace(/\s+/g, ' ').trim();
-                                return `
-                                    <div class="north-shuoshuo-memo-detail-link-item" data-id="${linkNote.id}">
-                                        <div class="north-shuoshuo-memo-detail-link-date">${this.formatDate(linkNote.created)}</div>
-                                        <div class="north-shuoshuo-memo-detail-link-preview">${preview}</div>
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </div>
-                    ` : ''}
                 </div>
             </div>
         `;
@@ -6681,29 +6738,42 @@ ipcRenderer.on('lumina-close', () => {
             });
         });
         
-        overlay.querySelector('.north-shuoshuo-modal-close').addEventListener('click', () => {
+        // 关闭事件
+        overlay.querySelector('.north-shuoshuo-modal-back').addEventListener('click', () => {
             overlay.remove();
         });
         overlay.querySelector('.north-shuoshuo-modal-overlay').addEventListener('click', () => {
             overlay.remove();
         });
         
-        // 点击关联 MEMO 跳转到原位置
-        overlay.querySelectorAll('.north-shuoshuo-memo-detail-link-item').forEach(el => {
-            el.addEventListener('click', () => {
-                const id = el.dataset.id;
+        // ESC 关闭
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
                 overlay.remove();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+        
+        // 点击"▌ 关联"标签跳转到原位置
+        overlay.querySelectorAll('.north-shuoshuo-note-card[data-id] .north-shuoshuo-note-type.highlight').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const card = el.closest('.north-shuoshuo-note-card');
+                const id = card?.dataset.id;
+                if (!id) return;
+                overlay.remove();
+                document.removeEventListener('keydown', escHandler);
                 setTimeout(() => {
                     const notesList = this.container.querySelector('#shuoshuo-notes-list');
-                    const card = notesList?.querySelector(`.north-shuoshuo-note-card[data-id="${id}"]`);
-                    if (card && notesList) {
-                        // 只在笔记列表内部滚动，避免带动整个页面导致输入框上移
-                        const cardRect = card.getBoundingClientRect();
+                    const targetCard = notesList?.querySelector(`.north-shuoshuo-note-card[data-id="${id}"]`);
+                    if (targetCard && notesList) {
+                        const cardRect = targetCard.getBoundingClientRect();
                         const listRect = notesList.getBoundingClientRect();
                         const scrollTop = notesList.scrollTop + (cardRect.top - listRect.top) - notesList.clientHeight / 2 + cardRect.height / 2;
                         notesList.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
-                        card.classList.add('north-shuoshuo-note-highlight');
-                        setTimeout(() => card.classList.remove('north-shuoshuo-note-highlight'), 1500);
+                        targetCard.classList.add('north-shuoshuo-note-highlight');
+                        setTimeout(() => targetCard.classList.remove('north-shuoshuo-note-highlight'), 1500);
                     }
                 }, 100);
             });
@@ -6975,7 +7045,7 @@ ipcRenderer.on('lumina-close', () => {
         // 获取所有标签及数量
         const tagCounts = {};
         this.shuoshuos.forEach(item => {
-            const tags = item.tags || this.extractTags(item.content);
+            const tags = this.extractTags(item.content);
             tags.forEach(tag => {
                 tagCounts[tag] = (tagCounts[tag] || 0) + 1;
             });
@@ -6999,6 +7069,25 @@ ipcRenderer.on('lumina-close', () => {
         if (tagCountEl) {
             const rootTags = Object.keys(tagTree).length;
             tagCountEl.textContent = rootTags;
+        }
+        
+        // 更新天数统计（从最早记录到今天）
+        const dayCountEl = this.container?.querySelector('#shuoshuo-day-count');
+        if (dayCountEl && this.shuoshuos.length > 0) {
+            const timestamps = this.shuoshuos.map(s => parseInt(s.created)).filter(t => !isNaN(t) && t > 0);
+            if (timestamps.length > 0) {
+                const earliest = Math.min(...timestamps);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const earliestDate = new Date(earliest);
+                earliestDate.setHours(0, 0, 0, 0);
+                const daysDiff = Math.floor((today - earliestDate) / (1000 * 60 * 60 * 24)) + 1;
+                dayCountEl.textContent = daysDiff > 0 ? daysDiff : 1;
+            } else {
+                dayCountEl.textContent = '1';
+            }
+        } else if (dayCountEl) {
+            dayCountEl.textContent = '0';
         }
     }
 
@@ -7087,22 +7176,21 @@ ipcRenderer.on('lumina-close', () => {
             const itemId = 'tag-' + Math.random().toString(36).substr(2, 9);
             
             // 构建左侧内容
-            const toggleBtn = hasChildren 
-                ? `<span class="north-shuoshuo-tag-toggle" data-target="${itemId}">▸</span>`
-                : '';
-            const leftContent = `${toggleBtn}<span class="north-shuoshuo-tag-icon-wrapper" data-tag="${fullPath}">${iconHtml}</span><span class="north-shuoshuo-tag-name">${name}</span>`;
+            const toggleBtn = `<span class="north-shuoshuo-tag-toggle" data-target="${hasChildren ? itemId : ''}">›</span>`;
             
             let html = `
-                <div class="north-shuoshuo-tag-tree-item ${level > 0 ? 'child' : ''} ${isPinned ? 'pinned' : ''} ${hasChildren ? 'has-children' : ''}" data-level="${level}" data-tag="${fullPath}">
+                <div class="north-shuoshuo-tag-tree-item ${level > 0 ? 'child' : ''} ${isPinned ? 'pinned' : ''} ${hasChildren ? 'has-children' : ''} ${!hasChildren ? 'leaf' : ''}" data-level="${level}" data-tag="${fullPath}">
                     <div class="north-shuoshuo-tag-item-content">
-                        <div class="north-shuoshuo-tag-text-part">${leftContent}</div>
-                        <div class="north-shuoshuo-tag-meta">
+                        ${toggleBtn}
+                        <span class="north-shuoshuo-tag-icon-wrapper" data-tag="${fullPath}">${iconHtml}</span>
+                        <span class="north-shuoshuo-tag-name">${name}</span>
+                        <div class="north-shuoshuo-tag-right">
                             <span class="north-shuoshuo-tag-count">${data.count}</span>
-                            <span class="north-shuoshuo-tag-menu-btn" data-tag="${fullPath}">...</span>
+                            <span class="north-shuoshuo-tag-menu-btn" data-tag="${fullPath}">⋯</span>
                         </div>
                     </div>
                     ${hasChildren ? `
-                        <div class="north-shuoshuo-tag-children" id="${itemId}" style="display: none;">
+                        <div class="north-shuoshuo-tag-children" id="${itemId}">
                             ${this.renderTagTree(data.children, level + 1, data.fullPath)}
                         </div>
                     ` : ''}
@@ -8184,7 +8272,7 @@ ipcRenderer.on('lumina-close', () => {
                         return;
                     }
                     e.preventDefault();
-                    const newLine = '\n• ';
+                    const newLine = '\n' + unorderedMatch[1];
                     textarea.value = beforeCursor + newLine + afterCursor;
                     textarea.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
                     requestAnimationFrame(autoResize);
@@ -8237,7 +8325,7 @@ ipcRenderer.on('lumina-close', () => {
             this.insertImage(textarea);
         });
         editBox.querySelector('[data-action="ul"]').addEventListener('click', () => {
-            this.insertText(textarea, '• ', '');
+            this.insertText(textarea, '- ', '');
             textarea.focus();
         });
         editBox.querySelector('[data-action="ol"]').addEventListener('click', () => {
@@ -9343,7 +9431,6 @@ ipcRenderer.on('lumina-close', () => {
                 if (index !== -1) {
                     // 保留说说视图中的标签和类型格式
                     const oldShuoshuoContent = this.shuoshuos[index].content;
-                    const oldTags = this.shuoshuos[index].tags || this.extractTags(oldShuoshuoContent);
                     const oldType = this.extractType(oldShuoshuoContent); // 提取原来的类型（如 #固#）
                     
                     // 解析思源笔记格式，支持两种格式：
@@ -9367,6 +9454,9 @@ ipcRenderer.on('lumina-close', () => {
                         }
                     }
                     
+                    // 从思源笔记最新内容中提取标签（确保多层标签完整）
+                    const newTags = this.extractTags(blockContent);
+                    
                     // 构建新内容：纯内容 + 类型（如果有）+ 标签（如果有）
                     let newContent = pureContent;
                     
@@ -9378,11 +9468,12 @@ ipcRenderer.on('lumina-close', () => {
                     }
                     
                     // 添加标签
-                    if (oldTags.length > 0) {
-                        newContent = newContent + ' ' + oldTags.map(t => `#${t}`).join(' ');
+                    if (newTags.length > 0) {
+                        newContent = newContent + ' ' + newTags.map(t => `#${t}`).join(' ');
                     }
                     
                     this.shuoshuos[index].content = newContent;
+                    this.shuoshuos[index].tags = newTags;
                     this.shuoshuos[index].updated = Date.now();
                     await this.saveShuoshuos();
                     if (this.container && this.container.isConnected) {
@@ -11288,7 +11379,7 @@ ipcRenderer.on('lumina-close', () => {
         menu.innerHTML = `
             <div class="north-shuoshuo-tag-menu-item" data-action="pin">
                 <span class="north-shuoshuo-tag-menu-icon">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4H17V2H7V4H8V12L6 14V16H11.2V22H12.8V16H18V14L16 12Z"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M8 4h8"/><path d="M9 4v6l-2 4"/><path d="M15 4v6l2 4"/><path d="M7 14h10"/></svg>
                 </span>
                 <span class="north-shuoshuo-tag-menu-text">${isPinned ? '取消置顶' : '置顶'}</span>
             </div>

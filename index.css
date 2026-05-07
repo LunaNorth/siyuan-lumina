@@ -288,6 +288,11 @@
 /* 标签 */
 .north-shuoshuo-tags-section {
     margin-top: 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .north-shuoshuo-tags-section .north-shuoshuo-section-title {
@@ -295,6 +300,7 @@
     color: var(--b3-theme-primary);
     margin-bottom: 12px;
     font-weight: 500;
+    flex-shrink: 0;
 }
 
 /* 标签列表 */
@@ -302,52 +308,160 @@
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
+    overflow-y: auto;
     margin: 0 -12px;
     padding: 0 12px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* 标签列表 hover 时，所有标签的箭头和右侧信息都显示 */
+.north-shuoshuo-tags-list:hover .north-shuoshuo-tag-toggle {
+    opacity: 1;
+}
+.north-shuoshuo-tags-list:hover .north-shuoshuo-tag-right {
+    opacity: 1;
 }
 
 /* 标签树项 - 新的简洁样式 */
 .north-shuoshuo-tag-tree-item {
-    cursor: pointer;
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    width: 100%;
+    min-width: 0;
 }
 
 .north-shuoshuo-tag-item-content {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 10px 10px;
+    padding: 6px 10px 6px 4px;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+    position: relative;
+    min-height: 28px;
     color: var(--b3-theme-on-surface);
-    width: 100%;
+    align-self: stretch;
+    box-sizing: border-box;
 }
 
-.north-shuoshuo-tag-text-part {
+.north-shuoshuo-tag-item-content:hover,
+.north-shuoshuo-tag-item-content.north-shuoshuo-tag-item-hovered {
+    background-color: var(--b3-list-hover);
+    border-radius: 6px;
+}
+
+/* 展开/折叠箭头 */
+.north-shuoshuo-tag-toggle {
+    width: 20px;
+    height: 20px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-grow: 1;
-    overflow: hidden;
-    justify-content: flex-start;
+    justify-content: center;
+    margin-right: 2px;
+    flex-shrink: 0;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 16px;
+    line-height: 1;
+    user-select: none;
+    transition: transform 0.2s ease, opacity 0.15s ease;
+    cursor: pointer;
+    border-radius: 3px;
+    opacity: 0;
+}
+
+.north-shuoshuo-tag-toggle:hover {
+    background: var(--b3-theme-background-light);
+}
+
+/* 展开状态 - 旋转90度 */
+.north-shuoshuo-tag-tree-item.expanded > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    transform: rotate(90deg);
+}
+
+/* 叶子节点（没有子标签）箭头占位但不可见 */
+.north-shuoshuo-tag-tree-item.leaf > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    visibility: hidden;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.north-shuoshuo-tag-icon-wrapper {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 5px;
+    flex-shrink: 0;
+    font-size: 14px;
+    color: var(--b3-theme-on-surface-light);
 }
 
 .north-shuoshuo-tag-name {
+    flex: 1;
+    font-size: 14px;
     color: var(--b3-theme-on-background);
-    white-space: nowrap;
+    line-height: 1.3;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: 14px;
+    white-space: nowrap;
+    font-weight: 400;
 }
 
-.north-shuoshuo-tag-count {
-    color: var(--b3-theme-on-surface-light);
-    font-size: 13px;
+/* 右侧区域：数量 + 操作按钮 - 默认隐藏 */
+.north-shuoshuo-tag-right {
+    display: flex;
+    align-items: center;
+    gap: 2px;
     flex-shrink: 0;
+    margin-left: 4px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
 }
 
-.north-shuoshuo-tag-item-content.north-shuoshuo-tag-item-hovered {
-    background-color: var(--b3-list-hover);
+/* 数量显示 */
+.north-shuoshuo-tag-count {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    min-width: 20px;
+    text-align: right;
+}
+
+/* 更多按钮 */
+.north-shuoshuo-tag-menu-btn {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--b3-theme-on-surface-light);
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.north-shuoshuo-tag-menu-btn:hover {
+    background: var(--b3-theme-background-light);
+    color: var(--b3-theme-on-surface);
+}
+
+/* 鼠标悬停在某个标签上时，显示菜单按钮 */
+.north-shuoshuo-tag-tree-item:hover .north-shuoshuo-tag-menu-btn {
+    opacity: 1;
+}
+
+/* 选中状态 */
+.north-shuoshuo-tag-tree-item.selected > .north-shuoshuo-tag-item-content {
+    background-color: var(--b3-theme-surface-lighter) !important;
     border-radius: 6px;
 }
 
@@ -359,58 +473,6 @@
 .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-icon-wrapper,
 .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-toggle {
     color: var(--b3-theme-primary);
-}
-
-/* 子标签 */
-.north-shuoshuo-tag-tree-item.child .north-shuoshuo-tag-item-content {
-    padding: 6px 0;
-}
-
-/* 标签右侧 meta 区域（数量和菜单） */
-.north-shuoshuo-tag-meta {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-shrink: 0;
-    margin-left: 6px;
-    margin-right: 13px;
-    gap: 4px;
-}
-
-/* 默认隐藏数量和菜单 */
-.north-shuoshuo-tag-count,
-.north-shuoshuo-tag-menu-btn {
-    opacity: 0;
-    transition: opacity 0.15s ease;
-}
-
-/* 鼠标悬停在标签列表上时，显示所有数量 */
-.north-shuoshuo-tags-list:hover .north-shuoshuo-tag-count {
-    opacity: 1;
-}
-
-/* 鼠标悬停在某个标签上时，显示菜单按钮（数量保持显示） */
-.north-shuoshuo-tag-tree-item:hover .north-shuoshuo-tag-menu-btn {
-    opacity: 1;
-}
-
-.north-shuoshuo-tag-menu-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    color: var(--b3-theme-on-surface-light);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.15s ease;
-    padding: 2px 4px;
-    letter-spacing: 0.5px;
-    line-height: 1;
-}
-
-.north-shuoshuo-tag-menu-btn:hover {
-    background-color: var(--b3-theme-surface-lighter);
-    color: var(--b3-theme-on-surface);
 }
 
 /* 置顶标签 */
@@ -463,7 +525,6 @@
 .north-shuoshuo-tag-menu-icon svg {
     width: 14px;
     height: 14px;
-    fill: currentColor;
 }
 
 .north-shuoshuo-tag-menu-text {
@@ -1490,7 +1551,6 @@
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-icon svg {
     width: 16px;
     height: 16px;
-    fill: currentColor;
 }
 
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-text {
@@ -1526,7 +1586,6 @@
 .north-shuoshuo-note-pinned svg {
     width: 14px;
     height: 14px;
-    fill: currentColor;
 }
 
 /* 已绑定到思源笔记的图标 */
@@ -1550,60 +1609,61 @@
     border-left: 2px solid var(--b3-theme-primary-lighter);
 }
 
-/* 标签树样式 */
-.north-shuoshuo-tag-tree-item {
-    display: flex;
-    flex-direction: column;
-}
-
-/* 展开/折叠按钮 */
-.north-shuoshuo-tag-toggle {
-    width: 16px;
-    height: 16px;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    color: var(--b3-theme-on-surface-light);
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
-/* 有子标签的项：hover 时显示箭头，隐藏图标（展开/收起状态不影响） */
-.north-shuoshuo-tag-tree-item.has-children:hover .north-shuoshuo-tag-toggle {
-    display: flex;
-}
-
-.north-shuoshuo-tag-tree-item.has-children:hover .north-shuoshuo-tag-icon-wrapper {
-    display: none;
-}
-
-/* 占位符，用于没有子标签的项，保持左对齐 */
-.north-shuoshuo-tag-toggle-placeholder {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-}
-
-.north-shuoshuo-tag-indent {
-    width: 0;
-    flex-shrink: 0;
-}
-
 /* 子标签容器 */
 .north-shuoshuo-tag-children {
-    display: none;
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
-    padding-left: 8px;
-    border-left: 1.5px solid var(--b3-border-color);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
 }
 
 .north-shuoshuo-tag-children.expanded {
-    display: block;
-    margin-top: 2px;
+    max-height: 10000px;
 }
 
+/* 左侧竖线 - 根据父层级调整位置 */
+.north-shuoshuo-tag-children::before {
+    content: '';
+    position: absolute;
+    left: 22px;
+    top: 0;
+    bottom: 0;
+    width: 1.5px;
+    background: var(--b3-border-color);
+}
 
+/* 子标签项 */
+.north-shuoshuo-tag-children .north-shuoshuo-tag-tree-item > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    margin-left: 0;
+}
+
+/* 根据层级设置缩进 */
+.north-shuoshuo-tag-tree-item[data-level="0"] > .north-shuoshuo-tag-item-content {
+    padding-left: 4px;
+}
+.north-shuoshuo-tag-tree-item[data-level="1"] > .north-shuoshuo-tag-item-content {
+    padding-left: 22px;
+}
+.north-shuoshuo-tag-tree-item[data-level="2"] > .north-shuoshuo-tag-item-content {
+    padding-left: 40px;
+}
+.north-shuoshuo-tag-tree-item[data-level="3"] > .north-shuoshuo-tag-item-content {
+    padding-left: 58px;
+}
+.north-shuoshuo-tag-tree-item[data-level="4"] > .north-shuoshuo-tag-item-content {
+    padding-left: 76px;
+}
+.north-shuoshuo-tag-tree-item[data-level="5"] > .north-shuoshuo-tag-item-content {
+    padding-left: 94px;
+}
+.north-shuoshuo-tag-tree-item[data-level="6"] > .north-shuoshuo-tag-item-content {
+    padding-left: 112px;
+}
+
+/* 子标签左侧横线（已移除） */
 
 .north-shuoshuo-tag-empty {
     padding: 8px 12px;
@@ -4567,12 +4627,13 @@
 
 /* 标签图标容器 */
 .north-shuoshuo-tag-icon-wrapper {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    font-size: 14px;
 }
 
 /* 动态图标 */
@@ -4592,11 +4653,11 @@
 
 /* 默认 # 图标 */
 .north-shuoshuo-tag-icon-default {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--b3-theme-on-surface-light);
-    font-weight: 500;
+    font-weight: 600;
     user-select: none;
-    font-family: var(--b3-font-family);
+    font-family: "SF Mono", Monaco, monospace;
 }
 
 /* 图标选择器弹窗 */
@@ -5161,31 +5222,52 @@
     color: #555;
 }
 
-.theme-original .north-shuoshuo-tag-name {
-    color: #666;
-}
-
-.theme-original .north-shuoshuo-tag-count {
-    color: #999;
-}
-
-.theme-original .north-shuoshuo-tag-item-content.north-shuoshuo-tag-item-hovered {
-    background-color: var(--b3-list-hover);
+.theme-original .north-shuoshuo-tag-item-content:hover {
+    background-color: #f5f5f5;
     border-radius: 6px;
 }
 
-.theme-original .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-item-content {
-    background-color: transparent;
+.theme-original .north-shuoshuo-tag-name {
+    color: #222;
 }
 
-.theme-original .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-name,
+.theme-original .north-shuoshuo-tag-count {
+    color: #666;
+}
+
+.theme-original .north-shuoshuo-tag-toggle {
+    color: #555;
+}
+
+.theme-original .north-shuoshuo-tag-toggle:hover {
+    background: rgba(0,0,0,0.06);
+}
+
+.theme-original .north-shuoshuo-tag-menu-btn {
+    color: #888;
+}
+
+.theme-original .north-shuoshuo-tag-menu-btn:hover {
+    background: rgba(0,0,0,0.06);
+    color: #555;
+}
+
+.theme-original .north-shuoshuo-tag-tree-item.selected > .north-shuoshuo-tag-item-content {
+    background-color: rgba(66, 133, 244, 0.08);
+}
+
+.theme-original .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-name {
+    color: #2b6cb0;
+    font-weight: 500;
+}
+
 .theme-original .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-count {
-    color: #2e7d32;
+    color: #2b6cb0;
 }
 
 .theme-original .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-icon-wrapper,
 .theme-original .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-toggle {
-    color: #2e7d32;
+    color: #2b6cb0;
 }
 
 .theme-original .north-shuoshuo-tag-empty {
@@ -5257,6 +5339,10 @@
     color: #999;
 }
 
+.theme-original .north-shuoshuo-note-time {
+    color: #9ca3af;
+}
+
 .theme-original .north-shuoshuo-note-menu {
     color: #999;
 }
@@ -5273,6 +5359,19 @@
 .theme-original .north-shuoshuo-note-tag {
     background-color: #e8f4fd;
     color: #4a90e2;
+}
+
+.theme-original .north-shuoshuo-note-type.highlight {
+    color: #f59e0b;
+}
+
+.theme-original .north-shuoshuo-note-quote {
+    color: #4b5563;
+    border-left-color: #c4b5fd;
+}
+
+.theme-original .north-shuoshuo-note-thought {
+    color: #374151;
 }
 
 .theme-original .north-shuoshuo-note-content .north-shuoshuo-tag {
@@ -5732,6 +5831,42 @@
 .theme-original .north-shuoshuo-modal-footer {
     border-top: 1px solid #f0f0f0;
     background: #fafafa;
+}
+
+/* 原主题 - 详情弹窗 */
+.theme-original .north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-content {
+    background: #f8f9fa;
+}
+
+.theme-original .north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-header {
+    background: #fff;
+    border-bottom: 1px solid #e5e5e7;
+}
+
+.theme-original .north-shuoshuo-modal-back {
+    background: #fff;
+    color: #666;
+}
+
+.theme-original .north-shuoshuo-modal-back:hover {
+    background: #f5f5f7;
+}
+
+.theme-original .north-shuoshuo-masonry .north-shuoshuo-note-card {
+    background: #fff;
+    border-color: #e5e7eb;
+}
+
+.theme-original .north-shuoshuo-masonry .north-shuoshuo-note-card-original:hover {
+    border-color: #e5e7eb;
+}
+
+.theme-original .north-shuoshuo-modal-book-title {
+    color: #1d1d1f;
+}
+
+.theme-original .north-shuoshuo-modal-book-meta {
+    color: #8e8e93;
 }
 
 /* 原主题 - 标签复选框 */
@@ -6277,8 +6412,8 @@
     bottom: 0;
     z-index: 100000;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: stretch;
+    justify-content: flex-end;
 }
 
 .north-shuoshuo-memo-detail-content {
@@ -6302,6 +6437,7 @@
     outline: none;
     margin-bottom: 16px;
     font-family: inherit;
+    box-sizing: border-box;
 }
 
 .north-shuoshuo-memo-detail-textarea:focus {
@@ -6469,24 +6605,235 @@
 }
 
 /* 详情弹窗改为右侧滑出 */
-.north-shuoshuo-memo-detail-modal {
-    align-items: stretch;
-    justify-content: flex-end;
+.north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-overlay {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 .north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-content {
-    width: 420px;
-    max-width: 90vw;
-    height: 100%;
+    width: 55vw;
+    min-width: 420px;
+    max-width: 900px;
+    height: 100vh;
     max-height: 100vh;
     border-radius: 0;
     margin: 0;
-    animation: memoSlideInRight 0.25s ease;
+    animation: memoSlideInRight 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--b3-theme-background);
 }
 
 @keyframes memoSlideInRight {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
+}
+
+.north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-header {
+    background: var(--b3-theme-surface);
+    border-bottom: 1px solid var(--b3-border-color);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    max-height: none;
+}
+
+.north-shuoshuo-modal-back {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-surface);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--b3-theme-on-surface);
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-modal-back:hover {
+    background: var(--b3-list-hover);
+}
+
+.north-shuoshuo-modal-book-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.north-shuoshuo-modal-book-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--b3-theme-on-background);
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.north-shuoshuo-modal-book-meta {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+}
+
+.north-shuoshuo-masonry {
+    column-count: 2;
+    column-gap: 16px;
+}
+
+@media (max-width: 640px) {
+    .north-shuoshuo-masonry {
+        column-count: 1;
+    }
+}
+
+.north-shuoshuo-masonry .north-shuoshuo-note-card {
+    break-inside: avoid;
+    margin-bottom: 16px;
+    background: var(--b3-theme-surface);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--b3-border-color);
+    transition: border-color 0.2s;
+    cursor: pointer;
+}
+
+.north-shuoshuo-masonry .north-shuoshuo-note-card:hover {
+    border-color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-masonry .north-shuoshuo-note-card-original {
+    column-span: all;
+    cursor: default;
+}
+
+.north-shuoshuo-masonry .north-shuoshuo-note-card-original:hover {
+    border-color: var(--b3-border-color);
+}
+
+.north-shuoshuo-masonry .north-shuoshuo-note-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.north-shuoshuo-note-time {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    font-weight: 500;
+}
+
+.north-shuoshuo-note-menu {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 16px;
+    transition: background 0.15s;
+}
+
+.north-shuoshuo-note-menu:hover {
+    background: var(--b3-list-hover);
+}
+
+.north-shuoshuo-note-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.north-shuoshuo-note-header .north-shuoshuo-note-type {
+    margin-bottom: 0;
+}
+
+.north-shuoshuo-note-type.highlight {
+    color: var(--b3-theme-primary);
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.north-shuoshuo-note-type.highlight:hover {
+    opacity: 0.8;
+}
+
+.north-shuoshuo-note-type.idea {
+    color: #7c3aed;
+}
+
+.north-shuoshuo-note-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.north-shuoshuo-note-tag {
+    font-size: 11px;
+    color: var(--b3-theme-primary);
+    background: var(--b3-theme-primary-lightest);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.north-shuoshuo-note-quote {
+    font-size: 14px;
+    color: var(--b3-theme-on-surface);
+    line-height: 1.7;
+    padding-left: 12px;
+    border-left: 3px solid var(--b3-theme-primary-lighter);
+    margin-bottom: 10px;
+    word-break: break-word;
+}
+
+.north-shuoshuo-note-quote p {
+    margin-bottom: 8px;
+}
+
+.north-shuoshuo-note-quote p:last-child {
+    margin-bottom: 0;
+}
+
+.north-shuoshuo-note-thought {
+    font-size: 14px;
+    color: var(--b3-theme-on-background);
+    line-height: 1.7;
+    word-break: break-word;
+    margin-bottom: 10px;
+}
+
+.north-shuoshuo-note-thought p {
+    margin-bottom: 8px;
+}
+
+.north-shuoshuo-note-thought p:last-child {
+    margin-bottom: 0;
+}
+
+.north-shuoshuo-masonry .north-shuoshuo-memo-detail-content {
+    margin-bottom: 0;
 }
 
 /* ========================================
@@ -6500,7 +6847,7 @@
 }
 
 /* 莫兰迪主题 - 基础变量 */
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).theme-morandi {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).theme-morandi {
     --b3-theme-primary: #D4A5A5;
     --b3-theme-primary-light: #E5C4C4;
     --b3-theme-primary-lighter: #F0DADA;
@@ -6524,42 +6871,42 @@
 }
 
 /* 浅色系列 */
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-dusty-pink {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-dusty-pink {
     --b3-theme-primary: #D4A5A5;
     --b3-theme-primary-light: #E5C4C4;
     --b3-theme-primary-lighter: #F0DADA;
     --b3-theme-primary-lightest: #FAF0F0;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-sage-green {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-sage-green {
     --b3-theme-primary: #9CAF88;
     --b3-theme-primary-light: #B8C9A8;
     --b3-theme-primary-lighter: #D4E0C8;
     --b3-theme-primary-lightest: #EDF3E8;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-muted-blue {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-muted-blue {
     --b3-theme-primary: #8FA1B3;
     --b3-theme-primary-light: #B0BEC9;
     --b3-theme-primary-lighter: #D0D9E0;
     --b3-theme-primary-lightest: #EBF0F4;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-warm-beige {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-warm-beige {
     --b3-theme-primary: #C4B7A6;
     --b3-theme-primary-light: #D8CFC2;
     --b3-theme-primary-lighter: #E9E2D9;
     --b3-theme-primary-lightest: #F7F4F0;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-dusty-purple {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-dusty-purple {
     --b3-theme-primary: #A898B5;
     --b3-theme-primary-light: #C4BAD1;
     --b3-theme-primary-lighter: #DDD6E6;
     --b3-theme-primary-lightest: #F2EFF6;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-terracotta {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-terracotta {
     --b3-theme-primary: #C78D7B;
     --b3-theme-primary-light: #DBB2A6;
     --b3-theme-primary-lighter: #EDD6CF;
@@ -6567,28 +6914,28 @@
 }
 
 /* 中度系列 */
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-olive-green {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-olive-green {
     --b3-theme-primary: #A3A380;
     --b3-theme-primary-light: #C0C0A3;
     --b3-theme-primary-lighter: #DCDCC6;
     --b3-theme-primary-lightest: #F2F2EB;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-slate-blue {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-slate-blue {
     --b3-theme-primary: #7D8A9E;
     --b3-theme-primary-light: #A5AEBD;
     --b3-theme-primary-lighter: #CCD2DB;
     --b3-theme-primary-lightest: #EBEEF2;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-mauve {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-mauve {
     --b3-theme-primary: #B8A1A8;
     --b3-theme-primary-light: #D1C2C6;
     --b3-theme-primary-lighter: #E6DDE0;
     --b3-theme-primary-lightest: #F5F0F2;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-warm-gray {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-warm-gray {
     --b3-theme-primary: #A8A39D;
     --b3-theme-primary-light: #C4C0BC;
     --b3-theme-primary-lighter: #DDDAD7;
@@ -6596,91 +6943,91 @@
 }
 
 /* 深色系列 */
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-deep-bean {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-deep-bean {
     --b3-theme-primary: #A67B7B;
     --b3-theme-primary-light: #C4A5A5;
     --b3-theme-primary-lighter: #E0D0D0;
     --b3-theme-primary-lightest: #F5ECEC;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-dark-moss {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-dark-moss {
     --b3-theme-primary: #7A8471;
     --b3-theme-primary-light: #A0A896;
     --b3-theme-primary-lighter: #C8CDBF;
     --b3-theme-primary-lightest: #EBEDE6;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-caramel {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-caramel {
     --b3-theme-primary: #A67C52;
     --b3-theme-primary-light: #C9A783;
     --b3-theme-primary-lighter: #E4D3BC;
     --b3-theme-primary-lightest: #F5EDE2;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-dusk-purple {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-dusk-purple {
     --b3-theme-primary: #8B7B8B;
     --b3-theme-primary-light: #ADA0AD;
     --b3-theme-primary-lighter: #D6CFD6;
     --b3-theme-primary-lightest: #F2EFF2;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-deep-sea {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-deep-sea {
     --b3-theme-primary: #5E738B;
     --b3-theme-primary-light: #8A9AAF;
     --b3-theme-primary-lighter: #C0CBD8;
     --b3-theme-primary-lightest: #EBEFF4;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-tobacco {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-tobacco {
     --b3-theme-primary: #8B7355;
     --b3-theme-primary-light: #B39B7D;
     --b3-theme-primary-lighter: #D9CCB8;
     --b3-theme-primary-lightest: #F2EDE5;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-stone {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-stone {
     --b3-theme-primary: #7D7D7D;
     --b3-theme-primary-light: #A5A5A5;
     --b3-theme-primary-lighter: #D0D0D0;
     --b3-theme-primary-lightest: #EFEFEF;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-withered-rose {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-withered-rose {
     --b3-theme-primary: #9E7A7A;
     --b3-theme-primary-light: #C2A5A5;
     --b3-theme-primary-lighter: #E0D0D0;
     --b3-theme-primary-lightest: #F5ECEC;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-navy-gray {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-navy-gray {
     --b3-theme-primary: #5D6D7E;
     --b3-theme-primary-light: #8A9AAF;
     --b3-theme-primary-lighter: #C0CBD8;
     --b3-theme-primary-lightest: #EBEFF4;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-rust-red {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-rust-red {
     --b3-theme-primary: #9C6B6B;
     --b3-theme-primary-light: #C2A5A5;
     --b3-theme-primary-lighter: #E0D0D0;
     --b3-theme-primary-lightest: #F5ECEC;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-sandalwood {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-sandalwood {
     --b3-theme-primary: #8B6F5C;
     --b3-theme-primary-light: #B39B7D;
     --b3-theme-primary-lighter: #D9CCB8;
     --b3-theme-primary-lightest: #F2EDE5;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-slate-green {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-slate-green {
     --b3-theme-primary: #7D8B8B;
     --b3-theme-primary-light: #A5B3B3;
     --b3-theme-primary-lighter: #D0D8D8;
     --b3-theme-primary-lightest: #EDF1F1;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay).morandi-deep-wisteria {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-deep-wisteria {
     --b3-theme-primary: #6B5B6B;
     --b3-theme-primary-light: #998A99;
     --b3-theme-primary-lighter: #C8BFC8;
@@ -6825,6 +7172,11 @@
     color: var(--b3-theme-on-surface);
 }
 
+.theme-morandi .north-shuoshuo-tag-item-content:hover {
+    background-color: var(--b3-list-hover);
+    border-radius: 6px;
+}
+
 .theme-morandi .north-shuoshuo-tag-name {
     color: var(--b3-theme-on-background);
 }
@@ -6833,16 +7185,32 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-.theme-morandi .north-shuoshuo-tag-item-content.north-shuoshuo-tag-item-hovered {
-    background-color: var(--b3-list-hover);
-    border-radius: 6px;
+.theme-morandi .north-shuoshuo-tag-toggle {
+    color: var(--b3-theme-on-surface-light);
 }
 
-.theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-item-content {
-    background-color: transparent;
+.theme-morandi .north-shuoshuo-tag-toggle:hover {
+    background: var(--b3-theme-background-light);
 }
 
-.theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-name,
+.theme-morandi .north-shuoshuo-tag-menu-btn {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.theme-morandi .north-shuoshuo-tag-menu-btn:hover {
+    background: var(--b3-theme-background-light);
+    color: var(--b3-theme-on-surface);
+}
+
+.theme-morandi .north-shuoshuo-tag-tree-item.selected > .north-shuoshuo-tag-item-content {
+    background-color: var(--b3-theme-primary-lightest);
+}
+
+.theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-name {
+    color: var(--b3-theme-primary);
+    font-weight: 500;
+}
+
 .theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-count {
     color: var(--b3-theme-primary);
 }
