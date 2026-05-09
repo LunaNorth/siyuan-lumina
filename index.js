@@ -4,6 +4,7 @@ const STORAGE_NAME = "shuoshuo-data";
 const CONFIG_STORAGE_NAME = "shuoshuo-config";
 const MOMENTS_STORAGE_NAME = "lumina-moments-data";
 const MOMENTS_CONFIG_NAME = "lumina-moments-config";
+const BOOKS_STORAGE_NAME = "lumina-bookshelf-data";
 const TAB_TYPE = "shuoshuo-tab";
 
 // 莫兰迪配色方案
@@ -50,6 +51,25 @@ const DEFAULT_THEME_MODE = 'original';
 
 // 字体大小配置
 const DEFAULT_FONT_SIZE_CONFIG = { mode: 'default', customSize: 14.5 };
+
+// 图书视图字体大小配置
+const DEFAULT_BOOKSHELF_FONT_CONFIG = {
+    title: 14,
+    highlight: 13,
+    thought: 13
+};
+
+// 图书视图同步配置
+const DEFAULT_BOOKSHELF_SYNC_CONFIG = {
+    syncNotebookId: '',
+    syncMode: 'dailynote',
+    syncDocId: ''
+};
+
+// 默认图书数据（首次使用为空，通过导入添加）
+function getDefaultBooks() {
+    return [];
+}
 
 // Flomo API 配置
 const FLOMO_API_BASE = "https://flomoapp.com/api/v1";
@@ -420,14 +440,23 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
         this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
         this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
+        this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG }; // 图书视图字体大小配置
+        this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG }; // 图书视图同步配置
         this._refreshTimer = null; // 防抖刷新定时器
         this._boundBlockIdsCache = new Set(); // 已绑定块ID的缓存（用于快速查找）
         this.moments = []; // 朋友圈数据
-        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null };
+        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '' };
+        this.books = []; // 图书书架数据
+        this.bookshelfFilters = { type: 'all', sync: 'synced', status: 'read+reading', sort: 'time' };
+        this.bookshelfSearch = '';
+        this.bookshelfGroupByYear = true;
+        this.bookshelfCurrentView = 'list';
         this.loadShuoshuos();
         this.loadConfig();
         // 异步加载朋友圈数据，确保切换时更丝滑
         this.loadMoments();
+        // 异步加载图书数据
+        this.loadBooks();
 
         const plugin = this;
 
@@ -728,7 +757,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     <div class="quick-overlay-toolbar-left">
                         <span class="quick-overlay-toolbar-icon" data-action="tag" title="标签">#</span>
                         <span class="quick-overlay-toolbar-icon" data-action="image" title="图片">${ICONS.image}</span>
-                        <span class="quick-overlay-toolbar-divider"></span>
+                        <span class="quick-overlay-toolbar-icon" data-action="task" title="任务列表">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="4.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="10.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="16.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 6h12v1.5H9zm0 6h12v1.5H9zm0 6h12v1.5H9z"/></svg>
+                        </span>
                         <span class="quick-overlay-toolbar-icon" data-action="ul" title="无序列表">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
                         </span>
@@ -859,6 +890,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         });
         overlay.querySelector('[data-action="image"]').addEventListener('click', () => {
             this.insertImage(input);
+        });
+        overlay.querySelector('[data-action="task"]').addEventListener('click', () => {
+            this.insertText(input, '- [ ] ', '');
+            input.focus();
         });
         overlay.querySelector('[data-action="ul"]').addEventListener('click', () => {
             this.insertText(input, '- ', '');
@@ -1309,6 +1344,17 @@ body {
                 </svg>
                 <span class="tooltip">图片</span>
             </button>
+            <button class="tool-btn" id="btn-task">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="5" width="4" height="4" rx="1"/>
+                    <rect x="3" y="11" width="4" height="4" rx="1"/>
+                    <rect x="3" y="17" width="4" height="4" rx="1"/>
+                    <line x1="10" y1="7" x2="21" y2="7"/>
+                    <line x1="10" y1="13" x2="21" y2="13"/>
+                    <line x1="10" y1="19" x2="21" y2="19"/>
+                </svg>
+                <span class="tooltip">任务列表</span>
+            </button>
             <button class="tool-btn" id="btn-ul">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="10" y1="6" x2="21" y2="6"/>
@@ -1503,6 +1549,12 @@ document.getElementById('btn-image').addEventListener('click', () => {
         }
     };
     fileInput.click();
+});
+
+// 任务列表
+document.getElementById('btn-task').addEventListener('click', () => {
+    insertTextAtCursor('- [ ] ', '');
+    editor.focus();
 });
 
 // 无序列表
@@ -1796,7 +1848,7 @@ ipcRenderer.on('lumina-close', () => {
                     
                     <div class="north-shuoshuo-nav-icons">
                         <button class="north-shuoshuo-nav-item active" data-view="notes" title="说说">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1161 1024" fill="currentColor"><path d="M820.429215 0H115.980949A116.091291 116.091291 0 0 0 0 115.980949v538.581496a116.102325 116.102325 0 0 0 115.980949 115.991983h101.150923v68.986099a74.591496 74.591496 0 0 0 116.40025 61.791772L527.105881 770.653736h293.323334A116.091291 116.091291 0 0 0 936.476369 654.672787v-538.691838A116.091291 116.091291 0 0 0 820.429215 0z m41.444624 654.562445a41.477727 41.477727 0 0 1-41.444624 41.444624H504.198789L291.668197 839.540527V696.007069H115.980949a41.477727 41.477727 0 0 1-41.43359-41.444624v-538.581496a41.488761 41.488761 0 0 1 41.43359-41.444624h704.448266a41.488761 41.488761 0 0 1 41.444624 41.444624z m0 0"/><path d="M177.816857 378.176677a66.326846 66.326846 0 1 0 33.168941-57.466347 66.326846 66.326846 0 0 0-33.168941 57.444279z m0 0M401.88927 378.176677a66.326846 66.326846 0 1 0 33.157906-57.466347 66.315812 66.315812 0 0 0-33.157906 57.444279z m0 0M624.207237 378.176677a66.326846 66.326846 0 1 0 66.359949-66.293743 66.315812 66.315812 0 0 0-66.359949 66.293743z m0 0"/></svg>
+                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
                         </button>
                         <button class="north-shuoshuo-nav-item" data-view="table" title="表格">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v18H3V3zm2 2v5h14V5H5zm14 7H5v5h14v-5zM5 10h4v2H5v-2zm6 0h4v2h-4v-2z"/></svg>
@@ -1806,6 +1858,9 @@ ipcRenderer.on('lumina-close', () => {
                         </button>
                         <button class="north-shuoshuo-nav-item" data-view="moments" title="朋友圈">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                        </button>
+                        <button class="north-shuoshuo-nav-item" data-view="bookshelf" title="图书">
+                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 16H8c-.55 0-1-.45-1-1V6h10v13z"/></svg>
                         </button>
                     </div>
                     
@@ -1902,7 +1957,9 @@ ipcRenderer.on('lumina-close', () => {
                                     <div class="north-shuoshuo-toolbar-left">
                                         <span class="north-shuoshuo-toolbar-icon" id="toolbar-tag" title="标签">#</span>
                                         <span class="north-shuoshuo-toolbar-icon" id="toolbar-image" title="图片">${ICONS.image}</span>
-                                        <span class="north-shuoshuo-toolbar-divider"></span>
+                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-task" title="任务列表">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><rect x="3" y="4.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="10.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="16.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 6h12v1.5H9zm0 6h12v1.5H9zm0 6h12v1.5H9z"/></svg>
+                                        </span>
                                         <span class="north-shuoshuo-toolbar-icon" id="toolbar-ul" title="无序列表">
                                             <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
                                         </span>
@@ -1954,7 +2011,7 @@ ipcRenderer.on('lumina-close', () => {
                             <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                             </svg>
-                            <span>同步设置</span>
+                            <span>说说同步设置</span>
                         </div>
                         <div class="north-shuoshuo-settings-nav-item" data-setting="data">
                             <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -1973,6 +2030,12 @@ ipcRenderer.on('lumina-close', () => {
                                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
                             </svg>
                             <span>朋友圈设置</span>
+                        </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="bookshelf">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/>
+                            </svg>
+                            <span>图书视图设置</span>
                         </div>
                         <div class="north-shuoshuo-settings-nav-item" data-setting="theme">
                             <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -2128,7 +2191,7 @@ ipcRenderer.on('lumina-close', () => {
                                         </label>
                                     </div>
                                 </div>
-                                <div class="north-shuoshuo-form-row" id="sync-doc-id-row" style="display: ${this.syncMode === 'doc' ? 'flex' : 'none'};">
+                                <div class="north-shuoshuo-form-row" id="sync-doc-id-row" style="display: ${this.syncMode === 'doc' ? 'block' : 'none'};">
                                     <label class="north-shuoshuo-form-label">文档 ID</label>
                                     <div class="north-shuoshuo-input-group" style="width: 100%;">
                                         <input type="text" id="settings-sync-doc-id" class="north-shuoshuo-input-field" placeholder="请输入思源文档块 ID" value="${this.syncDocId || ''}">
@@ -2667,6 +2730,159 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-form-row">
                                     <label class="north-shuoshuo-form-label">个性签名</label>
                                     <input type="text" class="north-shuoshuo-input-field" id="moments-signature-input" placeholder="输入个性签名..." value="${this.momentsConfig?.signature || '言念君子 温其如玉'}">
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">选择日记笔记本</div>
+                                        <div class="north-shuoshuo-section-desc">用于将说说同步到思源笔记的日记中</div>
+                                    </div>
+                                    <span class="north-shuoshuo-badge ${this.momentsConfig?.syncNotebookId ? 'north-shuoshuo-badge-success' : ''}" id="moments-sync-status">${this.momentsConfig?.syncNotebookId ? '已配置' : '未配置'}</span>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <label class="north-shuoshuo-form-label">笔记本</label>
+                                    <div class="north-shuoshuo-input-group">
+                                        <div class="north-shuoshuo-select-wrapper">
+                                            <select id="moments-notebook-select" class="north-shuoshuo-select-field">
+                                                <option value="">请选择笔记本...</option>
+                                            </select>
+                                            <span class="north-shuoshuo-select-arrow">▼</span>
+                                        </div>
+                                        <button class="north-shuoshuo-btn-icon" id="moments-refresh-notebooks" title="刷新列表">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M23 4v6h-6M1 20v-6h6"/>
+                                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint">
+                                        <span>💡</span> 选择用于存储日记的笔记本
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">同步模式</div>
+                                        <div class="north-shuoshuo-section-desc">选择说说同步到思源笔记的方式</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <div class="north-shuoshuo-radio-group vertical" id="moments-sync-mode-group">
+                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.syncMode === 'dailynote' ? 'selected' : ''}" data-mode="dailynote">
+                                            <input type="radio" name="moments-sync-mode" value="dailynote" ${this.momentsConfig?.syncMode === 'dailynote' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">同步到每日笔记</span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.syncMode === 'doc' ? 'selected' : ''}" data-mode="doc">
+                                            <input type="radio" name="moments-sync-mode" value="doc" ${this.momentsConfig?.syncMode === 'doc' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">同步到指定文档</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row" id="moments-sync-doc-id-row" style="display: ${this.momentsConfig?.syncMode === 'doc' ? 'block' : 'none'};">
+                                    <label class="north-shuoshuo-form-label">文档 ID</label>
+                                    <div class="north-shuoshuo-input-group" style="width: 100%;">
+                                        <input type="text" id="moments-sync-doc-id" class="north-shuoshuo-input-field" placeholder="请输入思源文档块 ID" value="${this.momentsConfig?.syncDocId || ''}">
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint">
+                                        <span>💡</span> 打开目标文档，右键文档标题 → 复制文档块 ID
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 图书视图设置 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-bookshelf" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">字体大小</div>
+                                        <div class="north-shuoshuo-section-desc">自定义图书笔记中各元素的字体大小</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
+                                    <div class="north-shuoshuo-form-row" style="display: flex; align-items: center; gap: 8px; margin-bottom: 0; flex: 1; min-width: 160px;">
+                                        <label class="north-shuoshuo-form-label" style="display: inline; margin-bottom: 0; white-space: nowrap;">笔记标题</label>
+                                        <input type="number" id="bookshelf-font-title" min="10" max="24" step="1" value="${this.bookshelfFontConfig?.title || 14}" style="width: 60px; height: 32px; padding: 0 8px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none; text-align: center;">
+                                        <span style="font-size: 13px; color: var(--b3-theme-on-surface-light);">px</span>
+                                    </div>
+                                    <div class="north-shuoshuo-form-row" style="display: flex; align-items: center; gap: 8px; margin-bottom: 0; flex: 1; min-width: 160px;">
+                                        <label class="north-shuoshuo-form-label" style="display: inline; margin-bottom: 0; white-space: nowrap;">划线内容</label>
+                                        <input type="number" id="bookshelf-font-highlight" min="10" max="24" step="1" value="${this.bookshelfFontConfig?.highlight || 13}" style="width: 60px; height: 32px; padding: 0 8px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none; text-align: center;">
+                                        <span style="font-size: 13px; color: var(--b3-theme-on-surface-light);">px</span>
+                                    </div>
+                                    <div class="north-shuoshuo-form-row" style="display: flex; align-items: center; gap: 8px; margin-bottom: 0; flex: 1; min-width: 160px;">
+                                        <label class="north-shuoshuo-form-label" style="display: inline; margin-bottom: 0; white-space: nowrap;">想法内容</label>
+                                        <input type="number" id="bookshelf-font-thought" min="10" max="24" step="1" value="${this.bookshelfFontConfig?.thought || 13}" style="width: 60px; height: 32px; padding: 0 8px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none; text-align: center;">
+                                        <span style="font-size: 13px; color: var(--b3-theme-on-surface-light);">px</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">选择日记笔记本</div>
+                                        <div class="north-shuoshuo-section-desc">用于将图书笔记同步到思源笔记的日记中</div>
+                                    </div>
+                                    <span class="north-shuoshuo-badge ${this.bookshelfSyncConfig?.syncNotebookId ? 'north-shuoshuo-badge-success' : ''}" id="bookshelf-sync-status">${this.bookshelfSyncConfig?.syncNotebookId ? '已配置' : '未配置'}</span>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <label class="north-shuoshuo-form-label">笔记本</label>
+                                    <div class="north-shuoshuo-input-group">
+                                        <div class="north-shuoshuo-select-wrapper">
+                                            <select id="bookshelf-notebook-select" class="north-shuoshuo-select-field">
+                                                <option value="">请选择笔记本...</option>
+                                            </select>
+                                            <span class="north-shuoshuo-select-arrow">▼</span>
+                                        </div>
+                                        <button class="north-shuoshuo-btn-icon" id="bookshelf-refresh-notebooks" title="刷新列表">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M23 4v6h-6M1 20v-6h6"/>
+                                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint">
+                                        <span>💡</span> 选择用于存储图书笔记的笔记本
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">同步模式</div>
+                                        <div class="north-shuoshuo-section-desc">选择图书笔记同步到思源笔记的方式</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <div class="north-shuoshuo-radio-group vertical" id="bookshelf-sync-mode-group">
+                                        <label class="north-shuoshuo-radio-item ${this.bookshelfSyncConfig?.syncMode === 'dailynote' ? 'selected' : ''}" data-mode="dailynote">
+                                            <input type="radio" name="bookshelf-sync-mode" value="dailynote" ${this.bookshelfSyncConfig?.syncMode === 'dailynote' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">同步到每日笔记</span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item ${this.bookshelfSyncConfig?.syncMode === 'doc' ? 'selected' : ''}" data-mode="doc">
+                                            <input type="radio" name="bookshelf-sync-mode" value="doc" ${this.bookshelfSyncConfig?.syncMode === 'doc' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">同步到指定文档</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row" id="bookshelf-sync-doc-id-row" style="display: ${this.bookshelfSyncConfig?.syncMode === 'doc' ? 'block' : 'none'};">
+                                    <label class="north-shuoshuo-form-label">文档 ID</label>
+                                    <div class="north-shuoshuo-input-group" style="width: 100%;">
+                                        <input type="text" id="bookshelf-sync-doc-id" class="north-shuoshuo-input-field" placeholder="请输入思源文档块 ID" value="${this.bookshelfSyncConfig?.syncDocId || ''}">
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint">
+                                        <span>💡</span> 打开目标文档，右键文档标题 → 复制文档块 ID
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -4432,6 +4648,7 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="lumina-moments-action-popup" data-mid="${m.id}">
                                 <div class="lumina-moments-action-popup-btn delete-btn" data-mid="${m.id}"><span class="icon">🗑️</span>删除</div>
                                 <div class="lumina-moments-action-popup-btn edit-btn" data-mid="${m.id}"><span class="icon">✏️</span>修改</div>
+                                <div class="lumina-moments-action-popup-btn sync-btn" data-mid="${m.id}"><span class="icon">🔄</span>同步</div>
                             </div>
                         </div>
                     </div>
@@ -4527,9 +4744,13 @@ ipcRenderer.on('lumina-close', () => {
             if (deleteBtn) {
                 e.stopPropagation();
                 const mid = deleteBtn.dataset.mid;
-                this.moments = this.moments.filter(x => x.id !== mid);
-                this.saveMoments();
-                this._doRenderMoments();
+                // 关闭弹出菜单
+                container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
+                confirm('⚠️ 确认删除', '确定要删除这条朋友圈吗？此操作不可恢复。', async () => {
+                    this.moments = this.moments.filter(x => x.id !== mid);
+                    await this.saveMoments();
+                    this._doRenderMoments();
+                });
                 return;
             }
 
@@ -4537,7 +4758,18 @@ ipcRenderer.on('lumina-close', () => {
             const editBtn = e.target.closest('.edit-btn');
             if (editBtn) {
                 e.stopPropagation();
+                container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
                 this._openMomentEdit(editBtn.dataset.mid);
+                return;
+            }
+
+            // 同步到思源笔记
+            const syncBtn = e.target.closest('.sync-btn');
+            if (syncBtn) {
+                e.stopPropagation();
+                container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
+                const mid = syncBtn.dataset.mid;
+                this.syncMomentToSiyuan(mid);
                 return;
             }
 
@@ -4926,6 +5158,868 @@ ipcRenderer.on('lumina-close', () => {
             containerEl.appendChild(wrapper);
         });
         if (addBtn) containerEl.appendChild(addBtn);
+    }
+
+    // ============ 图书书架视图 ============
+    renderBookshelf() {
+        const listEl = this.container.querySelector('#shuoshuo-notes-list');
+        if (!listEl) return;
+        this.bookshelfCurrentView = 'list';
+        this.bookshelfSearch = '';
+        this._doRenderBookshelf(listEl);
+    }
+
+    _doRenderBookshelf(listEl) {
+        listEl.style.padding = '0';
+        listEl.innerHTML = `
+            <div class="lumina-bookshelf-container" id="bookshelfContainer">
+                <div class="lumina-bookshelf-header" id="bookshelfHeader">
+                    <div class="lumina-bookshelf-header-inner">
+                        <div class="lumina-bookshelf-toolbar-left">
+                            <div class="lumina-bookshelf-search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <path d="m21 21-4.35-4.35"></path>
+                                </svg>
+                                <input type="text" id="bookshelfSearchInput" placeholder="搜索书名|作者">
+                            </div>
+                            <div class="lumina-bookshelf-filter-group">
+                                <button class="lumina-bookshelf-filter-btn" id="bookshelfBtnType" data-dropdown="type">
+                                    <span id="bookshelfLabelType">全部类型</span>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                                <div class="lumina-bookshelf-dropdown" id="bookshelfDropdownType">
+                                    <div class="lumina-bookshelf-dropdown-item selected" data-value="all">全部类型<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item" data-value="book">图书<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item" data-value="article">文章<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                </div>
+                                <button class="lumina-bookshelf-filter-btn" id="bookshelfBtnStatus" data-dropdown="status">
+                                    <span id="bookshelfLabelStatus">在读+已读</span>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                                <div class="lumina-bookshelf-dropdown" id="bookshelfDropdownStatus">
+                                    <div class="lumina-bookshelf-dropdown-item" data-value="all">全部状态<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-divider"></div>
+                                    <div class="lumina-bookshelf-dropdown-item selected" data-value="read+reading">在读+已读<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item" data-value="reading">在读<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item" data-value="read">已读<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item" data-value="unread">未读<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                </div>
+                                <button class="lumina-bookshelf-filter-btn" id="bookshelfBtnSort" data-dropdown="sort">
+                                    <span id="bookshelfLabelSort">时间排序</span>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                                <div class="lumina-bookshelf-dropdown" id="bookshelfDropdownSort">
+                                    <div class="lumina-bookshelf-dropdown-item selected" data-value="time">时间排序<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item" data-value="name">书名排序<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item" data-value="author">作者排序<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                </div>
+                                <label class="lumina-bookshelf-toggle">
+                                    <input type="checkbox" id="bookshelfYearToggle" checked>
+                                    <span class="lumina-bookshelf-toggle-slider"></span>
+                                    <span>按年份</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="lumina-bookshelf-toolbar-right">
+                            <button class="lumina-bookshelf-action-btn" id="bookshelfImportBtn" title="导入微信读书笔记">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                导入
+                            </button>
+                            <input type="file" id="bookshelfImportInput" accept=".json" style="display:none;">
+                        </div>
+                    </div>
+                </div>
+                <div class="lumina-bookshelf-stats">
+                    <span id="bookshelfStatsText">展示 0 本书</span>
+                </div>
+                <div class="lumina-bookshelf-main">
+                    <div class="lumina-bookshelf-view" id="bookshelfListView">
+                        <div id="bookshelfBookContainer"></div>
+                    </div>
+                    <div class="lumina-bookshelf-view lumina-bookshelf-detail hidden" id="bookshelfDetailView">
+                        <div class="lumina-bookshelf-detail-header">
+                            <div class="lumina-bookshelf-detail-book">
+                                <div class="lumina-bookshelf-detail-cover" id="bookshelfDetailCover"></div>
+                                <div class="lumina-bookshelf-detail-meta">
+                                    <div class="lumina-bookshelf-detail-title" id="bookshelfDetailTitle"></div>
+                                    <div class="lumina-bookshelf-detail-author" id="bookshelfDetailAuthor"></div>
+                                    <div class="lumina-bookshelf-detail-badges">
+                                        <span class="lumina-bookshelf-detail-badge" id="bookshelfDetailStatus"></span>
+                                        <span class="lumina-bookshelf-detail-badge" id="bookshelfDetailType"></span>
+                                    </div>
+                                    <div class="lumina-bookshelf-detail-stats">
+                                        <span class="lumina-bookshelf-detail-stat">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                            <span id="bookshelfDetailYear"></span>
+                                        </span>
+                                        <span class="lumina-bookshelf-detail-stat">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path><path d="m15 5 4 4"></path></svg>
+                                            <span>划线 <span id="bookshelfDetailHighlights"></span></span>
+                                        </span>
+                                        <span class="lumina-bookshelf-detail-stat">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+                                            <span>想法 <span id="bookshelfDetailIdeas"></span></span>
+                                        </span>
+                                        <span class="lumina-bookshelf-detail-stat">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                            <span id="bookshelfDetailReadTime"></span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="lumina-bookshelf-detail-back top-right" id="bookshelfDetailBack">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                                返回书架
+                            </button>
+                        </div>
+                        <div class="lumina-bookshelf-detail-content">
+                            <div class="lumina-bookshelf-masonry" id="bookshelfDetailNotes"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        this._bindBookshelfEvents();
+        this._refreshBookshelfList();
+    }
+
+    _refreshBookshelfList() {
+        const container = this.container.querySelector('#bookshelfBookContainer');
+        const statsText = this.container.querySelector('#bookshelfStatsText');
+        if (!container) return;
+        const filtered = this._getFilteredBooks();
+        const years = [...new Set(filtered.map(b => b.year))].sort((a, b) => b - a);
+        const groupByYear = this.container.querySelector('#bookshelfYearToggle')?.checked ?? true;
+        if (filtered.length === 0) {
+            if (statsText) statsText.textContent = '没有找到符合条件的书籍';
+        } else if (groupByYear) {
+            if (statsText) statsText.textContent = `展示 ${filtered.length} 本书 · ${years.length}个年份分组`;
+        } else {
+            if (statsText) statsText.textContent = `展示 ${filtered.length} 本书`;
+        }
+        if (filtered.length === 0) {
+            container.innerHTML = `
+                <div class="lumina-bookshelf-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+                    </svg>
+                    <p>没有找到符合条件的书籍</p>
+                </div>
+            `;
+            return;
+        }
+        let html = '';
+        if (groupByYear) {
+            years.forEach((year, yi) => {
+                const yearBooks = filtered.filter(b => b.year === year);
+                html += `
+                    <section class="lumina-bookshelf-year-section">
+                        <div class="lumina-bookshelf-year-header">
+                            <span class="lumina-bookshelf-year-title">${year}</span>
+                            <span class="lumina-bookshelf-year-line"></span>
+                            <span class="lumina-bookshelf-year-count">${yearBooks.length} 本</span>
+                        </div>
+                        <div class="lumina-bookshelf-grid">
+                            ${yearBooks.map((b, bi) => this._renderBookCard(b, yi * 100 + bi)).join('')}
+                        </div>
+                    </section>
+                `;
+            });
+        } else {
+            html += `<div class="lumina-bookshelf-grid">${filtered.map((b, i) => this._renderBookCard(b, i)).join('')}</div>`;
+        }
+        container.innerHTML = html;
+    }
+
+    _getFilteredBooks() {
+        const search = this.bookshelfSearch || '';
+        const filters = this.bookshelfFilters || { type: 'all', status: 'read+reading', sort: 'time' };
+        let result = this.books.filter(b => {
+            if (search) {
+                const q = search.toLowerCase();
+                if (!b.title.toLowerCase().includes(q) && !b.author.toLowerCase().includes(q)) return false;
+            }
+            if (filters.type !== 'all' && b.type !== filters.type) return false;
+            if (filters.status !== 'all') {
+                if (filters.status === 'read+reading') {
+                    if (b.readStatus !== 'read' && b.readStatus !== 'reading') return false;
+                } else if (b.readStatus !== filters.status) return false;
+            }
+            return true;
+        });
+        result.sort((a, b) => {
+            if (filters.sort === 'time') {
+                if (!a.readTime && !b.readTime) return 0;
+                if (!a.readTime) return 1;
+                if (!b.readTime) return -1;
+                return new Date(b.readTime) - new Date(a.readTime);
+            }
+            if (filters.sort === 'name') return a.title.localeCompare(b.title, 'zh');
+            if (filters.sort === 'author') return a.author.localeCompare(b.author, 'zh');
+            return 0;
+        });
+        return result;
+    }
+
+    _renderBookCard(b, index) {
+        const statusClass = b.readStatus === 'read' ? 'done' : b.readStatus === 'reading' ? 'reading' : 'unread';
+        const statusText = b.readStatus === 'read' ? '已读' : b.readStatus === 'reading' ? '在读' : '未读';
+        const timeText = b.readTime ? `最近阅读 ${b.readTime}` : '最近阅读 —';
+        let coverHtml = '';
+        if (b.coverImage) {
+            coverHtml = `<img src="${b.coverImage}" alt="${b.title}" style="width:100%;height:100%;object-fit:cover;">`;
+        } else {
+            let coverInner = '';
+            if (b.coverClass === 'effortless') {
+                coverInner = `<div class="c-en">Effortless</div><div class="c-line"></div><div class="c-cn">轻松主义</div><div class="c-sub">让关键的事情变得容易做</div>`;
+            } else if (b.coverClass === 'antifragile') {
+                coverInner = `<div class="c-cn">反脆弱</div><div class="c-en">Antifragile</div>`;
+            } else if (b.coverClass === 'amusing') {
+                coverInner = `<div class="c-stamp">娱乐<br>至死</div><div class="c-cn">娱乐至死</div>`;
+            } else if (b.coverClass === 'autumn') {
+                coverInner = `<div class="c-leaf"></div><div class="c-cn">秋叶集</div>`;
+            } else if (b.coverClass === 'method') {
+                coverInner = `<div class="blk"></div><div class="blk"></div><div class="blk"></div><div class="blk"></div><div class="m-text"><div class="cn">谈谈方法</div></div>`;
+            }
+            coverHtml = `<div class="lumina-bookshelf-cover-inner ${b.coverClass}">${coverInner}</div>`;
+        }
+        return `
+            <div class="lumina-bookshelf-card lumina-bookshelf-animate" style="--i: ${index}" data-book-id="${b.id}">
+                <div class="lumina-bookshelf-cover">${coverHtml}</div>
+                <div class="lumina-bookshelf-info">
+                    <div class="lumina-bookshelf-title">${b.title}</div>
+                    <div class="lumina-bookshelf-author">${b.author}</div>
+                    <div class="lumina-bookshelf-tags">
+                        <span class="lumina-bookshelf-tag">${b.type === 'book' ? '图书' : '文章'}</span>
+                        <span class="lumina-bookshelf-tag-status ${statusClass}">${statusText}</span>
+                    </div>
+                    <div class="lumina-bookshelf-stats-line">
+                        <span>划线 ${b.highlights}</span><span class="lumina-bookshelf-stat-dot">·</span><span>想法 ${b.ideas}</span>
+                    </div>
+                    <div class="lumina-bookshelf-time">${timeText}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    _bindBookshelfEvents() {
+        const container = this.container.querySelector('#bookshelfContainer');
+        if (!container) return;
+
+        // 搜索
+        const searchInput = container.querySelector('#bookshelfSearchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.bookshelfSearch = e.target.value.trim();
+                this._refreshBookshelfList();
+            });
+        }
+
+        // 下拉菜单
+        container.querySelectorAll('.lumina-bookshelf-filter-btn[data-dropdown]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const name = btn.dataset.dropdown;
+                const dropdown = container.querySelector(`#bookshelfDropdown${name.charAt(0).toUpperCase() + name.slice(1)}`);
+                container.querySelectorAll('.lumina-bookshelf-dropdown').forEach(d => { if (d !== dropdown) d.classList.remove('show'); });
+                container.querySelectorAll('.lumina-bookshelf-filter-btn').forEach(b => { if (b !== btn) b.classList.remove('open'); });
+                if (dropdown) dropdown.classList.toggle('show');
+                btn.classList.toggle('open');
+            });
+        });
+
+        // 下拉选项
+        container.querySelectorAll('.lumina-bookshelf-dropdown-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const dropdown = item.closest('.lumina-bookshelf-dropdown');
+                const filterType = dropdown.id.replace('bookshelfDropdown', '').toLowerCase();
+                const value = item.dataset.value;
+                const label = item.textContent.trim();
+                this.bookshelfFilters[filterType] = value;
+                const labelEl = container.querySelector(`#bookshelfLabel${filterType.charAt(0).toUpperCase() + filterType.slice(1)}`);
+                if (labelEl) labelEl.textContent = label;
+                dropdown.querySelectorAll('.lumina-bookshelf-dropdown-item').forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                dropdown.classList.remove('show');
+                const btn = container.querySelector(`#bookshelfBtn${filterType.charAt(0).toUpperCase() + filterType.slice(1)}`);
+                if (btn) btn.classList.remove('open');
+                this._refreshBookshelfList();
+            });
+        });
+
+        // 按年份切换
+        const yearToggle = container.querySelector('#bookshelfYearToggle');
+        if (yearToggle) {
+            yearToggle.addEventListener('change', () => {
+                this.bookshelfGroupByYear = yearToggle.checked;
+                this._refreshBookshelfList();
+            });
+        }
+
+        // 点击外部关闭下拉
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.lumina-bookshelf-filter-group')) {
+                container.querySelectorAll('.lumina-bookshelf-dropdown').forEach(d => d.classList.remove('show'));
+                container.querySelectorAll('.lumina-bookshelf-filter-btn').forEach(b => b.classList.remove('open'));
+            }
+        });
+
+        // 右键菜单
+        container.addEventListener('contextmenu', (e) => {
+            const card = e.target.closest('.lumina-bookshelf-card');
+            if (!card) return;
+            e.preventDefault();
+            const bookId = card.dataset.bookId;
+            if (!bookId) return;
+
+            // 移除已有的菜单
+            document.querySelectorAll('.lumina-bookshelf-context-menu').forEach(m => m.remove());
+
+            const menu = document.createElement('div');
+            menu.className = 'lumina-bookshelf-context-menu';
+            menu.innerHTML = `
+                <div class="lumina-bookshelf-context-menu-item" data-action="sync">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3"/></svg>
+                    同步到思源
+                </div>
+                <div class="lumina-bookshelf-context-menu-divider"></div>
+                <div class="lumina-bookshelf-context-menu-item danger" data-action="delete">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                    删除图书
+                </div>
+            `;
+            menu.style.left = e.clientX + 'px';
+            menu.style.top = e.clientY + 'px';
+            document.body.appendChild(menu);
+
+            const closeMenu = () => menu.remove();
+            const onClick = (ev) => {
+                const item = ev.target.closest('.lumina-bookshelf-context-menu-item');
+                if (!item) return;
+                const action = item.dataset.action;
+                closeMenu();
+                if (action === 'delete') {
+                    this._deleteBook(bookId);
+                } else if (action === 'sync') {
+                    this._syncBookToSiyuan(bookId);
+                }
+            };
+            menu.addEventListener('click', onClick);
+            setTimeout(() => {
+                document.addEventListener('click', closeMenu, { once: true });
+            }, 0);
+        });
+
+        // 点击图书卡片
+        container.addEventListener('click', (e) => {
+            const card = e.target.closest('.lumina-bookshelf-card');
+            if (card) {
+                const bookId = card.dataset.bookId;
+                if (bookId) this._openBookDetail(bookId);
+            }
+        });
+
+        // 返回书架
+        const backBtn = container.querySelector('#bookshelfDetailBack');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this._switchBookshelfView('list');
+            });
+        }
+
+        // 导入按钮
+        const importBtn = container.querySelector('#bookshelfImportBtn');
+        const importInput = container.querySelector('#bookshelfImportInput');
+        if (importBtn && importInput) {
+            importBtn.addEventListener('click', () => {
+                importInput.click();
+            });
+            importInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                await this._importBooksFromJson(file);
+                importInput.value = '';
+            });
+        }
+    }
+
+    _switchBookshelfView(viewName) {
+        const listView = this.container.querySelector('#bookshelfListView');
+        const detailView = this.container.querySelector('#bookshelfDetailView');
+        if (!listView || !detailView) return;
+        if (viewName === 'list') {
+            listView.classList.remove('hidden');
+            detailView.classList.remove('active');
+            setTimeout(() => detailView.classList.add('hidden'), 200);
+            this.bookshelfCurrentView = 'list';
+        } else if (viewName === 'detail') {
+            detailView.classList.remove('hidden');
+            setTimeout(() => detailView.classList.add('active'), 10);
+            listView.classList.add('hidden');
+            this.bookshelfCurrentView = 'detail';
+        }
+    }
+
+    _openBookDetail(bookId) {
+        const book = this.books.find(b => b.id === bookId);
+        if (!book) return;
+        const container = this.container.querySelector('#bookshelfContainer');
+        if (!container) return;
+
+        container.querySelector('#bookshelfDetailTitle').textContent = book.title;
+        container.querySelector('#bookshelfDetailAuthor').textContent = book.author;
+        const statusEl = container.querySelector('#bookshelfDetailStatus');
+        statusEl.textContent = book.readStatus === 'read' ? '已读' : book.readStatus === 'reading' ? '在读' : '未读';
+        statusEl.className = `lumina-bookshelf-detail-badge ${book.readStatus === 'read' ? 'done' : book.readStatus === 'reading' ? 'reading' : 'unread'}`;
+        container.querySelector('#bookshelfDetailType').textContent = book.type === 'book' ? '图书' : '文章';
+        container.querySelector('#bookshelfDetailYear').textContent = book.year;
+        container.querySelector('#bookshelfDetailHighlights').textContent = book.highlights;
+        container.querySelector('#bookshelfDetailIdeas').textContent = book.ideas;
+        container.querySelector('#bookshelfDetailReadTime').textContent = book.readTime ? `最近阅读 ${book.readTime}` : '最近阅读 —';
+
+        if (book.coverImage) {
+            container.querySelector('#bookshelfDetailCover').innerHTML = `<img src="${book.coverImage}" alt="${book.title}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+        } else {
+            let coverInner = '';
+            if (book.coverClass === 'effortless') {
+                coverInner = `<div class="c-en">Effortless</div><div class="c-line"></div><div class="c-cn">轻松主义</div><div class="c-sub">让关键的事情变得容易做</div>`;
+            } else if (book.coverClass === 'antifragile') {
+                coverInner = `<div class="c-cn">反脆弱</div><div class="c-en">Antifragile</div>`;
+            } else if (book.coverClass === 'amusing') {
+                coverInner = `<div class="c-stamp">娱乐<br>至死</div><div class="c-cn">娱乐至死</div>`;
+            } else if (book.coverClass === 'autumn') {
+                coverInner = `<div class="c-leaf"></div><div class="c-cn">秋叶集</div>`;
+            } else if (book.coverClass === 'method') {
+                coverInner = `<div class="blk"></div><div class="blk"></div><div class="blk"></div><div class="blk"></div><div class="m-text"><div class="cn">谈谈方法</div></div>`;
+            }
+            container.querySelector('#bookshelfDetailCover').innerHTML = `<div class="lumina-bookshelf-cover-inner ${book.coverClass}">${coverInner}</div>`;
+        }
+
+        const notesContainer = container.querySelector('#bookshelfDetailNotes');
+        if (book.notes.length === 0) {
+            notesContainer.innerHTML = `<div style="text-align:center;color:var(--b3-theme-on-surface-light);padding:40px 0;">暂无划线和想法</div>`;
+        } else {
+            notesContainer.innerHTML = book.notes.map((note, idx) => {
+                const typeLabel = note.type === "highlight"
+                    ? `<div class="lumina-bookshelf-note-type highlight">▌ 划线</div>`
+                    : `<div class="lumina-bookshelf-note-type idea">💡 想法</div>`;
+                const titleHtml = note.title ? `<div class="lumina-bookshelf-note-title">${note.title}</div>` : "";
+                const tagsHtml = note.tags?.length
+                    ? `<div class="lumina-bookshelf-note-tags">${note.tags.map(t => `<span class="lumina-bookshelf-note-tag">${t}</span>`).join("")}</div>`
+                    : "";
+                const quoteHtml = note.quote ? `<div class="lumina-bookshelf-note-quote"><p>${note.quote}</p></div>` : "";
+                const thoughtHtml = note.thought ? `<div class="lumina-bookshelf-note-thought"><p>${note.thought}</p></div>` : "";
+                return `
+                    <div class="lumina-bookshelf-note-card" data-note-index="${idx}">
+                        <div class="lumina-bookshelf-note-header">
+                            <span class="lumina-bookshelf-note-time">${note.time}</span>
+                            <div class="lumina-bookshelf-note-header-right">
+                                ${typeLabel}
+                                ${tagsHtml}
+                                <button class="lumina-bookshelf-note-menu" data-note-index="${idx}">⋯</button>
+                            </div>
+                        </div>
+                        ${titleHtml}${thoughtHtml}${quoteHtml}
+                    </div>
+                `;
+            }).join("");
+        }
+
+        this._switchBookshelfView('detail');
+        const listEl = this.container.querySelector('#shuoshuo-notes-list');
+        if (listEl) listEl.scrollTop = 0;
+        this.applyBookshelfFontConfig();
+
+        // 绑定笔记卡片菜单事件
+        if (notesContainer) {
+            notesContainer.querySelectorAll('.lumina-bookshelf-note-menu').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const noteIndex = parseInt(btn.dataset.noteIndex);
+                    this._showBookNoteMenu(bookId, noteIndex, btn);
+                });
+            });
+        }
+    }
+
+    _showBookNoteMenu(bookId, noteIndex, triggerBtn) {
+        document.querySelectorAll('.lumina-bookshelf-note-dropdown').forEach(m => m.remove());
+
+        const menu = document.createElement('div');
+        menu.className = 'lumina-bookshelf-note-dropdown';
+        menu.innerHTML = `
+            <div class="lumina-bookshelf-note-dropdown-item" data-action="sync">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3"/></svg>
+                同步到思源
+            </div>
+            <div class="lumina-bookshelf-note-dropdown-divider"></div>
+            <div class="lumina-bookshelf-note-dropdown-item danger" data-action="delete">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                删除笔记
+            </div>
+        `;
+
+        const rect = triggerBtn.getBoundingClientRect();
+        menu.style.position = 'fixed';
+        menu.style.top = (rect.bottom + 4) + 'px';
+        menu.style.left = (rect.left - 100) + 'px';
+        document.body.appendChild(menu);
+
+        const closeMenu = () => menu.remove();
+        const onClick = (ev) => {
+            const item = ev.target.closest('.lumina-bookshelf-note-dropdown-item');
+            if (!item) return;
+            const action = item.dataset.action;
+            closeMenu();
+            if (action === 'delete') {
+                this._deleteBookNote(bookId, noteIndex);
+            } else if (action === 'sync') {
+                this._syncBookNoteToSiyuan(bookId, noteIndex);
+            }
+        };
+        menu.addEventListener('click', onClick);
+        setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0);
+    }
+
+    async _deleteBookNote(bookId, noteIndex) {
+        const book = this.books.find(b => b.id === bookId);
+        if (!book || !book.notes || noteIndex < 0 || noteIndex >= book.notes.length) return;
+        const confirmed = await confirm('确定要删除这条笔记吗？');
+        if (!confirmed) return;
+        const note = book.notes[noteIndex];
+        book.notes.splice(noteIndex, 1);
+        if (note.type === 'highlight') book.highlights = Math.max(0, (book.highlights || 0) - 1);
+        if (note.type === 'thought') book.ideas = Math.max(0, (book.ideas || 0) - 1);
+        await this.saveBooks();
+        this._showBookDetail(bookId);
+        showMessage('已删除笔记');
+    }
+
+    async _syncBookNoteToSiyuan(bookId, noteIndex) {
+        const book = this.books.find(b => b.id === bookId);
+        if (!book || !book.notes || noteIndex < 0 || noteIndex >= book.notes.length) return;
+        const note = book.notes[noteIndex];
+
+        const cfg = this.bookshelfSyncConfig || {};
+        const syncMode = cfg.syncMode || 'dailynote';
+        const notebookId = cfg.syncNotebookId || '';
+        const syncDocId = cfg.syncDocId || '';
+
+        if (syncMode === 'dailynote' && !notebookId) {
+            showMessage('请先在图书视图设置中配置日记笔记本');
+            return;
+        }
+        if (syncMode === 'doc' && !syncDocId) {
+            showMessage('请先在图书视图设置中配置同步目标文档ID');
+            return;
+        }
+
+        try {
+            const parts = [];
+            if (note.title) parts.push(`**章节**: ${note.title}`);
+            if (note.quote) parts.push(`> ${note.quote}`);
+            if (note.thought) parts.push(`💡 ${note.thought}`);
+            if (note.tags && note.tags.length) parts.push(`标签: ${note.tags.join(' ')}`);
+
+            let content = parts.join('\n\n');
+            if (!content.trim()) {
+                showMessage('该笔记内容为空，无需同步');
+                return;
+            }
+
+            const typeLabel = note.type === 'highlight' ? '划线' : '想法';
+            const timeStr = note.time || '';
+            const dateStr = timeStr.split(' ')[0] || new Date().toISOString().split('T')[0];
+
+            let diaryContent = `> [!NOTE] 📖 《${book.title}》| ${typeLabel}${timeStr ? ' | ' + timeStr : ''}`;
+            const lines = content.split('\n');
+            for (const line of lines) {
+                diaryContent += '\n> ' + line;
+            }
+            diaryContent += ' ';
+
+            if (syncMode === 'dailynote') {
+                const docId = await this.getOrCreateDailyNoteDoc(new Date(note.time || Date.now()), notebookId);
+                if (!docId) {
+                    showMessage('无法获取或创建日记文档');
+                    return;
+                }
+                const response = await fetch('/api/block/appendBlock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        parentID: docId,
+                        dataType: 'markdown',
+                        data: diaryContent
+                    })
+                });
+                const result = await response.json();
+                if (result.code !== 0) {
+                    showMessage('同步失败: ' + result.msg);
+                    return;
+                }
+            } else if (syncMode === 'doc') {
+                const blockId = await this.appendToDocWithDateGroup(syncDocId, diaryContent, new Date(note.time || Date.now()).getTime());
+                if (!blockId) {
+                    showMessage('同步失败，请检查配置');
+                    return;
+                }
+            }
+
+            showMessage('已同步到思源笔记');
+        } catch (e) {
+            console.error('同步笔记到思源失败:', e);
+            showMessage('同步失败');
+        }
+    }
+
+    async _deleteBook(bookId) {
+        const confirmed = await confirm('确定要删除这本书吗？相关的划线和想法也将一并删除。');
+        if (!confirmed) return;
+        this.books = this.books.filter(b => b.id !== bookId);
+        await this.saveBooks();
+        this._refreshBookshelfList();
+        showMessage('已删除图书');
+    }
+
+    async _syncBookToSiyuan(bookId) {
+        const book = this.books.find(b => b.id === bookId);
+        if (!book) return;
+        if (!book.notes || book.notes.length === 0) {
+            showMessage('该书没有划线和想法，无需同步');
+            return;
+        }
+
+        const cfg = this.bookshelfSyncConfig || {};
+        const syncMode = cfg.syncMode || 'dailynote';
+        const notebookId = cfg.syncNotebookId || '';
+        const syncDocId = cfg.syncDocId || '';
+
+        if (syncMode === 'dailynote' && !notebookId) {
+            showMessage('请先在图书视图设置中配置日记笔记本');
+            return;
+        }
+        if (syncMode === 'doc' && !syncDocId) {
+            showMessage('请先在图书视图设置中配置同步目标文档ID');
+            return;
+        }
+
+        showMessage(`开始同步《${book.title}》的 ${book.notes.length} 条笔记...`);
+        let successCount = 0;
+
+        for (const note of book.notes) {
+            try {
+                const parts = [];
+                if (note.title) parts.push(`**章节**: ${note.title}`);
+                if (note.quote) parts.push(`> ${note.quote}`);
+                if (note.thought) parts.push(`💡 ${note.thought}`);
+                if (note.tags && note.tags.length) parts.push(`标签: ${note.tags.join(' ')}`);
+
+                let content = parts.join('\n\n');
+                if (!content.trim()) continue;
+
+                const typeLabel = note.type === 'highlight' ? '划线' : '想法';
+                const timeStr = note.time || '';
+                const dateStr = timeStr.split(' ')[0] || new Date().toISOString().split('T')[0];
+
+                let diaryContent = `> [!NOTE] 📖 《${book.title}》| ${typeLabel}${timeStr ? ' | ' + timeStr : ''}`;
+                const lines = content.split('\n');
+                for (const line of lines) {
+                    diaryContent += '\n> ' + line;
+                }
+                diaryContent += ' ';
+
+                if (syncMode === 'dailynote') {
+                    const docId = await this.getOrCreateDailyNoteDoc(new Date(note.time || Date.now()), notebookId);
+                    if (!docId) continue;
+                    await fetch('/api/block/appendBlock', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            parentID: docId,
+                            dataType: 'markdown',
+                            data: diaryContent
+                        })
+                    });
+                } else if (syncMode === 'doc') {
+                    await this.appendToDocWithDateGroup(syncDocId, diaryContent, new Date(note.time || Date.now()).getTime());
+                }
+                successCount++;
+            } catch (e) {
+                console.error('同步笔记失败:', e);
+            }
+        }
+
+        showMessage(`同步完成：成功 ${successCount} / ${book.notes.length} 条笔记`);
+    }
+
+    // 从JSON文件导入微信读书笔记
+    async _importBooksFromJson(file) {
+        try {
+            showMessage('正在导入图书数据...');
+            const text = await file.text();
+            const data = JSON.parse(text);
+            if (!data.books || !Array.isArray(data.books)) {
+                showMessage('导入失败：JSON格式不正确，缺少books字段');
+                return;
+            }
+            const parsedBooks = await this._parseWereadJson(data);
+            if (parsedBooks.length === 0) {
+                showMessage('导入失败：没有解析到有效的图书数据');
+                return;
+            }
+            // 去重：根据bookId覆盖已有图书
+            for (const newBook of parsedBooks) {
+                const idx = this.books.findIndex(b => b.id === newBook.id);
+                if (idx >= 0) {
+                    this.books[idx] = newBook;
+                } else {
+                    this.books.push(newBook);
+                }
+            }
+            await this.saveBooks();
+            this._refreshBookshelfList();
+            showMessage(`成功导入 ${parsedBooks.length} 本图书`);
+        } catch (e) {
+            console.error('导入图书失败:', e);
+            showMessage('导入失败：' + (e.message || '未知错误'));
+        }
+    }
+
+    // 解析微信读书JSON格式
+    async _parseWereadJson(data) {
+        const results = [];
+        for (const book of data.books) {
+            try {
+                if (!book.bookId || !book.title) continue;
+                // 下载封面图片并转为本地
+                let localCover = null;
+                if (book.cover) {
+                    localCover = await this._downloadCoverImage(book.cover, book.bookId);
+                }
+                // 解析笔记
+                const notes = [];
+                let highlights = 0;
+                let ideas = 0;
+                if (book.notes && Array.isArray(book.notes)) {
+                    for (const note of book.notes) {
+                        const time = note.createTime ? this._formatWereadTime(note.createTime) : '';
+                        if (note.type === 'mark') {
+                            highlights++;
+                            notes.push({
+                                type: 'highlight',
+                                time: time,
+                                quote: note.markText || '',
+                                thought: '',
+                                tags: [`#resources/书籍/${book.title}`],
+                                title: note.chapterTitle || ''
+                            });
+                        } else if (note.type === 'review') {
+                            ideas++;
+                            notes.push({
+                                type: 'idea',
+                                time: time,
+                                quote: note.markText || '',
+                                thought: note.thought || '',
+                                tags: [`#resources/书籍/${book.title}`],
+                                title: note.chapterTitle || ''
+                            });
+                        }
+                    }
+                }
+                // 计算年份和最近阅读时间
+                let year = new Date().getFullYear();
+                let readTime = null;
+                if (book.notes && book.notes.length > 0) {
+                    const times = book.notes.map(n => n.createTime ? new Date(n.createTime) : null).filter(Boolean);
+                    if (times.length > 0) {
+                        times.sort((a, b) => b - a);
+                        year = times[0].getFullYear();
+                        readTime = this._formatWereadDate(times[0]);
+                    }
+                }
+                // 如果没有笔记但有 cover，也给个默认样式
+                const coverClass = this._getCoverClassForBook(book.title);
+                results.push({
+                    id: book.bookId,
+                    title: book.title,
+                    author: book.author || '未知作者',
+                    coverClass: coverClass,
+                    coverImage: localCover,
+                    type: 'book',
+                    syncStatus: 'synced',
+                    readStatus: book.noteCount > 0 || book.reviewCount > 0 ? 'read' : 'unread',
+                    year: year,
+                    readTime: readTime,
+                    highlights: highlights,
+                    ideas: ideas,
+                    notes: notes
+                });
+            } catch (e) {
+                console.error('解析图书失败:', book.title, e);
+            }
+        }
+        return results;
+    }
+
+    // 下载封面图片并转为本地assets
+    async _downloadCoverImage(url, bookId) {
+        try {
+            const response = await fetch(url, { mode: 'cors' });
+            if (!response.ok) return null;
+            const blob = await response.blob();
+            const ext = blob.type.includes('png') ? 'png' : blob.type.includes('gif') ? 'gif' : 'jpg';
+            const file = new File([blob], `${bookId}_cover.${ext}`, { type: blob.type });
+            const formData = new FormData();
+            formData.append('assetsDirPath', '/assets/');
+            formData.append('file[]', file);
+            const uploadRes = await fetch('/api/asset/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await uploadRes.json();
+            if (result.code === 0 && result.data && result.data.succMap && Object.keys(result.data.succMap).length > 0) {
+                return Object.values(result.data.succMap)[0];
+            }
+            return null;
+        } catch (e) {
+            console.error('下载封面失败:', url, e);
+            return null;
+        }
+    }
+
+    // 格式化微信读书时间
+    _formatWereadTime(isoTime) {
+        try {
+            const d = new Date(isoTime);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const h = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            return `${y}-${m}-${day} ${h}:${min}`;
+        } catch (e) {
+            return isoTime || '';
+        }
+    }
+
+    _formatWereadDate(date) {
+        try {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    // 根据书名生成封面样式类
+    _getCoverClassForBook(title) {
+        const hash = title.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+        const classes = ['effortless', 'antifragile', 'amusing', 'autumn', 'method'];
+        return classes[hash % classes.length];
     }
 
     _formatFileSize(bytes) {
@@ -5932,6 +7026,23 @@ ipcRenderer.on('lumina-close', () => {
                     if (id) {
                         this.showMemoDetail(id);
                     }
+                    return;
+                }
+
+                // 处理任务列表复选框点击
+                const taskCheckbox = e.target.closest('.shuoshuo-task-checkbox');
+                if (taskCheckbox) {
+                    e.stopPropagation();
+                    const taskItem = taskCheckbox.closest('.task-item');
+                    const noteCard = taskCheckbox.closest('.north-shuoshuo-note-card');
+                    if (taskItem && noteCard) {
+                        const shuoshuoId = noteCard.dataset.id;
+                        const taskLine = taskItem.dataset.taskLine;
+                        if (shuoshuoId && taskLine) {
+                            this.toggleTaskCheckbox(shuoshuoId, taskLine);
+                        }
+                    }
+                    return;
                 }
             });
         }
@@ -6231,6 +7342,104 @@ ipcRenderer.on('lumina-close', () => {
         return types.length > 0 ? types[0] : '';
     }
 
+    /**
+     * 在旧内容模板中，用新纯内容替换旧纯内容，保持标签和类型的相对位置不变
+     * @param {string} oldContent - 旧说说内容（含标签和类型）
+     * @param {string} newPureContent - 新的纯内容（不含标签和类型）
+     * @returns {string} 新说说内容
+     */
+    rebuildContentWithNewPureContent(oldContent, newPureContent) {
+        if (!oldContent) return newPureContent || '';
+        newPureContent = (newPureContent || '').replace(/\s+/g, ' ').trim();
+
+        const oldTags = this.extractTags(oldContent);
+        const oldType = this.extractType(oldContent);
+
+        // 如果没有标签和类型，直接返回新纯内容
+        if (oldTags.length === 0 && !oldType) return newPureContent;
+
+        // 把旧内容中的标签和类型替换为占位符
+        let template = oldContent;
+        const placeholders = [];
+        let phIndex = 0;
+
+        // 先替换类型标记（#类型#），避免类型名被误判为标签
+        if (oldType) {
+            const typeRegex = new RegExp(`#${oldType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}#`, 'g');
+            template = template.replace(typeRegex, () => {
+                const ph = `__LPH${phIndex++}__`;
+                placeholders.push({ ph, value: `#${oldType}#` });
+                return ph;
+            });
+        }
+
+        // 替换标签（去重，按原顺序）
+        const seenTags = new Set();
+        oldTags.forEach(tag => {
+            if (seenTags.has(tag)) return;
+            seenTags.add(tag);
+            const tagRegex = new RegExp(`#${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$|[，。！？；：""''（）【】])`, 'g');
+            template = template.replace(tagRegex, () => {
+                const ph = `__LPH${phIndex++}__`;
+                placeholders.push({ ph, value: `#${tag}` });
+                return ph;
+            });
+        });
+
+        // 清理模板中的多余空格
+        template = template.replace(/\s+/g, ' ').trim();
+
+        // 从模板中提取旧纯内容
+        let oldPureInTemplate = template;
+        placeholders.forEach(p => {
+            oldPureInTemplate = oldPureInTemplate.replace(new RegExp(p.ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'g'), ' ');
+        });
+        oldPureInTemplate = oldPureInTemplate.replace(/\s+/g, ' ').trim();
+
+        let newTemplate;
+        if (oldPureInTemplate && template.includes(oldPureInTemplate)) {
+            // 能在模板中找到旧纯内容，直接替换
+            newTemplate = template.replace(oldPureInTemplate, newPureContent);
+        } else {
+            // 无法精确定位（如标签在中间分散的情况），根据标签位置模式判断
+            const firstPh = placeholders[0].ph;
+            const lastPh = placeholders[placeholders.length - 1].ph;
+            const firstIndex = template.indexOf(firstPh);
+            const lastEnd = template.lastIndexOf(lastPh) + lastPh.length;
+
+            const textBefore = template.substring(0, firstIndex).trim();
+            const textAfter = template.substring(lastEnd).trim();
+
+            if (!textBefore && textAfter) {
+                // 标签在开头：替换最后一个占位符后面的文本
+                newTemplate = template.substring(0, lastEnd) + ' ' + newPureContent;
+            } else if (textBefore && !textAfter) {
+                // 标签在末尾：替换第一个占位符前面的文本
+                newTemplate = newPureContent + ' ' + template.substring(firstIndex);
+            } else if (!textBefore && !textAfter) {
+                // 只有标签
+                newTemplate = template + ' ' + newPureContent;
+            } else {
+                // 标签在中间：保持首尾文本，把新纯内容放中间，标签放到新纯内容后面
+                const middleTags = [];
+                for (let i = 0; i < placeholders.length; i++) {
+                    middleTags.push(placeholders[i].ph);
+                }
+                newTemplate = textBefore + ' ' + newPureContent + ' ' + middleTags.join(' ') + ' ' + textAfter;
+            }
+        }
+
+        // 恢复占位符为标签和类型
+        let result = newTemplate;
+        // 按占位符编号从大到小替换，避免短编号被长编号包含时误匹配
+        const sortedPh = [...placeholders].sort((a, b) => b.ph.localeCompare(a.ph));
+        sortedPh.forEach(p => {
+            result = result.replace(new RegExp(p.ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), p.value);
+        });
+
+        return result.replace(/\s+/g, ' ').trim();
+    }
+
     // 绑定工具栏事?
     bindToolbarEvents() {
         const input = this.container.querySelector('#shuoshuo-input');
@@ -6346,6 +7555,15 @@ ipcRenderer.on('lumina-close', () => {
         if (imageBtn) {
             imageBtn.addEventListener('click', () => {
                 this.insertImage(input);
+            });
+        }
+
+        // 任务列表按钮
+        const taskBtn = this.container.querySelector('#toolbar-task');
+        if (taskBtn) {
+            taskBtn.addEventListener('click', () => {
+                this.insertText(input, '- [ ] ', '');
+                input.focus();
             });
         }
 
@@ -6560,6 +7778,15 @@ ipcRenderer.on('lumina-close', () => {
 
     escapeRegExp(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    applyBookshelfFontConfig() {
+        const container = this.container?.querySelector('.lumina-bookshelf-container');
+        if (!container) return;
+        const cfg = this.bookshelfFontConfig || DEFAULT_BOOKSHELF_FONT_CONFIG;
+        container.style.setProperty('--bookshelf-title-font-size', (cfg.title || 14) + 'px');
+        container.style.setProperty('--bookshelf-highlight-font-size', (cfg.highlight || 13) + 'px');
+        container.style.setProperty('--bookshelf-thought-font-size', (cfg.thought || 13) + 'px');
     }
 
     // 根据字符串哈希获取颜色索引
@@ -7432,13 +8659,14 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 获取或创建对应日期的日记文档
-    async getOrCreateDailyNoteDoc(date) {
+    async getOrCreateDailyNoteDoc(date, notebookId = null) {
+        const nbId = notebookId || this.notebookId;
         try {
             // 1. 获取笔记本配置的日记保存路径模板
             const confResponse = await fetch('/api/notebook/getNotebookConf', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notebook: this.notebookId })
+                body: JSON.stringify({ notebook: nbId })
             });
             const confResult = await confResponse.json();
             if (confResult.code !== 0) return null;
@@ -7454,7 +8682,7 @@ ipcRenderer.on('lumina-close', () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    notebook: this.notebookId,
+                    notebook: nbId,
                     path: hPath
                 })
             });
@@ -7468,7 +8696,7 @@ ipcRenderer.on('lumina-close', () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    notebook: this.notebookId,
+                    notebook: nbId,
                     path: hPath,
                     markdown: ''
                 })
@@ -8042,7 +9270,7 @@ ipcRenderer.on('lumina-close', () => {
 
             if (isTask) {
                 const checked = taskChecked ? 'checked' : '';
-                items.push(`<li class="task-item"><input type="checkbox" ${checked} disabled> <span>${content}</span></li>`);
+                items.push(`<li class="task-item" data-task-line="${this.escapeHtml(lines[i])}"><input type="checkbox" class="shuoshuo-task-checkbox" ${checked}> <span>${content}</span></li>`);
             } else {
                 items.push(`<li>${content}</li>`);
             }
@@ -8055,6 +9283,45 @@ ipcRenderer.on('lumina-close', () => {
         const html = `<${tag}${classAttr}${startAttr}>\n${items.join('\n')}\n</${tag}>`;
 
         return { html, nextIndex: i };
+    }
+
+    async toggleTaskCheckbox(shuoshuoId, taskLine) {
+        const shuoshuo = this.shuoshuos.find(s => s.id === shuoshuoId);
+        if (!shuoshuo || !shuoshuo.content) return;
+
+        // 解码 HTML entities（因为 taskLine 来自 escapeHtml 后的属性）
+        const textarea = document.createElement('textarea');
+        textarea.innerHTML = taskLine;
+        const decodedLine = textarea.value;
+
+        // 在内容中查找任务行
+        if (!shuoshuo.content.includes(decodedLine)) return;
+
+        // 切换 [ ] 和 [x]
+        let newLine;
+        if (decodedLine.includes('[ ]')) {
+            newLine = decodedLine.replace('[ ]', '[x]');
+        } else if (decodedLine.includes('[x]') || decodedLine.includes('[X]')) {
+            newLine = decodedLine.replace(/\[x\]/i, '[ ]');
+        } else {
+            return;
+        }
+
+        const newContent = shuoshuo.content.replace(decodedLine, newLine);
+        if (newContent === shuoshuo.content) return;
+
+        shuoshuo.content = newContent;
+        shuoshuo.updated = Date.now();
+        await this.saveShuoshuos();
+
+        // 如果绑定了思源块，同步更新
+        if (shuoshuo.boundBlockId) {
+            await this.syncShuoshuoToSiyuan(shuoshuo);
+        }
+
+        // 重新渲染
+        this.renderNotes();
+        this.renderTags();
     }
 
     escapeHtml(text) {
@@ -8705,17 +9972,21 @@ ipcRenderer.on('lumina-close', () => {
                         }
                     }
 
-                    // 构建说说视图格式：纯内容 + #类型#（如果有）+ #标签（如果有）
-                    let displayContent = luminaContent;
-                    
-                    // 添加类型（#类型# 格式，放在内容后面）
-                    if (types.length > 0) {
-                        displayContent = displayContent + ' ' + types.map(t => `#${t}#`).join(' ');
-                    }
-                    
-                    // 添加标签（#标签 格式，放在最后）
-                    if (tags.length > 0) {
-                        displayContent = displayContent + ' ' + tags.map(t => `#${t}`).join(' ');
+                    // 构建说说视图格式，保持标签原始位置
+                    let displayContent;
+                    const localShuoshuo = this.shuoshuos.find(s => s.boundBlockId === blockId);
+                    if (localShuoshuo && localShuoshuo.content) {
+                        // 使用本地旧内容作为模板，保持标签位置不变
+                        displayContent = this.rebuildContentWithNewPureContent(localShuoshuo.content, luminaContent);
+                    } else {
+                        // 没有本地记录，默认标签在前
+                        displayContent = luminaContent;
+                        if (types.length > 0) {
+                            displayContent = displayContent + ' ' + types.map(t => `#${t}#`).join(' ');
+                        }
+                        if (tags.length > 0) {
+                            displayContent = tags.map(t => `#${t}`).join(' ') + ' ' + displayContent;
+                        }
                     }
 
                     boundShuoshuos.push({
@@ -8801,9 +10072,6 @@ ipcRenderer.on('lumina-close', () => {
             // 如果有类型，构建 "时间 类型：内容" 格式
             if (types) {
                 updateContent = `${timeStr} ${types}：${pureContent}`;
-            } else if (tags.length > 0) {
-                // 如果有标签但没有类型，构建 "时间 #标签 内容" 格式
-                updateContent = `${timeStr} #${tags[0]} ${pureContent}`;
             } else if (isBlockquote && hasNoteCallout) {
                 // 如果是 [!NOTE] 引用块格式，保持格式更新内容
                 const lines = pureContent.split('\n');
@@ -8816,6 +10084,10 @@ ipcRenderer.on('lumina-close', () => {
                         updateContent += '\n>';
                     }
                 }
+            } else if (tags.length > 0) {
+                // 如果有标签但没有类型，且原块不是 [!NOTE] 引用块格式
+                // 构建 "时间 #标签 内容" 格式
+                updateContent = `${timeStr} #${tags[0]} ${pureContent}`;
             } else {
                 // 普通格式，直接使用纯内容
                 updateContent = pureContent;
@@ -8898,6 +10170,105 @@ ipcRenderer.on('lumina-close', () => {
             showMessage(this.syncMode === 'dailynote' ? "已同步到日记，并与此说说绑定" : "已同步到指定文档，并与此说说绑定");
         } else {
             showMessage("同步失败，请检查配置");
+        }
+    }
+
+    // 同步单条朋友圈到思源笔记
+    async syncMomentToSiyuan(mid) {
+        const m = this.moments.find(x => x.id === mid);
+        if (!m) return;
+
+        const cfg = this.momentsConfig || {};
+        const syncMode = cfg.syncMode || 'dailynote';
+        const notebookId = cfg.syncNotebookId || '';
+        const syncDocId = cfg.syncDocId || '';
+
+        if (syncMode === 'dailynote' && !notebookId) {
+            showMessage('请先在朋友圈设置中配置日记笔记本');
+            return;
+        }
+        if (syncMode === 'doc' && !syncDocId) {
+            showMessage('请先在朋友圈设置中配置同步目标文档ID');
+            return;
+        }
+
+        // 构建 markdown 内容
+        let content = m.text || '';
+        if (m.images && m.images.length > 0) {
+            content += `\n\n📷 [图片${m.images.length}张]`;
+        }
+        if (m.file) {
+            content += `\n\n📎 文件: ${m.file.name}`;
+        }
+        if (m.link) {
+            content += `\n\n🔗 [${m.link.title}](${m.link.url})`;
+        }
+
+        const timeStr = this.formatTimeForDiary(m.created);
+        const dateTimeStr = this.formatDateTimeAttr(m.created);
+        const dateStr = dateTimeStr.split(' ')[0];
+
+        // 构建引用块格式
+        let diaryContent = `> [!NOTE] 📱 ${dateStr} ${timeStr}`;
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            diaryContent += '\n> ' + lines[i];
+        }
+        diaryContent += ' ';
+
+        let blockId = null;
+
+        try {
+            if (syncMode === 'dailynote') {
+                const docId = await this.getOrCreateDailyNoteDoc(new Date(m.created), notebookId);
+                if (!docId) {
+                    showMessage('无法获取或创建日记文档');
+                    return;
+                }
+                const response = await fetch('/api/block/appendBlock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        parentID: docId,
+                        dataType: 'markdown',
+                        data: diaryContent
+                    })
+                });
+                const result = await response.json();
+                if (result.code !== 0) {
+                    showMessage('同步失败: ' + result.msg);
+                    return;
+                }
+                // 提取 blockId
+                if (Array.isArray(result.data) && result.data.length > 0) {
+                    const firstItem = result.data[0];
+                    if (firstItem.doOperations && Array.isArray(firstItem.doOperations) && firstItem.doOperations.length > 0) {
+                        blockId = firstItem.doOperations[0].id || firstItem.doOperations[0].blockId || null;
+                    }
+                } else if (result.data && typeof result.data === 'object') {
+                    if (result.data.doOperations && Array.isArray(result.data.doOperations) && result.data.doOperations.length > 0) {
+                        blockId = result.data.doOperations[0].id || result.data.doOperations[0].blockId || null;
+                    } else {
+                        blockId = result.data.id || result.data.blockId || null;
+                    }
+                } else if (typeof result.data === 'string') {
+                    blockId = result.data;
+                }
+            } else if (syncMode === 'doc') {
+                blockId = await this.appendToDocWithDateGroup(syncDocId, diaryContent, m.created);
+            }
+
+            if (blockId) {
+                m.blockId = blockId;
+                m.synced = true;
+                await this.saveMoments();
+                showMessage('已同步到思源笔记');
+            } else {
+                showMessage('同步失败，请检查配置');
+            }
+        } catch (e) {
+            console.error('同步朋友圈到思源失败:', e);
+            showMessage('同步失败');
         }
     }
 
@@ -9455,22 +10826,16 @@ ipcRenderer.on('lumina-close', () => {
                     }
                     
                     // 从思源笔记最新内容中提取标签（确保多层标签完整）
-                    const newTags = this.extractTags(blockContent);
-                    
-                    // 构建新内容：纯内容 + 类型（如果有）+ 标签（如果有）
-                    let newContent = pureContent;
-                    
-                    // 如果检测到了类型，使用 #类型# 格式放在内容后面；否则使用原来的类型
-                    if (detectedType) {
-                        newContent = `${pureContent} #${detectedType}#`;
-                    } else if (oldType) {
-                        newContent = `${pureContent} #${oldType}#`;
+                    let newTags = this.extractTags(blockContent);
+                    // 如果从纯内容中没提取到标签（如引用块格式内容不含标签），保留属性中的旧标签
+                    if (newTags.length === 0) {
+                        const oldTags = attrs['custom-lumina-tag'] || '';
+                        newTags = oldTags ? oldTags.split(/\s+/).filter(Boolean) : [];
                     }
-                    
-                    // 添加标签
-                    if (newTags.length > 0) {
-                        newContent = newContent + ' ' + newTags.map(t => `#${t}`).join(' ');
-                    }
+
+                    // 使用本地旧内容作为模板，保持标签位置不变
+                    const oldContent = this.shuoshuos[index].content;
+                    const newContent = this.rebuildContentWithNewPureContent(oldContent, pureContent);
                     
                     this.shuoshuos[index].content = newContent;
                     this.shuoshuos[index].tags = newTags;
@@ -9619,16 +10984,28 @@ ipcRenderer.on('lumina-close', () => {
             const attrs = attrResult.data || {};
             const newContent = attrs['custom-lumina-content'] || '';
             const newTag = attrs['custom-lumina-tag'] || '';
+            const newType = attrs['custom-lumina-type'] || '';
+
+            // 从属性中解析标签和类型
+            const newTags = newTag ? newTag.split(/\s+/).filter(Boolean) : [];
+            const newTypes = newType ? newType.split(/\s+/).filter(Boolean) : [];
+
+            // 构建说说视图格式：纯内容 + #类型#（如果有）+ #标签（如果有）
+            let displayContent = newContent;
+            if (newTypes.length > 0) {
+                displayContent = displayContent + ' ' + newTypes.map(t => `#${t}#`).join(' ');
+            }
+            if (newTags.length > 0) {
+                displayContent = displayContent + ' ' + newTags.map(t => `#${t}`).join(' ');
+            }
 
             // 检查内容是否真的有变化
-            if (newContent === existing.content) return;
-
-            const newTags = newTag ? newTag.split(/\s+/).filter(Boolean) : [];
+            if (displayContent === existing.content) return;
 
             // 更新说说对象
             this.shuoshuos[index] = {
                 ...existing,
-                content: newContent,
+                content: displayContent,
                 tags: newTags,
                 updated: Date.now()
             };
@@ -9687,6 +11064,14 @@ ipcRenderer.on('lumina-close', () => {
             this.renderMoments();
             // 后台同步说说数据（不影响朋友圈视图）
             this.loadShuoshuos().catch(() => {});
+        } else if (view === 'bookshelf') {
+            if (flomoArea) flomoArea.style.display = 'flex';
+            if (settingsArea) settingsArea.style.display = 'none';
+            const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
+            if (inputArea) inputArea.style.display = 'none';
+            const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
+            if (sidebar) sidebar.style.display = 'none';
+            this.renderBookshelf();
         } else if (needsRefresh.includes(view)) {
             // 先显示视图框架，然后异步加载最新数据后渲染内容
             if (flomoArea) flomoArea.style.display = 'flex';
@@ -9723,7 +11108,8 @@ ipcRenderer.on('lumina-close', () => {
     // 加载笔记本列?
     async loadNotebooks() {
         const select = this.container?.querySelector('#settings-notebook-select');
-        if (!select) return;
+        const momentsSelect = this.container?.querySelector('#moments-notebook-select');
+        const bookshelfSelect = this.container?.querySelector('#bookshelf-notebook-select');
 
         try {
             const response = await fetch('/api/notebook/lsNotebooks', {
@@ -9739,15 +11125,41 @@ ipcRenderer.on('lumina-close', () => {
                 // 保存笔记本信息用于显?
                 this.notebooksList = notebooks;
                 
-                // 重建选项
-                let html = '<option value="">请选择笔记?..</option>';
-                notebooks.forEach(nb => {
-                    const code = nb.icon ? parseInt(nb.icon, 16) : NaN;
-                    const icon = !isNaN(code) ? String.fromCodePoint(code) : '📒';
-                    const selected = nb.id === this.notebookId ? 'selected' : '';
-                    html += `<option value="${nb.id}" ${selected}>${icon} ${nb.name}</option>`;
-                });
-                select.innerHTML = html;
+                // 重建主说说选项
+                if (select) {
+                    let html = '<option value="">请选择笔记?..</option>';
+                    notebooks.forEach(nb => {
+                        const code = nb.icon ? parseInt(nb.icon, 16) : NaN;
+                        const icon = !isNaN(code) ? String.fromCodePoint(code) : '📒';
+                        const selected = nb.id === this.notebookId ? 'selected' : '';
+                        html += `<option value="${nb.id}" ${selected}>${icon} ${nb.name}</option>`;
+                    });
+                    select.innerHTML = html;
+                }
+                
+                // 重建朋友圈选项
+                if (momentsSelect) {
+                    let html = '<option value="">请选择笔记本...</option>';
+                    notebooks.forEach(nb => {
+                        const code = nb.icon ? parseInt(nb.icon, 16) : NaN;
+                        const icon = !isNaN(code) ? String.fromCodePoint(code) : '📒';
+                        const selected = nb.id === (this.momentsConfig?.syncNotebookId || '') ? 'selected' : '';
+                        html += `<option value="${nb.id}" ${selected}>${icon} ${nb.name}</option>`;
+                    });
+                    momentsSelect.innerHTML = html;
+                }
+
+                // 重建图书视图选项
+                if (bookshelfSelect) {
+                    let html = '<option value="">请选择笔记本...</option>';
+                    notebooks.forEach(nb => {
+                        const code = nb.icon ? parseInt(nb.icon, 16) : NaN;
+                        const icon = !isNaN(code) ? String.fromCodePoint(code) : '📒';
+                        const selected = nb.id === (this.bookshelfSyncConfig?.syncNotebookId || '') ? 'selected' : '';
+                        html += `<option value="${nb.id}" ${selected}>${icon} ${nb.name}</option>`;
+                    });
+                    bookshelfSelect.innerHTML = html;
+                }
             }
         } catch (e) {
             console.error('加载笔记本列表失败', e);
@@ -9766,6 +11178,47 @@ ipcRenderer.on('lumina-close', () => {
         const momentsSignatureInput = this.container.querySelector('#moments-signature-input');
         if (momentsNicknameInput) momentsNicknameInput.value = this.momentsConfig?.nickname || '月亮';
         if (momentsSignatureInput) momentsSignatureInput.value = this.momentsConfig?.signature || '言念君子 温其如玉';
+        
+        // 更新朋友圈同步状态标签
+        const momentsSyncStatus = this.container.querySelector('#moments-sync-status');
+        if (momentsSyncStatus) {
+            if (this.momentsConfig?.syncNotebookId) {
+                momentsSyncStatus.textContent = '已配置';
+                momentsSyncStatus.className = 'north-shuoshuo-badge north-shuoshuo-badge-success';
+            } else {
+                momentsSyncStatus.textContent = '未配置';
+                momentsSyncStatus.className = 'north-shuoshuo-badge';
+                momentsSyncStatus.style.background = '#f5f5f5';
+                momentsSyncStatus.style.color = '#888';
+            }
+        }
+        
+        // 刷新朋友圈笔记本列表
+        const momentsRefreshBtn = this.container.querySelector('#moments-refresh-notebooks');
+        if (momentsRefreshBtn) {
+            momentsRefreshBtn.onclick = () => {
+                showMessage('正在加载笔记本列表...');
+                this.loadNotebooks();
+            };
+        }
+        
+        // 绑定朋友圈同步模式切换事件
+        const momentsSyncModeItems = this.container.querySelectorAll('#moments-sync-mode-group .north-shuoshuo-radio-item');
+        const momentsSyncDocIdRow = this.container.querySelector('#moments-sync-doc-id-row');
+        momentsSyncModeItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const mode = item.dataset.mode;
+                if (!this.momentsConfig) this.momentsConfig = {};
+                this.momentsConfig.syncMode = mode;
+                momentsSyncModeItems.forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+                if (momentsSyncDocIdRow) {
+                    momentsSyncDocIdRow.style.display = mode === 'doc' ? 'block' : 'none';
+                }
+            });
+        });
 
         // 初始化开关状态 - 关键：根据当前 autoSync 值设置 UI
         const autoSyncSwitch = this.container.querySelector('#settings-auto-sync-switch');
@@ -9953,6 +11406,82 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // 图书视图字体大小设置
+        const bookshelfFontInputs = [
+            { id: 'bookshelf-font-title', key: 'title' },
+            { id: 'bookshelf-font-highlight', key: 'highlight' },
+            { id: 'bookshelf-font-thought', key: 'thought' }
+        ];
+        bookshelfFontInputs.forEach(({ id, key }) => {
+            const input = this.container.querySelector(`#${id}`);
+            if (input) {
+                input.addEventListener('change', async () => {
+                    let val = parseInt(input.value);
+                    if (isNaN(val) || val < 10) val = 10;
+                    if (val > 24) val = 24;
+                    input.value = val;
+                    this.bookshelfFontConfig[key] = val;
+                    this.applyBookshelfFontConfig();
+                    await this.saveConfig();
+                });
+            }
+        });
+
+        // 图书视图同步配置
+        const bookshelfSyncModeItems = this.container.querySelectorAll('#bookshelf-sync-mode-group .north-shuoshuo-radio-item');
+        const bookshelfSyncDocIdRow = this.container.querySelector('#bookshelf-sync-doc-id-row');
+        const bookshelfSyncDocIdInput = this.container.querySelector('#bookshelf-sync-doc-id');
+        const bookshelfNotebookSelect = this.container.querySelector('#bookshelf-notebook-select');
+        const bookshelfRefreshBtn = this.container.querySelector('#bookshelf-refresh-notebooks');
+        const bookshelfSyncStatus = this.container.querySelector('#bookshelf-sync-status');
+
+        bookshelfSyncModeItems.forEach(item => {
+            item.addEventListener('click', async () => {
+                const mode = item.dataset.mode;
+                this.bookshelfSyncConfig.syncMode = mode;
+                bookshelfSyncModeItems.forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+                if (bookshelfSyncDocIdRow) {
+                    bookshelfSyncDocIdRow.style.display = mode === 'doc' ? 'block' : 'none';
+                }
+                await this.saveConfig();
+            });
+        });
+
+        if (bookshelfSyncDocIdInput) {
+            bookshelfSyncDocIdInput.addEventListener('change', async () => {
+                this.bookshelfSyncConfig.syncDocId = bookshelfSyncDocIdInput.value.trim();
+                await this.saveConfig();
+            });
+        }
+
+        if (bookshelfNotebookSelect) {
+            bookshelfNotebookSelect.addEventListener('change', async () => {
+                this.bookshelfSyncConfig.syncNotebookId = bookshelfNotebookSelect.value;
+                if (bookshelfSyncStatus) {
+                    if (bookshelfNotebookSelect.value) {
+                        bookshelfSyncStatus.textContent = '已配置';
+                        bookshelfSyncStatus.className = 'north-shuoshuo-badge north-shuoshuo-badge-success';
+                    } else {
+                        bookshelfSyncStatus.textContent = '未配置';
+                        bookshelfSyncStatus.className = 'north-shuoshuo-badge';
+                        bookshelfSyncStatus.style.background = '#f5f5f5';
+                        bookshelfSyncStatus.style.color = '#888';
+                    }
+                }
+                await this.saveConfig();
+            });
+        }
+
+        if (bookshelfRefreshBtn) {
+            bookshelfRefreshBtn.onclick = () => {
+                showMessage('正在加载笔记本列表...');
+                this.loadNotebooks();
+            };
+        }
+
         const saveBtn = this.container.querySelector('#settings-save');
         const cancelBtn = this.container.querySelector('#settings-cancel');
         const exportBtn = this.container.querySelector('#settings-export');
@@ -9970,7 +11499,7 @@ ipcRenderer.on('lumina-close', () => {
                 const radio = item.querySelector('input[type="radio"]');
                 if (radio) radio.checked = true;
                 if (syncDocIdRow) {
-                    syncDocIdRow.style.display = mode === 'doc' ? 'flex' : 'none';
+                    syncDocIdRow.style.display = mode === 'doc' ? 'block' : 'none';
                 }
             });
         });
@@ -10014,10 +11543,26 @@ ipcRenderer.on('lumina-close', () => {
                 // 保存朋友圈设置
                 const momentsNickname = this.container.querySelector('#moments-nickname-input')?.value?.trim() || '月亮';
                 const momentsSignature = this.container.querySelector('#moments-signature-input')?.value?.trim() || '言念君子 温其如玉';
+                const momentsNotebookId = this.container.querySelector('#moments-notebook-select')?.value || '';
+                const momentsSyncMode = this.container.querySelector('input[name="moments-sync-mode"]:checked')?.value || 'dailynote';
+                const momentsSyncDocId = this.container.querySelector('#moments-sync-doc-id')?.value?.trim() || '';
                 if (!this.momentsConfig) this.momentsConfig = {};
                 this.momentsConfig.nickname = momentsNickname;
                 this.momentsConfig.signature = momentsSignature;
+                this.momentsConfig.syncNotebookId = momentsNotebookId;
+                this.momentsConfig.syncMode = momentsSyncMode;
+                this.momentsConfig.syncDocId = momentsSyncDocId;
                 await this.saveMoments();
+
+                // 保存图书视图同步设置
+                const bookshelfNotebookId = this.container.querySelector('#bookshelf-notebook-select')?.value || '';
+                const bookshelfSyncMode = this.container.querySelector('input[name="bookshelf-sync-mode"]:checked')?.value || 'dailynote';
+                const bookshelfSyncDocId = this.container.querySelector('#bookshelf-sync-doc-id')?.value?.trim() || '';
+                if (!this.bookshelfSyncConfig) this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG };
+                this.bookshelfSyncConfig.syncNotebookId = bookshelfNotebookId;
+                this.bookshelfSyncConfig.syncMode = bookshelfSyncMode;
+                this.bookshelfSyncConfig.syncDocId = bookshelfSyncDocId;
+                await this.saveConfig();
 
                 showMessage('设置已保存');
             };
@@ -10981,12 +12526,19 @@ ipcRenderer.on('lumina-close', () => {
             const data = await this.loadData(STORAGE_NAME);
             const localShuoshuos = data || [];
 
+            // 关键：先把本地数据设到 this.shuoshuos，让 loadShuoshuosFromSiyuan 能查到旧内容模板
+            // 从而保持标签的原始位置不变
+            const previousShuoshuos = this.shuoshuos;
+            this.shuoshuos = localShuoshuos;
+
             // 2. 从思源笔记查询所有绑定的块（主要数据源）
             //    思源SQL是最新的数据，确保思源改了说说视图也能看到
             let boundFromSiyuan = [];
             try {
                 boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
             } catch (e) {
+                // 出错时恢复之前的状态
+                this.shuoshuos = previousShuoshuos;
                 // console.warn('[轻语] 从思源加载绑定块失败，使用本地数据:', e.message);
             }
 
@@ -11059,11 +12611,15 @@ ipcRenderer.on('lumina-close', () => {
                 nickname: '月亮',
                 signature: '言念君子 温其如玉',
                 avatar: null,
-                cover: null
+                cover: null,
+                syncToSiyuan: false,
+                syncNotebookId: '',
+                syncMode: 'dailynote',
+                syncDocId: ''
             };
         } catch (e) {
             this.moments = [];
-            this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null };
+            this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '' };
         }
     }
 
@@ -11075,6 +12631,24 @@ ipcRenderer.on('lumina-close', () => {
             });
         } catch (e) {
             console.error('保存朋友圈失败', e);
+        }
+    }
+
+    // ============ 图书书架数据管理 ============
+    async loadBooks() {
+        try {
+            const data = await this.loadData(BOOKS_STORAGE_NAME);
+            this.books = data?.books || getDefaultBooks();
+        } catch (e) {
+            this.books = getDefaultBooks();
+        }
+    }
+
+    async saveBooks() {
+        try {
+            await this.saveData(BOOKS_STORAGE_NAME, { books: this.books });
+        } catch (e) {
+            console.error('保存图书数据失败', e);
         }
     }
 
@@ -11230,6 +12804,8 @@ ipcRenderer.on('lumina-close', () => {
             this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
             this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
             this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...(data.fontSizeConfig || data.fontSize || {}) };
+            this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
+            this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
         } catch (e) {
             console.warn("加载配置失败", e);
         }
@@ -11299,7 +12875,9 @@ ipcRenderer.on('lumina-close', () => {
                 pinnedTags: this.pinnedTags,
                 themeMode: this.themeMode,
                 morandiColor: this.morandiColor,
-                fontSizeConfig: this.fontSizeConfig
+                fontSizeConfig: this.fontSizeConfig,
+                bookshelfFontConfig: this.bookshelfFontConfig,
+                bookshelfSyncConfig: this.bookshelfSyncConfig
             };
 
             await this.saveData(CONFIG_STORAGE_NAME, config);
