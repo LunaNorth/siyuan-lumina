@@ -4,6 +4,19 @@
     max-height: 100%;
     overflow: hidden;
     position: relative;
+    /* 日历弹窗复用朋友圈样式所需的变量 */
+    --moments-modal-overlay: rgba(0, 0, 0, 0.5);
+    --moments-modal-bg: #fff;
+    --moments-modal-header-border: #f0f0f0;
+    --moments-close-color: #999;
+    --moments-close-hover-bg: #f5f5f5;
+    --moments-close-hover-color: #333;
+    --moments-year-color: #576B95;
+    --moments-cell-bg: #e5e5e5;
+    --moments-cell-level-1: #8fd4a8;
+    --moments-cell-level-2: #5ec88f;
+    --moments-cell-level-3: #3ac652;
+    --moments-cell-level-4: #07C160;
 }
 
 /* ========== 最左侧导航栏（保留原来的窄边栏） ========== */
@@ -233,7 +246,7 @@
 
 /* 菜单 */
 .north-shuoshuo-menu-list {
-    margin-bottom: 24px;
+    margin-bottom: 10px;
     display: flex;
     flex-direction: column;
 }
@@ -283,6 +296,89 @@
 .north-shuoshuo-menu-text {
     font-size: 14px;
     font-weight: 500;
+}
+
+/* 检索式 */
+.north-shuoshuo-query-section {
+    margin-bottom: 10px;
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-query-section .north-shuoshuo-section-title {
+    font-size: 13px;
+    color: var(--b3-theme-primary);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.north-shuoshuo-query-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.north-shuoshuo-query-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: var(--b3-theme-on-surface);
+    font-size: 14px;
+}
+
+.north-shuoshuo-query-item:hover {
+    background-color: var(--b3-list-hover);
+}
+
+.north-shuoshuo-query-item.selected {
+    background-color: var(--b3-list-hover);
+    color: var(--b3-theme-primary);
+    font-weight: 500;
+}
+
+.north-shuoshuo-query-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 10px;
+    flex-shrink: 0;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 14px;
+}
+
+.north-shuoshuo-query-item.selected .north-shuoshuo-query-icon {
+    color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-query-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.north-shuoshuo-query-text {
+    line-height: 1.3;
+    flex: 1;
+}
+
+/* 检索式数量 */
+.north-shuoshuo-query-count {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    min-width: 20px;
+    text-align: right;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+/* 检索式列表 hover 时显示所有数量 */
+.north-shuoshuo-query-list:hover .north-shuoshuo-query-count {
+    opacity: 1;
 }
 
 /* 标签 */
@@ -335,7 +431,7 @@
 .north-shuoshuo-tag-item-content {
     display: flex;
     align-items: center;
-    padding: 6px 10px 6px 4px;
+    padding: 6px 10px 6px 12px;
     cursor: pointer;
     transition: background-color 0.12s ease;
     position: relative;
@@ -379,11 +475,9 @@
     transform: rotate(90deg);
 }
 
-/* 叶子节点（没有子标签）箭头占位但不可见 */
+/* 叶子节点（没有子标签）箭头不占位 */
 .north-shuoshuo-tag-tree-item.leaf > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
-    visibility: hidden;
-    pointer-events: none;
-    opacity: 0;
+    display: none;
 }
 
 .north-shuoshuo-tag-icon-wrapper {
@@ -461,7 +555,7 @@
 
 /* 选中状态 */
 .north-shuoshuo-tag-tree-item.selected > .north-shuoshuo-tag-item-content {
-    background-color: var(--b3-theme-surface-lighter) !important;
+    background-color: var(--b3-list-hover) !important;
     border-radius: 6px;
 }
 
@@ -713,6 +807,7 @@
     gap: 8px;
     padding: 0 0 12px 0;
     margin-bottom: 4px;
+    position: relative;
 }
 
 .north-shuoshuo-search-input-wrapper {
@@ -943,6 +1038,154 @@
     overflow-y: auto;
     padding: 20px 30px;
     max-height: 100%;
+}
+
+/* 笔记总数量 */
+.north-shuoshuo-notes-count {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    margin-bottom: 12px;
+    padding: 0 4px;
+}
+
+/* 日期分组标题 */
+.north-shuoshuo-date-group {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--b3-theme-primary);
+    margin-bottom: 12px;
+    padding: 0 4px;
+}
+
+/* 日历弹层遮罩 */
+.north-shuoshuo-calendar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+/* 日历弹层 */
+.north-shuoshuo-calendar-popup {
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 12px;
+    box-shadow: var(--b3-dialog-shadow);
+    padding: 16px 20px 20px;
+    width: 100%;
+    max-width: 920px;
+}
+
+.calendar-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--b3-border-color);
+}
+
+.calendar-popup-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+}
+
+.calendar-popup-year {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+    color: var(--b3-theme-primary);
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.calendar-popup-year-arrow {
+    font-size: 10px;
+}
+
+.calendar-popup-close {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--b3-theme-on-surface-light);
+    border-radius: 4px;
+}
+
+.calendar-popup-close:hover {
+    background: var(--b3-list-hover);
+}
+
+.calendar-popup-body {
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.calendar-heatmap-grid {
+    display: grid;
+    grid-template-rows: repeat(7, 10px);
+    gap: 2px;
+    width: max-content;
+}
+
+.calendar-heatmap-cell {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background-color: var(--b3-theme-surface-lighter);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.calendar-heatmap-cell:hover {
+    box-shadow: 0 0 0 1.5px var(--b3-theme-primary-lighter);
+}
+
+.calendar-heatmap-cell.selected {
+    box-shadow: 0 0 0 1.5px var(--b3-theme-primary);
+}
+
+.calendar-heatmap-cell.level-1 {
+    background-color: var(--b3-theme-primary-lightest);
+}
+
+.calendar-heatmap-cell.level-2 {
+    background-color: var(--b3-theme-primary-lighter);
+}
+
+.calendar-heatmap-cell.level-3 {
+    background-color: var(--b3-theme-primary);
+}
+
+.calendar-months {
+    margin-top: 4px;
+}
+
+.calendar-months-grid {
+    display: grid;
+    grid-template-rows: 1fr;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--b3-theme-on-surface-light);
+    width: max-content;
+}
+
+.calendar-months-grid span {
+    text-align: center;
+    white-space: nowrap;
+    min-width: 10px;
 }
 
 /* 笔记列表 - 卡片布局（三列瀑布流） */
@@ -1642,25 +1885,25 @@
 
 /* 根据层级设置缩进 */
 .north-shuoshuo-tag-tree-item[data-level="0"] > .north-shuoshuo-tag-item-content {
-    padding-left: 4px;
+    padding-left: 12px;
 }
 .north-shuoshuo-tag-tree-item[data-level="1"] > .north-shuoshuo-tag-item-content {
-    padding-left: 22px;
+    padding-left: 30px;
 }
 .north-shuoshuo-tag-tree-item[data-level="2"] > .north-shuoshuo-tag-item-content {
-    padding-left: 40px;
+    padding-left: 48px;
 }
 .north-shuoshuo-tag-tree-item[data-level="3"] > .north-shuoshuo-tag-item-content {
-    padding-left: 58px;
+    padding-left: 66px;
 }
 .north-shuoshuo-tag-tree-item[data-level="4"] > .north-shuoshuo-tag-item-content {
-    padding-left: 76px;
+    padding-left: 84px;
 }
 .north-shuoshuo-tag-tree-item[data-level="5"] > .north-shuoshuo-tag-item-content {
-    padding-left: 94px;
+    padding-left: 102px;
 }
 .north-shuoshuo-tag-tree-item[data-level="6"] > .north-shuoshuo-tag-item-content {
-    padding-left: 112px;
+    padding-left: 120px;
 }
 
 /* 子标签左侧横线（已移除） */
@@ -3373,27 +3616,21 @@
 /* 便利贴颜色 - 默认（原主题） */
 .north-shuoshuo-sticky-note.note-color-1 {
     background: #fef08a;
-    transform: rotate(-1.5deg);
 }
 .north-shuoshuo-sticky-note.note-color-2 {
     background: #fbcfe8;
-    transform: rotate(1deg);
 }
 .north-shuoshuo-sticky-note.note-color-3 {
     background: #bfdbfe;
-    transform: rotate(-0.5deg);
 }
 .north-shuoshuo-sticky-note.note-color-4 {
     background: #bbf7d0;
-    transform: rotate(2deg);
 }
 .north-shuoshuo-sticky-note.note-color-5 {
     background: #e9d5ff;
-    transform: rotate(-2deg);
 }
 .north-shuoshuo-sticky-note.note-color-6 {
     background: #fed7aa;
-    transform: rotate(0.8deg);
 }
 
 /* 思源主题 - 适配柔和色 */
@@ -3437,8 +3674,8 @@
 }
 
 .north-shuoshuo-sticky-note:hover {
-    transform: rotate(0deg) translateY(-3px);
-    box-shadow: 0 6px 16px rgba(0,0,0,0.1), 0 10px 24px rgba(0,0,0,0.08);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
     z-index: 2;
 }
 
@@ -5253,7 +5490,7 @@
 }
 
 .theme-original .north-shuoshuo-tag-tree-item.selected > .north-shuoshuo-tag-item-content {
-    background-color: rgba(66, 133, 244, 0.08);
+    background-color: #f5f5f5;
 }
 
 .theme-original .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-name {
@@ -6313,6 +6550,19 @@
     font-family: var(--b3-font-family);
     background-color: var(--b3-theme-background);
     color: var(--b3-theme-on-background);
+    /* 日历弹窗复用朋友圈样式所需的变量 */
+    --moments-modal-overlay: rgba(0, 0, 0, 0.6);
+    --moments-modal-bg: var(--b3-theme-background);
+    --moments-modal-header-border: var(--b3-border-color);
+    --moments-close-color: var(--b3-theme-on-surface-light);
+    --moments-close-hover-bg: var(--b3-list-hover);
+    --moments-close-hover-color: var(--b3-theme-on-background);
+    --moments-year-color: var(--b3-theme-primary);
+    --moments-cell-bg: var(--b3-theme-surface-lighter);
+    --moments-cell-level-1: var(--b3-theme-primary-lightest);
+    --moments-cell-level-2: var(--b3-theme-primary-lighter);
+    --moments-cell-level-3: var(--b3-theme-primary-light);
+    --moments-cell-level-4: var(--b3-theme-primary);
 }
 
 /* 适配主题下的所有样式都在 .theme-siyuan 下重新定义 */
@@ -6868,6 +7118,19 @@
     font-family: inherit;
     background-color: var(--b3-theme-background);
     color: var(--b3-theme-on-background);
+    /* 日历弹窗复用朋友圈样式所需的变量 */
+    --moments-modal-overlay: rgba(0, 0, 0, 0.5);
+    --moments-modal-bg: #fff;
+    --moments-modal-header-border: #f0f0f0;
+    --moments-close-color: #999;
+    --moments-close-hover-bg: #f5f5f5;
+    --moments-close-hover-color: #333;
+    --moments-year-color: var(--b3-theme-primary);
+    --moments-cell-bg: #e5e5e5;
+    --moments-cell-level-1: var(--b3-theme-primary-lightest);
+    --moments-cell-level-2: var(--b3-theme-primary-lighter);
+    --moments-cell-level-3: var(--b3-theme-primary-light);
+    --moments-cell-level-4: var(--b3-theme-primary);
 }
 
 /* 浅色系列 */
@@ -7203,7 +7466,7 @@
 }
 
 .theme-morandi .north-shuoshuo-tag-tree-item.selected > .north-shuoshuo-tag-item-content {
-    background-color: var(--b3-theme-primary-lightest);
+    background-color: var(--b3-list-hover);
 }
 
 .theme-morandi .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-name {
@@ -8905,7 +9168,7 @@
     flex: 1;
     height: 32px;
     padding: 0 10px;
-    background: var(--b3-theme-surface-light);
+    /* background: var(--b3-theme-surface-light); */
     border: 1px solid var(--b3-border-color);
     border-radius: 8px;
     transition: border-color 0.2s, box-shadow 0.2s;
@@ -9059,7 +9322,7 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background: var(--shuoshuo-table-header-bg);
+    background: var(--shuoshuo-table-bg);
 }
 
 .north-shuoshuo-table-header-cell {
@@ -9070,7 +9333,7 @@
     font-size: 13px;
     border-bottom: 1px solid var(--shuoshuo-table-border-color);
     white-space: nowrap;
-    background: var(--shuoshuo-table-header-bg);
+    background: var(--shuoshuo-table-bg);
     position: relative;
     user-select: none;
 }
@@ -9261,7 +9524,7 @@
 }
 
 .theme-dark .north-shuoshuo-table-header-cell {
-    background: #3a3a3a;
+    background: var(--b3-theme-background);
     border-bottom-color: #4a4a4a;
     color: #cccccc;
 }
@@ -9820,7 +10083,7 @@
 
 .theme-original .north-shuoshuo-table-head,
 .theme-original .north-shuoshuo-table-header-cell {
-    background: #f5f4f1;
+    background: var(--shuoshuo-table-bg);
 }
 
 .theme-original .north-shuoshuo-table-header-cell {
@@ -10717,6 +10980,11 @@
 
 .lumina-moments-calendar-cell.level-4 {
     background-color: var(--moments-cell-level-4);
+}
+
+.lumina-moments-calendar-cell.selected {
+    box-shadow: 0 0 0 2px var(--b3-theme-primary), 0 0 0 3px var(--b3-theme-background);
+    z-index: 1;
 }
 
 .lumina-moments-calendar-months {

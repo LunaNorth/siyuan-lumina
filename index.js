@@ -43,7 +43,7 @@ const DEFAULT_REVIEW_CONFIG = {
     contentScopeTags: [], // 用于 include_tags 或 exclude_tags
     timeRange: '6_months', // all, 1_year, 6_months, 3_months, 1_month
     dailyCount: 8, // 4, 8, 12, 16, 20, 24
-    theme: 'sticky' // sticky, cork
+    theme: 'sticky' // sticky
 };
 
 // 主题配置：original (原主题-硬编码绿色), siyuan (适配思源主题)
@@ -435,6 +435,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
         this.selectedDate = null;
         this.selectedTag = null;
+        this.filterQuery = null; // 检索式筛选：no-tag, has-image, has-link
         this.tagIcons = {}; // 标签图标映射 {tagName: emoji/icon}
         this.pinnedTags = []; // 置顶标签列表
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
@@ -828,6 +829,11 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // 输入监听
         input.addEventListener('input', () => {
             this.handleMentionInput(input);
+        });
+        
+        // 粘贴图片
+        input.addEventListener('paste', (e) => {
+            this.handlePasteImage(e, input);
         });
 
         // 键盘事件
@@ -1682,6 +1688,43 @@ function handleMentionInput() {
     filterMentionPicker(searchText);
 }
 
+// 粘贴图片
+editor.addEventListener('paste', async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles = [];
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+            const file = items[i].getAsFile();
+            if (file) imageFiles.push(file);
+        }
+    }
+    if (imageFiles.length === 0) return;
+    e.preventDefault();
+    for (const file of imageFiles) {
+        try {
+            const formData = new FormData();
+            formData.append('assetsDirPath', '/assets/');
+            formData.append('file[]', file);
+            const headers = {};
+            if (SIYUAN_TOKEN) {
+                headers['Authorization'] = 'Token ' + SIYUAN_TOKEN;
+            }
+            const response = await fetch(BASE_URL + '/api/asset/upload', { method: 'POST', body: formData, headers });
+            const result = await response.json();
+            if (result.code === 0) {
+                const succMap = result.data.succMap;
+                const newPath = succMap[file.name];
+                if (newPath) {
+                    const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                    insertTextAtCursor('![图片](' + imgPath + ')', '');
+                }
+            }
+        } catch (err) {}
+    }
+    editor.focus();
+});
+
 // 键盘事件
 editor.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
@@ -1879,7 +1922,6 @@ ipcRenderer.on('lumina-close', () => {
                         <div class="north-shuoshuo-search-bar" id="shuoshuo-search-bar">
                             <div class="north-shuoshuo-search-input-wrapper">
                                 <input type="text" class="north-shuoshuo-search-input" id="shuoshuo-search-input" placeholder="搜索说说..." autocomplete="off">
-                                <input type="date" class="north-shuoshuo-date-picker" id="shuoshuo-date-picker">
                                 <button class="north-shuoshuo-search-clear" id="shuoshuo-search-clear" style="display:none;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -1890,9 +1932,22 @@ ipcRenderer.on('lumina-close', () => {
                             <button class="north-shuoshuo-filter-btn" id="shuoshuo-filter-btn" title="按日期筛选">
                                 <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M898.5 876.51H133.09V196.93H898.5z m-685.41-80H818.5V276.93H213.09z"/><path d="M305.67 143h80v187h-80zM636.44 143h80v187h-80zM295.06 657.98h78.61v80h-78.61zM295.06 532.98h78.61v80h-78.61zM479.06 532.98h78.61v80h-78.61zM661.06 532.98h78.61v80h-78.61zM173.69 393h675.76v80H173.69zM479.12 657.98h78.61v80h-78.61zM661.4 657.98h78.61v80H661.4z"/></svg>
                             </button>
-                            <button class="north-shuoshuo-filter-btn" id="shuoshuo-refresh-btn" title="从思源同步绑定块数据" style="font-size:16px;font-weight:bold;">
-                                ${ICONS.sync}
-                            </button>
+
+                            <!-- 轻语日历弹层（复用朋友圈日历结构） -->
+                            <div class="lumina-moments-calendar-modal" id="shuoshuo-calendar-modal">
+                                <div class="lumina-moments-calendar-overlay" id="shuoshuo-calendar-overlay"></div>
+                                <div class="lumina-moments-calendar-content">
+                                    <div class="lumina-moments-calendar-header">
+                                        <div class="lumina-moments-calendar-title">
+                                            <span>轻语日历</span>
+                                            <select class="lumina-moments-calendar-year" id="shuoshuo-calendar-year"></select>
+                                        </div>
+                                        <div class="lumina-moments-calendar-close" id="shuoshuo-calendar-close">×</div>
+                                    </div>
+                                    <div class="lumina-moments-calendar-body" id="shuoshuo-calendar-body"></div>
+                                </div>
+                            </div>
+
                         </div>
 
                         <div class="north-shuoshuo-stats">
@@ -1924,17 +1979,58 @@ ipcRenderer.on('lumina-close', () => {
                                 <span class="north-shuoshuo-menu-icon">${ICONS.grid}</span>
                                 <span class="north-shuoshuo-menu-text">全部笔记</span>
                             </div>
-                            <div class="north-shuoshuo-menu-item" data-view="week">
-                                <span class="north-shuoshuo-menu-icon"><svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></span>
-                                <span class="north-shuoshuo-menu-text">本周记录</span>
-                            </div>
                             <div class="north-shuoshuo-menu-item" data-view="review">
                                 <span class="north-shuoshuo-menu-icon">${ICONS.star}</span>
                                 <span class="north-shuoshuo-menu-text">每日回顾</span>
                             </div>
+                            <div class="north-shuoshuo-menu-item" data-view="week">
+                                <span class="north-shuoshuo-menu-icon"><svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></span>
+                                <span class="north-shuoshuo-menu-text">本周记录</span>
+                            </div>
                             <div class="north-shuoshuo-menu-item" data-view="random">
                                 <span class="north-shuoshuo-menu-icon">${ICONS.random}</span>
                                 <span class="north-shuoshuo-menu-text">随机漫步</span>
+                            </div>
+                        </div>
+
+                        <div class="north-shuoshuo-query-section">
+                            <div class="north-shuoshuo-section-title">检索式</div>
+                            <div class="north-shuoshuo-query-list">
+                                <div class="north-shuoshuo-query-item" data-query="lifelog">
+                                    <span class="north-shuoshuo-query-icon">
+                                        <svg class="icon"><use xlink:href="#iconSparkles"></use></svg>
+                                    </span>
+                                    <span class="north-shuoshuo-query-text">LifeLog</span>
+                                    <span class="north-shuoshuo-query-count" data-query-count="lifelog">0</span>
+                                </div>
+                                <div class="north-shuoshuo-query-item" data-query="no-tag">
+                                    <span class="north-shuoshuo-query-icon">
+                                        <svg class="icon"><use xlink:href="#iconTags"></use></svg>
+                                    </span>
+                                    <span class="north-shuoshuo-query-text">无标签</span>
+                                    <span class="north-shuoshuo-query-count" data-query-count="no-tag">0</span>
+                                </div>
+                                <div class="north-shuoshuo-query-item" data-query="has-image">
+                                    <span class="north-shuoshuo-query-icon">
+                                        <svg class="icon"><use xlink:href="#iconImage"></use></svg>
+                                    </span>
+                                    <span class="north-shuoshuo-query-text">有图片</span>
+                                    <span class="north-shuoshuo-query-count" data-query-count="has-image">0</span>
+                                </div>
+                                <div class="north-shuoshuo-query-item" data-query="has-link">
+                                    <span class="north-shuoshuo-query-icon">
+                                        <svg class="icon"><use xlink:href="#iconLink"></use></svg>
+                                    </span>
+                                    <span class="north-shuoshuo-query-text">有链接</span>
+                                    <span class="north-shuoshuo-query-count" data-query-count="has-link">0</span>
+                                </div>
+                                <div class="north-shuoshuo-query-item" data-query="has-comment">
+                                    <span class="north-shuoshuo-query-icon">
+                                        <svg class="icon"><use xlink:href="#iconRef"></use></svg>
+                                    </span>
+                                    <span class="north-shuoshuo-query-text">已批注</span>
+                                    <span class="north-shuoshuo-query-count" data-query-count="has-comment">0</span>
+                                </div>
                             </div>
                         </div>
 
@@ -2696,11 +2792,7 @@ ipcRenderer.on('lumina-close', () => {
                                             <span class="north-shuoshuo-radio-check"></span>
                                             <span class="north-shuoshuo-radio-label">便利贴墙</span>
                                         </label>
-                                        <label class="north-shuoshuo-radio-item ${this.reviewConfig.theme === 'cork' ? 'selected' : ''}" data-value="cork">
-                                            <input type="radio" name="review-theme" value="cork" ${this.reviewConfig.theme === 'cork' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">软木板墙</span>
-                                        </label>
+
                                     </div>
                                 </div>
                             </div>
@@ -3060,6 +3152,9 @@ ipcRenderer.on('lumina-close', () => {
     renderNotes() {
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
+        
+        // 更新检索式数量
+        this.updateQueryCounts();
 
         // 显示输入区域和侧边栏，移除回顾模式和表格布局
         const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
@@ -3074,8 +3169,10 @@ ipcRenderer.on('lumina-close', () => {
         // 本周筛选（本周记录视图）
         if (this.currentMainView === 'week') {
             const now = new Date();
+            const dayOfWeek = now.getDay(); // 0=周日, 1=周一, ..., 6=周六
             const weekStart = new Date(now);
-            weekStart.setDate(now.getDate() - now.getDay() + 1); // 周一
+            // 回退到本周一（周日则回退到上周一）
+            weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
             weekStart.setHours(0, 0, 0, 0);
             const weekEnd = new Date(weekStart);
             weekEnd.setDate(weekStart.getDate() + 7); // 下周一 00:00
@@ -3098,6 +3195,30 @@ ipcRenderer.on('lumina-close', () => {
             filtered = filtered.filter(s => {
                 if (!s.tags) return false;
                 return s.tags.some(tag => tag === this.selectedTag || tag.startsWith(this.selectedTag + '/'));
+            });
+        }
+
+        // 检索式筛选
+        if (this.filterQuery) {
+            filtered = filtered.filter(s => {
+                const content = s.content || '';
+                const tags = this.extractTags(content);
+                if (this.filterQuery === 'no-tag') {
+                    return tags.length === 0;
+                }
+                if (this.filterQuery === 'has-image') {
+                    return content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg)\)/i.test(content);
+                }
+                if (this.filterQuery === 'has-link') {
+                    return /https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content);
+                }
+                if (this.filterQuery === 'lifelog') {
+                    return !!this.extractType(content);
+                }
+                if (this.filterQuery === 'has-comment') {
+                    return content.includes('[MEMO:') || /^关联自：/.test(content);
+                }
+                return true;
             });
         }
 
@@ -3142,8 +3263,15 @@ ipcRenderer.on('lumina-close', () => {
             // 瀑布流布局：将笔记分配到三列
             listEl.innerHTML = this.renderMasonryNotes(sorted);
         } else {
-            // 平铺布局
-            listEl.innerHTML = sorted.map(item => this.renderNoteCard(item)).join('');
+            // 平铺布局：按日期分组
+            const groups = this.groupNotesByDate(sorted);
+            let html = '';
+            for (const [dateKey, notes] of groups) {
+                const groupTitle = this.getDateGroupTitle(dateKey);
+                html += `<div class="north-shuoshuo-date-group">${groupTitle}</div>`;
+                html += notes.map(item => this.renderNoteCard(item)).join('');
+            }
+            listEl.innerHTML = html;
         }
 
         // 更新统计
@@ -3366,9 +3494,8 @@ ipcRenderer.on('lumina-close', () => {
         const reviewNotes = this.getReviewNotes();
 
         if (reviewNotes.length === 0) {
-            const theme = this.reviewConfig.theme || 'sticky';
-            let emptyClass = 'north-shuoshuo-sticky-review-empty';
-            if (theme === 'cork') emptyClass = 'north-shuoshuo-cork-review-empty';
+            const theme = 'sticky';
+            const emptyClass = 'north-shuoshuo-sticky-review-empty';
             listEl.innerHTML = `
                 <div class="${emptyClass}">
                     <div class="north-shuoshuo-empty-state" style="padding: 80px 20px; text-align: center;">
@@ -3381,12 +3508,7 @@ ipcRenderer.on('lumina-close', () => {
             return;
         }
 
-        const theme = this.reviewConfig.theme || 'sticky';
-        if (theme === 'cork') {
-            this.renderReviewCork(listEl, reviewNotes);
-        } else {
-            this.renderReviewSticky(listEl, reviewNotes);
-        }
+        this.renderReviewSticky(listEl, reviewNotes);
     }
 
     renderReviewSticky(listEl, reviewNotes) {
@@ -6898,6 +7020,11 @@ ipcRenderer.on('lumina-close', () => {
                     inputBox.classList.remove('focused');
                 }
             });
+            
+            // 粘贴图片
+            input.addEventListener('paste', (e) => {
+                this.handlePasteImage(e, input);
+            });
         }
 
         // 输入监听，控制发送按钮，并自动转换列表符?
@@ -7085,6 +7212,12 @@ ipcRenderer.on('lumina-close', () => {
                     t.classList.remove('selected');
                 });
                 
+                // 清除检索式选中
+                this.filterQuery = null;
+                this.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+                
                 // 切换视图（active 状态由 switchMainView 统一处理）
                 this.switchMainView(view, null);
             });
@@ -7173,6 +7306,12 @@ ipcRenderer.on('lumina-close', () => {
                             item.classList.remove('selected');
                         });
                         
+                        // 清除检索式选中状态
+                        this.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
+                            item.classList.remove('selected');
+                        });
+                        this.filterQuery = null;
+
                         if (wasSelected) {
                             // 取消筛选
                             this.selectedTag = null;
@@ -7184,6 +7323,39 @@ ipcRenderer.on('lumina-close', () => {
                             this.renderNotes();
                         }
                     }
+                }
+            });
+        }
+
+        // 检索式点击筛选
+        const queryListEl = this.container.querySelector('.north-shuoshuo-query-list');
+        if (queryListEl) {
+            queryListEl.addEventListener('click', (e) => {
+                const queryItem = e.target.closest('.north-shuoshuo-query-item');
+                if (!queryItem) return;
+                const query = queryItem.dataset.query;
+                if (!query) return;
+                
+                const wasSelected = queryItem.classList.contains('selected');
+                
+                // 清除所有检索式选中
+                queryListEl.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+                
+                // 清除标签选中状态
+                this.container.querySelectorAll('.north-shuoshuo-tag-tree-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+                this.selectedTag = null;
+                
+                if (wasSelected) {
+                    this.filterQuery = null;
+                    this.renderNotes();
+                } else {
+                    queryItem.classList.add('selected');
+                    this.filterQuery = query;
+                    this.renderNotes();
                 }
             });
         }
@@ -7200,6 +7372,12 @@ ipcRenderer.on('lumina-close', () => {
                         const wasSelected = cell.classList.contains('selected');
                         heatmapEl.querySelectorAll('.north-shuoshuo-heatmap-cell').forEach(c => {
                             c.classList.remove('selected');
+                        });
+                        
+                        // 清除检索式选中
+                        this.filterQuery = null;
+                        this.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
+                            item.classList.remove('selected');
                         });
                         
                         if (wasSelected) {
@@ -7254,6 +7432,7 @@ ipcRenderer.on('lumina-close', () => {
                 if (tooltip) tooltip.remove();
             });
         }
+
     }
 
     sendMessage() {
@@ -7448,28 +7627,7 @@ ipcRenderer.on('lumina-close', () => {
         // 搜索框事件
         const searchInput = this.container.querySelector('#shuoshuo-search-input');
         const searchClear = this.container.querySelector('#shuoshuo-search-clear');
-        const datePicker = this.container.querySelector('#shuoshuo-date-picker');
         const filterBtn = this.container.querySelector('#shuoshuo-filter-btn');
-        const refreshBtn = this.container.querySelector('#shuoshuo-refresh-btn');
-        const searchBar = this.container.querySelector('#shuoshuo-search-bar');
-
-        // 手动刷新按钮
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', async () => {
-                refreshBtn.style.opacity = '0.5';
-                refreshBtn.style.pointerEvents = 'none';
-                showMessage('正在同步思源块数据...');
-                await this.refreshBoundBlocks();
-                if (this.currentMainView === 'notes' || this.currentMainView === 'week') {
-                    this.renderNotes();
-                    this.renderTags();
-                }
-                refreshBtn.style.opacity = '1';
-                refreshBtn.style.pointerEvents = 'auto';
-                showMessage('同步完成');
-            });
-        }
-
         if (searchInput) {
             searchInput.addEventListener('input', () => {
                 // 显示/隐藏清除按钮
@@ -7497,30 +7655,40 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        if (datePicker) {
-            datePicker.addEventListener('change', () => {
-                this.selectedDate = datePicker.value || null;
-                // 更新筛选按钮的视觉状态
-                if (filterBtn) {
-                    if (this.selectedDate) {
-                        filterBtn.classList.add('active');
-                    } else {
-                        filterBtn.classList.remove('active');
-                    }
-                }
-                if (this.currentMainView === 'table') {
-                    this.renderTable();
-                } else {
-                    this.renderNotes();
-                }
-            });
-        }
+        // 日历弹层
+        const calendarModal = this.container.querySelector('#shuoshuo-calendar-modal');
+        const calendarOverlay = this.container.querySelector('#shuoshuo-calendar-overlay');
+        const calendarClose = this.container.querySelector('#shuoshuo-calendar-close');
+        const calendarBody = this.container.querySelector('#shuoshuo-calendar-body');
+        const calendarYear = this.container.querySelector('#shuoshuo-calendar-year');
+        const calendarContent = this.container.querySelector('#shuoshuo-calendar-modal .lumina-moments-calendar-content');
 
-        if (filterBtn && datePicker) {
+        const renderShuoshuoCalendarBody = (year) => {
+            if (!calendarBody) return;
+            const heatmap = this.generateShuoshuoCalendar(year);
+            calendarBody.innerHTML = `
+                <div class="lumina-moments-calendar-grid">
+                    <div class="lumina-moments-calendar-columns">${heatmap.columns}</div>
+                    <div class="lumina-moments-calendar-months">${heatmap.months}</div>
+                </div>
+            `;
+        };
+
+        const initShuoshuoCalendarYearOptions = () => {
+            if (!calendarYear) return;
+            const years = new Set();
+            this.shuoshuos.forEach(s => years.add(new Date(s.created).getFullYear()));
+            const currentYear = new Date().getFullYear();
+            years.add(currentYear);
+            const sortedYears = Array.from(years).sort((a, b) => b - a);
+            calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
+            calendarYear.value = currentYear;
+        };
+
+        if (filterBtn) {
             filterBtn.addEventListener('click', () => {
                 // 如果已有日期筛选，点击则清除
                 if (this.selectedDate) {
-                    datePicker.value = '';
                     this.selectedDate = null;
                     filterBtn.classList.remove('active');
                     if (this.currentMainView === 'table') {
@@ -7530,15 +7698,94 @@ ipcRenderer.on('lumina-close', () => {
                     }
                     return;
                 }
-                // 直接触发日期选择器的日历弹窗
-                try {
-                    datePicker.showPicker();
-                } catch (e) {
-                    // 如果浏览器不支持 showPicker，则回退到 focus
-                    datePicker.focus();
-                    datePicker.click();
+                // 显示日历弹层
+                initShuoshuoCalendarYearOptions();
+                renderShuoshuoCalendarBody(calendarYear?.value ? parseInt(calendarYear.value) : new Date().getFullYear());
+                if (calendarContent) calendarContent.style.transform = '';
+                calendarModal?.classList.add('active');
+            });
+        }
+
+        if (calendarYear) {
+            calendarYear.addEventListener('change', () => {
+                renderShuoshuoCalendarBody(parseInt(calendarYear.value));
+            });
+        }
+
+        if (calendarOverlay) {
+            calendarOverlay.addEventListener('click', () => {
+                calendarModal?.classList.remove('active');
+                if (calendarContent) calendarContent.style.transform = '';
+            });
+        }
+
+        if (calendarClose) {
+            calendarClose.addEventListener('click', () => {
+                calendarModal?.classList.remove('active');
+                if (calendarContent) calendarContent.style.transform = '';
+            });
+        }
+
+        if (calendarBody) {
+            calendarBody.addEventListener('click', (e) => {
+                const cell = e.target.closest('.lumina-moments-calendar-cell[data-date]');
+                if (!cell) return;
+                const date = cell.dataset.date;
+                this.selectedDate = date;
+                if (filterBtn) filterBtn.classList.add('active');
+                calendarModal?.classList.remove('active');
+                if (this.currentMainView === 'table') {
+                    this.renderTable();
+                } else {
+                    this.renderNotes();
                 }
             });
+        }
+
+        // 日历弹窗拖动
+        const calendarHeader = this.container.querySelector('#shuoshuo-calendar-modal .lumina-moments-calendar-header');
+        if (calendarHeader && calendarContent) {
+            let isDragging = false;
+            let dragStartX = 0;
+            let dragStartY = 0;
+            let dragOffsetX = 0;
+            let dragOffsetY = 0;
+
+            calendarHeader.addEventListener('mousedown', (e) => {
+                // 不拦截下拉框和关闭按钮的点击
+                if (e.target.closest('.lumina-moments-calendar-year') || e.target.closest('.lumina-moments-calendar-close')) return;
+                isDragging = true;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                // 获取当前已应用的偏移
+                const style = calendarContent.style.transform;
+                const match = style.match(/translate\((-?\d+(?:\.\d+)?)px,\s*(-?\d+(?:\.\d+)?)px\)/);
+                dragOffsetX = match ? parseFloat(match[1]) : 0;
+                dragOffsetY = match ? parseFloat(match[2]) : 0;
+                calendarHeader.style.cursor = 'grabbing';
+                e.preventDefault();
+            });
+
+            const onMouseMove = (e) => {
+                if (!isDragging) return;
+                const dx = dragOffsetX + (e.clientX - dragStartX);
+                const dy = dragOffsetY + (e.clientY - dragStartY);
+                calendarContent.style.transform = `translate(${dx}px, ${dy}px)`;
+            };
+
+            const onMouseUp = () => {
+                if (!isDragging) return;
+                isDragging = false;
+                calendarHeader.style.cursor = '';
+            };
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            // 清理引用（虽然 bindToolbarEvents 通常只调用一次）
+            this._calendarDragCleanup = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            };
         }
 
         // 标签按钮
@@ -8267,6 +8514,62 @@ ipcRenderer.on('lumina-close', () => {
         fileInput.click();
     }
 
+    // 处理粘贴图片
+    async handlePasteImage(e, input) {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        
+        const imageFiles = [];
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.startsWith('image/')) {
+                const file = items[i].getAsFile();
+                if (file) imageFiles.push(file);
+            }
+        }
+        
+        if (imageFiles.length === 0) return;
+        
+        e.preventDefault();
+        
+        for (const file of imageFiles) {
+            try {
+                showMessage("正在上传...");
+                const formData = new FormData();
+                formData.append('assetsDirPath', '/assets/');
+                formData.append('file[]', file);
+                
+                const token = window.siyuan?.config?.api?.token || '';
+                const headers = {};
+                if (token) {
+                    headers['Authorization'] = `Token ${token}`;
+                }
+                const response = await fetch('/api/asset/upload', {
+                    method: 'POST',
+                    body: formData,
+                    headers
+                });
+                const result = await response.json();
+                if (result.code === 0) {
+                    const succMap = result.data.succMap;
+                    const originalName = file.name;
+                    const newPath = succMap[originalName];
+                    if (newPath) {
+                        const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                        this.insertText(input, `![图片](${imgPath})`, '');
+                        showMessage("图片插入成功");
+                    }
+                } else {
+                    showMessage('上传失败：' + (result.msg || '未知错误'));
+                }
+            } catch (err) {
+                console.error(err);
+                showMessage('上传失败：' + err.message);
+            }
+        }
+        
+        input.focus();
+    }
+
     // 渲染标签列表（支持层级显示）
     renderTags() {
         // 获取所有标签及数量
@@ -8316,6 +8619,42 @@ ipcRenderer.on('lumina-close', () => {
         } else if (dayCountEl) {
             dayCountEl.textContent = '0';
         }
+    }
+
+    // 更新检索式数量
+    updateQueryCounts() {
+        if (!this.container) return;
+        
+        let noTagCount = 0;
+        let hasImageCount = 0;
+        let hasLinkCount = 0;
+        
+        for (const s of this.shuoshuos) {
+            const content = s.content || '';
+            const tags = this.extractTags(content);
+            
+            if (tags.length === 0) noTagCount++;
+            if (content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg)\)/i.test(content)) hasImageCount++;
+            if (/https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content)) hasLinkCount++;
+        }
+        
+        const counts = {
+            'no-tag': noTagCount,
+            'has-image': hasImageCount,
+            'has-link': hasLinkCount,
+            'lifelog': this.shuoshuos.filter(s => !!this.extractType(s.content)).length,
+            'has-comment': this.shuoshuos.filter(s => {
+                const c = s.content || '';
+                return c.includes('[MEMO:') || /^关联自：/.test(c);
+            }).length
+        };
+        
+        this.container.querySelectorAll('.north-shuoshuo-query-count').forEach(el => {
+            const query = el.dataset.queryCount;
+            if (query && counts[query] !== undefined) {
+                el.textContent = counts[query];
+            }
+        });
     }
 
     // 构建标签?
@@ -8873,6 +9212,42 @@ ipcRenderer.on('lumina-close', () => {
         const hours = date.getHours().toString().padStart(2, '0');
         const minutes = date.getMinutes().toString().padStart(2, '0');
         return `${year}-${month}-${day} ${hours}:${minutes}`;
+    }
+
+    // 按日期分组笔记
+    groupNotesByDate(notes) {
+        const groups = new Map();
+        for (const note of notes) {
+            const dateKey = this.formatDateKey(new Date(note.created));
+            if (!groups.has(dateKey)) {
+                groups.set(dateKey, []);
+            }
+            groups.get(dateKey).push(note);
+        }
+        // 按日期倒序排列
+        return new Map([...groups.entries()].sort((a, b) => b[0].localeCompare(a[0])));
+    }
+
+    // 获取日期分组的友好标题
+    getDateGroupTitle(dateKey) {
+        const date = new Date(dateKey + 'T00:00:00');
+        const now = new Date();
+        const todayKey = this.formatDateKey(now);
+        
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = this.formatDateKey(yesterday);
+        
+        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        const weekday = weekdays[date.getDay()];
+        
+        if (dateKey === todayKey) {
+            return `今天 ${weekday}`;
+        }
+        if (dateKey === yesterdayKey) {
+            return `昨天 ${weekday}`;
+        }
+        return `${dateKey} ${weekday}`;
     }
 
     // 渲染笔记内容（支持九宫格图片布局?
@@ -11528,7 +11903,7 @@ ipcRenderer.on('lumina-close', () => {
                 const reviewTags = Array.from(this.container.querySelectorAll('#review-tags-select input:checked')).map(cb => cb.value);
                 const reviewTimeRange = this.container.querySelector('#review-time-range')?.value || '6_months';
                 const reviewDailyCount = parseInt(this.container.querySelector('#review-daily-count')?.value || '8');
-                const reviewTheme = this.container.querySelector('input[name="review-theme"]:checked')?.value || 'sticky';
+                const reviewTheme = 'sticky';
 
                 this.reviewConfig = {
                     contentScope: reviewScope,
@@ -12768,6 +13143,98 @@ ipcRenderer.on('lumina-close', () => {
         };
     }
 
+    generateShuoshuoCalendar(year = null) {
+        const targetYear = year || new Date().getFullYear();
+
+        // 确定起始日期（该年1月1日之前的第一个周日）
+        const yearStart = new Date(targetYear, 0, 1);
+        const startDate = new Date(yearStart);
+        startDate.setDate(yearStart.getDate() - yearStart.getDay());
+
+        // 确定结束日期（该年12月31日）
+        const yearEnd = new Date(targetYear, 11, 31);
+
+        // 计算总天数和周数
+        const totalDays = Math.floor((yearEnd - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        const weeks = Math.ceil(totalDays / 7);
+
+        // 统计说说每天的发布数量
+        const dayCounts = {};
+        this.shuoshuos.forEach(s => {
+            const d = new Date(s.created);
+            if (d.getFullYear() === targetYear) {
+                const key = this.formatDateKey(d);
+                dayCounts[key] = (dayCounts[key] || 0) + 1;
+            }
+        });
+
+        // 生成每列（每周）
+        let columnsHtml = '';
+        const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+        for (let week = 0; week < weeks; week++) {
+            let columnCells = '';
+
+            for (let day = 0; day < 7; day++) {
+                const date = new Date(startDate);
+                date.setDate(startDate.getDate() + week * 7 + day);
+
+                if (date.getFullYear() === targetYear) {
+                    const key = this.formatDateKey(date);
+                    const count = dayCounts[key] || 0;
+                    let level = 0;
+                    if (count >= 1) level = 2;
+                    if (count >= 3) level = 3;
+                    if (count >= 5) level = 4;
+
+                    const dateStr = `${date.getMonth() + 1}月${date.getDate()}日`;
+                    const tooltip = count > 0 ? `${dateStr}: ${count}条说说` : dateStr;
+                    const selectedClass = this.selectedDate === key ? ' selected' : '';
+                    columnCells += `<div class="lumina-moments-calendar-cell level-${level}${selectedClass}" data-date="${key}" title="${tooltip}"></div>`;
+                } else {
+                    columnCells += `<div class="lumina-moments-calendar-cell level-empty"></div>`;
+                }
+            }
+
+            columnsHtml += `<div class="lumina-moments-calendar-column">${columnCells}</div>`;
+        }
+
+        // 计算月份标签位置
+        const monthStartWeek = new Array(12).fill(-1);
+        const monthEndWeek = new Array(12).fill(-1);
+
+        for (let week = 0; week < weeks; week++) {
+            for (let day = 0; day < 7; day++) {
+                const date = new Date(startDate);
+                date.setDate(startDate.getDate() + week * 7 + day);
+                if (date.getFullYear() === targetYear) {
+                    const m = date.getMonth();
+                    if (monthStartWeek[m] === -1) monthStartWeek[m] = week;
+                    monthEndWeek[m] = week;
+                }
+            }
+        }
+
+        const monthLabels = [];
+        for (let m = 0; m < 12; m++) {
+            if (monthStartWeek[m] !== -1) {
+                const midWeek = (monthStartWeek[m] + monthEndWeek[m]) / 2;
+                const leftPercent = ((midWeek + 0.5) / weeks * 100).toFixed(2) + '%';
+                monthLabels.push({ name: monthNames[m], left: leftPercent });
+            }
+        }
+
+        const monthsHtml = monthLabels.map(l =>
+            `<span class="lumina-moments-calendar-month-label" style="left: ${l.left};">${l.name}</span>`
+        ).join('');
+
+        return {
+            columns: columnsHtml,
+            months: monthsHtml,
+            weeks: weeks
+        };
+    }
+
     async loadConfig() {
         try {
             let data = await this.loadData(CONFIG_STORAGE_NAME);
@@ -12786,6 +13253,10 @@ ipcRenderer.on('lumina-close', () => {
             this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
             this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.memosConfig || data.memos || {}) };
             this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...(data.reviewConfig || data.review || {}) };
+            // 软木板墙主题已移除，强制回退到便利贴墙
+            if (this.reviewConfig.theme === 'cork') {
+                this.reviewConfig.theme = 'sticky';
+            }
             // 优先保留已有的 tagIcons（防止意外覆盖），只有在 data.tagIcons 有值时才更新
             if (data.tagIcons && Object.keys(data.tagIcons).length > 0) {
                 this.tagIcons = data.tagIcons;
