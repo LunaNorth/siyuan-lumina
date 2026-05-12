@@ -1673,6 +1673,42 @@
     line-height: 1.6;
 }
 
+/* ========== 长笔记自动折叠 ========== */
+.north-shuoshuo-note-content.collapsed {
+    max-height: var(--collapse-max-height, 116px);
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 36px), transparent 100%);
+    mask-image: linear-gradient(to bottom, black calc(100% - 36px), transparent 100%);
+}
+
+.north-shuoshuo-note-content.expanded {
+    max-height: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+.north-shuoshuo-expand-btn {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    margin-top: 4px;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.2s;
+}
+
+.north-shuoshuo-expand-btn:hover {
+    color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-expand-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
 /* 子列表缩进 */
 .north-shuoshuo-note-content li > ul,
 .north-shuoshuo-note-content li > ol {
@@ -1743,7 +1779,7 @@
     }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
     .north-shuoshuo-sidebar {
         display: none;
     }
@@ -3172,6 +3208,14 @@
     color: var(--b3-theme-on-surface-light);
 }
 
+.north-shuoshuo-radio-group.horizontal .north-shuoshuo-radio-preview {
+    margin-right: 0;
+    margin-bottom: 8px;
+    width: 44px;
+    height: 44px;
+    align-self: center;
+}
+
 /* 只读输入框样式 */
 .north-shuoshuo-input-field.readonly-field {
     background-color: var(--b3-theme-surface-lighter);
@@ -4318,6 +4362,14 @@
     min-width: 0;
 }
 
+.north-shuoshuo-contribution-weekdays {
+    display: none;
+}
+
+.north-shuoshuo-contribution-legend {
+    display: none;
+}
+
 .north-shuoshuo-contribution-columns {
     display: flex;
     gap: 4px;
@@ -4552,11 +4604,113 @@
     .north-shuoshuo-features-grid {
         grid-template-columns: 1fr;
     }
+
+    /* 移动端统计视图两侧边距与说说视图对齐 */
+    .north-shuoshuo-stats-page {
+        padding: 12px 16px;
+        overflow-x: hidden;
+    }
+    .north-shuoshuo-stats-header {
+        margin-bottom: 16px;
+    }
+    .north-shuoshuo-stats-header h1 {
+        font-size: 20px;
+    }
+    .north-shuoshuo-stat-card {
+        padding: 16px 12px;
+    }
+    .north-shuoshuo-stats-grid .north-shuoshuo-stat-number {
+        font-size: 20px;
+    }
+    .north-shuoshuo-contribution-section,
+    .north-shuoshuo-monthly-distribution-section,
+    .north-shuoshuo-word-distribution-section,
+    .north-shuoshuo-tag-cloud-section {
+        padding: 12px;
+        border-radius: 8px;
+    }
+    .north-shuoshuo-distribution-header {
+        font-size: 15px;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+    }
+
+    /* 移动端月度分布 */
+    .north-shuoshuo-monthly-distribution {
+    display: flex !important;
+    align-items: flex-end !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+    height: 220px !important;
+    padding: 0 0px!important;
+    }
+    .north-shuoshuo-monthly-bar {
+        gap: 2px;
+    }
+    .north-shuoshuo-monthly-bar-label {
+        font-size: 10px;
+        white-space: nowrap;
+        transform: scale(0.85);
+    }
+    .north-shuoshuo-monthly-bar-count {
+        font-size: 10px;
+    }
+
+    /* 移动端贡献图 - 保持长条，可左右拖动 */
+    .north-shuoshuo-contribution-body {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .north-shuoshuo-contribution-body::-webkit-scrollbar {
+        display: none;
+    }
+    .north-shuoshuo-contribution-main {
+        flex: 1 0 auto;
+        min-width: 0;
+    }
+    .north-shuoshuo-contribution-columns {
+        gap: 3px;
+        min-width: max-content;
+    }
+    .north-shuoshuo-contribution-column {
+        flex: 0 0 auto;
+        width: 12px;
+        gap: 3px;
+    }
+    .north-shuoshuo-contribution-cell {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        aspect-ratio: auto;
+    }
+    .north-shuoshuo-contribution-months {
+        margin-top: 4px;
+        height: 14px;
+        min-width: max-content;
+    }
+    .north-shuoshuo-contribution-month-label {
+        font-size: 10px;
+    }
+
+
 }
 
 @media (max-width: 480px) {
     .north-shuoshuo-stats-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+    }
+    .north-shuoshuo-stat-card {
+        padding: 12px 8px;
+    }
+    .north-shuoshuo-stats-grid .north-shuoshuo-stat-number {
+        font-size: 18px;
+    }
+    .north-shuoshuo-stat-label {
+        font-size: 11px;
     }
 }
 
@@ -5813,7 +5967,7 @@
 }
 
 .theme-original .north-shuoshuo-toggle-row {
-    border-bottom: 1px solid #f0f0f0;
+    /* border-bottom: 1px solid #f0f0f0; */
 }
 
 .theme-original .north-shuoshuo-toggle-info h4 {
@@ -7913,7 +8067,7 @@
     background: var(--b3-list-hover);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
     .north-shuoshuo-morandi-grid {
         grid-template-columns: repeat(5, 1fr);
         gap: 8px;
@@ -9919,23 +10073,37 @@
     .north-shuoshuo-table-top-toolbar {
         flex-direction: column;
         align-items: stretch;
-        gap: 10px;
-        padding: 10px 12px;
+        gap: 4px;
+        padding: 10px 12px 4px;
         min-height: auto;
     }
 
     .north-shuoshuo-table-top-left {
         max-width: 100%;
+        width: 100%;
     }
 
     .north-shuoshuo-table-top-center {
         justify-content: flex-start;
         order: 3;
+        width: 100%;
     }
 
     .north-shuoshuo-table-top-right {
-        justify-content: flex-end;
+        justify-content: space-between;
+        align-items: center;
         width: 100%;
+        order: 2;
+        padding: 4px 0;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .north-shuoshuo-table-top-right .north-shuoshuo-table-filter-reset {
+        margin-left: auto;
+        height: 32px;
+        font-size: 12px;
+        padding: 0 12px;
     }
 
     .north-shuoshuo-table-search-box {
@@ -10051,28 +10219,66 @@
         width: 70px;
         max-width: 70px;
     }
-}
 
-
-    .north-shuoshuo-table-cell,
-    .north-shuoshuo-table-header-cell {
-        padding: 10px 12px;
-        font-size: 13px;
+    /* 移动端隐藏类型、创建时间、更新时间列 */
+    .north-shuoshuo-table-head th:nth-child(4),
+    .north-shuoshuo-table-head th:nth-child(5),
+    .north-shuoshuo-table-head th:nth-child(6),
+    .north-shuoshuo-table-row td:nth-child(4),
+    .north-shuoshuo-table-row td:nth-child(5),
+    .north-shuoshuo-table-row td:nth-child(6) {
+        display: none;
     }
 
+    /* 内容列放开 */
     .north-shuoshuo-table-content-cell {
-        max-width: 120px;
+        max-width: none;
     }
 
-    .north-shuoshuo-table-time-cell {
-        width: 90px;
+    /* 筛选栏两列网格排列 */
+    .north-shuoshuo-table-filter-bar,
+    .north-shuoshuo-table-filter-bar.compact {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 0;
+    }
+    .north-shuoshuo-table-filter-group {
+        flex: 1 1 calc(50% - 3px);
+        min-width: 120px;
+        height: auto;
+    }
+    .north-shuoshuo-table-filter-bar.compact .north-shuoshuo-table-filter-group {
+        height: auto;
+    }
+    .north-shuoshuo-table-filter-input,
+    .north-shuoshuo-table-filter-select,
+    .north-shuoshuo-table-filter-bar.compact .north-shuoshuo-table-filter-input,
+    .north-shuoshuo-table-filter-bar.compact .north-shuoshuo-table-filter-select {
+        flex: 1;
+        min-width: auto;
+        height: 32px;
         font-size: 12px;
     }
-
-    .north-shuoshuo-table-checkbox-cell {
+    .north-shuoshuo-table-filter-label {
+        font-size: 12px;
         width: 36px;
-        min-width: 36px;
+        text-align: right;
     }
+    .north-shuoshuo-table-filter-reset {
+        height: 32px;
+        font-size: 12px;
+        padding: 0 10px;
+        margin-left: auto;
+    }
+
+    /* 移动端隐藏类型筛选 */
+    .table-filter-type-group {
+        display: none !important;
+    }
+}
+
 /* 原主题 - 表格视图硬编码颜色覆盖 */
 .theme-original .north-shuoshuo-table-top-toolbar,
 .theme-original .north-shuoshuo-table-container,
@@ -10305,7 +10511,7 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    margin-top: 25px;
+    margin-top: 40px;
 }
 
 .lumina-moments-calendar-btn {
@@ -11931,4 +12137,379 @@
     height: 1px;
     background: var(--b3-border-color);
     margin: 4px 0;
+}
+
+/* Daily Note 路径模板 textarea 样式 */
+#settings-daily-note-path-template {
+    padding: 10px 12px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 8px;
+    background: var(--b3-theme-surface);
+    min-height: 60px;
+    line-height: 1.5;
+    color: var(--b3-theme-on-background);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+
+#settings-daily-note-path-template:focus {
+    border-color: var(--b3-theme-primary);
+    box-shadow: 0 0 0 2px var(--b3-theme-primary-lightest);
+}
+
+#settings-daily-note-path-template::placeholder {
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* Daily Note 路径模板示例 - 可点击填入 */
+.daily-note-examples-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.daily-note-example {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-surface);
+    transition: all 0.15s ease;
+    font-size: 12.5px;
+    font-family: inherit;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.daily-note-example:hover {
+    background-color: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary-lighter);
+}
+
+/* 检索式可见性复选框 */
+.north-shuoshuo-checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.north-shuoshuo-checkbox-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-background);
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.north-shuoshuo-checkbox-item:hover {
+    border-color: var(--b3-theme-primary-lighter);
+    background: var(--b3-theme-primary-lightest);
+}
+
+.north-shuoshuo-checkbox-item input[type="checkbox"] {
+    display: none;
+}
+
+.north-shuoshuo-checkbox-check {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--b3-theme-on-surface-light);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-checkbox-item input[type="checkbox"]:checked + .north-shuoshuo-checkbox-check {
+    background: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-checkbox-item input[type="checkbox"]:checked + .north-shuoshuo-checkbox-check::after {
+    content: '';
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    margin-bottom: 2px;
+}
+
+.north-shuoshuo-checkbox-label {
+    font-size: 13px;
+    color: var(--b3-theme-on-background);
+}
+
+.north-shuoshuo-checkbox-item input[type="checkbox"]:checked ~ .north-shuoshuo-checkbox-label {
+    color: var(--b3-theme-primary);
+}
+/* ========== 移动端适配（QQ 风格） ========== */
+.north-shuoshuo-mobile-header,
+.north-shuoshuo-mobile-tabbar,
+.north-shuoshuo-mobile-search-bar {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    /* 顶部 Header */
+    .north-shuoshuo-mobile-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 16px;
+        background: var(--b3-theme-surface);
+        border-bottom: 1px solid var(--b3-border-color);
+        height: 40px;
+        box-sizing: border-box;
+        position: relative;
+    }
+    .mobile-header-menu,
+    .mobile-header-search {
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: transparent;
+        color: var(--b3-theme-on-surface);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        flex-shrink: 0;
+    }
+    .mobile-header-menu .icon,
+    .mobile-header-search .icon {
+        width: 18px;
+        height: 18px;
+    }
+    .mobile-header-add {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: none;
+        background: var(--b3-theme-primary);
+        color: var(--b3-theme-on-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+        padding: 0;
+    }
+    .mobile-header-add .icon {
+        width: 16px;
+        height: 16px;
+    }
+    .mobile-header-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--b3-theme-on-background);
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        pointer-events: none;
+    }
+    .mobile-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    /* 抽屉侧边栏 */
+    .north-shuoshuo-flomo-sidebar {
+        display: flex;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: min(300px, 65vw);
+        box-sizing: border-box;
+        z-index: 10000;
+        transform: translateX(-100%);
+        visibility: hidden;
+        transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), visibility 0.3s;
+        background: var(--b3-theme-surface);
+        border-right: 1px solid var(--b3-border-color);
+        padding: 12px 16px 16px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        pointer-events: none;
+    }
+    .north-shuoshuo-flomo-sidebar.drawer-open {
+        transform: translateX(0);
+        visibility: visible;
+        pointer-events: auto;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.12);
+    }
+    /* 遮罩层 */
+    .north-shuoshuo-drawer-overlay {
+        position: fixed;
+        top: 0;
+        left: min(300px, 65vw);
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.25);
+        backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
+        z-index: 9999;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+        pointer-events: none;
+    }
+    .north-shuoshuo-drawer-overlay.show {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+    }
+
+    /* 移动端搜索栏 */
+    .north-shuoshuo-mobile-search-bar {
+        display: none;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 16px;
+        background: var(--b3-theme-surface);
+        border-bottom: 1px solid var(--b3-border-color);
+    }
+    .north-shuoshuo-mobile-search-bar.show {
+        display: flex;
+    }
+    .mobile-search-input-wrapper {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        background: var(--b3-theme-background);
+        border-radius: 8px;
+        border: 1px solid var(--b3-border-color);
+    }
+    .mobile-search-icon {
+        width: 16px;
+        height: 16px;
+        color: var(--b3-theme-on-surface-light);
+        flex-shrink: 0;
+    }
+    .mobile-search-input {
+        flex: 1;
+        border: none;
+        outline: none;
+        background: transparent;
+        font-size: 14px;
+        color: var(--b3-theme-on-background);
+        font-family: inherit;
+    }
+    .mobile-search-close {
+        border: none;
+        background: transparent;
+        color: var(--b3-theme-on-surface);
+        font-size: 14px;
+        cursor: pointer;
+        flex-shrink: 0;
+        padding: 4px 8px;
+    }
+
+/* 底部 Tab 栏 */
+    .north-shuoshuo-mobile-tabbar {
+        display: flex;
+        height: 56px;
+        flex-shrink: 0;
+        background: var(--b3-theme-surface);
+        border-top: 1px solid var(--b3-border-color);
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+    }
+    .mobile-tab-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        border: none;
+        background: transparent;
+        color: var(--b3-theme-on-surface-light);
+        font-size: 11px;
+        cursor: pointer;
+        padding: 4px 0;
+        transition: color 0.2s;
+    }
+    .mobile-tab-item svg {
+        width: 22px;
+        height: 22px;
+        stroke-width: 1.8;
+    }
+    .mobile-tab-item.active {
+        color: var(--b3-theme-primary);
+    }
+
+    /* 输入框默认隐藏，点击加号后显示 */
+    .north-shuoshuo-input-area {
+        display: none !important;
+        padding: 8px 16px 12px;
+    }
+    .north-shuoshuo-input-area.mobile-visible {
+        display: block !important;
+    }
+
+    /* 设置页面改为上下布局 */
+    .north-shuoshuo-settings-area {
+        flex-direction: column;
+    }
+    .north-shuoshuo-settings-nav {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--b3-border-color);
+        flex-shrink: 0;
+        max-height: 180px;
+        overflow-y: auto;
+    }
+    .north-shuoshuo-content-area {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    /* 笔记列表减少 padding */
+    .north-shuoshuo-notes-list {
+        padding: 12px 16px;
+    }
+
+    /* 移动端去除笔记卡片背景色 */
+    .north-shuoshuo-note-card,
+    .north-shuoshuo-masonry .north-shuoshuo-note-card {
+        background-color: transparent !important;
+    }
+
+    /* 移动端朋友圈封面高度 */
+    .lumina-moments-cover {
+        height: 265px;
+    }
+
+    /* 移动端朋友圈列表项去除背景色 */
+    .lumina-moments-item {
+        background-color: transparent !important;
+    }
+
+    /* 移动端朋友圈宽度与说说视图对齐 */
+    .lumina-moments-list {
+        padding: 12px 16px;
+        align-items: stretch;
+    }
+    .lumina-moments-item {
+        width: 100%;
+        box-sizing: border-box;
+    }
 }
