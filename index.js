@@ -452,7 +452,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._refreshTimer = null; // 防抖刷新定时器
         this._boundBlockIdsCache = new Set(); // 已绑定块ID的缓存（用于快速查找）
         this.moments = []; // 朋友圈数据
-        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '' };
+        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', fontSize: { mode: 'default', customSize: 14.5 } };
         this.books = []; // 图书书架数据
         this.bookshelfFilters = { type: 'all', sync: 'synced', status: 'read+reading', sort: 'time' };
         this.bookshelfSearch = '';
@@ -2321,58 +2321,35 @@ ipcRenderer.on('lumina-close', () => {
                         <!-- 同步设置 -->
                         <div class="north-shuoshuo-settings-section" id="setting-group-sync" style="display: none;">
                             <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header">
-                                    <div>
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                    <div style="flex: 1; min-width: 0;">
                                         <div class="north-shuoshuo-section-title">选择日记笔记本</div>
                                         <div class="north-shuoshuo-section-desc">用于将说说同步到思源笔记的日记中</div>
                                     </div>
-                                    <span class="north-shuoshuo-badge north-shuoshuo-badge-success" id="settings-connection-status">已配置</span>
-                                </div>
-                                
-                                <div class="north-shuoshuo-form-row">
-                                    <label class="north-shuoshuo-form-label">笔记本</label>
-                                    <div class="north-shuoshuo-input-group">
-                                        <div class="north-shuoshuo-select-wrapper">
-                                            <select id="settings-notebook-select" class="north-shuoshuo-select-field">
-                                                <option value="">请选择笔记本...</option>
-                                            </select>
-                                            <span class="north-shuoshuo-select-arrow">▼</span>
-                                        </div>
-                                        <button class="north-shuoshuo-btn-icon" id="settings-refresh-notebooks" title="刷新列表">
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M23 4v6h-6M1 20v-6h6"/>
-                                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                    <div class="north-shuoshuo-form-hint">
-                                        <span>💡</span> 选择用于存储日记的笔记本
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 180px;">
+                                        <select id="settings-notebook-select" class="north-shuoshuo-select-field">
+                                            <option value="">请选择笔记本...</option>
+                                        </select>
+                                        <span class="north-shuoshuo-select-arrow">▼</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header">
-                                    <div>
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                    <div style="flex: 1; min-width: 0;">
                                         <div class="north-shuoshuo-section-title">同步模式</div>
                                         <div class="north-shuoshuo-section-desc">选择说说同步到思源笔记的方式</div>
                                     </div>
-                                </div>
-                                <div class="north-shuoshuo-form-row">
-                                    <div class="north-shuoshuo-radio-group vertical" id="sync-mode-group">
-                                        <label class="north-shuoshuo-radio-item ${this.syncMode === 'dailynote' ? 'selected' : ''}" data-mode="dailynote">
-                                            <input type="radio" name="sync-mode" value="dailynote" ${this.syncMode === 'dailynote' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">同步到每日笔记</span>
-                                        </label>
-                                        <label class="north-shuoshuo-radio-item ${this.syncMode === 'doc' ? 'selected' : ''}" data-mode="doc">
-                                            <input type="radio" name="sync-mode" value="doc" ${this.syncMode === 'doc' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">同步到指定文档</span>
-                                        </label>
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 140px;">
+                                        <select id="sync-mode-select" class="north-shuoshuo-select-field">
+                                            <option value="dailynote" ${this.syncMode === 'dailynote' ? 'selected' : ''}>每日笔记</option>
+                                            <option value="doc" ${this.syncMode === 'doc' ? 'selected' : ''}>指定文档</option>
+                                        </select>
+                                        <span class="north-shuoshuo-select-arrow">▼</span>
                                     </div>
                                 </div>
-                                <div class="north-shuoshuo-form-row" id="sync-doc-id-row" style="display: ${this.syncMode === 'doc' ? 'block' : 'none'};">
+                                <div class="north-shuoshuo-form-row" id="sync-doc-id-row" style="display: ${this.syncMode === 'doc' ? 'block' : 'none'}; margin-top: 12px;">
                                     <label class="north-shuoshuo-form-label">文档 ID</label>
                                     <div class="north-shuoshuo-input-group" style="width: 100%;">
                                         <input type="text" id="settings-sync-doc-id" class="north-shuoshuo-input-field" placeholder="请输入思源文档块 ID" value="${this.syncDocId || ''}">
@@ -2397,10 +2374,10 @@ ipcRenderer.on('lumina-close', () => {
                                             <span>💡</span> 常用示例（点击即可填入）：
                                         </div>
                                         <div class="daily-note-examples-row">
-                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006/01"}}/{{now | date "2006-01-02"}}'>按月</span>
-                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006/01"}}/第{{now | ISOWeek}}周/{{now | date "2006-01-02"}}-周{{now | WeekdayCN}}'>按周</span>
-                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006"}}/{{now | date "01"}}月/{{now | date "2006-01-02"}}'>按年月日</span>
-                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006"}}/{{now | date "01"}}月/{{now | date "2006-01-02"}}-周{{now | WeekdayCN2}}'>按年月周日</span>
+                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006"}}/第{{now | WeekOfYear}}周/{{now | date "2006-01-02"}}'>按年周</span>
+                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006"}}/第{{now | WeekOfYear}}周/{{now | date "2006-01-02"}}-周{{now | WeekdayCN}}'>按年周星期</span>
+                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006/01"}}/第{{now | WeekOfYear}}周/{{now | date "2006-01-02"}}'>按月周</span>
+                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006"}}/{{now | date "01"}}月/第{{now | WeekOfYear}}周/{{now | date "2006-01-02"}}-周{{now | WeekdayCN2}}'>按年月周日</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2934,31 +2911,41 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
 
                             <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header">
-                                    <div>
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                    <div style="flex: 1; min-width: 0;">
                                         <div class="north-shuoshuo-section-title">选择日记笔记本</div>
                                         <div class="north-shuoshuo-section-desc">用于将说说同步到思源笔记的日记中</div>
                                     </div>
-                                    <span class="north-shuoshuo-badge ${this.momentsConfig?.syncNotebookId ? 'north-shuoshuo-badge-success' : ''}" id="moments-sync-status">${this.momentsConfig?.syncNotebookId ? '已配置' : '未配置'}</span>
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 180px;">
+                                        <select id="moments-notebook-select" class="north-shuoshuo-select-field">
+                                            <option value="">请选择笔记本...</option>
+                                        </select>
+                                        <span class="north-shuoshuo-select-arrow">▼</span>
+                                    </div>
                                 </div>
-                                <div class="north-shuoshuo-form-row">
-                                    <label class="north-shuoshuo-form-label">笔记本</label>
-                                    <div class="north-shuoshuo-input-group">
-                                        <div class="north-shuoshuo-select-wrapper">
-                                            <select id="moments-notebook-select" class="north-shuoshuo-select-field">
-                                                <option value="">请选择笔记本...</option>
-                                            </select>
-                                            <span class="north-shuoshuo-select-arrow">▼</span>
-                                        </div>
-                                        <button class="north-shuoshuo-btn-icon" id="moments-refresh-notebooks" title="刷新列表">
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M23 4v6h-6M1 20v-6h6"/>
-                                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                                            </svg>
-                                        </button>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div class="north-shuoshuo-section-title">同步模式</div>
+                                        <div class="north-shuoshuo-section-desc">选择说说同步到思源笔记的方式</div>
+                                    </div>
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 140px;">
+                                        <select id="moments-sync-mode-select" class="north-shuoshuo-select-field">
+                                            <option value="dailynote" ${this.momentsConfig?.syncMode === 'dailynote' ? 'selected' : ''}>每日笔记</option>
+                                            <option value="doc" ${this.momentsConfig?.syncMode === 'doc' ? 'selected' : ''}>指定文档</option>
+                                        </select>
+                                        <span class="north-shuoshuo-select-arrow">▼</span>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row" id="moments-sync-doc-id-row" style="display: ${this.momentsConfig?.syncMode === 'doc' ? 'block' : 'none'}; margin-top: 12px;">
+                                    <label class="north-shuoshuo-form-label">文档 ID</label>
+                                    <div class="north-shuoshuo-input-group" style="width: 100%;">
+                                        <input type="text" id="moments-sync-doc-id" class="north-shuoshuo-input-field" placeholder="请输入思源文档块 ID" value="${this.momentsConfig?.syncDocId || ''}">
                                     </div>
                                     <div class="north-shuoshuo-form-hint">
-                                        <span>💡</span> 选择用于存储日记的笔记本
+                                        <span>💡</span> 打开目标文档，右键文档标题 → 复制文档块 ID
                                     </div>
                                 </div>
                             </div>
@@ -2966,31 +2953,31 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-section-header">
                                     <div>
-                                        <div class="north-shuoshuo-section-title">同步模式</div>
-                                        <div class="north-shuoshuo-section-desc">选择说说同步到思源笔记的方式</div>
+                                        <div class="north-shuoshuo-section-title">字体大小</div>
+                                        <div class="north-shuoshuo-section-desc">调整朋友圈内容的字体大小（仅移动端生效）</div>
                                     </div>
                                 </div>
                                 <div class="north-shuoshuo-form-row">
-                                    <div class="north-shuoshuo-radio-group vertical" id="moments-sync-mode-group">
-                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.syncMode === 'dailynote' ? 'selected' : ''}" data-mode="dailynote">
-                                            <input type="radio" name="moments-sync-mode" value="dailynote" ${this.momentsConfig?.syncMode === 'dailynote' ? 'checked' : ''}>
+                                    <div class="north-shuoshuo-radio-group vertical" id="moments-font-size-mode-group">
+                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.fontSize?.mode === 'default' ? 'selected' : ''}" data-mode="default">
+                                            <input type="radio" name="moments-font-size-mode" value="default" ${this.momentsConfig?.fontSize?.mode === 'default' ? 'checked' : ''}>
                                             <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">同步到每日笔记</span>
+                                            <span class="north-shuoshuo-radio-label">默认（14.5px）</span>
                                         </label>
-                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.syncMode === 'doc' ? 'selected' : ''}" data-mode="doc">
-                                            <input type="radio" name="moments-sync-mode" value="doc" ${this.momentsConfig?.syncMode === 'doc' ? 'checked' : ''}>
+                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.fontSize?.mode === 'siyuan' ? 'selected' : ''}" data-mode="siyuan">
+                                            <input type="radio" name="moments-font-size-mode" value="siyuan" ${this.momentsConfig?.fontSize?.mode === 'siyuan' ? 'checked' : ''}>
                                             <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">同步到指定文档</span>
+                                            <span class="north-shuoshuo-radio-label">跟随思源编辑器</span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.fontSize?.mode === 'custom' ? 'selected' : ''}" data-mode="custom">
+                                            <input type="radio" name="moments-font-size-mode" value="custom" ${this.momentsConfig?.fontSize?.mode === 'custom' ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                            <span class="north-shuoshuo-radio-label">自定义</span>
                                         </label>
                                     </div>
-                                </div>
-                                <div class="north-shuoshuo-form-row" id="moments-sync-doc-id-row" style="display: ${this.momentsConfig?.syncMode === 'doc' ? 'block' : 'none'};">
-                                    <label class="north-shuoshuo-form-label">文档 ID</label>
-                                    <div class="north-shuoshuo-input-group" style="width: 100%;">
-                                        <input type="text" id="moments-sync-doc-id" class="north-shuoshuo-input-field" placeholder="请输入思源文档块 ID" value="${this.momentsConfig?.syncDocId || ''}">
-                                    </div>
-                                    <div class="north-shuoshuo-form-hint">
-                                        <span>💡</span> 打开目标文档，右键文档标题 → 复制文档块 ID
+                                    <div class="north-shuoshuo-form-row" id="moments-font-size-custom-row" style="display: ${this.momentsConfig?.fontSize?.mode === 'custom' ? 'flex' : 'none'}; align-items: center; gap: 8px; margin-top: 8px;">
+                                        <input type="number" id="moments-font-size-custom-input" style="width: 80px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="24" step="0.5" value="${this.momentsConfig?.fontSize?.customSize || 14.5}">
+                                        <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">px</span>
                                     </div>
                                 </div>
                             </div>
@@ -4746,9 +4733,27 @@ ipcRenderer.on('lumina-close', () => {
             momentsHtml = `<div style="padding:40px;text-align:center;color:#999;font-size:14px;">暂无朋友圈，点击右上角相机发表吧~</div>`;
         }
 
+        // 计算移动端朋友圈字体大小
+        let momentsFontSizeStyle = '';
+        if (this.isMobile) {
+            const fontSizeCfg = this.momentsConfig?.fontSize || { mode: 'default', customSize: 14.5 };
+            let momentsFontSize;
+            switch (fontSizeCfg.mode) {
+                case 'siyuan':
+                    momentsFontSize = 'var(--b3-font-size-editor)';
+                    break;
+                case 'custom':
+                    momentsFontSize = `${fontSizeCfg.customSize || 14.5}px`;
+                    break;
+                default:
+                    momentsFontSize = '14.5px';
+            }
+            momentsFontSizeStyle = `style="--moments-mobile-font-size: ${momentsFontSize};"`;
+        }
+
         listEl.style.padding = '0';
         listEl.innerHTML = `
-            <div class="lumina-moments-container">
+            <div class="lumina-moments-container" ${momentsFontSizeStyle}>
                 <div class="lumina-moments-main" id="momentsMainPage">
                     <div class="lumina-moments-nav" id="momentsNavBar">
                         <div class="lumina-moments-nav-left"></div>
@@ -7385,7 +7390,7 @@ ipcRenderer.on('lumina-close', () => {
                 document.body.appendChild(overlay);
                 overlay.addEventListener('click', closeDrawer);
             }
-            requestAnimationFrame(() => overlay.classList.add('show'));
+            overlay.classList.add('show');
         };
         const closeDrawer = () => {
             if (flomoSidebar) flomoSidebar.classList.remove('drawer-open');
@@ -9244,7 +9249,7 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // Go 风格日期格式化
-    formatDate(fmt, date) {
+    formatGoDate(fmt, date) {
         const year = date.getFullYear();
         const month = date.getMonth() + 1;
         const day = date.getDate();
@@ -9299,6 +9304,16 @@ ipcRenderer.on('lumina-close', () => {
             case "Weekday": return String(date.getDay());
             case "WeekdayCN": return weekdaysCN[date.getDay()];
             case "WeekdayCN2": return "周" + weekdaysCN[date.getDay()];
+            case "WeekOfYear": {
+                const d = new Date(date);
+                const currentWeekday = (d.getDay() + 6) % 7;
+                const mondayOfThisWeek = new Date(d);
+                mondayOfThisWeek.setDate(d.getDate() - currentWeekday);
+                const firstDayOfYear = new Date(mondayOfThisWeek.getFullYear(), 0, 1);
+                const daysFromYearStart = Math.floor((mondayOfThisWeek - firstDayOfYear) / (24 * 60 * 60 * 1000));
+                const weekNumber = Math.floor((daysFromYearStart + 7) / 7);
+                return String(weekNumber);
+            }
             default: return `{{now | ${name}}}`;
         }
     }
@@ -9306,7 +9321,7 @@ ipcRenderer.on('lumina-close', () => {
     // 渲染 daily note 路径模板
     renderDailyNotePath(template, date) {
         if (!template) return '';
-        let result = template.replace(/\{\{\s*now\s*\|\s*date\s*"([^"]+)"\s*\}\}/g, (_, fmt) => this.formatDate(fmt, date));
+        let result = template.replace(/\{\{\s*now\s*\|\s*date\s*"([^"]+)"\s*\}\}/g, (_, fmt) => this.formatGoDate(fmt, date));
         result = result.replace(/\{\{\s*now\s*\|\s*(\w+)\s*\}\}/g, (_, name) => this.runDateFunc(name, date));
         return result.trim();
     }
@@ -11926,46 +11941,51 @@ ipcRenderer.on('lumina-close', () => {
         if (momentsNicknameInput) momentsNicknameInput.value = this.momentsConfig?.nickname || '月亮';
         if (momentsSignatureInput) momentsSignatureInput.value = this.momentsConfig?.signature || '言念君子 温其如玉';
         
-        // 更新朋友圈同步状态标签
-        const momentsSyncStatus = this.container.querySelector('#moments-sync-status');
-        if (momentsSyncStatus) {
-            if (this.momentsConfig?.syncNotebookId) {
-                momentsSyncStatus.textContent = '已配置';
-                momentsSyncStatus.className = 'north-shuoshuo-badge north-shuoshuo-badge-success';
-            } else {
-                momentsSyncStatus.textContent = '未配置';
-                momentsSyncStatus.className = 'north-shuoshuo-badge';
-                momentsSyncStatus.style.background = '#f5f5f5';
-                momentsSyncStatus.style.color = '#888';
-            }
-        }
-        
-        // 刷新朋友圈笔记本列表
-        const momentsRefreshBtn = this.container.querySelector('#moments-refresh-notebooks');
-        if (momentsRefreshBtn) {
-            momentsRefreshBtn.onclick = () => {
-                showMessage('正在加载笔记本列表...');
-                this.loadNotebooks();
-            };
-        }
-        
         // 绑定朋友圈同步模式切换事件
-        const momentsSyncModeItems = this.container.querySelectorAll('#moments-sync-mode-group .north-shuoshuo-radio-item');
+        const momentsSyncModeSelect = this.container.querySelector('#moments-sync-mode-select');
         const momentsSyncDocIdRow = this.container.querySelector('#moments-sync-doc-id-row');
-        momentsSyncModeItems.forEach(item => {
-            item.addEventListener('click', () => {
-                const mode = item.dataset.mode;
+        if (momentsSyncModeSelect) {
+            momentsSyncModeSelect.addEventListener('change', () => {
+                const mode = momentsSyncModeSelect.value;
                 if (!this.momentsConfig) this.momentsConfig = {};
                 this.momentsConfig.syncMode = mode;
-                momentsSyncModeItems.forEach(i => i.classList.remove('selected'));
-                item.classList.add('selected');
-                const radio = item.querySelector('input[type="radio"]');
-                if (radio) radio.checked = true;
                 if (momentsSyncDocIdRow) {
                     momentsSyncDocIdRow.style.display = mode === 'doc' ? 'block' : 'none';
                 }
             });
+        }
+
+        // 绑定朋友圈字体大小模式选择事件
+        const momentsFontSizeModeItems = this.container.querySelectorAll('#moments-font-size-mode-group .north-shuoshuo-radio-item');
+        const momentsFontSizeCustomRow = this.container.querySelector('#moments-font-size-custom-row');
+        const momentsFontSizeCustomInput = this.container.querySelector('#moments-font-size-custom-input');
+        momentsFontSizeModeItems.forEach(item => {
+            item.addEventListener('click', async () => {
+                const mode = item.dataset.mode;
+                if (!this.momentsConfig) this.momentsConfig = {};
+                if (!this.momentsConfig.fontSize) this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
+                this.momentsConfig.fontSize.mode = mode;
+                momentsFontSizeModeItems.forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+                if (momentsFontSizeCustomRow) {
+                    momentsFontSizeCustomRow.style.display = mode === 'custom' ? 'flex' : 'none';
+                }
+                await this.saveMoments();
+            });
         });
+        if (momentsFontSizeCustomInput) {
+            momentsFontSizeCustomInput.addEventListener('input', async () => {
+                let size = parseFloat(momentsFontSizeCustomInput.value);
+                if (isNaN(size) || size < 10) size = 10;
+                if (size > 24) size = 24;
+                if (!this.momentsConfig) this.momentsConfig = {};
+                if (!this.momentsConfig.fontSize) this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
+                this.momentsConfig.fontSize.customSize = size;
+                await this.saveMoments();
+            });
+        }
 
         // 初始化开关状态 - 关键：根据当前 autoSync 值设置 UI
         const autoSyncSwitch = this.container.querySelector('#settings-auto-sync-switch');
@@ -12005,29 +12025,6 @@ ipcRenderer.on('lumina-close', () => {
                 if (targetGroup) targetGroup.style.display = 'block';
             });
         });
-
-        // 更新连接状态显示
-        const statusBadge = this.container.querySelector('#settings-connection-status');
-        if (statusBadge) {
-            if (this.notebookId) {
-                statusBadge.textContent = '已配置';
-                statusBadge.className = 'north-shuoshuo-badge north-shuoshuo-badge-success';
-            } else {
-                statusBadge.textContent = '未配置';
-                statusBadge.className = 'north-shuoshuo-badge';
-                statusBadge.style.background = '#f5f5f5';
-                statusBadge.style.color = '#888';
-            }
-        }
-
-        // 刷新笔记本列表
-        const refreshBtn = this.container.querySelector('#settings-refresh-notebooks');
-        if (refreshBtn) {
-            refreshBtn.onclick = () => {
-                showMessage('正在加载笔记本列表...');
-                this.loadNotebooks();
-            };
-        }
 
         // 视图样式下拉框
         const viewStyleSelect = this.container.querySelector('#view-style-select');
@@ -12215,21 +12212,17 @@ ipcRenderer.on('lumina-close', () => {
         const clearBtn = this.container.querySelector('#settings-clear');
 
         // 绑定同步模式切换事件
-        const syncModeItems = this.container.querySelectorAll('#sync-mode-group .north-shuoshuo-radio-item');
+        const syncModeSelect = this.container.querySelector('#sync-mode-select');
         const syncDocIdRow = this.container.querySelector('#sync-doc-id-row');
-        syncModeItems.forEach(item => {
-            item.addEventListener('click', () => {
-                const mode = item.dataset.mode;
+        if (syncModeSelect) {
+            syncModeSelect.addEventListener('change', () => {
+                const mode = syncModeSelect.value;
                 this.syncMode = mode;
-                syncModeItems.forEach(i => i.classList.remove('selected'));
-                item.classList.add('selected');
-                const radio = item.querySelector('input[type="radio"]');
-                if (radio) radio.checked = true;
                 if (syncDocIdRow) {
                     syncDocIdRow.style.display = mode === 'doc' ? 'block' : 'none';
                 }
             });
-        });
+        }
 
         // daily note 路径模板示例点击填入
         const dailyNoteExamples = this.container.querySelectorAll('.daily-note-example');
@@ -12255,8 +12248,7 @@ ipcRenderer.on('lumina-close', () => {
                 const viewStyleSelect = this.container.querySelector('#view-style-select');
                 this.viewStyle = viewStyleSelect?.value || 'list';
                 // 获取同步模式和指定文档ID
-                const selectedSyncMode = this.container.querySelector('input[name="sync-mode"]:checked');
-                this.syncMode = selectedSyncMode?.value || 'dailynote';
+                this.syncMode = this.container.querySelector('#sync-mode-select')?.value || 'dailynote';
                 this.syncDocId = this.container.querySelector('#settings-sync-doc-id')?.value?.trim() || '';
                 this.dailyNotePathTemplate = this.container.querySelector('#settings-daily-note-path-template')?.value?.trim() || '';
 
@@ -12296,14 +12288,19 @@ ipcRenderer.on('lumina-close', () => {
                 const momentsNickname = this.container.querySelector('#moments-nickname-input')?.value?.trim() || '月亮';
                 const momentsSignature = this.container.querySelector('#moments-signature-input')?.value?.trim() || '言念君子 温其如玉';
                 const momentsNotebookId = this.container.querySelector('#moments-notebook-select')?.value || '';
-                const momentsSyncMode = this.container.querySelector('input[name="moments-sync-mode"]:checked')?.value || 'dailynote';
+                const momentsSyncMode = this.container.querySelector('#moments-sync-mode-select')?.value || 'dailynote';
                 const momentsSyncDocId = this.container.querySelector('#moments-sync-doc-id')?.value?.trim() || '';
+                const momentsFontSizeMode = this.container.querySelector('input[name="moments-font-size-mode"]:checked')?.value || 'default';
+                const momentsFontSizeCustom = parseFloat(this.container.querySelector('#moments-font-size-custom-input')?.value) || 14.5;
                 if (!this.momentsConfig) this.momentsConfig = {};
                 this.momentsConfig.nickname = momentsNickname;
                 this.momentsConfig.signature = momentsSignature;
                 this.momentsConfig.syncNotebookId = momentsNotebookId;
                 this.momentsConfig.syncMode = momentsSyncMode;
                 this.momentsConfig.syncDocId = momentsSyncDocId;
+                if (!this.momentsConfig.fontSize) this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
+                this.momentsConfig.fontSize.mode = momentsFontSizeMode;
+                this.momentsConfig.fontSize.customSize = momentsFontSizeCustom;
                 await this.saveMoments();
 
                 // 保存图书视图同步设置
@@ -13372,6 +13369,10 @@ ipcRenderer.on('lumina-close', () => {
         } catch (e) {
             this.moments = [];
             this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '' };
+        }
+        // 合并字体大小默认值
+        if (!this.momentsConfig.fontSize) {
+            this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
         }
     }
 

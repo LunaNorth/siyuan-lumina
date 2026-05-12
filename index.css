@@ -4637,23 +4637,35 @@
 
     /* 移动端月度分布 */
     .north-shuoshuo-monthly-distribution {
-    display: flex !important;
-    align-items: flex-end !important;
-    justify-content: space-between !important;
-    gap: 6px !important;
-    height: 220px !important;
-    padding: 0 0px!important;
+        display: flex !important;
+        align-items: flex-end !important;
+        justify-content: space-around !important;
+        gap: 3px !important;
+        height: 200px !important;
+        padding: 0 2px !important;
     }
     .north-shuoshuo-monthly-bar {
-        gap: 2px;
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        gap: 3px !important;
+        align-items: center !important;
+    }
+    .north-shuoshuo-monthly-bar-bg {
+        width: 85% !important;
+        max-width: 28px !important;
+        height: 140px !important;
     }
     .north-shuoshuo-monthly-bar-label {
-        font-size: 10px;
-        white-space: nowrap;
-        transform: scale(0.85);
+        font-size: 9px !important;
+        white-space: nowrap !important;
+        transform: none !important;
     }
     .north-shuoshuo-monthly-bar-count {
-        font-size: 10px;
+        font-size: 9px !important;
+    }
+    .north-shuoshuo-monthly-bar-fill {
+        min-height: 1px !important;
     }
 
     /* 移动端贡献图 - 保持长条，可左右拖动 */
@@ -12367,7 +12379,7 @@
         z-index: 9999;
         opacity: 0;
         visibility: hidden;
-        transition: opacity 0.25s ease, visibility 0.25s ease;
+        transition: opacity 0.3s cubic-bezier(0.32, 0.72, 0, 1), visibility 0.3s;
         pointer-events: none;
     }
     .north-shuoshuo-drawer-overlay.show {
@@ -12495,7 +12507,7 @@
 
     /* 移动端朋友圈封面高度 */
     .lumina-moments-cover {
-        height: 265px;
+        height: 275px;
     }
 
     /* 移动端朋友圈列表项去除背景色 */
@@ -12511,5 +12523,27 @@
     .lumina-moments-item {
         width: 100%;
         box-sizing: border-box;
+    }
+
+    /* 移动端朋友圈字体大小 */
+    .lumina-moments-container .lumina-moments-item-text {
+        font-size: var(--moments-mobile-font-size, var(--b3-font-size-editor, 14.5px)) !important;
+    }
+
+    /* 移动端朋友圈头像缩小 */
+    .lumina-moments-cover-avatar {
+        width: 50px !important;
+        height: 50px !important;
+    }
+    .lumina-moments-item-avatar {
+        width: 38px !important;
+        height: 38px !important;
+    }
+
+    /* 移动端批注详情面板从右侧弹出，左侧留有空隙 */
+    .north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-content {
+        width: 80vw;
+        min-width: auto;
+        max-width: none;
     }
 }
