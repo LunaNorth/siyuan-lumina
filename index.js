@@ -725,6 +725,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             try { this._toolbarObserver.disconnect(); } catch (e) {}
             this._toolbarObserver = null;
         }
+        if (this._shuoshuoToolbarObserver) {
+            try { this._shuoshuoToolbarObserver.disconnect(); } catch (e) {}
+            this._shuoshuoToolbarObserver = null;
+        }
 
         // 清理移动端抽屉遮罩层
         document.querySelectorAll('.north-shuoshuo-drawer-overlay').forEach(el => el.remove());
@@ -3164,6 +3168,8 @@ ipcRenderer.on('lumina-close', () => {
             this.applyFontSizeConfig();
         }, 0);
         this.bindEvents();
+        // 初始化视图状态（确保移动端说说视图的顶部栏等逻辑正确执行）
+        this.switchMainView('notes', null);
     }
 
     // 生成热力?
@@ -8428,7 +8434,7 @@ ipcRenderer.on('lumina-close', () => {
                 </div>
                 <div class="north-shuoshuo-modal-body">
                     <div class="north-shuoshuo-masonry">
-                        <div class="north-shuoshuo-note-card north-shuoshuo-note-card-original">
+                        <div class="north-shuoshuo-note-card north-shuoshuo-note-card-original" data-id="${noteId}">
                             <div class="north-shuoshuo-note-header">
                                 <span class="north-shuoshuo-note-time">${noteDate}</span>
                             </div>
@@ -8493,8 +8499,8 @@ ipcRenderer.on('lumina-close', () => {
         };
         document.addEventListener('keydown', escHandler);
         
-        // 点击"▌ 关联"标签跳转到原位置
-        overlay.querySelectorAll('.north-shuoshuo-note-card[data-id] .north-shuoshuo-note-type.highlight').forEach(el => {
+        // 点击"▌ 关联"或"📌 原文"标签跳转到原位置
+        overlay.querySelectorAll('.north-shuoshuo-note-card .north-shuoshuo-note-type').forEach(el => {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const card = el.closest('.north-shuoshuo-note-card');
@@ -11760,7 +11766,7 @@ ipcRenderer.on('lumina-close', () => {
         // 移动端朋友圈视图：隐藏思源顶部工具栏
         if (this.isMobile) {
             const hideToolbar = () => {
-                document.querySelectorAll('.toolbar').forEach(el => {
+                document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
                     el.style.setProperty('display', 'none', 'important');
                 });
             };
@@ -11775,7 +11781,31 @@ ipcRenderer.on('lumina-close', () => {
                     this._toolbarObserver.disconnect();
                     this._toolbarObserver = null;
                 }
-                document.querySelectorAll('.toolbar').forEach(el => {
+                document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
+                    el.style.removeProperty('display');
+                });
+            }
+        }
+
+        // 移动端说说视图：隐藏思源顶部工具栏
+        if (this.isMobile) {
+            const hideToolbar = () => {
+                document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
+                    el.style.setProperty('display', 'none', 'important');
+                });
+            };
+            if (isShuoshuoView) {
+                hideToolbar();
+                if (!this._shuoshuoToolbarObserver) {
+                    this._shuoshuoToolbarObserver = new MutationObserver(hideToolbar);
+                    this._shuoshuoToolbarObserver.observe(document.body, { childList: true, subtree: true });
+                }
+            } else {
+                if (this._shuoshuoToolbarObserver) {
+                    this._shuoshuoToolbarObserver.disconnect();
+                    this._shuoshuoToolbarObserver = null;
+                }
+                document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
                     el.style.removeProperty('display');
                 });
             }
@@ -11843,7 +11873,7 @@ ipcRenderer.on('lumina-close', () => {
             if (inputArea) inputArea.style.display = (view === 'notes' || view === 'week') ? 'block' : 'none';
             const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
             if (sidebar) sidebar.style.display = view === 'stats' || view === 'table' ? 'none' : '';
-            // 恢复 notes-list 的 padding（朋友圈会清除它）
+            // 恢复 notes-list 的 padding（书架视图会清除它）
             const notesList = this.container.querySelector('#shuoshuo-notes-list');
             if (notesList) notesList.style.padding = '';
             // 异步加载思源数据并渲染

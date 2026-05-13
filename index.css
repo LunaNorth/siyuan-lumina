@@ -1265,7 +1265,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     min-width: 0;
     overflow: hidden;
 }
@@ -11534,7 +11534,7 @@
 .lumina-bookshelf-container {
     width: 100%;
     height: 100%;
-    overflow-y: auto;
+    overflow: hidden;
     background: var(--b3-theme-background);
     color: var(--b3-theme-on-background);
     font-family: var(--b3-font-family);
@@ -11544,6 +11544,8 @@
     -ms-overflow-style: none;
     user-select: text;
     -webkit-user-select: text;
+    display: flex;
+    flex-direction: column;
 }
 .lumina-bookshelf-container::-webkit-scrollbar { display: none; }
 
@@ -11555,6 +11557,7 @@
     position: sticky;
     top: 0;
     z-index: 2;
+    flex-shrink: 0;
 }
 .lumina-bookshelf-header-inner {
     display: flex;
@@ -11685,6 +11688,7 @@
     padding: 8px 20px 0;
     font-size: 12px; color: var(--b3-theme-on-surface-light);
     display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
 }
 .lumina-bookshelf-stats .sync-hint {
     color: var(--b3-theme-success); font-size: 11px;
@@ -11695,10 +11699,15 @@
 /* 主内容区域 */
 .lumina-bookshelf-main {
     padding: 12px 20px 20px;
-    min-height: calc(100vh - 140px);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
 }
 
-.lumina-bookshelf-view { transition: opacity 0.2s ease, transform 0.2s ease; }
+.lumina-bookshelf-view { transition: opacity 0.2s ease, transform 0.2s ease; flex: 1; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.lumina-bookshelf-view::-webkit-scrollbar { display: none; }
 .lumina-bookshelf-view.hidden {
     opacity: 0; pointer-events: none;
     position: absolute; left: -9999px;
@@ -11709,6 +11718,10 @@
 .lumina-bookshelf-view.lumina-bookshelf-detail.active {
     opacity: 1; transform: translateY(0); pointer-events: auto;
     position: relative; left: auto;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
 }
 
 .lumina-bookshelf-year-section { margin-bottom: 24px; }
@@ -11855,6 +11868,7 @@
     align-items: flex-start;
     gap: 16px;
     position: relative;
+    flex-shrink: 0;
     user-select: text;
     -webkit-user-select: text;
 }
@@ -11930,10 +11944,16 @@
 
 .lumina-bookshelf-detail-content {
     /* background: var(--b3-theme-surface); */
-    border-radius: 14px;
     padding: 0px;
+    flex: 1;
+    overflow-y: auto;
     user-select: text;
     -webkit-user-select: text;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.lumina-bookshelf-detail-content::-webkit-scrollbar {
+    display: none;
 }
 .lumina-bookshelf-detail-section-title {
     font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background);
@@ -11942,7 +11962,7 @@
     /* display: none; */
 }
 
-.lumina-bookshelf-masonry { column-count: 2; column-gap: 16px; }
+.lumina-bookshelf-masonry { column-count: 2; column-gap: 16px; padding-top: 4px; }
 @media (max-width: 768px) { .lumina-bookshelf-masonry { column-count: 1; } }
 
 .lumina-bookshelf-note-card {
@@ -12545,5 +12565,37 @@
         width: 80vw;
         min-width: auto;
         max-width: none;
+    }
+
+    /* 移动端朋友圈：隐藏统计（日历）按钮 */
+    .lumina-moments-calendar-btn {
+        display: none;
+    }
+
+    /* 移动端朋友圈：调整导航按钮整体位置，往上移 */
+    .lumina-moments-nav-actions {
+        margin-top: 12px;
+    }
+
+    /* 移动端朋友圈：调小发布（相机）按钮 */
+    .lumina-moments-camera-btn {
+        width: 20px;
+        height: 20px;
+    }
+
+    .lumina-moments-camera-icon {
+        width: 18px;
+        height: 14px;
+    }
+
+    .lumina-moments-camera-icon::before {
+        width: 6px;
+        height: 3px;
+        top: -4px;
+    }
+
+    .lumina-moments-camera-icon::after {
+        width: 4px;
+        height: 4px;
     }
 }
