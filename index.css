@@ -4,7 +4,7 @@
     max-height: 100%;
     overflow: hidden;
     position: relative;
-    /* 日历弹窗复用朋友圈样式所需的变量 */
+    /* 日历弹窗复用朋友圈样式所需的变�?*/
     --moments-modal-overlay: rgba(0, 0, 0, 0.5);
     --moments-modal-bg: #fff;
     --moments-modal-header-border: #f0f0f0;
@@ -17,9 +17,14 @@
     --moments-cell-level-2: #5ec88f;
     --moments-cell-level-3: #3ac652;
     --moments-cell-level-4: #07C160;
+    --moments-primary: #07C160;
+    --moments-text-primary: #333;
+    --moments-text-secondary: #999;
+    --moments-text-tertiary: #ccc;
+    --moments-hover-bg: rgba(0,0,0,0.05);
 }
 
-/* ========== 最左侧导航栏（保留原来的窄边栏） ========== */
+/* ========== 最左侧导航栏（保留原来的窄边栏�?========== */
 .north-shuoshuo-sidebar {
     width: 70px;
     background: var(--b3-theme-surface);
@@ -109,7 +114,7 @@
     margin-top: auto;
 }
 
-/* ========== 中间 Flomo 侧边栏 ========== */
+/* ========== 中间 Flomo 侧边�?========== */
 .north-shuoshuo-flomo-sidebar {
     width: 260px;
     background-color: var(--b3-theme-surface);
@@ -148,7 +153,7 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-/* 热力图 */
+/* 热力�?*/
 .north-shuoshuo-heatmap-container {
     margin-bottom: 20px;
     position: relative;
@@ -173,7 +178,7 @@
     transition: all 0.2s;
 }
 
-/* 不同活跃等级的颜色 - 使用主题色 */
+/* 不同活跃等级的颜�?- 使用主题�?*/
 .north-shuoshuo-heatmap-cell.level-1 {
     background-color: var(--b3-theme-primary-lightest);
 }
@@ -195,38 +200,9 @@
     box-shadow: 0 0 0 2px var(--b3-theme-primary-lighter);
 }
 
-/* 选中状态 */
+/* 选中状�?*/
 .north-shuoshuo-heatmap-cell.selected {
     box-shadow: 0 0 0 2px var(--b3-theme-primary);
-}
-
-/* Tooltip 样式 - 使用绝对定位确保显示完整 */
-.north-shuoshuo-heatmap-cell:hover::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 4px 8px;
-    background: var(--b3-tooltips-background);
-    color: var(--b3-tooltips-color);
-    font-size: 11px;
-    border-radius: 3px;
-    white-space: nowrap;
-    z-index: 9999;
-    pointer-events: none;
-}
-
-.north-shuoshuo-heatmap-cell:hover::before {
-    content: '';
-    position: absolute;
-    bottom: calc(100% - 2px);
-    left: 50%;
-    transform: translateX(-50%);
-    border: 4px solid transparent;
-    border-top-color: var(--b3-tooltips-background);
-    z-index: 9999;
-    pointer-events: none;
 }
 
 /* 月份标签 - 在格子下方显示，根据实际月份起始位置对齐 */
@@ -376,7 +352,7 @@
     transition: opacity 0.15s ease;
 }
 
-/* 检索式列表 hover 时显示所有数量 */
+/* 检索式列表 hover 时显示所有数�?*/
 .north-shuoshuo-query-list:hover .north-shuoshuo-query-count {
     opacity: 1;
 }
@@ -419,7 +395,7 @@
     opacity: 1;
 }
 
-/* 标签树项 - 新的简洁样式 */
+/* 标签树项 - 新的简洁样�?*/
 .north-shuoshuo-tag-tree-item {
     display: flex;
     flex-direction: column;
@@ -470,7 +446,7 @@
     background: var(--b3-theme-background-light);
 }
 
-/* 展开状态 - 旋转90度 */
+/* 展开状�?- 旋转90�?*/
 .north-shuoshuo-tag-tree-item.expanded > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
     transform: rotate(90deg);
 }
@@ -503,7 +479,7 @@
     font-weight: 400;
 }
 
-/* 右侧区域：数量 + 操作按钮 - 默认隐藏 */
+/* 右侧区域：数�?+ 操作按钮 - 默认隐藏 */
 .north-shuoshuo-tag-right {
     display: flex;
     align-items: center;
@@ -553,7 +529,7 @@
     opacity: 1;
 }
 
-/* 选中状态 */
+/* 选中状�?*/
 .north-shuoshuo-tag-tree-item.selected > .north-shuoshuo-tag-item-content {
     background-color: var(--b3-list-hover) !important;
     border-radius: 6px;
@@ -631,7 +607,7 @@
     margin-left: 4px;
 }
 
-/* 删除子菜单 */
+/* 删除子菜�?*/
 .north-shuoshuo-tag-submenu {
     background: var(--b3-theme-surface);
     border: 1px solid var(--b3-border-color);
@@ -662,7 +638,7 @@
     background-color: var(--b3-card-error-background);
 }
 
-/* 重命名弹窗 */
+/* 重命名弹�?*/
 .north-shuoshuo-tag-rename-modal {
     position: fixed;
     top: 0;
@@ -1040,7 +1016,7 @@
     max-height: 100%;
 }
 
-/* 笔记总数量 */
+/* 笔记总数�?*/
 .north-shuoshuo-notes-count {
     font-size: 13px;
     color: var(--b3-theme-on-surface-light);
@@ -1228,7 +1204,7 @@
 }
 
 .north-shuoshuo-note-card:hover {
-    /* 无悬停效果 */
+    /* 无悬停效�?*/
 }
 
 @keyframes noteHighlight {
@@ -1369,7 +1345,7 @@
     line-height: 1.4;
 }
 
-/* 思源笔记块引用样式 */
+/* 思源笔记块引用样�?*/
 .north-shuoshuo-note-content .north-shuoshuo-block-ref {
     display: inline;
     color: var(--b3-theme-primary);
@@ -1516,26 +1492,26 @@
     object-fit: cover;
 }
 
-/* 多张图片 - 默认3列 */
+/* 多张图片 - 默认3�?*/
 .north-shuoshuo-image-grid.multi {
     grid-template-columns: repeat(3, 1fr);
 }
 
-/* 2张图片 - 2列 */
+/* 2张图�?- 2�?*/
 .north-shuoshuo-image-grid.grid-2 {
     grid-template-columns: repeat(2, 1fr);
 }
 
-/* 4张图片 - 2x2布局 */
+/* 4张图�?- 2x2布局 */
 .north-shuoshuo-image-grid.grid-4 {
     grid-template-columns: repeat(2, 1fr);
 }
 
-/* 图片项 - 固定正方形，图片居中完整显示 */
+/* 图片�?- 固定正方形，图片居中完整显示 */
 .north-shuoshuo-image-item {
     position: relative;
     width: 100%;
-    padding-bottom: 100%; /* 1:1 正方形 */
+    padding-bottom: 100%; /* 1:1 正方�?*/
     overflow: hidden;
     border-radius: 4px;
     background-color: var(--b3-theme-surface);
@@ -1626,7 +1602,7 @@
     opacity: 0.6;
 }
 
-/* 引用块嵌套支持 */
+/* 引用块嵌套支�?*/
 .north-shuoshuo-note-content blockquote {
     border-left: 3px solid var(--b3-theme-primary);
     padding: 6px 0 6px 12px;
@@ -1673,7 +1649,7 @@
     line-height: 1.6;
 }
 
-/* ========== 长笔记自动折叠 ========== */
+/* ========== 长笔记自动折�?========== */
 .north-shuoshuo-note-content.collapsed {
     max-height: var(--collapse-max-height, 116px);
     overflow: hidden;
@@ -1709,7 +1685,7 @@
     height: 14px;
 }
 
-/* 子列表缩进 */
+/* 子列表缩�?*/
 .north-shuoshuo-note-content li > ul,
 .north-shuoshuo-note-content li > ol {
     margin: 2px 0;
@@ -1728,12 +1704,12 @@
     display: list-item;
 }
 
-/* 确保标签和文字对齐 */
+/* 确保标签和文字对�?*/
 .north-shuoshuo-note-content li .north-shuoshuo-tag {
     margin-left: 2px;
 }
 
-/* 隐藏滚动条 */
+/* 隐藏滚动�?*/
 .north-shuoshuo-notes-list::-webkit-scrollbar,
 .north-shuoshuo-sidebar::-webkit-scrollbar,
 .north-shuoshuo-flomo-sidebar::-webkit-scrollbar,
@@ -1749,7 +1725,7 @@
     scrollbar-width: none;
 }
 
-/* 响应式 - 瀑布流布局 */
+/* 响应�?- 瀑布流布局 */
 @media (max-width: 1200px) {
     .north-shuoshuo-notes-list.card-layout {
         gap: 12px;
@@ -1788,21 +1764,24 @@
 /* 笔记菜单下拉 */
 .north-shuoshuo-note-menu-dropdown {
     background: var(--b3-theme-surface);
-    border-radius: 8px;
+    border-radius: 6px;
     box-shadow: var(--b3-dialog-shadow);
-    padding: 8px 0;
-    min-width: 160px;
+    padding: 5px 0;
+    min-width: 150px;
     border: 1px solid var(--b3-border-color);
 }
 
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-item {
     display: flex;
     align-items: center;
-    padding: 6px 14px;
+    padding: 5px 12px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color 0.15s;
     color: var(--b3-theme-on-background);
-    font-size: 13px;
+    font-size: 12.5px;
+    line-height: 1.4;
+    margin: 0 4px;
+    border-radius: 4px;
 }
 
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-item:hover {
@@ -1818,18 +1797,19 @@
 }
 
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-icon {
-    width: 18px;
-    height: 18px;
-    margin-right: 10px;
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: inherit;
+    flex-shrink: 0;
 }
 
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-icon svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
 }
 
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-text {
@@ -1839,7 +1819,8 @@
 .north-shuoshuo-menu-divider {
     height: 1px;
     background-color: var(--b3-border-color);
-    margin: 6px 0;
+    margin: 4px 12px;
+    opacity: 0.6;
 }
 
 /* 笔记头部操作区域 */
@@ -1867,7 +1848,7 @@
     height: 14px;
 }
 
-/* 已绑定到思源笔记的图标 */
+/* 已绑定到思源笔记的图�?*/
 .north-shuoshuo-note-bound {
     color: var(--b3-theme-primary);
     display: flex;
@@ -1883,12 +1864,12 @@
     opacity: 1;
 }
 
-/* 已绑定的笔记卡片微弱的标识 */
+/* 已绑定的笔记卡片微弱的标�?*/
 .north-shuoshuo-note-card.bound {
     border-left: 2px solid var(--b3-theme-primary-lighter);
 }
 
-/* 子标签容器 */
+/* 子标签容�?*/
 .north-shuoshuo-tag-children {
     overflow: hidden;
     max-height: 0;
@@ -1903,7 +1884,7 @@
     max-height: 10000px;
 }
 
-/* 左侧竖线 - 根据父层级调整位置 */
+/* 左侧竖线 - 根据父层级调整位�?*/
 .north-shuoshuo-tag-children::before {
     content: '';
     position: absolute;
@@ -1959,7 +1940,7 @@
     overflow: hidden;
 }
 
-/* --- 左侧：设置导航菜单 --- */
+/* --- 左侧：设置导航菜�?--- */
 .north-shuoshuo-settings-nav {
     width: 280px;
     background-color: var(--b3-theme-background);
@@ -2014,7 +1995,7 @@
     fill: var(--b3-theme-primary);
 }
 
-/* --- 右侧：具体设置内容 --- */
+/* --- 右侧：具体设置内�?--- */
 .north-shuoshuo-content-area {
     flex: 1;
     background-color: var(--b3-theme-background);
@@ -2115,7 +2096,7 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-/* Flomo 设置中的标题和描述 */
+/* Flomo 设置中的标题和描�?*/
 #setting-group-flomo .north-shuoshuo-section-title {
     font-size: 15px;
 }
@@ -2143,7 +2124,7 @@
 }
 
 /* 表单元素 */
-/* 表单行 */
+/* 表单�?*/
 .north-shuoshuo-form-row {
     margin-bottom: 24px;
 }
@@ -2180,7 +2161,7 @@
     gap: 4px;
 }
 
-/* 输入框组合 */
+/* 输入框组�?*/
 .north-shuoshuo-input-group {
     display: flex;
     gap: 8px;
@@ -2272,7 +2253,7 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-/* 新开关样式 */
+/* 新开关样�?*/
 .north-shuoshuo-switch {
     position: relative;
     width: 48px;
@@ -2305,7 +2286,7 @@
     left: 25px;
 }
 
-/* 开关焦点效果 */
+/* 开关焦点效�?*/
 .north-shuoshuo-switch:focus {
     box-shadow: 0 0 0 3px var(--b3-theme-primary-lighter);
 }
@@ -2422,14 +2403,14 @@
     background: var(--b3-theme-primary);
 }
 
-/* 右侧内容包装器 */
+/* 右侧内容包装�?*/
 .north-shuoshuo-settings-content-wrapper {
     flex: 1;
     display: flex;
     overflow: hidden;
 }
 
-/* 设置侧边栏 (Flomo 风格) */
+/* 设置侧边�?(Flomo 风格) */
 .north-shuoshuo-settings-sidebar {
     width: 240px;
     background: #fafafa;
@@ -2623,7 +2604,7 @@
     box-shadow: 0 0 0 3px var(--b3-theme-primary-lightest);
 }
 
-/* 开关 */
+/* 开�?*/
 .north-shuoshuo-settings-toggle-item {
     display: flex;
     justify-content: space-between;
@@ -2755,7 +2736,7 @@
     color: #2d8a6b;
 }
 
-/* 列表项 */
+/* 列表�?*/
 .north-shuoshuo-settings-list-item {
     display: flex;
     align-items: center;
@@ -2861,7 +2842,7 @@
     margin: 6px 0 0 0;
 }
 
-/* 开关样式 */
+/* 开关样�?*/
 .north-shuoshuo-settings-toggle {
     position: relative;
     display: inline-block;
@@ -2956,7 +2937,7 @@
     border-top: 1px solid #e8e8e8;
 }
 
-/* 设置项行布局（标签+开关） */
+/* 设置项行布局（标�?开关） */
 .north-shuoshuo-settings-row {
     display: flex;
     align-items: center;
@@ -2967,7 +2948,7 @@
     margin-bottom: 0;
 }
 
-/* 笔记本选择下拉框 */
+/* 笔记本选择下拉�?*/
 .north-shuoshuo-notebook-select-wrapper {
     display: flex;
     gap: 8px;
@@ -3112,7 +3093,7 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-/* 空状态 */
+/* 空状�?*/
 .north-shuoshuo-empty-state {
     display: flex;
     flex-direction: column;
@@ -3153,7 +3134,7 @@
 }
 
 /* 随机漫步 */
-/* 横向排列的 radio group - Flomo 同步设置 */
+/* 横向排列�?radio group - Flomo 同步设置 */
 .north-shuoshuo-radio-group.horizontal {
     flex-direction: row;
     gap: 12px;
@@ -3216,7 +3197,7 @@
     align-self: center;
 }
 
-/* 只读输入框样式 */
+/* 只读输入框样�?*/
 .north-shuoshuo-input-field.readonly-field {
     background-color: var(--b3-theme-surface-lighter);
     border-color: var(--b3-border-color);
@@ -3227,7 +3208,7 @@
     font-size: 13px;
 }
 
-/* 只读信息展示框 */
+/* 只读信息展示�?*/
 .north-shuoshuo-readonly-field {
     display: inline-block;
     padding: 8px 12px;
@@ -3239,7 +3220,7 @@
     min-width: 160px;
 }
 
-/* 标签选择器 */
+/* 标签选择�?*/
 .north-shuoshuo-tag-picker {
     background: var(--b3-theme-surface);
     border: 1px solid var(--b3-border-color);
@@ -3328,7 +3309,7 @@
     font-size: 13px;
 }
 
-/* 滚动条样式 */
+/* 滚动条样�?*/
 .north-shuoshuo-tag-picker-list::-webkit-scrollbar {
     width: 4px;
 }
@@ -3530,7 +3511,7 @@
     display: none;
 }
 
-/* 垂直 radio 组 */
+/* 垂直 radio �?*/
 .north-shuoshuo-radio-group.vertical {
     flex-direction: column;
     gap: 8px;
@@ -3657,7 +3638,7 @@
     color: rgba(0,0,0,0.85);
 }
 
-/* 便利贴颜色 - 默认（原主题） */
+/* 便利贴颜�?- 默认（原主题�?*/
 .north-shuoshuo-sticky-note.note-color-1 {
     background: #fef08a;
 }
@@ -3677,7 +3658,7 @@
     background: #fed7aa;
 }
 
-/* 思源主题 - 适配柔和色 */
+/* 思源主题 - 适配柔和�?*/
 .theme-siyuan .north-shuoshuo-sticky-note.note-color-1 {
     background: #fff9c4;
 }
@@ -3697,7 +3678,7 @@
     background: #ffe0b2;
 }
 
-/* 莫兰迪主题 - 低饱和色系 */
+/* 莫兰迪主�?- 低饱和色�?*/
 .theme-morandi .north-shuoshuo-sticky-note.note-color-1 {
     background: #D4A5A5;
 }
@@ -3788,7 +3769,7 @@
     color: #2d3436;
 }
 
-/* 图片在便利贴中限制大小 */
+/* 图片在便利贴中限制大�?*/
 .north-shuoshuo-sticky-note-content .north-shuoshuo-image-grid img,
 .north-shuoshuo-sticky-note-content .north-shuoshuo-markdown-img {
     max-height: 140px;
@@ -3867,7 +3848,7 @@
     min-height: 100%;
 }
 
-/* 响应式 */
+/* 响应�?*/
 @media (max-width: 1100px) {
     .north-shuoshuo-sticky-wall {
         column-count: 2;
@@ -3888,13 +3869,13 @@
     }
 }
 
-/* 统计模式下占满 */
+/* 统计模式下占�?*/
 .north-shuoshuo-notes-list:has(.north-shuoshuo-stats-page) {
     padding: 0;
     background: var(--b3-theme-background);
 }
 
-/* 每日回顾单卡片样式 - 堆叠纸张效果 */
+/* 每日回顾单卡片样�?- 堆叠纸张效果 */
 .north-shuoshuo-review-page {
     display: flex;
     flex-direction: column;
@@ -3908,7 +3889,7 @@
     box-sizing: border-box;
 }
 
-/* 卡片包装器 - 用于定位堆叠层 */
+/* 卡片包装�?- 用于定位堆叠�?*/
 .north-shuoshuo-review-card-wrapper {
     position: relative;
     width: 100%;
@@ -3916,7 +3897,7 @@
     margin: 20px;
 }
 
-/* 后面的页面层 - 第3层 */
+/* 后面的页面层 - �?�?*/
 .north-shuoshuo-review-card-wrapper::before {
     content: '';
     position: absolute;
@@ -3931,7 +3912,7 @@
     transform: rotate(-1.5deg);
 }
 
-/* 中间的页面层 - 第2层 */
+/* 中间的页面层 - �?�?*/
 .north-shuoshuo-review-card-wrapper::after {
     content: '';
     position: absolute;
@@ -4160,7 +4141,7 @@
     color: var(--b3-theme-on-background);
 }
 
-/* 年份选择器 */
+/* 年份选择�?*/
 .north-shuoshuo-year-selector {
     position: relative;
     display: inline-flex;
@@ -4237,7 +4218,7 @@
     margin-top: 6px;
 }
 
-/* 热力图区域 */
+/* 热力图区�?*/
 .north-shuoshuo-heatmap-section {
     background: var(--b3-theme-surface);
     border-radius: 12px;
@@ -4254,14 +4235,14 @@
     font-weight: 500;
 }
 
-/* 热力图样式 - GitHub风格 */
+/* 热力图样�?- GitHub风格 */
 .north-shuoshuo-heatmap-large {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
-/* 月份标签 - 在下方横排 */
+/* 月份标签 - 在下方横�?*/
 .north-shuoshuo-heatmap-months {
     display: grid;
     gap: 4px;
@@ -4284,7 +4265,7 @@
     justify-content: flex-start;
 }
 
-/* 星期标签 - 在右侧 */
+/* 星期标签 - 在右�?*/
 .north-shuoshuo-heatmap-daylabel {
     width: 24px;
     font-size: 12px;
@@ -4321,7 +4302,7 @@
 .north-shuoshuo-heatmap-cell-large.level-3 { background: #34c759; }
 .north-shuoshuo-heatmap-cell-large.level-4 { background: #248a3d; }
 
-/* ========== 贡献图（GitHub 风格）========== */
+/* ========== 贡献图（GitHub 风格�?========= */
 .north-shuoshuo-contribution-section {
     background: var(--b3-theme-surface);
     border-radius: 12px;
@@ -4595,7 +4576,7 @@
     font-weight: 500;
 }
 
-/* 响应式 */
+/* 响应�?*/
 @media (max-width: 768px) {
     .north-shuoshuo-stats-grid {
         grid-template-columns: repeat(2, 1fr);
@@ -4635,7 +4616,7 @@
         padding-bottom: 8px;
     }
 
-    /* 移动端月度分布 */
+    /* 移动端月度分�?*/
     .north-shuoshuo-monthly-distribution {
         display: flex !important;
         align-items: flex-end !important;
@@ -4784,7 +4765,7 @@
     margin-bottom: 16px;
 }
 
-/* 标签云区域 */
+/* 标签云区�?*/
 .north-shuoshuo-tag-cloud-section {
     background: var(--b3-theme-surface);
     border-radius: 12px;
@@ -4883,7 +4864,7 @@
 }
 
 .north-shuoshuo-monthly-bar::after {
-    content: attr(data-tooltip);
+    content: attr(data-lumina-tip);
     position: absolute;
     bottom: calc(100% + 6px);
     left: 50%;
@@ -5039,7 +5020,7 @@
     font-size: 14px;
 }
 
-/* 动态图标 */
+/* 动态图�?*/
 .north-shuoshuo-tag-dynamic-icon {
     width: 16px;
     height: 16px;
@@ -5063,7 +5044,7 @@
     font-family: "SF Mono", Monaco, monospace;
 }
 
-/* 图标选择器弹窗 */
+/* 图标选择器弹�?*/
 .north-shuoshuo-icon-picker-modal {
     position: fixed;
     top: 0;
@@ -5120,7 +5101,7 @@
     border-radius: 8px;
 }
 
-/* 标签页 */
+/* 标签�?*/
 .north-shuoshuo-icon-tabs {
     display: flex;
     border-bottom: 1px solid var(--b3-border-color);
@@ -5164,7 +5145,7 @@
     padding: 4px;
 }
 
-/* Emoji 搜索框 */
+/* Emoji 搜索�?*/
 .north-shuoshuo-emoji-search {
     margin-bottom: 12px;
 }
@@ -5238,7 +5219,7 @@
     pointer-events: none;
 }
 
-/* 自定义图标网格 */
+/* 自定义图标网�?*/
 .north-shuoshuo-custom-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -5399,10 +5380,10 @@
 }
 
 
-/* ========== 主题色样式 ========== */
+/* ========== 主题色样�?========== */
 
-/* 主题色选择器样式 */
-/* 主题模式选择器样式 */
+/* 主题色选择器样�?*/
+/* 主题模式选择器样�?*/
 .north-shuoshuo-radio-preview.original-theme-preview {
     background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
     border: 1px solid #e0e0e0;
@@ -5439,7 +5420,7 @@
     border-radius: 2px;
 }
 
-/* 原主题 - 硬编码绿色 */
+/* 原主�?- 硬编码绿�?*/
 .north-shuoshuo-container.theme-original,
 .north-shuoshuo-container.theme-default {
     --b3-theme-primary: #56c596;
@@ -5500,7 +5481,7 @@
    主题模式定义
    ======================================== */
 
-/* 响应式调整 */
+/* 响应式调�?*/
 @media (max-width: 768px) {
     .north-shuoshuo-theme-color-grid {
         grid-template-columns: repeat(3, 1fr);
@@ -5508,10 +5489,7 @@
 }
 
 /* ========================================
-   原主题 (original) - 硬编码绿色样式
-   使用插件原来的绿色配色方案
-   默认情况下（无主题类）也使用此样式
-   ======================================== */
+   原主�?(original) - 硬编码绿色样�?   使用插件原来的绿色配色方�?   默认情况下（无主题类）也使用此样�?   ======================================== */
 
 .north-shuoshuo-container,
 .theme-original.north-shuoshuo-container,
@@ -5521,7 +5499,7 @@
     color: #333;
 }
 
-/* 原主题 - 左侧导航栏 */
+/* 原主�?- 左侧导航�?*/
 .theme-original .north-shuoshuo-sidebar {
     background: #f7f7f7;
     border-right: 1px solid #e0e0e0;
@@ -5547,7 +5525,7 @@
     color: #07c160;
 }
 
-/* 原主题 - Flomo 侧边栏 */
+/* 原主�?- Flomo 侧边�?*/
 .theme-original .north-shuoshuo-flomo-sidebar {
     background-color: #fafafa;
     border-right: 1px solid #e8e8e8;
@@ -5561,7 +5539,7 @@
     color: #999;
 }
 
-/* 原主题 - 热力图 */
+/* 原主�?- 热力�?*/
 .theme-original .north-shuoshuo-heatmap-cell {
     background-color: #f0f0f0;
 }
@@ -5594,7 +5572,7 @@
     color: #999;
 }
 
-/* 原主题 - 菜单 */
+/* 原主�?- 菜单 */
 .theme-original .north-shuoshuo-menu-item {
     color: inherit;
 }
@@ -5620,7 +5598,7 @@
     color: #999;
 }
 
-/* 原主题 - 标签 */
+/* 原主�?- 标签 */
 .theme-original .north-shuoshuo-tag-item-content {
     color: #555;
 }
@@ -5677,7 +5655,7 @@
     color: #999;
 }
 
-/* 原主题 - 右侧主区域 */
+/* 原主�?- 右侧主区�?*/
 .theme-original .north-shuoshuo-flomo-area {
     background-color: #f5f5f5;
 }
@@ -5732,7 +5710,7 @@
     color: white;
 }
 
-/* 原主题 - 笔记卡片 */
+/* 原主�?- 笔记卡片 */
 .theme-original .north-shuoshuo-note-card {
     background-color: #fff;
     border: 1px solid #e8e8e8;
@@ -5786,7 +5764,7 @@
     background-color: #e0f2fe;
 }
 
-/* 原主题 - 块引用 */
+/* 原主�?- 块引�?*/
 .theme-original .north-shuoshuo-note-content .north-shuoshuo-block-ref {
     color: #3b82f6;
 }
@@ -5795,7 +5773,7 @@
     background-color: #f0f9ff;
 }
 
-/* 原主题 - Markdown */
+/* 原主�?- Markdown */
 .theme-original .north-shuoshuo-note-content h1,
 .theme-original .north-shuoshuo-note-content h2,
 .theme-original .north-shuoshuo-note-content h3 {
@@ -5844,7 +5822,7 @@
     background-color: #fff;
 }
 
-/* 原主题 - 下拉菜单 */
+/* 原主�?- 下拉菜单 */
 .theme-original .north-shuoshuo-note-menu-dropdown {
     background: #fff;
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
@@ -5871,7 +5849,7 @@
     background-color: #e8e8e8;
 }
 
-/* 原主题 - 置顶笔记 */
+/* 原主�?- 置顶笔记 */
 .theme-original .north-shuoshuo-note-card.pinned {
     background-color: #fffef0;
     border-left: 3px solid #fadb14;
@@ -5881,7 +5859,7 @@
     color: #fadb14;
 }
 
-/* 原主题 - 设置页面 */
+/* 原主�?- 设置页面 */
 .theme-original .north-shuoshuo-settings-area {
     background: #f8f9fa;
 }
@@ -6033,7 +6011,7 @@
     background: #ffccc7;
 }
 
-/* 原主题 - 单选按钮 */
+/* 原主�?- 单选按�?*/
 .theme-original .north-shuoshuo-radio-item {
     border: 1px solid #e8e8e8;
 }
@@ -6080,7 +6058,7 @@
     color: #888;
 }
 
-/* 原主题 - 空状态 */
+/* 原主�?- 空状�?*/
 .theme-original .north-shuoshuo-empty-text {
     color: #666;
 }
@@ -6089,13 +6067,13 @@
     color: #999;
 }
 
-/* 原主题 - 每日回顾 */
+/* 原主�?- 每日回顾 */
 .theme-original .north-shuoshuo-review-year {
     color: #333;
     border-bottom: 1px solid #f0f0f0;
 }
 
-/* 原主题 - 横向 radio 组 */
+/* 原主�?- 横向 radio �?*/
 .theme-original .north-shuoshuo-radio-group.horizontal .north-shuoshuo-radio-item {
     border: 1px solid #e0e0e0;
 }
@@ -6121,7 +6099,7 @@
     color: #888;
 }
 
-/* 原主题 - 只读字段 */
+/* 原主�?- 只读字段 */
 .theme-original .north-shuoshuo-input-field.readonly-field {
     background-color: #f0f0f0;
     border-color: #e0e0e0;
@@ -6134,7 +6112,7 @@
     color: #666;
 }
 
-/* 原主题 - 标签选择器 */
+/* 原主�?- 标签选择�?*/
 .theme-original .north-shuoshuo-tag-picker {
     background: #fff;
     border: 1px solid #e0e0e0;
@@ -6190,7 +6168,7 @@
     background: #ddd;
 }
 
-/* 原主题 - 每日回顾头部 */
+/* 原主�?- 每日回顾头部 */
 .theme-original .north-shuoshuo-review-header {
     background: #fff;
     border-bottom: 1px solid #f0f0f0;
@@ -6204,7 +6182,7 @@
     color: #888;
 }
 
-/* 原主题 - 模态框 */
+/* 原主�?- 模态框 */
 .theme-original .north-shuoshuo-modal-overlay {
     background: rgba(0, 0, 0, 0.5);
 }
@@ -6236,7 +6214,7 @@
     background: #fafafa;
 }
 
-/* 原主题 - 详情弹窗 */
+/* 原主�?- 详情弹窗 */
 .theme-original .north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-content {
     background: #f8f9fa;
 }
@@ -6272,7 +6250,7 @@
     color: #8e8e93;
 }
 
-/* 原主题 - 标签复选框 */
+/* 原主�?- 标签复选框 */
 .theme-original .north-shuoshuo-review-tag-checkbox {
     background: #f5f5f5;
     border: 1px solid #e8e8e8;
@@ -6289,7 +6267,7 @@
     color: #56c596;
 }
 
-/* 原主题 - 垂直 radio 组 */
+/* 原主�?- 垂直 radio �?*/
 .theme-original .north-shuoshuo-radio-group.vertical .north-shuoshuo-radio-item {
     border: 1px solid #e8e8e8;
 }
@@ -6320,17 +6298,17 @@
     color: #333;
 }
 
-/* 原主题 - 每日回顾模式 */
+/* 原主�?- 每日回顾模式 */
 .theme-original .north-shuoshuo-notes-list.review-mode {
     background: #f0f5f3;
 }
 
-/* 原主题 - 统计模式 */
+/* 原主�?- 统计模式 */
 .theme-original .north-shuoshuo-notes-list:has(.north-shuoshuo-stats-page) {
     background: #f5f5f7;
 }
 
-/* 原主题 - 回顾页面 */
+/* 原主�?- 回顾页面 */
 .theme-original .north-shuoshuo-review-page {
     background: #f0f5f3;
 }
@@ -6391,7 +6369,7 @@
     background: #e0e0e0;
 }
 
-/* 原主题 - 统计视图 */
+/* 原主�?- 统计视图 */
 .theme-original .north-shuoshuo-stats-page {
     background: #f5f5f7;
 }
@@ -6452,7 +6430,7 @@
     color: #86868b;
 }
 
-/* 原始主题 - 贡献图 */
+/* 原始主题 - 贡献�?*/
 .theme-original .north-shuoshuo-contribution-section {
     background: #fff;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
@@ -6589,13 +6567,13 @@
     color: #666;
 }
 
-/* 原主题 - 默认 # 图标 */
+/* 原主�?- 默认 # 图标 */
 .theme-original .north-shuoshuo-tag-icon-default {
     color: #999;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* 原主题 - 图标选择器 */
+/* 原主�?- 图标选择�?*/
 .theme-original .north-shuoshuo-icon-picker-content {
     background: #fff;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -6718,7 +6696,7 @@
     color: var(--b3-theme-on-background);
     /* 日历弹窗复用朋友圈样式所需的变量 */
     --moments-modal-overlay: rgba(0, 0, 0, 0.6);
-    --moments-modal-bg: var(--b3-theme-background);
+    --moments-modal-bg: var(--b3-theme-surface);
     --moments-modal-header-border: var(--b3-border-color);
     --moments-close-color: var(--b3-theme-on-surface-light);
     --moments-close-hover-bg: var(--b3-list-hover);
@@ -6729,12 +6707,17 @@
     --moments-cell-level-2: var(--b3-theme-primary-lighter);
     --moments-cell-level-3: var(--b3-theme-primary-light);
     --moments-cell-level-4: var(--b3-theme-primary);
+    --moments-primary: var(--b3-theme-primary);
+    --moments-text-primary: var(--b3-theme-on-background);
+    --moments-text-secondary: var(--b3-theme-on-surface);
+    --moments-text-tertiary: var(--b3-theme-on-surface-light);
+    --moments-hover-bg: var(--b3-list-hover);
 }
 
-/* 适配主题下的所有样式都在 .theme-siyuan 下重新定义 */
+/* 适配主题下的所有样式都�?.theme-siyuan 下重新定�?*/
 /* 这里省略，因为它们已经在上面定义为默认样式了 */
 
-/* ========== @ 快速引用 ========== */
+/* ========== @ 快速引�?========== */
 
 /* @ 按钮 */
 #toolbar-at svg {
@@ -6742,7 +6725,7 @@
     height: 16px;
 }
 
-/* 引用选择器 */
+/* 引用选择�?*/
 .north-shuoshuo-mention-picker {
     background: var(--b3-theme-surface);
     border: 1px solid var(--b3-border-color);
@@ -6917,7 +6900,7 @@
     white-space: nowrap;
 }
 
-/* 滚动条 */
+/* 滚动�?*/
 .north-shuoshuo-mention-picker-list::-webkit-scrollbar {
     width: 4px;
 }
@@ -6931,7 +6914,7 @@
     border-radius: 2px;
 }
 
-/* 详情弹窗中 MEMO 引用的内联样式 */
+/* 详情弹窗�?MEMO 引用的内联样�?*/
 .north-shuoshuo-memo-inline-ref {
     display: inline;
     color: var(--b3-theme-primary);
@@ -6990,7 +6973,7 @@
 }
 
 .north-shuoshuo-memo-relation-icon::before {
-    content: '←';
+    content: '�?;
 }
 
 .north-shuoshuo-memo-relations.comment-source .north-shuoshuo-memo-relation-icon {
@@ -7253,17 +7236,19 @@
 }
 
 /* ========================================
-   莫兰迪主题 (morandi)
+   莫兰迪主�?(morandi)
    ======================================== */
 
-/* 莫兰迪主题 - 预览 */
+/* 莫兰迪主�?- 预览 */
 .morandi-theme-preview {
     background: linear-gradient(135deg, #D4A5A5 0%, #9CAF88 33%, #8FA1B3 66%, #7A8471 100%);
     border-radius: 6px;
 }
 
-/* 莫兰迪主题 - 基础变量 */
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).theme-morandi {
+/* 莫兰迪主�?- 基础变量 */
+.north-shuoshuo-container.theme-morandi,
+.north-shuoshuo-quick-overlay.theme-morandi,
+.north-shuoshuo-memo-detail-modal.theme-morandi {
     --b3-theme-primary: #D4A5A5;
     --b3-theme-primary-light: #E5C4C4;
     --b3-theme-primary-lighter: #F0DADA;
@@ -7279,12 +7264,12 @@
     --b3-list-hover: #F5F2EF;
 }
 
-/* 莫兰迪主题 - 容器本身的背景色和文字色（不应用到浮层，避免遮挡页面） */
+/* 莫兰迪主�?- 容器本身的背景色和文字色（不应用到浮层，避免遮挡页面�?*/
 .north-shuoshuo-container.theme-morandi {
     font-family: inherit;
     background-color: var(--b3-theme-background);
     color: var(--b3-theme-on-background);
-    /* 日历弹窗复用朋友圈样式所需的变量 */
+    /* 日历弹窗复用朋友圈样式所需的变�?*/
     --moments-modal-overlay: rgba(0, 0, 0, 0.5);
     --moments-modal-bg: #fff;
     --moments-modal-header-border: #f0f0f0;
@@ -7297,45 +7282,98 @@
     --moments-cell-level-2: var(--b3-theme-primary-lighter);
     --moments-cell-level-3: var(--b3-theme-primary-light);
     --moments-cell-level-4: var(--b3-theme-primary);
+    --moments-primary: var(--b3-theme-primary);
+    --moments-text-primary: #333;
+    --moments-text-secondary: #999;
+    --moments-text-tertiary: #ccc;
+    --moments-hover-bg: rgba(0,0,0,0.05);
+}
+
+/* 移动端日历弹窗移�?body 下时，也需要主题变�?*/
+.lumina-moments-calendar-modal.theme-morandi {
+    --b3-theme-primary: #D4A5A5;
+    --b3-theme-primary-light: #E5C4C4;
+    --b3-theme-primary-lighter: #F0DADA;
+    --b3-theme-primary-lightest: #FAF0F0;
+    --moments-modal-overlay: rgba(0, 0, 0, 0.5);
+    --moments-modal-bg: #fff;
+    --moments-modal-header-border: #f0f0f0;
+    --moments-close-color: #999;
+    --moments-close-hover-bg: #f5f5f5;
+    --moments-close-hover-color: #333;
+    --moments-year-color: var(--b3-theme-primary);
+    --moments-cell-bg: #e5e5e5;
+    --moments-cell-level-1: var(--b3-theme-primary-lightest);
+    --moments-cell-level-2: var(--b3-theme-primary-lighter);
+    --moments-cell-level-3: var(--b3-theme-primary-light);
+    --moments-cell-level-4: var(--b3-theme-primary);
+    --moments-primary: var(--b3-theme-primary);
+    --moments-text-primary: #333;
+    --moments-text-secondary: #999;
+    --moments-text-tertiary: #ccc;
+    --moments-hover-bg: rgba(0,0,0,0.05);
+}
+
+.lumina-moments-calendar-modal.theme-siyuan {
+    --moments-modal-overlay: rgba(0, 0, 0, 0.6);
+    --moments-modal-bg: var(--b3-theme-surface);
+    --moments-modal-header-border: var(--b3-border-color);
+    --moments-close-color: var(--b3-theme-on-surface-light);
+    --moments-close-hover-bg: var(--b3-list-hover);
+    --moments-close-hover-color: var(--b3-theme-on-background);
+    --moments-year-color: var(--b3-theme-primary);
+    --moments-cell-bg: var(--b3-theme-surface-lighter);
+    --moments-cell-level-1: var(--b3-theme-primary-lightest);
+    --moments-cell-level-2: var(--b3-theme-primary-lighter);
+    --moments-cell-level-3: var(--b3-theme-primary-light);
+    --moments-cell-level-4: var(--b3-theme-primary);
+    --moments-primary: var(--b3-theme-primary);
+    --moments-text-primary: var(--b3-theme-on-background);
+    --moments-text-secondary: var(--b3-theme-on-surface);
+    --moments-text-tertiary: var(--b3-theme-on-surface-light);
+    --moments-hover-bg: var(--b3-list-hover);
 }
 
 /* 浅色系列 */
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-dusty-pink {
+.north-shuoshuo-container.morandi-dusty-pink,
+.north-shuoshuo-quick-overlay.morandi-dusty-pink,
+.north-shuoshuo-memo-detail-modal.morandi-dusty-pink,
+.lumina-moments-calendar-modal.morandi-dusty-pink {
     --b3-theme-primary: #D4A5A5;
     --b3-theme-primary-light: #E5C4C4;
     --b3-theme-primary-lighter: #F0DADA;
     --b3-theme-primary-lightest: #FAF0F0;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-sage-green {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-sage-green {
     --b3-theme-primary: #9CAF88;
     --b3-theme-primary-light: #B8C9A8;
     --b3-theme-primary-lighter: #D4E0C8;
     --b3-theme-primary-lightest: #EDF3E8;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-muted-blue {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-muted-blue {
     --b3-theme-primary: #8FA1B3;
     --b3-theme-primary-light: #B0BEC9;
     --b3-theme-primary-lighter: #D0D9E0;
     --b3-theme-primary-lightest: #EBF0F4;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-warm-beige {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-warm-beige {
     --b3-theme-primary: #C4B7A6;
     --b3-theme-primary-light: #D8CFC2;
     --b3-theme-primary-lighter: #E9E2D9;
     --b3-theme-primary-lightest: #F7F4F0;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-dusty-purple {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-dusty-purple {
     --b3-theme-primary: #A898B5;
     --b3-theme-primary-light: #C4BAD1;
     --b3-theme-primary-lighter: #DDD6E6;
     --b3-theme-primary-lightest: #F2EFF6;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-terracotta {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-terracotta {
     --b3-theme-primary: #C78D7B;
     --b3-theme-primary-light: #DBB2A6;
     --b3-theme-primary-lighter: #EDD6CF;
@@ -7343,28 +7381,28 @@
 }
 
 /* 中度系列 */
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-olive-green {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-olive-green {
     --b3-theme-primary: #A3A380;
     --b3-theme-primary-light: #C0C0A3;
     --b3-theme-primary-lighter: #DCDCC6;
     --b3-theme-primary-lightest: #F2F2EB;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-slate-blue {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-slate-blue {
     --b3-theme-primary: #7D8A9E;
     --b3-theme-primary-light: #A5AEBD;
     --b3-theme-primary-lighter: #CCD2DB;
     --b3-theme-primary-lightest: #EBEEF2;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-mauve {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-mauve {
     --b3-theme-primary: #B8A1A8;
     --b3-theme-primary-light: #D1C2C6;
     --b3-theme-primary-lighter: #E6DDE0;
     --b3-theme-primary-lightest: #F5F0F2;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-warm-gray {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-warm-gray {
     --b3-theme-primary: #A8A39D;
     --b3-theme-primary-light: #C4C0BC;
     --b3-theme-primary-lighter: #DDDAD7;
@@ -7372,100 +7410,100 @@
 }
 
 /* 深色系列 */
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-deep-bean {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-deep-bean {
     --b3-theme-primary: #A67B7B;
     --b3-theme-primary-light: #C4A5A5;
     --b3-theme-primary-lighter: #E0D0D0;
     --b3-theme-primary-lightest: #F5ECEC;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-dark-moss {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-dark-moss {
     --b3-theme-primary: #7A8471;
     --b3-theme-primary-light: #A0A896;
     --b3-theme-primary-lighter: #C8CDBF;
     --b3-theme-primary-lightest: #EBEDE6;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-caramel {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-caramel {
     --b3-theme-primary: #A67C52;
     --b3-theme-primary-light: #C9A783;
     --b3-theme-primary-lighter: #E4D3BC;
     --b3-theme-primary-lightest: #F5EDE2;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-dusk-purple {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-dusk-purple {
     --b3-theme-primary: #8B7B8B;
     --b3-theme-primary-light: #ADA0AD;
     --b3-theme-primary-lighter: #D6CFD6;
     --b3-theme-primary-lightest: #F2EFF2;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-deep-sea {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-deep-sea {
     --b3-theme-primary: #5E738B;
     --b3-theme-primary-light: #8A9AAF;
     --b3-theme-primary-lighter: #C0CBD8;
     --b3-theme-primary-lightest: #EBEFF4;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-tobacco {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-tobacco {
     --b3-theme-primary: #8B7355;
     --b3-theme-primary-light: #B39B7D;
     --b3-theme-primary-lighter: #D9CCB8;
     --b3-theme-primary-lightest: #F2EDE5;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-stone {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-stone {
     --b3-theme-primary: #7D7D7D;
     --b3-theme-primary-light: #A5A5A5;
     --b3-theme-primary-lighter: #D0D0D0;
     --b3-theme-primary-lightest: #EFEFEF;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-withered-rose {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-withered-rose {
     --b3-theme-primary: #9E7A7A;
     --b3-theme-primary-light: #C2A5A5;
     --b3-theme-primary-lighter: #E0D0D0;
     --b3-theme-primary-lightest: #F5ECEC;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-navy-gray {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-navy-gray {
     --b3-theme-primary: #5D6D7E;
     --b3-theme-primary-light: #8A9AAF;
     --b3-theme-primary-lighter: #C0CBD8;
     --b3-theme-primary-lightest: #EBEFF4;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-rust-red {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-rust-red {
     --b3-theme-primary: #9C6B6B;
     --b3-theme-primary-light: #C2A5A5;
     --b3-theme-primary-lighter: #E0D0D0;
     --b3-theme-primary-lightest: #F5ECEC;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-sandalwood {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-sandalwood {
     --b3-theme-primary: #8B6F5C;
     --b3-theme-primary-light: #B39B7D;
     --b3-theme-primary-lighter: #D9CCB8;
     --b3-theme-primary-lightest: #F2EDE5;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-slate-green {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-slate-green {
     --b3-theme-primary: #7D8B8B;
     --b3-theme-primary-light: #A5B3B3;
     --b3-theme-primary-lighter: #D0D8D8;
     --b3-theme-primary-lightest: #EDF1F1;
 }
 
-:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal).morandi-deep-wisteria {
+:is(.north-shuoshuo-container, .north-shuoshuo-quick-overlay, .north-shuoshuo-memo-detail-modal, .lumina-moments-calendar-modal).morandi-deep-wisteria {
     --b3-theme-primary: #6B5B6B;
     --b3-theme-primary-light: #998A99;
     --b3-theme-primary-lighter: #C8BFC8;
     --b3-theme-primary-lightest: #EFE8EF;
 }
 
-/* =================== 莫兰迪主题 - 完整组件适配 =================== */
+/* =================== 莫兰迪主�?- 完整组件适配 =================== */
 
-/* 左侧导航栏 */
+/* 左侧导航�?*/
 .theme-morandi .north-shuoshuo-sidebar {
     background: var(--b3-theme-surface);
     border-right: 1px solid var(--b3-border-color);
@@ -7485,7 +7523,7 @@
     color: var(--b3-theme-primary);
 }
 
-/* Flomo 侧边栏 */
+/* Flomo 侧边�?*/
 .theme-morandi .north-shuoshuo-flomo-sidebar {
     background-color: var(--b3-theme-surface);
     border-right: 1px solid var(--b3-border-color);
@@ -7499,7 +7537,7 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-/* 热力图 */
+/* 热力�?*/
 .theme-morandi .north-shuoshuo-heatmap-cell {
     background-color: var(--b3-theme-surface-lighter);
 }
@@ -7528,7 +7566,7 @@
     box-shadow: 0 0 0 2px var(--b3-theme-primary);
 }
 
-/* 莫兰迪主题 - 贡献图 */
+/* 莫兰迪主�?- 贡献�?*/
 .theme-morandi .north-shuoshuo-contribution-cell {
     background-color: var(--b3-theme-surface-lighter);
 }
@@ -7653,7 +7691,7 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-/* 右侧主区域 */
+/* 右侧主区�?*/
 .theme-morandi .north-shuoshuo-flomo-area {
     background-color: var(--b3-theme-background);
 }
@@ -7746,7 +7784,7 @@
     background-color: var(--b3-theme-primary-lighter);
 }
 
-/* 莫兰迪主题 - 块引用 */
+/* 莫兰迪主�?- 块引�?*/
 .theme-morandi .north-shuoshuo-note-content .north-shuoshuo-block-ref {
     color: var(--b3-theme-primary);
 }
@@ -7800,7 +7838,7 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-/* 莫兰迪主题 - 详情弹窗关联卡片 */
+/* 莫兰迪主�?- 详情弹窗关联卡片 */
 .theme-morandi .north-shuoshuo-memo-detail-link-item {
     background: var(--b3-theme-primary-lightest);
     border: 1px solid var(--b3-theme-primary-lighter);
@@ -7980,7 +8018,7 @@
     color: var(--b3-theme-primary);
 }
 
-/* 统计页 */
+/* 统计�?*/
 .theme-morandi .north-shuoshuo-stats-page {
     background: var(--b3-theme-background);
 }
@@ -8013,7 +8051,7 @@
     background: transparent;
 }
 
-/* 空状态 */
+/* 空状�?*/
 .theme-morandi .north-shuoshuo-empty-text {
     color: var(--b3-theme-on-surface);
 }
@@ -8022,7 +8060,7 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-/* =================== 莫兰迪主题 - 配色选择器 =================== */
+/* =================== 莫兰迪主�?- 配色选择�?=================== */
 
 .north-shuoshuo-morandi-grid {
     display: grid;
@@ -8398,7 +8436,7 @@
     height: 14px;
 }
 
-/* 软木板空状态 */
+/* 软木板空状�?*/
 .north-shuoshuo-cork-review-empty {
     display: flex;
     align-items: center;
@@ -8445,7 +8483,7 @@
     }
 }
 
-/* =================== 随机漫步 - 方格纸便签风格 =================== */
+/* =================== 随机漫步 - 方格纸便签风�?=================== */
 
 .north-shuoshuo-random-bg {
     min-height: 100%;
@@ -8458,7 +8496,7 @@
     flex-direction: column;
     align-items: center;
     padding: 80px 24px 40px;
-    /* 抵消父元素 #shuoshuo-notes-list 的 padding，实现全宽 */
+    /* 抵消父元�?#shuoshuo-notes-list �?padding，实现全�?*/
     margin: -20px -30px;
     /* 创建独立层叠上下文，防止内部 z-index 影响全局 */
     isolation: isolate;
@@ -8481,7 +8519,7 @@
     flex-direction: column;
 }
 
-/* 顶部：漫步标识 + 日期 */
+/* 顶部：漫步标�?+ 日期 */
 .north-shuoshuo-review-header {
     display: flex;
     justify-content: space-between;
@@ -8521,7 +8559,7 @@
     letter-spacing: 0.04em;
 }
 
-/* 内容区 */
+/* 内容�?*/
 .north-shuoshuo-review-body {
     padding: 8px 0 32px;
     min-height: 120px;
@@ -8577,7 +8615,7 @@
     border-radius: 4px;
 }
 
-/* 底部：标签 + 页码 */
+/* 底部：标�?+ 页码 */
 .north-shuoshuo-review-footer {
     display: flex;
     justify-content: space-between;
@@ -8641,7 +8679,7 @@
     font-weight: 700;
 }
 
-/* 快捷键提示 */
+/* 快捷键提�?*/
 .north-shuoshuo-keyboard-hint {
     margin-top: 40px;
     display: flex;
@@ -8682,7 +8720,7 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* 空状态 */
+/* 空状�?*/
 .north-shuoshuo-random-empty {
     display: flex;
     flex-direction: column;
@@ -8743,7 +8781,7 @@
     height: 16px;
 }
 
-/* 随机漫步批注输入框 */
+/* 随机漫步批注输入�?*/
 .north-shuoshuo-random-comment-box {
     margin-top: 20px;
     padding-top: 20px;
@@ -8807,7 +8845,7 @@
     color: #a89888;
 }
 
-/* ========== 随机漫步 - 适配主题 & 莫兰迪主题 ========== */
+/* ========== 随机漫步 - 适配主题 & 莫兰迪主�?========== */
 
 .theme-siyuan .north-shuoshuo-random-bg,
 .theme-morandi .north-shuoshuo-random-bg {
@@ -8988,7 +9026,7 @@
 
 
 /* ========================================
-   快速记录浮层 - 主题适配
+   快速记录浮�?- 主题适配
    ======================================== */
 
 /* 基础结构 */
@@ -9093,7 +9131,7 @@
     transition: all 0.2s;
 }
 
-/* ---------- 原主题 ---------- */
+/* ---------- 原主�?---------- */
 .theme-original .north-shuoshuo-quick-overlay-content {
     background: #fff;
     box-shadow: 0 8px 32px rgba(0,0,0,0.12);
@@ -9204,7 +9242,7 @@
     opacity: 0.9;
 }
 
-/* ---------- 莫兰迪主题 ---------- */
+/* ---------- 莫兰迪主�?---------- */
 .theme-morandi .north-shuoshuo-quick-overlay-content {
     background: var(--b3-theme-surface);
     box-shadow: 0 8px 32px rgba(0,0,0,0.12);
@@ -9263,7 +9301,7 @@
 
 /* ==================== 表格视图样式 ==================== */
 /* ==================== 表格视图样式 ==================== */
-/* 表格主题变量（siyuan / morandi 自动适配） */
+/* 表格主题变量（siyuan / morandi 自动适配�?*/
 .north-shuoshuo-container {
     --shuoshuo-table-bg: var(--b3-theme-background);
     --shuoshuo-table-header-bg: var(--b3-theme-surface);
@@ -9326,7 +9364,7 @@
     margin-left: auto;
 }
 
-/* 搜索框 */
+/* 搜索�?*/
 .north-shuoshuo-table-search-box {
     display: flex;
     align-items: center;
@@ -9410,7 +9448,7 @@
     color: var(--b3-theme-on-surface);
 }
 
-/* 批量操作工具栏（旧版兼容） */
+/* 批量操作工具栏（旧版兼容�?*/
 .north-shuoshuo-table-toolbar {
     display: flex;
     align-items: center;
@@ -9511,7 +9549,7 @@
     padding: 12px 8px;
 }
 
-/* 可排序表头 */
+/* 可排序表�?*/
 .north-shuoshuo-table-sortable {
     cursor: pointer;
     transition: color 0.15s;
@@ -9733,7 +9771,7 @@
     border-bottom-color: var(--b3-border-color);
 }
 
-/* 深色主题下的选中行样式 */
+/* 深色主题下的选中行样�?*/
 .theme-dark .north-shuoshuo-table-row:has(.north-shuoshuo-table-checkbox:checked) {
     background-color: #3a3a3a !important;
     border-left-color: #4caf50;
@@ -9810,7 +9848,7 @@
     box-shadow: 0 0 0 2px var(--b3-theme-primary-lightest);
 }
 
-/* 紧凑型筛选栏（用于顶部工具栏） */
+/* 紧凑型筛选栏（用于顶部工具栏�?*/
 .north-shuoshuo-table-filter-bar.compact {
     padding: 0;
     background: transparent;
@@ -9901,7 +9939,7 @@
     background: var(--b3-card-error-background);
 }
 
-/* ==================== 表格视图 - 操作列 ==================== */
+/* ==================== 表格视图 - 操作�?==================== */
 .north-shuoshuo-table-actions-header {
     width: 80px;
     min-width: 80px;
@@ -9957,7 +9995,7 @@
     min-width: 200px;
 }
 
-/* 标签单元格自动宽度 */
+/* 标签单元格自动宽�?*/
 .north-shuoshuo-table-tags-cell {
     max-width: 220px;
     min-width: 100px;
@@ -9974,12 +10012,12 @@
     border-bottom: 2px solid var(--b3-border-color);
 }
 
-/* 表格行更平滑的过渡 */
+/* 表格行更平滑的过�?*/
 .north-shuoshuo-table-row {
     transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* 选中行的视觉反馈 - 左边框标记 */
+/* 选中行的视觉反馈 - 左边框标�?*/
 .north-shuoshuo-table-row:has(.north-shuoshuo-table-checkbox:checked) {
     background-color: var(--shuoshuo-table-selected-bg) !important;
     border-left: 3px solid var(--shuoshuo-table-selected-border);
@@ -10047,7 +10085,7 @@
     color: var(--b3-theme-on-surface);
 }
 
-/* 深色主题适配 - 顶部工具栏 */
+/* 深色主题适配 - 顶部工具�?*/
 .theme-dark .north-shuoshuo-table-top-toolbar {
     background: var(--b3-theme-background);
     border-bottom-color: var(--b3-border-color);
@@ -10080,7 +10118,7 @@
     background-color: var(--b3-theme-surface);
 }
 
-/* 移动端适配 - 顶部工具栏 */
+/* 移动端适配 - 顶部工具�?*/
 @media (max-width: 768px) {
     .north-shuoshuo-table-top-toolbar {
         flex-direction: column;
@@ -10192,7 +10230,7 @@
     }
 }
 
-/* 适配移动端 */
+/* 适配移动�?*/
 @media (max-width: 768px) {
     .north-shuoshuo-table-container {
         border-radius: 0;
@@ -10285,13 +10323,13 @@
         margin-left: auto;
     }
 
-    /* 移动端隐藏类型筛选 */
+    /* 移动端隐藏类型筛�?*/
     .table-filter-type-group {
         display: none !important;
     }
 }
 
-/* 原主题 - 表格视图硬编码颜色覆盖 */
+/* 原主�?- 表格视图硬编码颜色覆�?*/
 .theme-original .north-shuoshuo-table-top-toolbar,
 .theme-original .north-shuoshuo-table-container,
 .theme-original .north-shuoshuo-table,
@@ -10341,7 +10379,7 @@
     background-color: #eeeeee !important;
 }
 
-/* ============ 朋友圈视图 ============ */
+/* ============ 朋友圈视�?============ */
 .lumina-moments-container {
     position: relative;
     width: 100%;
@@ -10487,7 +10525,7 @@
     pointer-events: none;
 }
 
-/* 导航栏 */
+/* 导航�?*/
 .lumina-moments-nav {
     position: sticky;
     top: 0;
@@ -10681,7 +10719,7 @@
     opacity: 0.8;
 }
 
-/* 个性签名 */
+/* 个性签�?*/
 .lumina-moments-signature {
     background-color: var(--moments-signature-bg);
     padding: 24px 16px 4px;
@@ -10694,7 +10732,7 @@
     line-height: 1.5;
 }
 
-/* 朋友圈列表 */
+/* 朋友圈列�?*/
 .lumina-moments-list {
     background-color: var(--moments-bg);
     padding: 16px;
@@ -10813,7 +10851,7 @@
     -webkit-box-orient: vertical;
 }
 
-/* 元信息 */
+/* 元信�?*/
 .lumina-moments-item-meta {
     display: flex;
     align-items: center;
@@ -10921,7 +10959,7 @@
     font-size: 14px;
 }
 
-/* 互动框 */
+/* 互动�?*/
 .lumina-moments-interaction-box {
     background-color: var(--moments-interaction-bg);
     border-radius: 4px;
@@ -11005,7 +11043,7 @@
     height: 40px;
 }
 
-/* 评论输入栏 */
+/* 评论输入�?*/
 .lumina-moments-comment-bar {
     position: sticky;
     bottom: 0;
@@ -11137,6 +11175,12 @@
 .lumina-moments-calendar-close:hover {
     background-color: var(--moments-close-hover-bg);
     color: var(--moments-close-hover-color);
+}
+
+/* PC端隐藏移动端日历元素 */
+.mobile-calendar-nav,
+.mobile-calendar-month {
+    display: none;
 }
 
 .lumina-moments-calendar-body {
@@ -11423,7 +11467,7 @@
     height: 24px;
 }
 
-/* 文件和链接区域 */
+/* 文件和链接区�?*/
 .lumina-moments-publish-section,
 .lumina-moments-edit-section {
     margin-top: 16px;
@@ -11549,7 +11593,7 @@
 }
 .lumina-bookshelf-container::-webkit-scrollbar { display: none; }
 
-/* 顶部工具栏 */
+/* 顶部工具�?*/
 .lumina-bookshelf-header {
     background: var(--b3-theme-background);
     border-bottom: 1px solid var(--b3-border-color);
@@ -11696,7 +11740,7 @@
 }
 .lumina-bookshelf-stats .sync-hint.show { opacity: 1; }
 
-/* 主内容区域 */
+/* 主内容区�?*/
 .lumina-bookshelf-main {
     padding: 12px 20px 20px;
     min-height: 0;
@@ -11857,7 +11901,7 @@
 .lumina-bookshelf-empty svg { width: 40px; height: 40px; margin-bottom: 12px; color: var(--b3-border-color); }
 .lumina-bookshelf-empty p { font-size: 13px; }
 
-/* 详情页样式 */
+/* 详情页样�?*/
 .lumina-bookshelf-detail-header {
     background: var(--b3-theme-background);
     border-radius: 14px;
@@ -12029,7 +12073,7 @@
 .lumina-bookshelf-note-type.highlight { color: var(--b3-theme-primary); }
 .lumina-bookshelf-note-type.idea { color: var(--b3-theme-primary); }
 
-/* 响应式 */
+/* 响应�?*/
 @media (max-width: 1024px) { .lumina-bookshelf-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); } }
 @media (max-width: 768px) {
     .lumina-bookshelf-header { padding: 8px 16px; }
@@ -12079,7 +12123,7 @@
 .lumina-bookshelf-footer span { margin: 0 4px; }
 .lumina-bookshelf-footer .highlight { color: var(--b3-theme-primary); font-weight: 500; }
 
-/* ===== 原主题 - 图书书架覆盖 ===== */
+/* ===== 原主�?- 图书书架覆盖 ===== */
 .theme-original .lumina-bookshelf-container {
     background: #fff;
 }
@@ -12194,7 +12238,7 @@
     color: var(--b3-theme-on-surface-light);
 }
 
-/* Daily Note 路径模板示例 - 可点击填入 */
+/* Daily Note 路径模板示例 - 可点击填�?*/
 .daily-note-examples-row {
     display: flex;
     flex-wrap: wrap;
@@ -12288,7 +12332,12 @@
 .north-shuoshuo-checkbox-item input[type="checkbox"]:checked ~ .north-shuoshuo-checkbox-label {
     color: var(--b3-theme-primary);
 }
-/* ========== 移动端适配（QQ 风格） ========== */
+
+body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm"] {
+    z-index: 70000;
+}
+
+/* ========== 移动端适配（QQ 风格�?========== */
 .north-shuoshuo-mobile-header,
 .north-shuoshuo-mobile-tabbar,
 .north-shuoshuo-mobile-search-bar {
@@ -12360,7 +12409,7 @@
         gap: 12px;
     }
 
-    /* 抽屉侧边栏 */
+    /* 抽屉侧边�?*/
     .north-shuoshuo-flomo-sidebar {
         display: flex;
         position: fixed;
@@ -12386,7 +12435,7 @@
         pointer-events: auto;
         box-shadow: 4px 0 20px rgba(0,0,0,0.12);
     }
-    /* 遮罩层 */
+    /* 遮罩�?*/
     .north-shuoshuo-drawer-overlay {
         position: fixed;
         top: 0;
@@ -12455,7 +12504,7 @@
         padding: 4px 8px;
     }
 
-/* 底部 Tab 栏 */
+/* 底部 Tab �?*/
     .north-shuoshuo-mobile-tabbar {
         display: flex;
         height: 56px;
@@ -12488,7 +12537,7 @@
         color: var(--b3-theme-primary);
     }
 
-    /* 输入框默认隐藏，点击加号后显示 */
+    /* 输入框默认隐藏，点击加号后显�?*/
     .north-shuoshuo-input-area {
         display: none !important;
         padding: 8px 16px 12px;
@@ -12535,7 +12584,7 @@
         background-color: transparent !important;
     }
 
-    /* 移动端朋友圈宽度与说说视图对齐 */
+    /* 移动端朋友圈宽度与说说视图对�?*/
     .lumina-moments-list {
         padding: 12px 16px;
         align-items: stretch;
@@ -12560,14 +12609,14 @@
         height: 38px !important;
     }
 
-    /* 移动端批注详情面板从右侧弹出，左侧留有空隙 */
+    /* 移动端批注详情面板从右侧弹出，左侧留有空�?*/
     .north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-content {
         width: 80vw;
         min-width: auto;
         max-width: none;
     }
 
-    /* 移动端朋友圈：隐藏统计（日历）按钮 */
+    /* 移动端朋友圈：隐藏统计（日历）按�?*/
     .lumina-moments-calendar-btn {
         display: none;
     }
@@ -12577,7 +12626,7 @@
         margin-top: 12px;
     }
 
-    /* 移动端朋友圈：调小发布（相机）按钮 */
+    /* 移动端朋友圈：调小发布（相机）按�?*/
     .lumina-moments-camera-btn {
         width: 20px;
         height: 20px;
@@ -12597,5 +12646,201 @@
     .lumina-moments-camera-icon::after {
         width: 4px;
         height: 4px;
+    }
+
+    /* 移动端日历弹窗适配 */
+    /* 日历弹窗宽度占满横屏，高度保持自适应 */
+    .lumina-moments-calendar-modal {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 99999 !important;
+        align-items: flex-start !important;
+        padding-top: 10vh !important;
+    }
+
+    .lumina-moments-calendar-overlay {
+        display: none !important;
+    }
+
+    .lumina-moments-calendar-content {
+        width: auto !important;
+        min-width: 320px !important;
+        max-width: 90vw !important;
+        max-height: 70vh !important;
+        height: auto !important;
+        border-radius: 12px !important;
+        position: relative !important;
+        z-index: 999999 !important;
+        margin: auto !important;
+        background-color: var(--moments-modal-bg, #fff) !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .lumina-moments-calendar-body {
+        padding: 12px !important;
+        overflow-x: auto !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        max-height: calc(80vh - 60px) !important;
+        background-color: var(--moments-modal-bg, #fff) !important;
+    }
+
+    .lumina-moments-calendar-grid {
+        min-width: 600px;
+        background-color: var(--moments-modal-bg, #fff) !important;
+    }
+
+    .lumina-moments-calendar-columns {
+        display: flex !important;
+        gap: 4px !important;
+    }
+
+    .lumina-moments-calendar-column {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 4px !important;
+    }
+
+    .lumina-moments-calendar-cell {
+        width: 100% !important;
+        aspect-ratio: 1 !important;
+        border-radius: 3px !important;
+        background-color: var(--moments-cell-bg, #e5e5e5) !important;
+        min-height: 12px !important;
+    }
+
+    .lumina-moments-calendar-cell.level-1 {
+        background-color: var(--moments-cell-level-1, #8fd4a8) !important;
+    }
+
+    .lumina-moments-calendar-cell.level-2 {
+        background-color: var(--moments-cell-level-2, #5ec88f) !important;
+    }
+
+    .lumina-moments-calendar-cell.level-3 {
+        background-color: var(--moments-cell-level-3, #3ac652) !important;
+    }
+
+    .lumina-moments-calendar-cell.level-4 {
+        background-color: var(--moments-cell-level-4, #07C160) !important;
+    }
+
+    .lumina-moments-calendar-months {
+        position: relative !important;
+        margin-top: 8px !important;
+        height: 20px !important;
+    }
+
+    /* 移动端日历弹窗样�?*/
+    .lumina-moments-calendar-header {
+        padding: 10px 12px !important;
+    }
+
+    .lumina-moments-calendar-header .lumina-moments-calendar-title {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .lumina-moments-calendar-header .lumina-moments-calendar-title span {
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .lumina-moments-calendar-header .lumina-moments-calendar-year,
+    .lumina-moments-calendar-header .mobile-calendar-month {
+        display: inline-block !important;
+        border: none;
+        background: transparent;
+        font-size: 13px;
+        color: var(--moments-text-primary, #333);
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 4px;
+    }
+
+    .lumina-moments-calendar-header .lumina-moments-calendar-year:hover,
+    .lumina-moments-calendar-header .mobile-calendar-month:hover {
+        background: var(--moments-hover-bg, rgba(0,0,0,0.05));
+    }
+
+    /* 移动端月份日历网�?*/
+    .lumina-moments-calendar-mobile-grid {
+        padding: 4px 8px 12px;
+    }
+
+    .mobile-calendar-weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        margin-bottom: 4px;
+    }
+
+    .mobile-calendar-weekdays span {
+        text-align: center;
+        font-size: 11px;
+        color: var(--moments-text-secondary, #999);
+        padding: 4px 0;
+    }
+
+    .mobile-calendar-days {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+    }
+
+    .mobile-calendar-day {
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        color: var(--moments-text-primary, #333);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.15s;
+        background: transparent;
+        min-height: 28px;
+    }
+
+    .mobile-calendar-day.other-month {
+        color: var(--moments-text-tertiary, #ccc);
+    }
+
+    .mobile-calendar-day.has-content {
+        color: #fff;
+        font-weight: 500;
+    }
+
+    .mobile-calendar-day.has-content.level-1 {
+        background: var(--moments-cell-level-1, #a8e6cf);
+    }
+
+    .mobile-calendar-day.has-content.level-2 {
+        background: var(--moments-cell-level-2, #5dd39e);
+    }
+
+    .mobile-calendar-day.has-content.level-3 {
+        background: var(--moments-cell-level-3, #1a936f);
+    }
+
+    /* .mobile-calendar-day.today {
+        border: 2px solid var(--moments-primary, #07C160);
+    } */
+
+    .mobile-calendar-day.selected {
+        background: var(--moments-primary, #07C160) !important;
+        color: #fff !important;
+        font-weight: 600;
+    }
+
+    .mobile-calendar-day:active {
+        transform: scale(0.95);
     }
 }
