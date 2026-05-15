@@ -1,4 +1,4 @@
-const { Plugin, showMessage, openTab, getFrontend, confirm } = require("siyuan");
+const { Plugin, showMessage, openTab, openMobileFileById, getFrontend, confirm } = require("siyuan");
 
 const STORAGE_NAME = "shuoshuo-data";
 const CONFIG_STORAGE_NAME = "shuoshuo-config";
@@ -126,6 +126,7 @@ const ICONS = {
     more: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`,
     edit: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`,
     delete: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`,
+    jump: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.75h7.2l4.8 4.8v11.7H6z"/><path d="M13 4v5h5"/><path d="M10 15h5"/><path d="M13 12l3 3-3 3"/></svg>`,
     sync: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>`,
     send: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`,
     hash: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.41 18.59L8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg>`,
@@ -446,6 +447,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
         this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
         this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
+        this.enterToSubmit = false; // 输入框回车直接提交
         this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG }; // 图书视图字体大小配置
         this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG }; // 图书视图同步配置
         this.autoCollapseLines = DEFAULT_AUTO_COLLAPSE_LINES; // 长笔记自动折叠行数
@@ -521,54 +523,56 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             globalCallback: quickWindowCallback
         });
 
-        // 注册 IPC 监听器（注册前先移除可能已存在的同名 handler，防止重复注册报错）
-        try {
-            const { ipcMain } = require('@electron/remote');
-            const apiBaseUrl = window.location.origin;
+        // 注册 IPC 监听器（只在思源主桌面窗口注册，避免独立窗口实例覆盖主界面的监听）
+        if (frontEnd === "desktop") {
+            try {
+                const { ipcMain } = require('@electron/remote');
+                const apiBaseUrl = window.location.origin;
 
-            // 必须先清除所有旧 listener，再赋值 this._ipcSaveHandler
-            // 否则 removeListener 可能因引用不对而失效，导致重复注册
-            try { ipcMain.removeAllListeners('lumina-quick-save'); } catch (e) {}
-            this._ipcSaveHandler = (event, data) => {
-                this.addQuickNote(data.content);
-            };
-            ipcMain.on('lumina-quick-save', this._ipcSaveHandler);
+                // 必须先清除所有旧 listener，再赋值 this._ipcSaveHandler
+                // 否则 removeListener 可能因引用不对而失效，导致重复注册
+                try { ipcMain.removeAllListeners('lumina-quick-save'); } catch (e) {}
+                this._ipcSaveHandler = (event, data) => {
+                    this.addQuickNote(data.content);
+                };
+                ipcMain.on('lumina-quick-save', this._ipcSaveHandler);
 
-            this._ipcUploadHandler = async (event, data) => {
-                try {
-                    const base64Response = await fetch(data.base64);
-                    const blob = await base64Response.blob();
-                    const file = new File([blob], data.name, { type: blob.type });
-                    const formData = new FormData();
-                    formData.append('assetsDirPath', '/assets/');
-                    formData.append('file[]', file);
-                    
-                    const token = window.siyuan?.config?.api?.token || '';
-                    const headers = {};
-                    if (token) {
-                        headers['Authorization'] = `Token ${token}`;
+                this._ipcUploadHandler = async (event, data) => {
+                    try {
+                        const base64Response = await fetch(data.base64);
+                        const blob = await base64Response.blob();
+                        const file = new File([blob], data.name, { type: blob.type });
+                        const formData = new FormData();
+                        formData.append('assetsDirPath', '/assets/');
+                        formData.append('file[]', file);
+                        
+                        const token = window.siyuan?.config?.api?.token || '';
+                        const headers = {};
+                        if (token) {
+                            headers['Authorization'] = `Token ${token}`;
+                        }
+                        
+                        const response = await fetch(apiBaseUrl + '/api/asset/upload', { method: 'POST', body: formData, headers });
+                        const result = await response.json();
+                        if (result.code === 0 && result.data.succMap && Object.keys(result.data.succMap).length > 0) {
+                            return { success: true, url: Object.values(result.data.succMap)[0] };
+                        }
+                        return { success: false, error: result.msg || '上传失败' };
+                    } catch (e) {
+                        return { success: false, error: e.message };
                     }
-                    
-                    const response = await fetch(apiBaseUrl + '/api/asset/upload', { method: 'POST', body: formData, headers });
-                    const result = await response.json();
-                    if (result.code === 0 && result.data.succMap && Object.keys(result.data.succMap).length > 0) {
-                        return { success: true, url: Object.values(result.data.succMap)[0] };
-                    }
-                    return { success: false, error: result.msg || '上传失败' };
-                } catch (e) {
-                    return { success: false, error: e.message };
-                }
-            };
-            try { ipcMain.removeHandler('lumina-quick-upload'); } catch (e) {}
-            ipcMain.handle('lumina-quick-upload', this._ipcUploadHandler);
+                };
+                try { ipcMain.removeHandler('lumina-quick-upload'); } catch (e) {}
+                ipcMain.handle('lumina-quick-upload', this._ipcUploadHandler);
 
-            this._ipcTagsHandler = (event) => {
-                return this.extractAllTags();
-            };
-            try { ipcMain.removeHandler('lumina-quick-tags'); } catch (e) {}
-            ipcMain.handle('lumina-quick-tags', this._ipcTagsHandler);
-        } catch (e) {
-            console.log('注册 IPC 监听器失败', e);
+                this._ipcTagsHandler = (event) => {
+                    return this.extractAllTags();
+                };
+                try { ipcMain.removeHandler('lumina-quick-tags'); } catch (e) {}
+                ipcMain.handle('lumina-quick-tags', this._ipcTagsHandler);
+            } catch (e) {
+                console.log('注册 IPC 监听器失败', e);
+            }
         }
 
         // ===== 思源 transaction 事件：实时同步块内容到属性 =====
@@ -670,8 +674,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     plugin.render(this.element.querySelector('div'));
                 }
             });
+            this.ensureMobileTopBarEntry();
+            this._luminaMobileTopBarTimer = setTimeout(() => {
+                this.ensureMobileTopBarEntry();
+            }, 1000);
         } else {
-            this.addTopBar({
+            this._luminaTopBarElement = this.addTopBar({
                 icon: "iconLightWord",
                 title: "轻语",
                 position: "right",
@@ -690,7 +698,209 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // 主要数据刷新机制在 switchMainView 视图切换时已实现
     }
 
+    ensureMobileTopBarEntry() {
+        if (!this.isMobile || typeof this.addTopBar !== "function") return false;
+        if (this._luminaTopBarElement instanceof HTMLElement && document.body?.contains(this._luminaTopBarElement)) {
+            this.bindTopBarClickCapture(this._luminaTopBarElement);
+            this.bindMobileTopBarDocumentCapture();
+            return true;
+        }
+
+        const existing = this.deduplicateTopBarEntries();
+        if (existing) {
+            this._luminaTopBarElement = existing;
+            this.bindTopBarClickCapture(existing);
+            this.bindMobileTopBarDocumentCapture();
+            return true;
+        }
+
+        try {
+            this._luminaTopBarElement = this.addTopBar({
+                icon: "iconLightWord",
+                title: "轻语",
+                position: "right",
+                callback: () => {
+                    this.openShuoshuoTab();
+                }
+            }) || null;
+            this.bindTopBarClickCapture(this._luminaTopBarElement);
+            this.bindMobileTopBarDocumentCapture();
+            setTimeout(() => {
+                const entry = this.deduplicateTopBarEntries();
+                if (entry) this.bindTopBarClickCapture(entry);
+                this.bindMobileTopBarDocumentCapture();
+            }, 0);
+            return this._luminaTopBarElement instanceof HTMLElement;
+        } catch (e) {
+            this._luminaTopBarElement = null;
+            return false;
+        }
+    }
+
+    getTopBarLookupSelector() {
+        return '[aria-label="轻语"], [title="轻语"], [aria-label="Lumina"], [title="Lumina"]';
+    }
+
+    isManagedTopBarEntry(el) {
+        if (!(el instanceof Element)) return false;
+        if (this._luminaTopBarElement instanceof Element && el === this._luminaTopBarElement) return true;
+        const label = String(el.getAttribute?.('aria-label') || el.getAttribute?.('title') || '').trim();
+        if (label !== '轻语' && label !== 'Lumina') return false;
+        if (el.closest?.('.layout-tab-bar, .layout-tab-bar__item, .layout-tab-container, .north-shuoshuo-container')) return false;
+        if (el.closest?.('#toolbar, .toolbar, .toolbar__item, .topbar, .b3-menu, .b3-menu__item')) return true;
+        const owner = el.closest?.('[id], [class]') || el;
+        const ownerId = String(owner?.id || '').trim();
+        const ownerCls = String(owner?.className?.baseVal || owner?.className || '').trim();
+        return /(toolbar|topbar|menu)/i.test(`${ownerId} ${ownerCls}`);
+    }
+
+    getTopBarEntries() {
+        try {
+            const seen = new Set();
+            const entries = [];
+            if (this._luminaTopBarElement instanceof Element && document.body?.contains(this._luminaTopBarElement)) {
+                entries.push(this._luminaTopBarElement);
+                seen.add(this._luminaTopBarElement);
+            }
+            document.querySelectorAll(this.getTopBarLookupSelector()).forEach((el) => {
+                if (!(el instanceof Element) || seen.has(el) || !this.isManagedTopBarEntry(el)) return;
+                seen.add(el);
+                entries.push(el);
+            });
+            return entries;
+        } catch (e) {
+            return [];
+        }
+    }
+
+    deduplicateTopBarEntries() {
+        const entries = this.getTopBarEntries();
+        if (!entries.length) return null;
+        const keeper = (this._luminaTopBarElement instanceof Element && entries.includes(this._luminaTopBarElement))
+            ? this._luminaTopBarElement
+            : entries[0];
+        entries.forEach((el) => {
+            if (!(el instanceof Element) || el === keeper) return;
+            try { el.remove(); } catch (e) {}
+        });
+        return keeper;
+    }
+
+    bindTopBarClickCapture(topBarEl) {
+        if (!(topBarEl instanceof Element)) return;
+        if (this._luminaTopBarElement instanceof Element && this._luminaTopBarElement !== topBarEl && this._luminaTopBarClickCaptureHandler) {
+            try { this._luminaTopBarElement.removeEventListener('click', this._luminaTopBarClickCaptureHandler, true); } catch (e) {}
+        }
+        this._luminaTopBarElement = topBarEl;
+        if (!this._luminaTopBarClickCaptureHandler) {
+            this._luminaTopBarClickCaptureHandler = (e) => {
+                if (this._luminaTopBarClickInFlight) return;
+                this._luminaTopBarClickInFlight = true;
+                try {
+                    e.preventDefault?.();
+                    e.stopImmediatePropagation?.();
+                    e.stopPropagation?.();
+                    this.openShuoshuoTab();
+                } finally {
+                    setTimeout(() => {
+                        this._luminaTopBarClickInFlight = false;
+                    }, 0);
+                }
+            };
+        }
+        try { topBarEl.addEventListener('click', this._luminaTopBarClickCaptureHandler, true); } catch (e) {}
+    }
+
+    findMobileTopBarTriggerFromEventTarget(target) {
+        let el = target instanceof Element ? target : null;
+        let depth = 0;
+        while (el && depth < 8) {
+            if (el.closest?.('.north-shuoshuo-container')) return null;
+            if (this._luminaTopBarElement instanceof Element && (this._luminaTopBarElement === el || this._luminaTopBarElement.contains?.(el))) {
+                return this._luminaTopBarElement;
+            }
+            if (this.isManagedTopBarEntry(el)) return el;
+
+            const menuItem = el.closest?.('.b3-menu__item');
+            if (menuItem instanceof Element && !menuItem.closest?.('.north-shuoshuo-container')) {
+                const commonMenu = menuItem.closest?.('#commonMenu.b3-menu');
+                const commonMenuName = commonMenu instanceof Element ? String(commonMenu.getAttribute('data-name') || '') : '';
+                if (commonMenu instanceof Element && commonMenuName !== 'topBarPlugin') return null;
+                const label = String(
+                    menuItem.getAttribute?.('aria-label') ||
+                    menuItem.getAttribute?.('title') ||
+                    menuItem.textContent ||
+                    ''
+                ).replace(/\s+/g, '').trim();
+                if (label === '轻语' || label === 'Lumina') return menuItem;
+            }
+
+            el = el.parentElement;
+            depth += 1;
+        }
+        try {
+            const targetEl = target instanceof Element ? target : null;
+            if (!targetEl) return null;
+            return this.getTopBarEntries().find((entry) => entry instanceof Element && (entry === targetEl || entry.contains?.(targetEl))) || null;
+        } catch (e) {}
+        return null;
+    }
+
+    bindMobileTopBarDocumentCapture() {
+        if (!this.isMobile) return;
+        if (this._luminaTopBarDocumentCaptureHandler) return;
+        this._luminaTopBarDocumentCaptureHandler = (e) => {
+            if (this._luminaTopBarClickInFlight) return;
+            const trigger = this.findMobileTopBarTriggerFromEventTarget(e?.target);
+            if (!trigger) return;
+            this._luminaTopBarClickInFlight = true;
+            try {
+                e.preventDefault?.();
+                e.stopImmediatePropagation?.();
+                e.stopPropagation?.();
+                this.openShuoshuoTab();
+            } finally {
+                setTimeout(() => {
+                    this._luminaTopBarClickInFlight = false;
+                }, 0);
+            }
+        };
+        try { document.addEventListener('click', this._luminaTopBarDocumentCaptureHandler, true); } catch (e) {}
+    }
+
+    removeTopBarEntry() {
+        try {
+            if (this._luminaTopBarElement instanceof Element && this._luminaTopBarClickCaptureHandler) {
+                this._luminaTopBarElement.removeEventListener('click', this._luminaTopBarClickCaptureHandler, true);
+            }
+        } catch (e) {}
+        try {
+            if (this._luminaTopBarDocumentCaptureHandler) {
+                document.removeEventListener('click', this._luminaTopBarDocumentCaptureHandler, true);
+            }
+        } catch (e) {}
+        try {
+            const entries = this.getTopBarEntries();
+            entries.forEach((el) => {
+                try {
+                    const idx = Array.isArray(this.topBarIcons) ? this.topBarIcons.indexOf(el) : -1;
+                    if (idx >= 0) this.topBarIcons.splice(idx, 1);
+                    el.remove();
+                } catch (e) {}
+            });
+        } catch (e) {}
+        this._luminaTopBarElement = null;
+        this._luminaTopBarClickCaptureHandler = null;
+        this._luminaTopBarDocumentCaptureHandler = null;
+    }
+
     onunload() {
+        if (this._luminaMobileTopBarTimer) {
+            clearTimeout(this._luminaMobileTopBarTimer);
+            this._luminaMobileTopBarTimer = null;
+        }
+        this.removeTopBarEntry();
+
         // 关闭轻语速记独立窗口
         QuickWindow.getInstance(this).close();
 
@@ -732,6 +942,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // 清理移动端抽屉遮罩层
         document.querySelectorAll('.north-shuoshuo-drawer-overlay').forEach(el => el.remove());
+        this.closeMobileShuoshuoDock();
 
         // 清除所有防抖定时器
         if (this._refreshTimer) {
@@ -749,6 +960,13 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     }
 
     openShuoshuoTab() {
+        if (this.isMobile) {
+            this.openMobileShuoshuoDock();
+            setTimeout(() => {
+                this.loadShuoshuos();
+            }, 500);
+            return;
+        }
         openTab({
             app: this.app,
             custom: {
@@ -762,6 +980,182 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         setTimeout(() => {
             this.loadShuoshuos();
         }, 500);
+    }
+
+    openMobileShuoshuoDock() {
+        if (!this.isMobile) return false;
+        try {
+            this.captureSiyuanMobileDockState();
+            let shell = document.querySelector('.north-shuoshuo-mobile-shell');
+            if (!(shell instanceof HTMLElement)) {
+                shell = document.createElement('div');
+                shell.className = 'north-shuoshuo-mobile-shell';
+                shell.style.cssText = 'position:fixed;inset:0;z-index:60000;display:flex;flex-direction:column;background:var(--b3-theme-background,#fff);color:var(--b3-theme-on-background,#202124);';
+                shell.innerHTML = `
+                    <div class="north-shuoshuo-mobile-shell__bar" style="height:44px;display:flex;align-items:center;gap:8px;padding:0 8px;border-bottom:1px solid var(--b3-theme-surface-lighter,#e5e5e5);flex:0 0 auto;background:var(--b3-theme-background,#fff);">
+                        <button class="north-shuoshuo-mobile-shell__back" type="button" aria-label="返回" style="width:40px;height:40px;border:0;background:transparent;color:inherit;display:flex;align-items:center;justify-content:center;padding:0;">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                        </button>
+                        <div class="north-shuoshuo-mobile-shell__title" style="font-size:16px;font-weight:600;line-height:1;">轻语</div>
+                        <div class="north-shuoshuo-mobile-shell__spacer" style="flex:1;"></div>
+                    </div>
+                    <div class="north-shuoshuo-mobile-shell__body" style="flex:1;min-height:0;overflow:hidden;"></div>
+                `;
+                document.body.appendChild(shell);
+                shell.querySelector('.north-shuoshuo-mobile-shell__back')?.addEventListener('click', () => {
+                    this.closeMobileShuoshuoDock();
+                });
+            }
+            const body = shell.querySelector('.north-shuoshuo-mobile-shell__body');
+            if (!(body instanceof HTMLElement)) return false;
+            shell.classList.add('show');
+            document.body.classList.add('north-shuoshuo-mobile-shell-open');
+            this.render(body);
+            return true;
+        } catch (e) {
+            console.error("打开轻语移动端面板失败", e);
+            return false;
+        }
+    }
+
+    closeMobileShuoshuoDock() {
+        try {
+            const shell = document.querySelector('.north-shuoshuo-mobile-shell');
+            if (shell instanceof HTMLElement) {
+                shell.classList.remove('show');
+                shell.remove();
+            }
+            document.body.classList.remove('north-shuoshuo-mobile-shell-open');
+            if (this._toolbarObserver) {
+                this._toolbarObserver.disconnect();
+                this._toolbarObserver = null;
+            }
+            if (this._shuoshuoToolbarObserver) {
+                this._shuoshuoToolbarObserver.disconnect();
+                this._shuoshuoToolbarObserver = null;
+            }
+            document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
+                el.style.removeProperty('display');
+            });
+            this.restoreSiyuanMobileDockState();
+            this.container = null;
+        } catch (e) {}
+    }
+
+    isInMobileShell() {
+        return !!(this.container instanceof Element && this.container.closest?.('.north-shuoshuo-mobile-shell'));
+    }
+
+    prepareNativeDialogAboveMobileShell() {
+        if (!this.isMobile) return () => {};
+        try {
+            document.body.classList.add('north-shuoshuo-native-dialog-open');
+            return () => {
+                try { document.body.classList.remove('north-shuoshuo-native-dialog-open'); } catch (e) {}
+            };
+        } catch (e) {
+            return () => {};
+        }
+    }
+
+    confirmAboveMobileShell(title, message, onConfirm, onCancel, isDelete) {
+        const restore = this.prepareNativeDialogAboveMobileShell();
+        const done = (callback) => async (dialog) => {
+            try {
+                if (callback) await callback(dialog);
+            } finally {
+                restore();
+            }
+        };
+        return confirm(title, message, done(onConfirm), done(onCancel), isDelete);
+    }
+
+    captureSiyuanMobileDockState() {
+        if (!this.isMobile || this._luminaMobileDockState) return;
+        try {
+            const sidebar = document.getElementById("sidebar");
+            const toolbarIcons = Array.from(sidebar?.querySelectorAll(".toolbar--border .toolbar__icon") || []);
+            const panels = Array.from(sidebar?.lastElementChild?.children || []);
+            const pluginPanel = sidebar?.lastElementChild?.querySelector('[data-type="sidebar-plugin"]');
+            const ignoreEmptyPluginPanel = this.isEmptySiyuanMobilePluginPanel(pluginPanel);
+            this._luminaMobileDockState = {
+                activeTypes: toolbarIcons
+                    .filter((el) => el.classList.contains("toolbar__icon--active"))
+                    .map((el) => el.querySelector("svg")?.getAttribute("data-type") || "")
+                    .filter((type) => !(ignoreEmptyPluginPanel && type === "sidebar-plugin-tab"))
+                    .filter(Boolean),
+                panelStates: panels.map((el) => ({
+                    type: el.getAttribute("data-type") || "",
+                    hidden: ignoreEmptyPluginPanel && el.getAttribute("data-type") === "sidebar-plugin"
+                        ? true
+                        : el.classList.contains("fn__none"),
+                })),
+            };
+        } catch (e) {
+            this._luminaMobileDockState = null;
+        }
+    }
+
+    restoreSiyuanMobileDockState() {
+        if (!this.isMobile) return;
+        try {
+            const state = this._luminaMobileDockState;
+            this._luminaMobileDockState = null;
+            if (!state) {
+                this.closeEmptySiyuanMobilePluginPanel();
+                return;
+            }
+            const sidebar = document.getElementById("sidebar");
+            const toolbar = sidebar?.querySelector(".toolbar--border");
+            const panelsRoot = sidebar?.lastElementChild;
+            toolbar?.querySelectorAll(".toolbar__icon").forEach((el) => {
+                const type = el.querySelector("svg")?.getAttribute("data-type") || "";
+                if (state.activeTypes.includes(type)) {
+                    el.classList.add("toolbar__icon--active");
+                } else {
+                    el.classList.remove("toolbar__icon--active");
+                }
+            });
+            state.panelStates.forEach((item) => {
+                if (!item.type) return;
+                const panel = panelsRoot?.querySelector(`[data-type="${item.type}"]`);
+                if (!(panel instanceof Element)) return;
+                if (item.hidden) {
+                    panel.classList.add("fn__none");
+                } else {
+                    panel.classList.remove("fn__none");
+                }
+            });
+            this.closeEmptySiyuanMobilePluginPanel();
+            const visiblePanels = panelsRoot ? Array.from(panelsRoot.children).filter((el) => !el.classList.contains("fn__none")) : [];
+            if (!visiblePanels.length) {
+                this.closeEmptySiyuanMobilePluginPanel();
+            }
+        } catch (e) {}
+    }
+
+    isEmptySiyuanMobilePluginPanel(pluginPanel) {
+        return pluginPanel instanceof HTMLElement
+            && !!pluginPanel.querySelector('.b3-list--empty')
+            && !pluginPanel.querySelector('.north-shuoshuo-container')
+            && !pluginPanel.querySelector('#tomato-reminder-dock-content');
+    }
+
+    closeEmptySiyuanMobilePluginPanel() {
+        if (!this.isMobile) return;
+        try {
+            const sidebar = document.getElementById("sidebar");
+            const toolbar = sidebar?.querySelector(".toolbar--border");
+            const panelsRoot = sidebar?.lastElementChild;
+            const pluginTab = toolbar?.querySelector('svg[data-type="sidebar-plugin-tab"]')?.closest(".toolbar__icon");
+            const pluginPanel = panelsRoot?.querySelector('[data-type="sidebar-plugin"]');
+            const isEmptyPluginPanel = this.isEmptySiyuanMobilePluginPanel(pluginPanel);
+
+            if (isEmptyPluginPanel) {
+                if (pluginTab instanceof Element) pluginTab.classList.remove("toolbar__icon--active");
+                pluginPanel.classList.add("fn__none");
+            }
+        } catch (e) {}
     }
 
     // 打开轻语速记浮层（复用说说输入框功能）
@@ -871,6 +1265,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // 键盘事件
         input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && this.enterToSubmit && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                doSave();
+                return;
+            }
+
             if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
                 const cursorPos = input.selectionStart;
                 const value = input.value;
@@ -970,10 +1370,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             if (this.autoSync) {
                 await this.appendToDailyNote(processed, shuoshuo.created);
             }
-            if (this.container) {
-                this.renderNotes();
-                this.renderTags();
-            }
+            this.refreshMountedShuoshuoViews();
             showMessage('已保存到轻语');
             // 保存后清空输入框并聚焦，窗口保持打开
             input.value = '';
@@ -1432,6 +1829,7 @@ body {
 const { ipcRenderer } = require('electron');
 const BASE_URL = '${baseUrl}';
 const SIYUAN_TOKEN = '${token}';
+const ENTER_TO_SUBMIT = ${this.enterToSubmit ? 'true' : 'false'};
 const editor = document.getElementById('editor');
 editor.focus();
 
@@ -1760,6 +2158,12 @@ editor.addEventListener('paste', async (e) => {
 
 // 键盘事件
 editor.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && ENTER_TO_SUBMIT && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        save();
+        return;
+    }
+
     if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
         const cursorPos = editor.selectionStart;
         const value = editor.value;
@@ -1895,10 +2299,7 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
 
-        if (this.container) {
-            this.renderNotes();
-            this.renderTags();
-        }
+        this.refreshMountedShuoshuoViews();
 
         showMessage('已保存到轻语');
     }
@@ -1906,6 +2307,7 @@ ipcRenderer.on('lumina-close', () => {
     render(container) {
         if (container) {
             this.container = container;
+            this.registerLuminaContainer(container);
         }
         if (!this.container) return;
 
@@ -2102,7 +2504,7 @@ ipcRenderer.on('lumina-close', () => {
                         <div class="north-shuoshuo-input-area" id="shuoshuo-input-area">
                             <div class="north-shuoshuo-input-box" id="shuoshuo-input-box">
                                 <div class="north-shuoshuo-input-wrapper">
-                                    <textarea class="north-shuoshuo-input-field" id="shuoshuo-input" placeholder="现在的想法是..." rows="3"></textarea>
+                                    <textarea class="north-shuoshuo-input-field" id="shuoshuo-input" placeholder="现在的想法是..." rows="3" enterkeyhint="${this.enterToSubmit ? 'done' : 'enter'}"></textarea>
                                 </div>
                                 <div class="north-shuoshuo-input-toolbar">
                                     <div class="north-shuoshuo-toolbar-left">
@@ -2227,6 +2629,16 @@ ipcRenderer.on('lumina-close', () => {
                                         </select>
                                         <span class="north-shuoshuo-select-arrow">▼</span>
                                     </div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>回车直接提交</h4>
+                                        <p>开启后，在主输入框按 Enter 直接发布；Shift+Enter 仍然换行。</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.enterToSubmit ? 'on' : ''}" id="settings-enter-submit-switch"></div>
                                 </div>
                             </div>
 
@@ -3168,8 +3580,91 @@ ipcRenderer.on('lumina-close', () => {
             this.applyFontSizeConfig();
         }, 0);
         this.bindEvents();
+        this.syncEnterKeyHint();
         // 初始化视图状态（确保移动端说说视图的顶部栏等逻辑正确执行）
         this.switchMainView('notes', null);
+    }
+
+    registerLuminaContainer(container) {
+        if (!(container instanceof HTMLElement)) return;
+        if (!this._luminaContainers) this._luminaContainers = new Set();
+        this._luminaContainers.add(container);
+    }
+
+    getMountedLuminaContainers() {
+        if (!this._luminaContainers) this._luminaContainers = new Set();
+        for (const el of Array.from(this._luminaContainers)) {
+            if (!(el instanceof HTMLElement) || !document.body.contains(el)) {
+                this._luminaContainers.delete(el);
+            }
+        }
+        return Array.from(this._luminaContainers);
+    }
+
+    getContainerMainView(container) {
+        const menuActive = container?.querySelector?.('.north-shuoshuo-menu-list .north-shuoshuo-menu-item.active[data-view]')?.dataset?.view;
+        if (menuActive) return menuActive;
+        const sidebarActive = container?.querySelector?.('.north-shuoshuo-sidebar .north-shuoshuo-nav-item.active[data-view]')?.dataset?.view;
+        if (sidebarActive) return sidebarActive;
+        const mobileActive = container?.querySelector?.('.north-shuoshuo-mobile-tabbar .mobile-tab-item.active[data-view]')?.dataset?.view;
+        return mobileActive || 'notes';
+    }
+
+    refreshCurrentViewForContainer(container) {
+        if (!(container instanceof HTMLElement) || !document.body.contains(container)) return;
+        const previousContainer = this.container;
+        const previousView = this.currentMainView;
+        try {
+            this.container = container;
+            this.currentMainView = this.getContainerMainView(container);
+            switch (this.currentMainView) {
+                case 'table':
+                    this.renderTable();
+                    this.renderTags();
+                    break;
+                case 'stats':
+                    this.renderStats();
+                    this.renderTags();
+                    break;
+                case 'review':
+                    this.renderReview();
+                    this.renderTags();
+                    break;
+                case 'random':
+                    this.renderRandom();
+                    this.renderTags();
+                    break;
+                case 'moments':
+                case 'bookshelf':
+                case 'settings':
+                    break;
+                case 'week':
+                case 'notes':
+                default:
+                    this.renderNotes();
+                    this.renderTags();
+                    break;
+            }
+        } finally {
+            this.container = previousContainer;
+            this.currentMainView = previousView;
+        }
+    }
+
+    refreshMountedShuoshuoViews() {
+        const containers = this.getMountedLuminaContainers();
+        if (!containers.length && this.container) containers.push(this.container);
+        containers.forEach(container => this.refreshCurrentViewForContainer(container));
+    }
+
+    syncEnterKeyHint() {
+        const hint = this.enterToSubmit ? 'done' : 'enter';
+        this.getMountedLuminaContainers().forEach(container => {
+            const input = container.querySelector?.('#shuoshuo-input');
+            if (input instanceof HTMLElement) {
+                input.setAttribute('enterkeyhint', hint);
+            }
+        });
     }
 
     // 生成热力?
@@ -3418,7 +3913,7 @@ ipcRenderer.on('lumina-close', () => {
                 e.stopPropagation();
                 const blockId = ref.dataset.blockId;
                 if (blockId) {
-                    this.openSiyuanBlock(blockId);
+                    this.openSiyuanBlockAndCloseMobileShell(blockId);
                 }
             });
         });
@@ -3469,41 +3964,85 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 打开思源笔记块
-    openSiyuanBlock(blockId) {
-        // 块ID格式：文档ID-块ID，如 20260428082606-xi2w9cv
-        // 提取文档ID（第一部分）
-        const docId = blockId.split('-')[0];
+    async openSiyuanBlock(blockId) {
+        const id = String(blockId || '').trim();
+        if (!id) return false;
 
-        // 使用思源笔记的内核 API 打开文档
-        fetch('/api/filetree/getDoc', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ id: docId })
-        }).then(response => response.json()).then(data => {
-            if (data.code === 0 && data.data) {
-                // 获取到文档信息后再打开
-                return fetch('/api/filetree/openDoc', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        notebook: data.data.box,
-                        path: data.data.path
-                    })
-                });
-            } else {
-                throw new Error(data.msg || '获取文档失败');
+        const action = ['cb-get-hl', 'cb-get-context'];
+        try {
+            if (this.isMobile && typeof openMobileFileById === 'function') {
+                openMobileFileById(this.app, id, action);
+                return true;
             }
-        }).then(() => {
-            // 成功打开
-        }).catch(err => {
+        } catch (e) {}
+
+        try {
+            if (typeof openTab === 'function') {
+                await openTab({
+                    app: this.app,
+                    doc: { id, action }
+                });
+                return true;
+            }
+        } catch (e) {}
+
+        try {
+            const tempSpan = document.createElement('span');
+            tempSpan.setAttribute('data-type', 'block-ref');
+            tempSpan.setAttribute('data-id', id);
+            tempSpan.style.position = 'fixed';
+            tempSpan.style.top = '-9999px';
+            tempSpan.style.left = '-9999px';
+            tempSpan.style.opacity = '0';
+            tempSpan.style.pointerEvents = 'none';
+            document.body.appendChild(tempSpan);
+            const opts = { view: window, bubbles: true, cancelable: true, buttons: 1 };
+            tempSpan.dispatchEvent(new MouseEvent('mousedown', opts));
+            tempSpan.dispatchEvent(new MouseEvent('mouseup', opts));
+            tempSpan.dispatchEvent(new MouseEvent('click', opts));
+            setTimeout(() => {
+                try { tempSpan.remove(); } catch (e) {}
+            }, 100);
+            return true;
+        } catch (e) {}
+
+        try {
+            window.open(`siyuan://blocks/${id}`, '_blank');
+            return true;
+        } catch (e) {}
+
+        // 块ID格式：文档ID-块ID，如 20260428082606-xi2w9cv
+        const docId = id.split('-')[0];
+        try {
+            const response = await fetch('/api/filetree/getDoc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: docId })
+            });
+            const data = await response.json();
+            if (data.code !== 0 || !data.data) throw new Error(data.msg || '获取文档失败');
+            await fetch('/api/filetree/openDoc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    notebook: data.data.box,
+                    path: data.data.path
+                })
+            });
+            return true;
+        } catch (err) {
             console.error('打开文档请求失败:', err);
-            // 降级方案：使用 siyuan 协议打开
-            window.open(`siyuan://blocks/${blockId}`, '_blank');
-        });
+            showMessage('跳转失败：未能打开对应文档');
+            return false;
+        }
+    }
+
+    async openSiyuanBlockAndCloseMobileShell(blockId) {
+        const opened = await this.openSiyuanBlock(blockId);
+        if (opened && this.isInMobileShell()) {
+            this.closeMobileShuoshuoDock();
+        }
+        return opened;
     }
 
     // 渲染单个笔记卡片
@@ -3924,7 +4463,7 @@ ipcRenderer.on('lumina-close', () => {
                     e.stopPropagation();
                     const blockId = ref.dataset.blockId;
                     if (blockId) {
-                        this.openSiyuanBlock(blockId);
+                        this.openSiyuanBlockAndCloseMobileShell(blockId);
                     }
                 });
             });
@@ -4497,20 +5036,19 @@ ipcRenderer.on('lumina-close', () => {
                 }
 
                 // 使用思源笔记的 confirm 函数格式：confirm(title, message, callback)
-                confirm(confirmTitle, confirmMsg, async () => {
+                this.confirmAboveMobileShell(confirmTitle, confirmMsg, async () => {
                     // 使用字符串比较来确保 id 匹配
                     const idsToDelete = new Set(checkedIds.map(id => String(id)));
                     // 先删除绑定的思源块
                     const notesToDelete = this.shuoshuos.filter(s => idsToDelete.has(String(s.id)));
+                    this.shuoshuos = this.shuoshuos.filter(s => !idsToDelete.has(String(s.id)));
+                    await this.saveShuoshuos();
                     for (const note of notesToDelete) {
                         if (note.boundBlockId) {
                             await this.deleteSiyuanBlock(note.boundBlockId);
                         }
                     }
-                    this.shuoshuos = this.shuoshuos.filter(s => !idsToDelete.has(String(s.id)));
-                    await this.saveShuoshuos();
-                    this.renderTable();
-                    this.renderTags();
+                    this.refreshMountedShuoshuoViews();
                     showMessage(`已删除 ${checkedIds.length} 条笔记`);
                 });
             });
@@ -4539,15 +5077,14 @@ ipcRenderer.on('lumina-close', () => {
                     contentPreview = '（笔记未找到）';
                 }
                 // 使用思源笔记的 confirm 函数格式：confirm(title, message, callback)
-                confirm('⚠️ 确认删除', `确定要删除这条笔记吗？\n\n${contentPreview}\n\n此操作不可恢复。`, async () => {
+                this.confirmAboveMobileShell('⚠️ 确认删除', `确定要删除这条笔记吗？\n\n${contentPreview}\n\n此操作不可恢复。`, async () => {
                     const note = this.shuoshuos.find(s => String(s.id) === String(id));
+                    this.shuoshuos = this.shuoshuos.filter(s => String(s.id) !== String(id));
+                    await this.saveShuoshuos();
                     if (note && note.boundBlockId) {
                         await this.deleteSiyuanBlock(note.boundBlockId);
                     }
-                    this.shuoshuos = this.shuoshuos.filter(s => String(s.id) !== String(id));
-                    await this.saveShuoshuos();
-                    this.renderTable();
-                    this.renderTags();
+                    this.refreshMountedShuoshuoViews();
                     showMessage('已删除 1 条笔记');
                 });
             });
@@ -5039,7 +5576,7 @@ ipcRenderer.on('lumina-close', () => {
                 const mid = deleteBtn.dataset.mid;
                 // 关闭弹出菜单
                 container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
-                confirm('⚠️ 确认删除', '确定要删除这条朋友圈吗？此操作不可恢复。', async () => {
+                this.confirmAboveMobileShell('⚠️ 确认删除', '确定要删除这条朋友圈吗？此操作不可恢复。', async () => {
                     this.moments = this.moments.filter(x => x.id !== mid);
                     await this.saveMoments();
                     this._doRenderMoments();
@@ -5978,15 +6515,15 @@ ipcRenderer.on('lumina-close', () => {
     async _deleteBookNote(bookId, noteIndex) {
         const book = this.books.find(b => b.id === bookId);
         if (!book || !book.notes || noteIndex < 0 || noteIndex >= book.notes.length) return;
-        const confirmed = await confirm('确定要删除这条笔记吗？');
-        if (!confirmed) return;
-        const note = book.notes[noteIndex];
-        book.notes.splice(noteIndex, 1);
-        if (note.type === 'highlight') book.highlights = Math.max(0, (book.highlights || 0) - 1);
-        if (note.type === 'thought') book.ideas = Math.max(0, (book.ideas || 0) - 1);
-        await this.saveBooks();
-        this._showBookDetail(bookId);
-        showMessage('已删除笔记');
+        this.confirmAboveMobileShell('确认删除', '确定要删除这条笔记吗？', async () => {
+            const note = book.notes[noteIndex];
+            book.notes.splice(noteIndex, 1);
+            if (note.type === 'highlight') book.highlights = Math.max(0, (book.highlights || 0) - 1);
+            if (note.type === 'thought') book.ideas = Math.max(0, (book.ideas || 0) - 1);
+            await this.saveBooks();
+            this._showBookDetail(bookId);
+            showMessage('已删除笔记');
+        });
     }
 
     async _syncBookNoteToSiyuan(bookId, noteIndex) {
@@ -6068,12 +6605,12 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     async _deleteBook(bookId) {
-        const confirmed = await confirm('确定要删除这本书吗？相关的划线和想法也将一并删除。');
-        if (!confirmed) return;
-        this.books = this.books.filter(b => b.id !== bookId);
-        await this.saveBooks();
-        this._refreshBookshelfList();
-        showMessage('已删除图书');
+        this.confirmAboveMobileShell('确认删除', '确定要删除这本书吗？相关的划线和想法也将一并删除。', async () => {
+            this.books = this.books.filter(b => b.id !== bookId);
+            await this.saveBooks();
+            this._refreshBookshelfList();
+            showMessage('已删除图书');
+        });
     }
 
     async _syncBookToSiyuan(bookId) {
@@ -7219,8 +7756,14 @@ ipcRenderer.on('lumina-close', () => {
                 this.handleMentionInput(input);
             });
 
-            // Enter 换行，支持列表自动延?
+            // Enter 换行/提交，支持列表自动延?
             input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && this.enterToSubmit && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                    this.sendMessage();
+                    return;
+                }
+
                 if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
                     const cursorPos = input.selectionStart;
                     const value = input.value;
@@ -7388,21 +7931,41 @@ ipcRenderer.on('lumina-close', () => {
         const mobileMenuBtn = this.container.querySelector('#shuoshuo-mobile-menu');
         const flomoSidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
         const openDrawer = () => {
-            if (flomoSidebar) flomoSidebar.classList.add('drawer-open');
-            let overlay = document.querySelector('.north-shuoshuo-drawer-overlay');
+            const host = this.container.querySelector('.north-shuoshuo-container') || this.container;
+            if (host instanceof HTMLElement) {
+                const hostPosition = window.getComputedStyle(host).position;
+                if (hostPosition === 'static') host.style.position = 'relative';
+            }
+            if (flomoSidebar) {
+                flomoSidebar.classList.add('drawer-open');
+                flomoSidebar.style.zIndex = '30';
+            }
+            let overlay = this.container.querySelector('.north-shuoshuo-drawer-overlay');
             if (!overlay) {
                 overlay = document.createElement('div');
                 overlay.className = 'north-shuoshuo-drawer-overlay';
-                document.body.appendChild(overlay);
-                overlay.addEventListener('click', closeDrawer);
+                overlay.style.cssText = 'position:absolute;inset:0;z-index:20;background:rgba(15,23,42,.32);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .2s ease;';
+                host.appendChild(overlay);
+                overlay.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeDrawer();
+                }, true);
             }
             overlay.classList.add('show');
+            overlay.style.opacity = '1';
+            overlay.style.pointerEvents = 'auto';
         };
         const closeDrawer = () => {
-            if (flomoSidebar) flomoSidebar.classList.remove('drawer-open');
-            const overlay = document.querySelector('.north-shuoshuo-drawer-overlay');
+            if (flomoSidebar) {
+                flomoSidebar.classList.remove('drawer-open');
+                flomoSidebar.style.removeProperty('z-index');
+            }
+            const overlay = this.container.querySelector('.north-shuoshuo-drawer-overlay');
             if (overlay) {
                 overlay.classList.remove('show');
+                overlay.style.opacity = '0';
+                overlay.style.pointerEvents = 'none';
                 setTimeout(() => {
                     if (overlay && !overlay.classList.contains('show')) {
                         overlay.remove();
@@ -7749,8 +8312,7 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
 
-        this.renderNotes();
-        this.renderTags(); // 更新标签列表
+        this.refreshMountedShuoshuoViews();
 
         setTimeout(() => {
             showMessage("已记录");
@@ -8457,7 +9019,7 @@ ipcRenderer.on('lumina-close', () => {
                 e.stopPropagation();
                 const blockId = ref.dataset.blockId;
                 if (blockId) {
-                    this.openSiyuanBlock(blockId);
+                    this.openSiyuanBlockAndCloseMobileShell(blockId);
                 }
             });
         });
@@ -8547,7 +9109,7 @@ ipcRenderer.on('lumina-close', () => {
                     e.stopPropagation();
                     const blockId = ref.dataset.blockId;
                     if (blockId) {
-                        this.openSiyuanBlock(blockId);
+                        this.openSiyuanBlockAndCloseMobileShell(blockId);
                     }
                 });
             });
@@ -10036,8 +10598,7 @@ ipcRenderer.on('lumina-close', () => {
         }
 
         // 重新渲染
-        this.renderNotes();
-        this.renderTags();
+        this.refreshMountedShuoshuoViews();
     }
 
     escapeHtml(text) {
@@ -10074,6 +10635,10 @@ ipcRenderer.on('lumina-close', () => {
                 <span class="north-shuoshuo-menu-text">批注</span>
             </div>
             ${item.boundBlockId ? `
+            <div class="north-shuoshuo-menu-item" data-action="jump">
+                <span class="north-shuoshuo-menu-icon">${ICONS.jump}</span>
+                <span class="north-shuoshuo-menu-text">跳转至文档</span>
+            </div>
             <div class="north-shuoshuo-menu-item" data-action="sync">
                 <span class="north-shuoshuo-menu-icon">${ICONS.sync}</span>
                 <span class="north-shuoshuo-menu-text">同步到思源块</span>
@@ -10126,6 +10691,9 @@ ipcRenderer.on('lumina-close', () => {
                     break;
                 case 'comment':
                     this.commentOnNote(id);
+                    break;
+                case 'jump':
+                    await this.openSiyuanBlockAndCloseMobileShell(item.boundBlockId);
                     break;
                 case 'sync':
                     if (item.boundBlockId) {
@@ -10347,13 +10915,7 @@ ipcRenderer.on('lumina-close', () => {
                 await this.syncShuoshuoToSiyuan(item);
             }
 
-            this.renderNotes();
-            this.renderTags();
-            if (this.currentMainView === 'random') {
-                this.renderRandom();
-            } else if (reviewCard) {
-                this.renderReview();
-            }
+            this.refreshMountedShuoshuoViews();
             showMessage("已保存");
         });
     }
@@ -10452,8 +11014,7 @@ ipcRenderer.on('lumina-close', () => {
                 await this.syncShuoshuoToSiyuan(item);
             }
 
-            this.renderNotes();
-            this.renderTags();
+            this.refreshMountedShuoshuoViews();
             overlay.remove();
             showMessage("已保存");
         });
@@ -10576,6 +11137,8 @@ ipcRenderer.on('lumina-close', () => {
      * 通过 SQL 查询具有 custom-lumina-content 属性的块，获取其内容和属性
      */
     async loadShuoshuosFromSiyuan() {
+        this._lastLoadShuoshuosFromSiyuanOk = false;
+        this._lastSiyuanBoundBlockIds = null;
         try {
             // 查询所有具有 custom-lumina-content 属性且内容非空的块
             const sqlResponse = await fetch('/api/query/sql', {
@@ -10596,6 +11159,8 @@ ipcRenderer.on('lumina-close', () => {
             if (sqlResult.code !== 0 || !Array.isArray(sqlResult.data)) {
                 return [];
             }
+            this._lastLoadShuoshuosFromSiyuanOk = true;
+            this._lastSiyuanBoundBlockIds = new Set(sqlResult.data.map(row => row?.id).filter(Boolean));
 
             const boundShuoshuos = [];
             for (const row of sqlResult.data) {
@@ -11034,15 +11599,14 @@ ipcRenderer.on('lumina-close', () => {
 
     deleteShuoshuo(id) {
         const item = this.shuoshuos.find(s => s.id === id);
-        confirm("⚠️ 确认删除", "确定要删除这条笔记吗？\n\n如果已绑定到思源笔记块，将同时删除对应的块。", async () => {
+        this.confirmAboveMobileShell("⚠️ 确认删除", "确定要删除这条笔记吗？\n\n如果已绑定到思源笔记块，将同时删除对应的块。", async () => {
             // 如果有绑定的思源块，先删除块
+            this.shuoshuos = this.shuoshuos.filter(s => s.id !== id);
+            await this.saveShuoshuos();
             if (item && item.boundBlockId) {
                 await this.deleteSiyuanBlock(item.boundBlockId);
             }
-            this.shuoshuos = this.shuoshuos.filter(s => s.id !== id);
-            await this.saveShuoshuos();
-            this.renderNotes();
-            this.renderTags(); // 更新标签列表
+            this.refreshMountedShuoshuoViews();
             showMessage("笔记已删除");
         });
     }
@@ -11120,28 +11684,35 @@ ipcRenderer.on('lumina-close', () => {
     async refreshBoundBlocks() {
         try {
             const boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
-            if (boundFromSiyuan.length === 0) return;
+            if (!this._lastLoadShuoshuosFromSiyuanOk) return;
 
             const boundMap = new Map();
             boundFromSiyuan.forEach(s => boundMap.set(s.boundBlockId, s));
 
             let changed = false;
-            this.shuoshuos = this.shuoshuos.map(local => {
+            const refreshed = [];
+            for (const local of this.shuoshuos) {
                 if (local.boundBlockId && boundMap.has(local.boundBlockId)) {
                     const siyuan = boundMap.get(local.boundBlockId);
                     // 如果思源数据与本地不同，更新
                     if (siyuan.content !== local.content ||
                         JSON.stringify(siyuan.tags) !== JSON.stringify(local.tags)) {
                         changed = true;
-                        return {
+                        refreshed.push({
                             ...siyuan,
                             pinned: local.pinned || false,
                             id: local.id
-                        };
+                        });
+                    } else {
+                        refreshed.push(local);
                     }
+                } else if (local.boundBlockId) {
+                    changed = true;
+                } else {
+                    refreshed.push(local);
                 }
-                return local;
-            });
+            }
+            this.shuoshuos = refreshed;
 
             // 添加思源中有但本地没有的新绑定说说
             const localBoundIds = new Set(
@@ -11763,8 +12334,9 @@ ipcRenderer.on('lumina-close', () => {
         if (mobileHeader) mobileHeader.style.display = (this.isMobile && isShuoshuoView) ? '' : 'none';
         if (mobileSearchBar) mobileSearchBar.classList.remove('show');
 
-        // 移动端朋友圈视图：隐藏思源顶部工具栏
-        if (this.isMobile) {
+        // 移动端独立面板内隐藏思源侧栏顶部工具栏；Dock 内打开时不能影响宿主侧栏。
+        const shouldHideSiyuanSidebarToolbar = false;
+        if (shouldHideSiyuanSidebarToolbar) {
             const hideToolbar = () => {
                 document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
                     el.style.setProperty('display', 'none', 'important');
@@ -11785,10 +12357,18 @@ ipcRenderer.on('lumina-close', () => {
                     el.style.removeProperty('display');
                 });
             }
+        } else {
+            if (this._toolbarObserver) {
+                this._toolbarObserver.disconnect();
+                this._toolbarObserver = null;
+            }
+            document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
+                el.style.removeProperty('display');
+            });
         }
 
-        // 移动端说说视图：隐藏思源顶部工具栏
-        if (this.isMobile) {
+        // 移动端独立面板内隐藏思源侧栏顶部工具栏；Dock 内打开时不能影响宿主侧栏。
+        if (shouldHideSiyuanSidebarToolbar) {
             const hideToolbar = () => {
                 document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
                     el.style.setProperty('display', 'none', 'important');
@@ -11809,6 +12389,14 @@ ipcRenderer.on('lumina-close', () => {
                     el.style.removeProperty('display');
                 });
             }
+        } else {
+            if (this._shuoshuoToolbarObserver) {
+                this._shuoshuoToolbarObserver.disconnect();
+                this._shuoshuoToolbarObserver = null;
+            }
+            document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
+                el.style.removeProperty('display');
+            });
         }
 
         // 更新左侧边栏选中状态
@@ -12063,6 +12651,17 @@ ipcRenderer.on('lumina-close', () => {
                 this.viewStyle = viewStyleSelect.value || 'list';
                 await this.saveConfig();
                 this.applyViewStyle();
+            });
+        }
+
+        // 回车直接提交
+        const enterSubmitSwitch = this.container.querySelector('#settings-enter-submit-switch');
+        if (enterSubmitSwitch) {
+            enterSubmitSwitch.addEventListener('click', async () => {
+                enterSubmitSwitch.classList.toggle('on');
+                this.enterToSubmit = enterSubmitSwitch.classList.contains('on');
+                this.syncEnterKeyHint();
+                await this.saveConfig();
             });
         }
 
@@ -12390,10 +12989,10 @@ ipcRenderer.on('lumina-close', () => {
 
         if (clearBtn) {
             clearBtn.onclick = async () => {
-                confirm('⚠️ 确认删除', '确定要清空所有数据吗？此操作不可恢复！', async () => {
+                this.confirmAboveMobileShell('⚠️ 确认删除', '确定要清空所有数据吗？此操作不可恢复！', async () => {
                     this.shuoshuos = [];
                     await this.saveData(STORAGE_NAME, this.shuoshuos);
-                    this.renderNotes();
+                    this.refreshMountedShuoshuoViews();
                     showMessage('数据已清空');
                 });
             };
@@ -13321,10 +13920,11 @@ ipcRenderer.on('lumina-close', () => {
                 // console.warn('[轻语] 从思源加载绑定块失败，使用本地数据:', e.message);
             }
 
-            if (boundFromSiyuan.length > 0) {
+            if (this._lastLoadShuoshuosFromSiyuanOk) {
                 // 合并策略：
                 // - 已绑定的说说以思源SQL数据为准（覆盖本地缓存）
                 // - 未绑定的说说保留本地数据
+                // - 本地有 boundBlockId 但思源 SQL 已查不到的记录视为已删除，清出本地缓存
                 // - 思源中有但本地没有的新绑定块，追加到列表
                 const boundMap = new Map();
                 boundFromSiyuan.forEach(s => boundMap.set(s.boundBlockId, s));
@@ -13342,6 +13942,8 @@ ipcRenderer.on('lumina-close', () => {
                             id: local.id // 保留本地ID维持引用
                         });
                         processedBoundIds.add(local.boundBlockId);
+                    } else if (local.boundBlockId) {
+                        continue;
                     } else {
                         merged.push(local);
                     }
@@ -13684,6 +14286,7 @@ ipcRenderer.on('lumina-close', () => {
             this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
             this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
             this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...(data.fontSizeConfig || data.fontSize || {}) };
+            this.enterToSubmit = data.enterToSubmit === true || data.enterToSubmit === 'true' || data.enterToSubmit === 1;
             this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
             this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
             this.queryVisibility = { lifelog: false, 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, ...(data.queryVisibility || {}) };
@@ -13759,6 +14362,7 @@ ipcRenderer.on('lumina-close', () => {
                 themeMode: this.themeMode,
                 morandiColor: this.morandiColor,
                 fontSizeConfig: this.fontSizeConfig,
+                enterToSubmit: this.enterToSubmit,
                 bookshelfFontConfig: this.bookshelfFontConfig,
                 bookshelfSyncConfig: this.bookshelfSyncConfig,
                 queryVisibility: this.queryVisibility,

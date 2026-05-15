@@ -12288,6 +12288,11 @@
 .north-shuoshuo-checkbox-item input[type="checkbox"]:checked ~ .north-shuoshuo-checkbox-label {
     color: var(--b3-theme-primary);
 }
+
+body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm"] {
+    z-index: 70000;
+}
+
 /* ========== 移动端适配（QQ 风格） ========== */
 .north-shuoshuo-mobile-header,
 .north-shuoshuo-mobile-tabbar,
