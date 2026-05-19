@@ -433,6 +433,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.syncMode = 'dailynote'; // 'dailynote' 每日笔记, 'doc' 指定文档
         this.syncDocId = ''; // 指定文档ID（syncMode为doc时使用）
         this.dailyNotePathTemplate = ''; // daily note 路径模板（留空则使用笔记本默认配置）
+        this.dailyNoteIconType = ''; // daily note 动态图标类型（留空则不设置图标）
+        this.dailyNoteIconColorWeekday = ''; // 工作日图标颜色
+        this.dailyNoteIconColorWeekend = ''; // 周末图标颜色
         this.viewStyle = 'list'; // 'list' 平铺, 'card' 卡片
         this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
         this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
@@ -2799,16 +2802,142 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                 </div>
                                 <div class="north-shuoshuo-form-row">
-                                    <textarea id="settings-daily-note-path-template" class="north-shuoshuo-input-field" rows="2" style="resize: vertical; width: 100%; font-family: monospace; font-size: 13px;" placeholder='例如 /daily note/{{now | date "2006/01"}}/{{now | date "2006-01-02"}}'>${this.dailyNotePathTemplate || ''}</textarea>
+                                    <textarea id="settings-daily-note-path-template" class="north-shuoshuo-input-field" rows="2" style="resize: vertical; width: 100%; font-family: monospace; font-size: 13px;" placeholder='例如 /daily note/{YYYY}/{MM}/{YYYY}-{MM}-{DD}'>${this.dailyNotePathTemplate || ''}</textarea>
                                     <div class="north-shuoshuo-form-hint" style="display: block; line-height: 1.8;">
-                                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+                                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;">
                                             <span>💡</span> 常用示例（点击即可填入）：
+                                            <button type="button" class="daily-note-vars-btn" id="dailyNoteVarsBtn">📋 模板变量</button>
                                         </div>
                                         <div class="daily-note-examples-row">
-                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006"}}/第{{now | WeekOfYear}}周/{{now | date "2006-01-02"}}'>按年周</span>
-                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006"}}/第{{now | WeekOfYear}}周/{{now | date "2006-01-02"}}-周{{now | WeekdayCN}}'>按年周星期</span>
-                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006/01"}}/第{{now | WeekOfYear}}周/{{now | date "2006-01-02"}}'>按月周</span>
-                                            <span class="daily-note-example" data-template='/daily note/{{now | date "2006"}}/{{now | date "01"}}月/第{{now | WeekOfYear}}周/{{now | date "2006-01-02"}}-周{{now | WeekdayCN2}}'>按年月周日</span>
+                                            <span class="daily-note-example" data-template='/daily note/{YYYY}/第{WeekOfYear}周/{YYYY}-{MM}-{DD}'>按年周</span>
+                                            <span class="daily-note-example" data-template='/daily note/{YYYY}/第{WeekOfYear}周/{YYYY}-{MM}-{DD}-周{WeekdayCN}'>按年周星期</span>
+                                            <span class="daily-note-example" data-template='/daily note/{YYYY}/{MM}/第{WeekOfYear}周/{YYYY}-{MM}-{DD}'>按月周</span>
+                                            <span class="daily-note-example" data-template='/daily note/{YYYY}/{MM}月/第{WeekOfYear}周/{YYYY}-{MM}-{DD}-{WeekdayCNFull}'>按年月周日</span>
+                                        </div>
+                                    </div>
+                                    <!-- 日记动态图标设置 -->
+                                    <div class="north-shuoshuo-form-row" style="margin-top: 16px;">
+                                        <div class="north-shuoshuo-section-header" style="margin-bottom: 10px;">
+                                            <div>
+                                                <div class="north-shuoshuo-section-title" style="font-size: 14px;">日记动态图标</div>
+                                                <div class="north-shuoshuo-section-desc">选择日记文档的动态图标样式，留空则不设置图标</div>
+                                            </div>
+                                        </div>
+                                        <div class="daily-note-icon-options" id="dailyNoteIconOptions">
+                                            ${['', '1', '2', '3', '4', '5', '6'].map((type, idx) => {
+                                                const labels = ['不设置', '年月日星期', '年月日', '年月', '年', '周数', '星期'];
+                                                const isActive = (this.dailyNoteIconType || '') === type;
+                                                const today = new Date();
+                                                const dateStr = today.toISOString().split('T')[0];
+                                                const previewUrl = type ? `/api/icon/getDynamicIcon?type=${type}&date=${dateStr}` : '';
+                                                return `
+                                                    <div class="daily-note-icon-option ${isActive ? 'active' : ''}" data-icon-type="${type}">
+                                                        <div class="daily-note-icon-preview">
+                                                            ${previewUrl ? `<img src="${previewUrl}" alt="">` : '<span class="daily-note-icon-none">—</span>'}
+                                                        </div>
+                                                        <span class="daily-note-icon-label">${labels[idx]}</span>
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                        <!-- 图标颜色设置 -->
+                                        <div class="daily-note-icon-colors" id="dailyNoteIconColors" style="display: ${this.dailyNoteIconType ? 'flex' : 'none'};">
+                                            ${[
+                                                { key: 'weekday', label: '工作日', value: this.dailyNoteIconColorWeekday || '' },
+                                                { key: 'weekend', label: '周末', value: this.dailyNoteIconColorWeekend || '' }
+                                            ].map(group => {
+                                                const presetColors = ['#d23f31', '#3b82f6', '#f59e0b', '#22c55e', '#a855f7', '#ec4899', '#6b7280'];
+                                                return `
+                                                    <div class="daily-note-icon-color-group">
+                                                        <span class="daily-note-icon-color-label">${group.label}</span>
+                                                        <div class="daily-note-icon-color-presets">
+                                                            ${presetColors.map(c => `
+                                                                <span class="daily-note-icon-color-dot ${group.value === c ? 'active' : ''}" data-color-group="${group.key}" data-color="${c}" style="background-color: ${c};"></span>
+                                                            `).join('')}
+                                                        </div>
+                                                        <div class="daily-note-icon-color-custom">
+                                                            <span>#</span>
+                                                            <input type="text" class="daily-note-icon-color-input" data-color-group="${group.key}" value="${group.value ? group.value.replace(/^#/, '') : ''}" placeholder="自定义" maxlength="6">
+                                                        </div>
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    </div>
+
+                                    <!-- 模板变量弹窗 -->
+                                    <div class="daily-note-vars-popup" id="dailyNoteVarsPopup">
+                                        <div class="daily-note-vars-overlay" id="dailyNoteVarsOverlay"></div>
+                                        <div class="daily-note-vars-content">
+                                            <div class="daily-note-vars-header">
+                                                <span class="daily-note-vars-title">📋 模板变量</span>
+                                                <span class="daily-note-vars-close" id="dailyNoteVarsClose">×</span>
+                                            </div>
+                                            <!-- 弹窗内实时预览条 -->
+                                            <div class="daily-note-vars-preview-bar">
+                                                <input type="text" class="daily-note-vars-preview-input" id="dailyNoteVarsPreviewInput" placeholder="点击变量组合模板...">
+                                                <button type="button" class="daily-note-vars-preview-copy" id="dailyNoteVarsPreviewCopy">📋 复制</button>
+                                            </div>
+                                            <!-- 弹窗内文档树预览 -->
+                                            <div class="daily-note-vars-tree-wrap" id="dailyNoteVarsTreeWrap"></div>
+                                            <div class="daily-note-vars-body">
+                                                <div class="daily-note-vars-section">
+                                                    <div class="daily-note-vars-section-title">日期</div>
+                                                    <div class="daily-note-vars-grid">
+                                                        <span class="daily-note-var-tag" data-var="{YYYY}">{YYYY} <small>年</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{YY}">{YY} <small>年简写</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{MM}">{MM} <small>月</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{M}">{M} <small>月</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{DD}">{DD} <small>日</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{D}">{D} <small>日</small></span>
+                                                    </div>
+                                                </div>
+                                                <div class="daily-note-vars-section">
+                                                    <div class="daily-note-vars-section-title">时间</div>
+                                                    <div class="daily-note-vars-grid">
+                                                        <span class="daily-note-var-tag" data-var="{hh}">{hh} <small>时</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{h}">{h} <small>时</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{mm}">{mm} <small>分</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{m}">{m} <small>分</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{ss}">{ss} <small>秒</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{s}">{s} <small>秒</small></span>
+                                                    </div>
+                                                </div>
+                                                <div class="daily-note-vars-section">
+                                                    <div class="daily-note-vars-section-title">星期</div>
+                                                    <div class="daily-note-vars-grid">
+                                                        <span class="daily-note-var-tag" data-var="{Weekday}">{Weekday} <small>数字</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{WeekdayCN}">{WeekdayCN} <small>简写</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{WeekdayCNFull}">{WeekdayCNFull} <small>完整</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{WeekdayCN2}">{WeekdayCN2} <small>周几</small></span>
+                                                    </div>
+                                                </div>
+                                                <div class="daily-note-vars-section">
+                                                    <div class="daily-note-vars-section-title">季节</div>
+                                                    <div class="daily-note-vars-grid">
+                                                        <span class="daily-note-var-tag" data-var="{Season}">{Season} <small>春夏秋冬</small></span>
+                                                    </div>
+                                                </div>
+                                                <div class="daily-note-vars-section">
+                                                    <div class="daily-note-vars-section-title">周数</div>
+                                                    <div class="daily-note-vars-grid">
+                                                        <span class="daily-note-var-tag" data-var="{WeekOfYear}">{WeekOfYear} <small>年内第几周</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{ISOWeek}">{ISOWeek} <small>ISO周数</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{ISOYear}">{ISOYear} <small>ISO年份</small></span>
+                                                    </div>
+                                                </div>
+                                                <div class="daily-note-vars-section">
+                                                    <div class="daily-note-vars-section-title">快捷示例</div>
+                                                    <div class="daily-note-vars-grid">
+                                                        <span class="daily-note-var-tag" data-var="/daily note/{YYYY}/{MM}/{YYYY}-{MM}-{DD}">/按年月日</span>
+                                                        <span class="daily-note-var-tag" data-var="/daily note/{YYYY}/{MM}/{YYYY}-{MM}-{DD} {WeekdayCNFull}">/按年月日+星期</span>
+                                                        <span class="daily-note-var-tag" data-var="/daily note/{YYYY}/第{WeekOfYear}周/{YYYY}-{MM}-{DD}">/按年周</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="daily-note-vars-footer">
+                                                <span>点击变量即可插入到模板中</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -8319,9 +8448,10 @@ ipcRenderer.on('lumina-close', () => {
         await this.saveShuoshuos();
 
         // 只有开启自动同步时才插入日记，并保存 blockId
+        // 指定文档模式下只单向同步，不保存 boundBlockId，避免思源端操作反向影响说说
         if (this.autoSync) {
             const blockId = await this.appendToDailyNote(content, shuoshuo.created);
-            if (blockId) {
+            if (blockId && this.syncMode === 'dailynote') {
                 shuoshuo.boundBlockId = blockId;
                 await this.saveShuoshuos();
             }
@@ -8376,7 +8506,13 @@ ipcRenderer.on('lumina-close', () => {
      */
     rebuildContentWithNewPureContent(oldContent, newPureContent) {
         if (!oldContent) return newPureContent || '';
-        newPureContent = (newPureContent || '').replace(/\s+/g, ' ').trim();
+
+        // 辅助函数：规范化行内空白，但保留换行结构
+        const normalizeSpaces = (text) => {
+            return text.split('\n').map(line => line.replace(/\s+/g, ' ').trim()).join('\n').trim();
+        };
+
+        newPureContent = normalizeSpaces(newPureContent || '');
 
         const oldTags = this.extractTags(oldContent);
         const oldType = this.extractType(oldContent);
@@ -8404,7 +8540,7 @@ ipcRenderer.on('lumina-close', () => {
         oldTags.forEach(tag => {
             if (seenTags.has(tag)) return;
             seenTags.add(tag);
-            const tagRegex = new RegExp(`#${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$|[，。！？；：""''（）【】])`, 'g');
+            const tagRegex = new RegExp(`#${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\s|$|[，。！？；：""''（）【】])`, 'g');
             template = template.replace(tagRegex, () => {
                 const ph = `__LPH${phIndex++}__`;
                 placeholders.push({ ph, value: `#${tag}` });
@@ -8412,15 +8548,15 @@ ipcRenderer.on('lumina-close', () => {
             });
         });
 
-        // 清理模板中的多余空格
-        template = template.replace(/\s+/g, ' ').trim();
+        // 清理模板中的多余空格（保留换行）
+        template = normalizeSpaces(template);
 
         // 从模板中提取旧纯内容
         let oldPureInTemplate = template;
         placeholders.forEach(p => {
-            oldPureInTemplate = oldPureInTemplate.replace(new RegExp(p.ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'g'), ' ');
+            oldPureInTemplate = oldPureInTemplate.replace(new RegExp(p.ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\s*', 'g'), ' ');
         });
-        oldPureInTemplate = oldPureInTemplate.replace(/\s+/g, ' ').trim();
+        oldPureInTemplate = normalizeSpaces(oldPureInTemplate);
 
         let newTemplate;
         if (oldPureInTemplate && template.includes(oldPureInTemplate)) {
@@ -8463,7 +8599,7 @@ ipcRenderer.on('lumina-close', () => {
             result = result.replace(new RegExp(p.ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), p.value);
         });
 
-        return result.replace(/\s+/g, ' ').trim();
+        return normalizeSpaces(result);
     }
 
     // 绑定工具栏事?
@@ -9767,17 +9903,20 @@ ipcRenderer.on('lumina-close', () => {
                 pureContent = pureContent.replace(new RegExp(`#${h}#\\s*`, 'g'), '');
             });
 
-            // 移除所有普通标签
-            tags.forEach(tag => {
-                pureContent = pureContent.replace(new RegExp(`#${tag}\\s*`, 'g'), '');
-            });
-
+            // 保留普通标签在内容中，让思源笔记自动识别 #标签 格式
             pureContent = pureContent.trim();
 
             // 清理空格但保留换行
             pureContent = pureContent
                 .replace(/\u200B|\u200C|\u200D|\uFEFF/g, '')
                 .trim();
+
+            // 预计算不含标签的内容版本（用于引用块格式将标签显示在标题行）
+            let contentWithoutTags = pureContent;
+            tags.forEach(tag => {
+                contentWithoutTags = contentWithoutTags.replace(new RegExp(`#${tag}\\s*`, 'g'), '');
+            });
+            contentWithoutTags = contentWithoutTags.replace(/\s*#\s*$/g, '').trim();
 
             // 将内容按行分割
             const lines = pureContent.split('\n').map(line => line.trim());
@@ -9807,12 +9946,15 @@ ipcRenderer.on('lumina-close', () => {
                 const dateStr = this.formatDateTimeAttr(timestamp).split(' ')[0]; // 获取日期部分 2026-04-30
                 const dateDisplay = dateStr; // 保持 YYYY-MM-DD 格式
 
-                // 构建引用块标题行
-                diaryContent = `> [!NOTE] ✏️ ${dateDisplay} ${timeStr}`;
+                // 从内容中提取标签，放到标题行中显示（不带#号）
+                const contentTags = this.extractTags(pureContent);
+
+                // 构建引用块标题行：时间 + 标签名
+                diaryContent = `> [!NOTE] ✏️ ${dateDisplay} ${timeStr}${contentTags.length > 0 ? ' ' + contentTags.join(' ') : ''}`;
 
                 // 添加内容行（每行前面加上 >，包括空行）
                 // 在段落之间插入空行（只有 > 的行）来分隔段落
-                const originalLines = pureContent.split('\n');
+                const originalLines = contentWithoutTags.split('\n');
                 for (let i = 0; i < originalLines.length; i++) {
                     const line = originalLines[i];
                     const trimmedLine = line.trim();
@@ -9881,7 +10023,7 @@ ipcRenderer.on('lumina-close', () => {
                 // 将类型和标签分开保存，便于后续加载时区分
                 const attrResult = await this.setLuminaBlockAttrs(blockId, {
                     date: dateTimeStr,
-                    content: pureContent,
+                    content: contentWithoutTags,
                     tag: tags.join(' '),  // 只保存标签
                     type: highlights.join(' ')  // 保存类型（#类型# 格式中的类型名）
                 });
@@ -9998,6 +10140,7 @@ ipcRenderer.on('lumina-close', () => {
     // 执行内置日期函数
     runDateFunc(name, date) {
         const weekdaysCN = ["日", "一", "二", "三", "四", "五", "六"];
+        const weekdaysCNFull = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
         const iso = this.getISOWeekInfo(date);
 
         switch (name) {
@@ -10011,6 +10154,7 @@ ipcRenderer.on('lumina-close', () => {
             case "Weekday": return String(date.getDay());
             case "WeekdayCN": return weekdaysCN[date.getDay()];
             case "WeekdayCN2": return "周" + weekdaysCN[date.getDay()];
+            case "WeekdayCNFull": return weekdaysCNFull[date.getDay()];
             case "WeekOfYear": {
                 const d = new Date(date);
                 const currentWeekday = (d.getDay() + 6) % 7;
@@ -10026,10 +10170,69 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 渲染 daily note 路径模板
+    // 同时支持旧版 Go 模板语法 {{now | date "2006"}} 和新的简化占位符语法 {YYYY} 等
     renderDailyNotePath(template, date) {
         if (!template) return '';
-        let result = template.replace(/\{\{\s*now\s*\|\s*date\s*"([^"]+)"\s*\}\}/g, (_, fmt) => this.formatGoDate(fmt, date));
+        let result = template;
+
+        // 1. 先处理旧版 Go 模板语法（兼容已有配置）
+        result = result.replace(/\{\{\s*now\s*\|\s*date\s*"([^"]+)"\s*\}\}/g, (_, fmt) => this.formatGoDate(fmt, date));
         result = result.replace(/\{\{\s*now\s*\|\s*(\w+)\s*\}\}/g, (_, name) => this.runDateFunc(name, date));
+
+        // 2. 处理新的简化占位符语法 {变量名}
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const day = date.getDate();
+        const hour = date.getHours();
+        const minute = date.getMinutes();
+        const second = date.getSeconds();
+        const weekday = date.getDay();
+        const weekdaysCN = ["日", "一", "二", "三", "四", "五", "六"];
+        const weekdaysCNFull = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+        const iso = this.getISOWeekInfo(date);
+
+        // 计算年内第几周
+        const d = new Date(date);
+        const currentWeekday = (d.getDay() + 6) % 7;
+        const mondayOfThisWeek = new Date(d);
+        mondayOfThisWeek.setDate(d.getDate() - currentWeekday);
+        const firstDayOfYear = new Date(mondayOfThisWeek.getFullYear(), 0, 1);
+        const daysFromYearStart = Math.floor((mondayOfThisWeek - firstDayOfYear) / (24 * 60 * 60 * 1000));
+        const weekOfYear = Math.floor((daysFromYearStart + 7) / 7);
+
+        // 季节判断
+        const seasonMap = ['冬', '冬', '春', '春', '春', '夏', '夏', '夏', '秋', '秋', '秋', '冬'];
+        const season = seasonMap[month - 1];
+
+        const placeholders = {
+            '{YYYY}': String(year),
+            '{YY}': String(year).slice(-2),
+            '{MM}': String(month).padStart(2, '0'),
+            '{M}': String(month),
+            '{DD}': String(day).padStart(2, '0'),
+            '{D}': String(day),
+            '{hh}': String(hour).padStart(2, '0'),
+            '{h}': String(hour),
+            '{mm}': String(minute).padStart(2, '0'),
+            '{m}': String(minute),
+            '{ss}': String(second).padStart(2, '0'),
+            '{s}': String(second),
+            '{Weekday}': String(weekday),
+            '{WeekdayCN}': weekdaysCN[weekday],
+            '{WeekdayCNFull}': weekdaysCNFull[weekday],
+            '{WeekdayCN2}': '周' + weekdaysCN[weekday],
+            '{Season}': season,
+            '{WeekOfYear}': String(weekOfYear),
+            '{ISOWeek}': String(iso.week),
+            '{ISOYear}': String(iso.year),
+        };
+
+        // 按占位符长度降序替换，避免短占位符干扰长的（如 {M} 干扰 {MM}）
+        const sortedKeys = Object.keys(placeholders).sort((a, b) => b.length - a.length);
+        for (const key of sortedKeys) {
+            result = result.split(key).join(placeholders[key]);
+        }
+
         return result.trim();
     }
 
@@ -10068,25 +10271,52 @@ ipcRenderer.on('lumina-close', () => {
                 })
             });
             const idsResult = await idsResponse.json();
+            let docId = null;
+            let isNewDoc = false;
             if (idsResult.code === 0 && idsResult.data && idsResult.data.length > 0) {
-                return idsResult.data[0];
+                docId = idsResult.data[0];
+            } else {
+                // 4. 文档不存在，创建它
+                const createResponse = await fetch('/api/filetree/createDocWithMd', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        notebook: nbId,
+                        path: hPath,
+                        markdown: ''
+                    })
+                });
+                const createResult = await createResponse.json();
+                if (createResult.code === 0 && createResult.data) {
+                    docId = createResult.data.id || createResult.data;
+                    isNewDoc = true;
+                }
             }
-            
-            // 4. 文档不存在，创建它
-            const createResponse = await fetch('/api/filetree/createDocWithMd', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    notebook: nbId,
-                    path: hPath,
-                    markdown: ''
-                })
-            });
-            const createResult = await createResponse.json();
-            if (createResult.code === 0 && createResult.data) {
-                return createResult.data.id || createResult.data;
+
+            // 5. 设置日记动态图标
+            if (docId && this.dailyNoteIconType) {
+                try {
+                    const dateStr = date.toISOString().split('T')[0];
+                    const isWeekend = [0, 6].includes(date.getDay());
+                    const color = isWeekend ? this.dailyNoteIconColorWeekend : this.dailyNoteIconColorWeekday;
+                    const colorParam = color ? `&color=${encodeURIComponent(color.startsWith('#') ? color : '#' + color)}` : '';
+                    const iconUrl = `api/icon/getDynamicIcon?type=${this.dailyNoteIconType}&date=${dateStr}${colorParam}`;
+                    await fetch('/api/attr/setBlockAttrs', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: docId,
+                            attrs: {
+                                'icon': iconUrl
+                            }
+                        })
+                    });
+                } catch (e) {
+                    console.warn('设置日记动态图标失败:', e);
+                }
             }
-            return null;
+
+            return docId;
         } catch (e) {
             console.error('获取或创建日记文档失败:', e);
             return null;
@@ -10132,8 +10362,9 @@ ipcRenderer.on('lumina-close', () => {
                     : null;
                 
                 // 查找该 h2 到下一个 h2 之间的最后一个块
+                // 必须限制 parent_id = docId，只选文档的直接子块，避免选中引用块/列表等容器内部的子块
                 let lastBlockQuery = `SELECT id, created FROM blocks 
-                                      WHERE root_id = '${docId}' AND type != 'd' AND created > '${h2Created}'`;
+                                      WHERE root_id = '${docId}' AND type != 'd' AND parent_id = '${docId}' AND created > '${h2Created}'`;
                 if (nextH2Created) {
                     lastBlockQuery += ` AND created < '${nextH2Created}'`;
                 }
@@ -10158,7 +10389,7 @@ ipcRenderer.on('lumina-close', () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         stmt: `SELECT id, created FROM blocks 
-                               WHERE root_id = '${docId}' AND type != 'd' 
+                               WHERE root_id = '${docId}' AND type != 'd' AND parent_id = '${docId}'
                                ORDER BY created DESC LIMIT 1`
                     })
                 });
@@ -11500,9 +11731,15 @@ ipcRenderer.on('lumina-close', () => {
             if (types) {
                 updateContent = `${timeStr} ${types}：${pureContent}`;
             } else if (isBlockquote && hasNoteCallout) {
-                // 如果是 [!NOTE] 引用块格式，保持格式更新内容
+                // 如果是 [!NOTE] 引用块格式，重建标题行以确保标签同步正确
                 const lines = pureContent.split('\n');
-                updateContent = blockquoteHeader;
+                const dateStr = this.formatDateTimeAttr(shuoshuo.created).split(' ')[0];
+                const dateTimeStr = this.formatDateTimeAttr(shuoshuo.created);
+                const timePart = dateTimeStr.split(' ')[1];
+                // 提取原有 emoji（如 ✏️）
+                const emojiMatch = blockquoteHeader.match(/\[!NOTE\]\s+(\S+)/);
+                const emoji = emojiMatch ? emojiMatch[1] : '✏️';
+                updateContent = `> [!NOTE] ${emoji} ${dateStr} ${timePart}${tags.length > 0 ? ' ' + tags.join(' ') : ''}`;
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i].trim();
                     updateContent += '\n> ' + line;
@@ -11592,9 +11829,14 @@ ipcRenderer.on('lumina-close', () => {
 
         const blockId = await this.appendToDailyNote(item.content, item.created);
         if (blockId) {
-            item.boundBlockId = blockId;
-            await this.saveShuoshuos();
-            showMessage(this.syncMode === 'dailynote' ? "已同步到日记，并与此说说绑定" : "已同步到指定文档，并与此说说绑定");
+            // 指定文档模式下只单向同步，不保存 boundBlockId
+            if (this.syncMode === 'dailynote') {
+                item.boundBlockId = blockId;
+                await this.saveShuoshuos();
+                showMessage("已同步到日记，并与此说说绑定");
+            } else {
+                showMessage("已同步到指定文档");
+            }
         } else {
             showMessage("同步失败，请检查配置");
         }
@@ -11719,7 +11961,10 @@ ipcRenderer.on('lumina-close', () => {
             try {
                 const blockId = await this.appendToDailyNote(item.content, item.created);
                 if (blockId) {
-                    item.boundBlockId = blockId;
+                    // 指定文档模式下只单向同步，不保存 boundBlockId
+                    if (this.syncMode === 'dailynote') {
+                        item.boundBlockId = blockId;
+                    }
                     successCount++;
                 } else {
                     failCount++;
@@ -11828,6 +12073,8 @@ ipcRenderer.on('lumina-close', () => {
 
     // 刷新已绑定的思源块数据（从思源查询最新数据合并到本地列表）
     async refreshBoundBlocks() {
+        // 指定文档模式下只单向同步，不执行双向绑定刷新
+        if (this.syncMode === 'doc') return;
         try {
             const boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
             if (!this._lastLoadShuoshuosFromSiyuanOk) return;
@@ -12119,7 +12366,27 @@ ipcRenderer.on('lumina-close', () => {
                 body: JSON.stringify({ id: blockId })
             });
             const kramdownResult = await kramdownResponse.json();
-            if (kramdownResult.code !== 0 || !kramdownResult.data) return;
+            if (kramdownResult.code !== 0 || !kramdownResult.data) {
+                // getBlockKramdown 失败，可能是块已被删除，检查块是否存在
+                try {
+                    const sqlResponse = await fetch('/api/query/sql', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ stmt: `SELECT id FROM blocks WHERE id = '${blockId}' LIMIT 1` })
+                    });
+                    const sqlResult = await sqlResponse.json();
+                    if (sqlResult.code === 0 && (!sqlResult.data || sqlResult.data.length === 0)) {
+                        // 块确实已被删除，从本地列表中移除对应的说说
+                        const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
+                        if (index !== -1) {
+                            this.shuoshuos.splice(index, 1);
+                            await this.saveShuoshuos();
+                            this.refreshMountedShuoshuoViews();
+                        }
+                    }
+                } catch (e) {}
+                return;
+            }
             const kramdown = kramdownResult.data.kramdown || '';
             // console.log('[轻语] 父块kramdown:', JSON.stringify(kramdown));
 
@@ -12191,13 +12458,7 @@ ipcRenderer.on('lumina-close', () => {
                 if (index !== -1) {
                     this.shuoshuos.splice(index, 1);
                     await this.saveShuoshuos();
-                    if (this.container && this.container.isConnected) {
-                        const notesList = this.container.querySelector('#shuoshuo-notes-list');
-                        if (notesList) {
-                            this.renderNotes();
-                            this.renderTags();
-                        }
-                    }
+                    this.refreshMountedShuoshuoViews();
                 }
                 return;
             }
@@ -12215,7 +12476,32 @@ ipcRenderer.on('lumina-close', () => {
 
             // 6. 如果内容变了，更新属性
             // console.log('[轻语] 提取内容:', JSON.stringify(blockContent), '旧内容:', JSON.stringify(oldContent));
-            if (blockContent !== oldContent) {
+            // 从 kramdown 标题行提取标签（用于引用块格式）
+            let headerTags = [];
+            try {
+                const headerLine = kramdown.split('\n').find(line => line.trim().startsWith('>') && line.includes('[!NOTE]'));
+                if (headerLine) {
+                    const timeMatch = headerLine.match(/(\d{4}-\d{1,2}-\d{1,2}\s+\d{2}:\d{2})\s*(.*)/);
+                    if (timeMatch) {
+                        const afterTime = timeMatch[2].replace(/\{:.*/g, '').trim();
+                        if (/[\w\u4e00-\u9fa5#]/.test(afterTime)) {
+                            headerTags = afterTime.split(/\s+/).map(t => t.replace(/^#/, '')).filter(Boolean);
+                        }
+                    }
+                }
+            } catch (e) {}
+
+            // 计算新标签
+            let newTags = this.extractTags(blockContent);
+            if (newTags.length === 0) {
+                newTags = headerTags.length > 0 ? headerTags : (attrs['custom-lumina-tag'] || '').split(/\s+/).filter(Boolean);
+            }
+
+            const newTagStr = newTags.join(' ');
+            const oldTagStr = attrs['custom-lumina-tag'] || '';
+            const tagsChanged = newTagStr !== oldTagStr;
+
+            if (blockContent !== oldContent || tagsChanged) {
                 // 从旧说说内容中提取类型，用于更新属性
                 const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
                 let currentType = attrs['custom-lumina-type'] || '';
@@ -12226,7 +12512,7 @@ ipcRenderer.on('lumina-close', () => {
                 await this.setLuminaBlockAttrs(blockId, {
                     date: attrs['custom-lumina-date'] || '',
                     content: blockContent,
-                    tag: attrs['custom-lumina-tag'] || '',
+                    tag: newTagStr,
                     type: currentType
                 });
                 // console.log('[轻语] 已自动同步块内容到属性:', blockId);
@@ -12257,14 +12543,6 @@ ipcRenderer.on('lumina-close', () => {
                             detectedType = typeMatch[1].trim(); // 提取类型名称（如 "固"）
                         }
                     }
-                    
-                    // 从思源笔记最新内容中提取标签（确保多层标签完整）
-                    let newTags = this.extractTags(blockContent);
-                    // 如果从纯内容中没提取到标签（如引用块格式内容不含标签），保留属性中的旧标签
-                    if (newTags.length === 0) {
-                        const oldTags = attrs['custom-lumina-tag'] || '';
-                        newTags = oldTags ? oldTags.split(/\s+/).filter(Boolean) : [];
-                    }
 
                     // 使用本地旧内容作为模板，保持标签位置不变
                     const oldContent = this.shuoshuos[index].content;
@@ -12274,13 +12552,7 @@ ipcRenderer.on('lumina-close', () => {
                     this.shuoshuos[index].tags = newTags;
                     this.shuoshuos[index].updated = Date.now();
                     await this.saveShuoshuos();
-                    if (this.container && this.container.isConnected) {
-                        const notesList = this.container.querySelector('#shuoshuo-notes-list');
-                        if (notesList) {
-                            this.renderNotes();
-                            this.renderTags();
-                        }
-                    }
+                    this.refreshMountedShuoshuoViews();
                 }
             }
         } catch (e) {
@@ -12976,6 +13248,170 @@ ipcRenderer.on('lumina-close', () => {
             });
         });
 
+        // 日记动态图标选择
+        const dailyNoteIconOptions = this.container.querySelectorAll('#dailyNoteIconOptions .daily-note-icon-option');
+        const dailyNoteIconColors = this.container.querySelector('#dailyNoteIconColors');
+        const updateIconPreview = () => {
+            const activeType = this.container.querySelector('#dailyNoteIconOptions .daily-note-icon-option.active')?.dataset?.iconType || '';
+            if (dailyNoteIconColors) {
+                dailyNoteIconColors.style.display = activeType ? 'flex' : 'none';
+            }
+            // 更新所有预览图标的颜色
+            dailyNoteIconOptions.forEach(option => {
+                const type = option.dataset.iconType;
+                const img = option.querySelector('img');
+                if (img && type) {
+                    const today = new Date();
+                    const dateStr = today.toISOString().split('T')[0];
+                    const isWeekend = [0, 6].includes(today.getDay());
+                    const colorInput = this.container.querySelector(`.daily-note-icon-color-input[data-color-group="${isWeekend ? 'weekend' : 'weekday'}"]`);
+                    const color = colorInput?.value?.trim() || '';
+                    const colorParam = color ? `&color=${encodeURIComponent(color.startsWith('#') ? color : '#' + color)}` : '';
+                    img.src = `/api/icon/getDynamicIcon?type=${type}&date=${dateStr}${colorParam}`;
+                }
+            });
+        };
+        dailyNoteIconOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                dailyNoteIconOptions.forEach(o => o.classList.remove('active'));
+                option.classList.add('active');
+                updateIconPreview();
+            });
+        });
+
+        // 日记动态图标颜色选择
+        const colorDots = this.container.querySelectorAll('.daily-note-icon-color-dot');
+        const colorInputs = this.container.querySelectorAll('.daily-note-icon-color-input');
+        colorDots.forEach(dot => {
+            dot.addEventListener('click', () => {
+                const group = dot.dataset.colorGroup;
+                const color = dot.dataset.color;
+                // 更新同组所有圆点状态
+                this.container.querySelectorAll(`.daily-note-icon-color-dot[data-color-group="${group}"]`).forEach(d => d.classList.remove('active'));
+                dot.classList.add('active');
+                // 同步更新输入框
+                const input = this.container.querySelector(`.daily-note-icon-color-input[data-color-group="${group}"]`);
+                if (input) input.value = color.replace(/^#/, '');
+                updateIconPreview();
+            });
+        });
+        colorInputs.forEach(input => {
+            input.addEventListener('input', () => {
+                const group = input.dataset.colorGroup;
+                const val = input.value.trim();
+                const fullColor = val ? (val.startsWith('#') ? val : '#' + val) : '';
+                // 更新圆点状态
+                this.container.querySelectorAll(`.daily-note-icon-color-dot[data-color-group="${group}"]`).forEach(d => {
+                    d.classList.toggle('active', fullColor && d.dataset.color === fullColor);
+                });
+                updateIconPreview();
+            });
+        });
+
+        // 模板变量弹窗交互
+        const dailyNoteVarsBtn = this.container.querySelector('#dailyNoteVarsBtn');
+        const dailyNoteVarsPopup = this.container.querySelector('#dailyNoteVarsPopup');
+        const dailyNoteVarsOverlay = this.container.querySelector('#dailyNoteVarsOverlay');
+        const dailyNoteVarsClose = this.container.querySelector('#dailyNoteVarsClose');
+        const dailyNoteVarTags = this.container.querySelectorAll('.daily-note-var-tag');
+        const dailyNoteVarsPreviewInput = this.container.querySelector('#dailyNoteVarsPreviewInput');
+        const dailyNoteVarsPreviewCopy = this.container.querySelector('#dailyNoteVarsPreviewCopy');
+        const dailyNoteVarsTreeWrap = this.container.querySelector('#dailyNoteVarsTreeWrap');
+
+        const openVarsPopup = () => {
+            if (dailyNoteVarsPopup) dailyNoteVarsPopup.classList.add('active');
+        };
+        const closeVarsPopup = () => {
+            if (dailyNoteVarsPopup) dailyNoteVarsPopup.classList.remove('active');
+        };
+
+        // 文档树预览 HTML 生成
+        const buildDocTreeHtml = (path) => {
+            if (!path || !path.trim()) return '<div style="color:var(--b3-theme-on-surface-light);font-size:12px;padding:4px 0;">输入模板后将在此显示预览...</div>';
+            const parts = path.split('/').filter(p => p.trim());
+            if (parts.length === 0) return '<div style="color:var(--b3-theme-on-surface-light);font-size:12px;padding:4px 0;">输入模板后将在此显示预览...</div>';
+            let html = '';
+            parts.forEach((part, index) => {
+                const isLast = index === parts.length - 1;
+                const iconClass = index === 0 ? 'root' : (isLast ? 'file' : 'folder');
+                const textClass = isLast ? 'leaf' : '';
+                const indentHtml = index > 0 ? '<span class="daily-note-tree-indent">│</span>' : '';
+                html += `<div class="daily-note-tree-node" style="padding-left:${index * 14}px">
+                    ${indentHtml}
+                    <span class="daily-note-tree-icon ${iconClass}"></span>
+                    <span class="daily-note-tree-text ${textClass}">${this.escapeHtml(part)}</span>
+                </div>`;
+            });
+            return html;
+        };
+
+        // 更新弹窗内的预览（输入框 + 文档树）
+        const updatePopupPreview = () => {
+            if (!dailyNoteVarsPreviewInput) return;
+            const template = dailyNoteVarsPreviewInput.value;
+            const now = new Date();
+            const rendered = this.renderDailyNotePath(template, now);
+            if (dailyNoteVarsTreeWrap) {
+                dailyNoteVarsTreeWrap.innerHTML = buildDocTreeHtml(rendered);
+            }
+        };
+
+        // 打开弹窗时：把设置页面 textarea 的值同步到弹窗输入框，并刷新预览
+        const openVarsPopupWithSync = () => {
+            openVarsPopup();
+            if (dailyNoteVarsPreviewInput && dailyNoteTemplateTextarea) {
+                dailyNoteVarsPreviewInput.value = dailyNoteTemplateTextarea.value;
+            }
+            updatePopupPreview();
+        };
+
+        if (dailyNoteVarsBtn) dailyNoteVarsBtn.addEventListener('click', openVarsPopupWithSync);
+        if (dailyNoteVarsOverlay) dailyNoteVarsOverlay.addEventListener('click', closeVarsPopup);
+        if (dailyNoteVarsClose) dailyNoteVarsClose.addEventListener('click', closeVarsPopup);
+
+        // 弹窗内输入框编辑时，实时更新文档树预览（不影响设置页面 textarea）
+        if (dailyNoteVarsPreviewInput) {
+            dailyNoteVarsPreviewInput.addEventListener('input', updatePopupPreview);
+        }
+
+        // 点击变量插入到弹窗输入框光标位置
+        dailyNoteVarTags.forEach(tag => {
+            tag.addEventListener('click', () => {
+                const variable = tag.dataset.var;
+                if (dailyNoteVarsPreviewInput && variable) {
+                    const start = dailyNoteVarsPreviewInput.selectionStart;
+                    const end = dailyNoteVarsPreviewInput.selectionEnd;
+                    const text = dailyNoteVarsPreviewInput.value;
+                    dailyNoteVarsPreviewInput.value = text.slice(0, start) + variable + text.slice(end);
+                    dailyNoteVarsPreviewInput.selectionStart = dailyNoteVarsPreviewInput.selectionEnd = start + variable.length;
+                    dailyNoteVarsPreviewInput.focus();
+                    updatePopupPreview();
+                }
+            });
+        });
+
+        // 弹窗内复制路径（复制弹窗输入框的内容）
+        if (dailyNoteVarsPreviewCopy) {
+            dailyNoteVarsPreviewCopy.addEventListener('click', () => {
+                const text = dailyNoteVarsPreviewInput?.value || '';
+                if (!text) {
+                    showMessage('没有可复制的内容');
+                    return;
+                }
+                navigator.clipboard.writeText(text).then(() => {
+                    dailyNoteVarsPreviewCopy.textContent = '✅ 已复制';
+                    dailyNoteVarsPreviewCopy.classList.add('copied');
+                    showMessage('路径已复制到剪贴板');
+                    setTimeout(() => {
+                        dailyNoteVarsPreviewCopy.textContent = '📋 复制';
+                        dailyNoteVarsPreviewCopy.classList.remove('copied');
+                    }, 2000);
+                }).catch(() => {
+                    showMessage('复制失败，请手动复制');
+                });
+            });
+        }
+
         if (saveBtn) {
             saveBtn.onclick = async () => {
                 const notebookId = this.container.querySelector('#settings-notebook-select')?.value || '';
@@ -12989,6 +13425,11 @@ ipcRenderer.on('lumina-close', () => {
                 this.syncMode = this.container.querySelector('#sync-mode-select')?.value || 'dailynote';
                 this.syncDocId = this.container.querySelector('#settings-sync-doc-id')?.value?.trim() || '';
                 this.dailyNotePathTemplate = this.container.querySelector('#settings-daily-note-path-template')?.value?.trim() || '';
+                this.dailyNoteIconType = this.container.querySelector('#dailyNoteIconOptions .daily-note-icon-option.active')?.dataset?.iconType || '';
+                const weekdayColorInput = this.container.querySelector('.daily-note-icon-color-input[data-color-group="weekday"]');
+                const weekendColorInput = this.container.querySelector('.daily-note-icon-color-input[data-color-group="weekend"]');
+                this.dailyNoteIconColorWeekday = weekdayColorInput?.value?.trim() || '';
+                this.dailyNoteIconColorWeekend = weekendColorInput?.value?.trim() || '';
 
                 // 获取检索式可见性配置
                 const queryVisibilityCheckboxes = this.container.querySelectorAll('input[name="query-visibility"]');
@@ -14020,13 +14461,16 @@ ipcRenderer.on('lumina-close', () => {
 
             // 2. 从思源笔记查询所有绑定的块（主要数据源）
             //    思源SQL是最新的数据，确保思源改了说说视图也能看到
+            //    仅在每日笔记模式下执行双向同步，指定文档模式下只单向同步
             let boundFromSiyuan = [];
-            try {
-                boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
-            } catch (e) {
-                // 出错时恢复之前的状态
-                this.shuoshuos = previousShuoshuos;
-                // console.warn('[轻语] 从思源加载绑定块失败，使用本地数据:', e.message);
+            if (this.syncMode === 'dailynote') {
+                try {
+                    boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
+                } catch (e) {
+                    // 出错时恢复之前的状态
+                    this.shuoshuos = previousShuoshuos;
+                    // console.warn('[轻语] 从思源加载绑定块失败，使用本地数据:', e.message);
+                }
             }
 
             if (this._lastLoadShuoshuosFromSiyuanOk) {
@@ -14481,6 +14925,9 @@ ipcRenderer.on('lumina-close', () => {
             this.syncMode = data.syncMode === 'doc' ? 'doc' : 'dailynote';
             this.syncDocId = data.syncDocId || '';
             this.dailyNotePathTemplate = data.dailyNotePathTemplate || '';
+            this.dailyNoteIconType = data.dailyNoteIconType || '';
+            this.dailyNoteIconColorWeekday = data.dailyNoteIconColorWeekday || '';
+            this.dailyNoteIconColorWeekend = data.dailyNoteIconColorWeekend || '';
             this.viewStyle = data.viewStyle === 'card' ? 'card' : 'list';
             this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', ...(data.flomoConfig || data.flomo || {}) };
             this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
@@ -14574,6 +15021,9 @@ ipcRenderer.on('lumina-close', () => {
                 syncMode: this.syncMode,
                 syncDocId: this.syncDocId,
                 dailyNotePathTemplate: this.dailyNotePathTemplate,
+                dailyNoteIconType: this.dailyNoteIconType,
+                dailyNoteIconColorWeekday: this.dailyNoteIconColorWeekday,
+                dailyNoteIconColorWeekend: this.dailyNoteIconColorWeekend,
                 viewStyle: this.viewStyle,
                 flomoConfig: this.flomoConfig,
                 writeathonConfig: this.writeathonConfig,

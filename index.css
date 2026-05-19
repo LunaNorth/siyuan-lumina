@@ -4,7 +4,7 @@
     max-height: 100%;
     overflow: hidden;
     position: relative;
-    /* 日历弹窗复用朋友圈样式所需的变�?*/
+    /* 日历弹窗复用朋友圈样式所需的变量*/
     --moments-modal-overlay: rgba(0, 0, 0, 0.5);
     --moments-modal-bg: #fff;
     --moments-modal-header-border: #f0f0f0;
@@ -407,7 +407,7 @@
 .north-shuoshuo-tag-item-content {
     display: flex;
     align-items: center;
-    padding: 6px 10px 6px 12px;
+    padding: 6px 10px 6px 20px;
     cursor: pointer;
     transition: background-color 0.12s ease;
     position: relative;
@@ -430,7 +430,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-right: 2px;
     flex-shrink: 0;
     color: var(--b3-theme-on-surface-light);
     font-size: 16px;
@@ -440,6 +439,11 @@
     cursor: pointer;
     border-radius: 3px;
     opacity: 0;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    margin: auto 0;
 }
 
 .north-shuoshuo-tag-toggle:hover {
@@ -1345,7 +1349,7 @@
     line-height: 1.4;
 }
 
-/* 思源笔记块引用样�?*/
+/* 思源笔记块引用样式*/
 .north-shuoshuo-note-content .north-shuoshuo-block-ref {
     display: inline;
     color: var(--b3-theme-primary);
@@ -1902,16 +1906,16 @@
 
 /* 根据层级设置缩进 */
 .north-shuoshuo-tag-tree-item[data-level="0"] > .north-shuoshuo-tag-item-content {
-    padding-left: 12px;
+    padding-left: 20px;
 }
 .north-shuoshuo-tag-tree-item[data-level="1"] > .north-shuoshuo-tag-item-content {
-    padding-left: 30px;
+    padding-left: 38px;
 }
 .north-shuoshuo-tag-tree-item[data-level="2"] > .north-shuoshuo-tag-item-content {
-    padding-left: 48px;
+    padding-left: 56px;
 }
 .north-shuoshuo-tag-tree-item[data-level="3"] > .north-shuoshuo-tag-item-content {
-    padding-left: 66px;
+    padding-left: 74px;
 }
 .north-shuoshuo-tag-tree-item[data-level="4"] > .north-shuoshuo-tag-item-content {
     padding-left: 84px;
@@ -10781,6 +10785,7 @@
     line-height: 1.8;
     margin-bottom: 12px;
     word-wrap: break-word;
+    white-space: pre-wrap;
     user-select: text;
     -webkit-user-select: text;
 }
@@ -11901,7 +11906,7 @@
 .lumina-bookshelf-empty svg { width: 40px; height: 40px; margin-bottom: 12px; color: var(--b3-border-color); }
 .lumina-bookshelf-empty p { font-size: 13px; }
 
-/* 详情页样�?*/
+/* 详情页样*/
 .lumina-bookshelf-detail-header {
     background: var(--b3-theme-background);
     border-radius: 14px;
@@ -12266,6 +12271,448 @@
     background-color: var(--b3-theme-primary-lightest);
     color: var(--b3-theme-primary);
     border-color: var(--b3-theme-primary-lighter);
+}
+
+/* 日记动态图标选择器 */
+.daily-note-icon-options {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.daily-note-icon-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1.5px solid var(--b3-border-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 56px;
+    background: var(--b3-theme-background);
+}
+
+.daily-note-icon-option:hover {
+    border-color: var(--b3-theme-primary-lighter);
+    background: var(--b3-theme-primary-lightest);
+}
+
+.daily-note-icon-option.active {
+    border-color: var(--b3-theme-primary);
+    background: var(--b3-theme-primary-lightest);
+    box-shadow: 0 0 0 2px var(--b3-theme-primary-lightest);
+}
+
+.daily-note-icon-preview {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.daily-note-icon-preview img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+.daily-note-icon-none {
+    font-size: 16px;
+    color: var(--b3-theme-on-surface-light);
+    line-height: 1;
+}
+
+.daily-note-icon-label {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface);
+    white-space: nowrap;
+}
+
+.daily-note-icon-option.active .daily-note-icon-label {
+    color: var(--b3-theme-primary);
+    font-weight: 500;
+}
+
+/* 日记动态图标颜色选择器 */
+.daily-note-icon-colors {
+    display: flex;
+    gap: 32px;
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 10px;
+    background: var(--b3-theme-surface);
+    border: 1px solid var(--b3-border-color);
+}
+
+.daily-note-icon-color-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.daily-note-icon-color-label {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+    font-weight: 600;
+}
+
+.daily-note-icon-color-presets {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.daily-note-icon-color-dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.daily-note-icon-color-dot:hover {
+    transform: scale(1.12);
+}
+
+.daily-note-icon-color-dot.active {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px var(--b3-theme-primary);
+}
+
+.daily-note-icon-color-dot.active::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid var(--b3-theme-primary);
+    opacity: 0.25;
+}
+
+.daily-note-icon-color-custom {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 6px;
+    padding: 4px 10px;
+    width: fit-content;
+}
+
+.daily-note-icon-color-input {
+    width: 72px;
+    height: 26px;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-family: monospace;
+    color: var(--b3-theme-on-background);
+    outline: none;
+    text-transform: uppercase;
+}
+
+/* 模板变量按钮 */
+.daily-note-vars-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-surface);
+    color: var(--b3-theme-primary);
+    transition: all 0.15s ease;
+    font-size: 12.5px;
+    font-family: inherit;
+    line-height: 1.4;
+    margin-left: auto;
+}
+
+.daily-note-vars-btn:hover {
+    background-color: var(--b3-theme-primary-lightest);
+    border-color: var(--b3-theme-primary-lighter);
+}
+
+/* 模板变量弹窗 */
+.daily-note-vars-popup {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+}
+
+.daily-note-vars-popup.active {
+    display: flex;
+}
+
+.daily-note-vars-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.daily-note-vars-content {
+    position: relative;
+    background: var(--b3-theme-background);
+    border-radius: 12px;
+    box-shadow: var(--b3-dialog-shadow);
+    width: 620px;
+    max-width: 92vw;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1;
+}
+
+.daily-note-vars-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--b3-border-color);
+    flex-shrink: 0;
+}
+
+.daily-note-vars-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+}
+
+.daily-note-vars-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 20px;
+    color: var(--b3-theme-on-surface-light);
+    line-height: 1;
+    transition: all 0.15s ease;
+}
+
+.daily-note-vars-close:hover {
+    background: var(--b3-theme-surface-lighter);
+    color: var(--b3-theme-on-background);
+}
+
+.daily-note-vars-body {
+    padding: 14px 18px;
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.daily-note-vars-section-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--b3-theme-primary);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.daily-note-vars-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.daily-note-var-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-surface);
+    color: var(--b3-theme-on-surface);
+    transition: all 0.15s ease;
+    font-size: 12.5px;
+    font-family: monospace;
+    line-height: 1.4;
+}
+
+.daily-note-var-tag:hover {
+    background-color: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary-lighter);
+}
+
+.daily-note-var-tag small {
+    font-size: 11px;
+    color: var(--b3-theme-on-surface-light);
+    font-family: inherit;
+}
+
+.daily-note-var-tag:hover small {
+    color: var(--b3-theme-primary);
+    opacity: 0.8;
+}
+
+.daily-note-vars-footer {
+    padding: 10px 18px;
+    border-top: 1px solid var(--b3-border-color);
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* 弹窗内实时预览条 */
+.daily-note-vars-preview-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-surface);
+    flex-shrink: 0;
+}
+
+.daily-note-vars-preview-input {
+    flex: 1;
+    min-width: 0;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 6px;
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-background);
+    font-size: 13px;
+    font-family: monospace;
+    outline: none;
+    cursor: text;
+}
+
+.daily-note-vars-preview-input::placeholder {
+    color: var(--b3-theme-on-surface-light);
+    font-family: inherit;
+}
+
+.daily-note-vars-preview-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-surface);
+    transition: all 0.15s ease;
+    font-size: 12.5px;
+    font-family: inherit;
+    line-height: 1.4;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.daily-note-vars-preview-copy:hover {
+    background-color: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary-lighter);
+}
+
+.daily-note-vars-preview-copy.copied {
+    color: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary);
+}
+
+/* 弹窗内文档树预览 */
+.daily-note-vars-tree-wrap {
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-surface);
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--b3-theme-on-surface);
+    font-family: inherit;
+    min-height: 36px;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+/* 文档树节点 */
+.daily-note-tree-node {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 0;
+}
+
+.daily-note-tree-indent {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    flex-shrink: 0;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    user-select: none;
+    font-size: 10px;
+    opacity: 0.5;
+}
+
+.daily-note-tree-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.daily-note-tree-icon.folder::before {
+    content: "▼";
+    font-size: 8px;
+    color: var(--b3-theme-on-surface-light);
+}
+
+.daily-note-tree-icon.file::before {
+    content: "📄";
+    font-size: 12px;
+}
+
+.daily-note-tree-icon.root::before {
+    content: "🗂️";
+    font-size: 12px;
+}
+
+.daily-note-tree-text {
+    color: var(--b3-theme-on-background);
+    font-weight: 500;
+}
+
+.daily-note-tree-text.leaf {
+    color: var(--b3-theme-on-surface);
+    font-weight: 400;
 }
 
 /* 检索式可见性复选框 */

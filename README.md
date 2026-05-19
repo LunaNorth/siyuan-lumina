@@ -1,95 +1,142 @@
 
-
-问题反馈：[轻语 & 问题反馈](https://ld246.com/article/1777266791604)
-<div style="margin: 0 auto; font-family: var(--b3-font-family); color: var(--b3-theme-on-background); line-height: 1.7;">
-
+问题反馈：[轻语 & 问题反馈](https://ld246.com/article/1777266791604) | [使用介绍](https://ld246.com/article/1778921929846)
+<div style="font-family: var(--b3-font-family); color: var(--b3-theme-on-background); line-height: 1.5;">
 
   <!-- 核心记录 -->
-  <div style="margin-bottom: 28px;">
-    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
-      <div style="width: 4px; height: 18px; background: var(--b3-theme-primary); border-radius: 2px;"></div>
-      <div style="font-size: 16px; font-weight: 700; color: var(--b3-theme-on-background);">核心记录</div>
+  <div style="margin-bottom: 20px;">
+    <div style="font-size: 13px; font-weight: 700; color: var(--b3-theme-primary); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px;">核心记录</div>
+
+  <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 16px 20px; margin-bottom: 10px;">
+      <div style="display: inline-block; background: var(--b3-theme-primary-lightest); color: var(--b3-theme-primary); font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 4px; margin-bottom: 8px; letter-spacing: 0.05em;">INSTANT CAPTURE</div>
+      <div style="font-size: 16px; font-weight: 700; color: var(--b3-theme-on-background); margin-bottom: 6px;">即时输入 & 轻语速记</div>
+      <div style="font-size: 13px; color: var(--b3-theme-on-surface); line-height: 1.6;">像发朋友圈一样快速记录想法，支持 Markdown、标签、图片、任务列表；独立窗口一键唤出，随记随走</div>
     </div>
-    
-  <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 20px 24px; margin-bottom: 10px;">
-      <div style="font-size: 11px; font-weight: 600; color: var(--b3-theme-primary); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;">Instant Capture</div>
-      <div style="font-weight: 700; color: var(--b3-theme-on-background); font-size: 15px; margin-bottom: 4px;">即时输入</div>
-      <div style="font-size: 13px; color: var(--b3-theme-on-surface);">像发朋友圈一样快速记录想法，支持 Markdown 语法、标签、图片</div>
-    </div>
-    
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 18px 22px;">
-        <div style="font-size: 11px; font-weight: 600; color: var(--b3-theme-on-surface-light); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">Layout 01</div>
-        <div style="font-weight: 700; color: var(--b3-theme-on-background); font-size: 15px; margin-bottom: 2px;">平铺布局</div>
-        <div style="font-size: 12px; color: var(--b3-theme-on-surface);">传统列表，简洁清晰，适合快速浏览</div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 14px 16px;">
+        <div style="font-size: 10px; font-weight: 600; color: var(--b3-theme-secondary); letter-spacing: 0.08em; margin-bottom: 6px;">LAYOUT 01</div>
+        <div style="font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 3px;">说说视图</div>
+        <div style="font-size: 12px; color: var(--b3-theme-on-surface); line-height: 1.5;">传统列表布局，支持长笔记自动折叠</div>
       </div>
-      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 18px 22px;">
-        <div style="font-size: 11px; font-weight: 600; color: var(--b3-theme-on-surface-light); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">Layout 02</div>
-        <div style="font-weight: 700; color: var(--b3-theme-on-background); font-size: 15px; margin-bottom: 2px;">卡片布局</div>
-        <div style="font-size: 12px; color: var(--b3-theme-on-surface);">三列瀑布流，直观美观，适合回顾与发现</div>
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 14px 16px;">
+        <div style="font-size: 10px; font-weight: 600; color: var(--b3-theme-success); letter-spacing: 0.08em; margin-bottom: 6px;">LAYOUT 02</div>
+        <div style="font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 3px;">朋友圈视图</div>
+        <div style="font-size: 12px; color: var(--b3-theme-on-surface); line-height: 1.5;">模拟朋友圈时间线，沉浸式回顾每日动态</div>
+      </div>
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 14px 16px;">
+        <div style="font-size: 10px; font-weight: 600; color: var(--b3-protyle-inline-blockref-color); letter-spacing: 0.08em; margin-bottom: 6px;">LAYOUT 03</div>
+        <div style="font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 3px;">图书视图</div>
+        <div style="font-size: 12px; color: var(--b3-theme-on-surface); line-height: 1.5;">导入微信读书笔记，集中管理阅读批注与想法</div>
       </div>
     </div>
   </div>
 
   <!-- 数据同步 -->
-  <div style="margin-bottom: 28px;">
-    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
-      <div style="width: 4px; height: 18px; background: var(--b3-theme-primary); border-radius: 2px;"></div>
-      <div style="font-size: 16px; font-weight: 700; color: var(--b3-theme-on-background);">数据同步</div>
-    </div>
-    
-  <div style="display: flex; flex-direction: column; gap: 8px;">
-      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 18px 22px; display: flex; align-items: flex-start; gap: 12px;">
-        <div style="min-width: 6px; height: 6px; background: var(--b3-theme-primary); border-radius: 50%; margin-top: 8px;"></div>
+  <div style="margin-bottom: 20px;">
+    <div style="font-size: 13px; font-weight: 700; color: var(--b3-theme-success); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px;">数据同步</div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
+        <div style="width: 36px; height: 36px; background: var(--b3-theme-primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--b3-theme-on-primary); font-size: 13px; font-weight: 700; flex-shrink: 0;">Sy</div>
         <div>
-          <div style="font-weight: 700; color: var(--b3-theme-on-background); font-size: 14px; margin-bottom: 2px;">同步到思源日记</div>
-          <div style="font-size: 13px; color: var(--b3-theme-on-surface);">发布内容后可自动同步到当日日记，让笔记与日记无缝衔接</div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 2px;">思源日记同步</div>
+          <div style="font-size: 12px; color: var(--b3-theme-on-surface);">发布内容后自动同步到当日日记</div>
         </div>
       </div>
-      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 18px 22px; display: flex; align-items: flex-start; gap: 12px;">
-        <div style="min-width: 6px; height: 6px; background: var(--b3-theme-primary); border-radius: 50%; margin-top: 8px;"></div>
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
+        <div style="width: 36px; height: 36px; background: var(--b3-theme-secondary); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--b3-theme-on-secondary); font-size: 12px; font-weight: 700; flex-shrink: 0;">Fl</div>
         <div>
-          <div style="font-weight: 700; color: var(--b3-theme-on-background); font-size: 14px; margin-bottom: 2px;">Flomo 同步</div>
-          <div style="font-size: 13px; color: var(--b3-theme-on-surface);">绑定 Flomo 账号后，可将历史笔记全量或增量同步到思源</div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 2px;">Flomo 同步</div>
+          <div style="font-size: 12px; color: var(--b3-theme-on-surface);">历史笔记全量或增量同步到思源</div>
+        </div>
+      </div>
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
+        <div style="width: 36px; height: 36px; background: var(--b3-protyle-inline-blockref-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--b3-theme-on-primary); font-size: 11px; font-weight: 700; flex-shrink: 0;">Wr</div>
+        <div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 2px;">Writeathon 同步</div>
+          <div style="font-size: 12px; color: var(--b3-theme-on-surface);">支持 Writeathon 平台数据同步到轻语</div>
+        </div>
+      </div>
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
+        <div style="width: 36px; height: 36px; background: var(--b3-theme-error); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--b3-theme-on-error); font-size: 12px; font-weight: 700; flex-shrink: 0;">Me</div>
+        <div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 2px;">Memos 同步</div>
+          <div style="font-size: 12px; color: var(--b3-theme-on-surface);">绑定自托管 Memos 服务，同步笔记数据</div>
         </div>
       </div>
     </div>
   </div>
 
   <!-- 回顾与发现 -->
-  <div style="margin-bottom: 28px;">
-    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
-      <div style="width: 4px; height: 18px; background: var(--b3-theme-primary); border-radius: 2px;"></div>
-      <div style="font-size: 16px; font-weight: 700; color: var(--b3-theme-on-background);">回顾与发现</div>
-    </div>
-    
-  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
-      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 22px 14px; text-align: center;">
-        <div style="font-size: 22px; margin-bottom: 8px; color: var(--b3-theme-primary);">◐</div>
-        <div style="font-weight: 700; color: var(--b3-theme-on-background); font-size: 13px; margin-bottom: 4px;">每日回顾</div>
-        <div style="font-size: 11px; color: var(--b3-theme-on-surface); line-height: 1.5;">按配置规则随机抽取过往笔记，温故知新</div>
+  <div style="margin-bottom: 20px;">
+    <div style="font-size: 13px; font-weight: 700; color: var(--b3-protyle-inline-blockref-color); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px;">回顾与发现</div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 18px 12px; text-align: center;">
+        <div style="width: 40px; height: 40px; background: var(--b3-theme-primary-lightest); border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 18px; color: var(--b3-theme-primary);">◐</div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 4px;">每日回顾</div>
+        <div style="font-size: 11px; color: var(--b3-theme-on-surface); line-height: 1.5;">随机抽取过往笔记，温故知新</div>
       </div>
-      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 22px 14px; text-align: center;">
-        <div style="font-size: 22px; margin-bottom: 8px; color: var(--b3-theme-primary);">◎</div>
-        <div style="font-weight: 700; color: var(--b3-theme-on-background); font-size: 13px; margin-bottom: 4px;">随机漫步</div>
-        <div style="font-size: 11px; color: var(--b3-theme-on-surface); line-height: 1.5;">随机翻开一条历史记录，在不经意间与过去的自己相遇</div>
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 18px 12px; text-align: center;">
+        <div style="width: 40px; height: 40px; background: var(--b3-theme-primary-lightest); border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 18px; color: var(--b3-theme-primary);">◎</div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 4px;">随机漫步</div>
+        <div style="font-size: 11px; color: var(--b3-theme-on-surface); line-height: 1.5;">随机翻开历史记录，与过去相遇</div>
       </div>
-      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 22px 14px; text-align: center;">
-        <div style="font-size: 22px; margin-bottom: 8px; color: var(--b3-theme-primary);">▣</div>
-        <div style="font-weight: 700; color: var(--b3-theme-on-background); font-size: 13px; margin-bottom: 4px;">热力图</div>
-        <div style="font-size: 11px; color: var(--b3-theme-on-surface); line-height: 1.5;">可视化展示近期的记录频率，激励持续记录的习惯</div>
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 18px 12px; text-align: center;">
+        <div style="width: 40px; height: 40px; background: var(--b3-theme-success-lightest, rgba(101, 184, 77, 0.12)); border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 18px; color: var(--b3-theme-success);">▣</div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 4px;">热力图</div>
+        <div style="font-size: 11px; color: var(--b3-theme-on-surface); line-height: 1.5;">可视化记录频率，激励持续记录</div>
+      </div>
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 18px 12px; text-align: center;">
+        <div style="width: 40px; height: 40px; background: var(--b3-card-warning-background); border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 18px; color: var(--b3-card-warning-color);">◈</div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 4px;">统计视图</div>
+        <div style="font-size: 11px; color: var(--b3-theme-on-surface); line-height: 1.5;">月度分布、标签云，数据洞察</div>
       </div>
     </div>
   </div>
 
-  <!-- 底部 -->
-  <div style="text-align: center; padding: 0px 0 8px 0;">
-    <div style="color: var(--b3-theme-on-surface-light); font-size: 12px; letter-spacing: 0.06em;">记录每一个轻闪而过的念头</div>
-  </div>
+  <!-- 主题与个性化 -->
+  <div style="margin-bottom: 16px;">
+    <div style="font-size: 13px; font-weight: 700; color: var(--b3-theme-secondary); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 12px;">主题与个性化</div>
 
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
+        <div style="width: 36px; height: 36px; background: var(--b3-theme-background); border: 1px solid var(--b3-border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <div style="width: 16px; height: 16px; border-radius: 4px; background: var(--b3-theme-primary);"></div>
+        </div>
+        <div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 2px;">多主题适配</div>
+          <div style="font-size: 12px; color: var(--b3-theme-on-surface);">原主题、思源主题、20+ 种莫兰迪配色自由切换</div>
+        </div>
+      </div>
+      <div style="background: var(--b3-theme-surface); border: 1px solid var(--b3-border-color); border-radius: var(--b3-border-radius-b); padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
+        <div style="width: 36px; height: 36px; background: var(--b3-theme-background); border: 1px solid var(--b3-border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <div style="width: 16px; height: 16px; border-radius: 4px; background: var(--b3-theme-success);"></div>
+        </div>
+        <div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background); margin-bottom: 2px;">移动端支持</div>
+          <div style="font-size: 12px; color: var(--b3-theme-on-surface);">完美适配移动端，随时随地记录与回顾</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- 顶部标题 -->
+  <div style="text-align: center; padding: 0 0 24px;">
+    <div style="color: var(--b3-theme-on-surface-light); font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase;">记录每一个轻闪而过的念头</div>
+  </div>
 </div>
 
 ## 更新日志
+
+### v1.3.5
+- 修复同步到指定文档格式错乱问题
+- 修复日记模板问题
+- 新增说说同步设置中日记模板中的模板变量 ，可进行自由搭配
+- 新增日记动态图标
+- 修复说说视图无序有序列表显示问题
+- 修复朋友圈视图段落无法分开问题
+- 新增同步思源笔记后显示标签
+- 修改图书视图背景色不一致问题
 
 ### v1.3.4
 - 首先最最最感谢[5kyfkr](https://github.com/5kyfkr)的帮助
