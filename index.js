@@ -2910,12 +2910,14 @@ ipcRenderer.on('lumina-close', () => {
                                                         <span class="daily-note-var-tag" data-var="{WeekdayCN}">{WeekdayCN} <small>简写</small></span>
                                                         <span class="daily-note-var-tag" data-var="{WeekdayCNFull}">{WeekdayCNFull} <small>完整</small></span>
                                                         <span class="daily-note-var-tag" data-var="{WeekdayCN2}">{WeekdayCN2} <small>周几</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{WeekdayEN}">{WeekdayEN} <small>英文缩写</small></span>
                                                     </div>
                                                 </div>
                                                 <div class="daily-note-vars-section">
                                                     <div class="daily-note-vars-section-title">季节</div>
                                                     <div class="daily-note-vars-grid">
                                                         <span class="daily-note-var-tag" data-var="{Season}">{Season} <small>春夏秋冬</small></span>
+                                                        <span class="daily-note-var-tag" data-var="{SeasonEN}">{SeasonEN} <small>英文</small></span>
                                                     </div>
                                                 </div>
                                                 <div class="daily-note-vars-section">
@@ -10141,6 +10143,9 @@ ipcRenderer.on('lumina-close', () => {
     runDateFunc(name, date) {
         const weekdaysCN = ["日", "一", "二", "三", "四", "五", "六"];
         const weekdaysCNFull = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+        const weekdaysEN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const seasonMap = ['冬', '冬', '春', '春', '春', '夏', '夏', '夏', '秋', '秋', '秋', '冬'];
+        const seasonMapEN = ['Winter', 'Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Winter'];
         const iso = this.getISOWeekInfo(date);
 
         switch (name) {
@@ -10155,6 +10160,9 @@ ipcRenderer.on('lumina-close', () => {
             case "WeekdayCN": return weekdaysCN[date.getDay()];
             case "WeekdayCN2": return "周" + weekdaysCN[date.getDay()];
             case "WeekdayCNFull": return weekdaysCNFull[date.getDay()];
+            case "WeekdayEN": return weekdaysEN[date.getDay()];
+            case "Season": return seasonMap[date.getMonth()];
+            case "SeasonEN": return seasonMapEN[date.getMonth()];
             case "WeekOfYear": {
                 const d = new Date(date);
                 const currentWeekday = (d.getDay() + 6) % 7;
@@ -10203,6 +10211,8 @@ ipcRenderer.on('lumina-close', () => {
         // 季节判断
         const seasonMap = ['冬', '冬', '春', '春', '春', '夏', '夏', '夏', '秋', '秋', '秋', '冬'];
         const season = seasonMap[month - 1];
+        const weekdaysEN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const seasonMapEN = ['Winter', 'Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Winter'];
 
         const placeholders = {
             '{YYYY}': String(year),
@@ -10221,7 +10231,9 @@ ipcRenderer.on('lumina-close', () => {
             '{WeekdayCN}': weekdaysCN[weekday],
             '{WeekdayCNFull}': weekdaysCNFull[weekday],
             '{WeekdayCN2}': '周' + weekdaysCN[weekday],
+            '{WeekdayEN}': weekdaysEN[weekday],
             '{Season}': season,
+            '{SeasonEN}': seasonMapEN[month - 1],
             '{WeekOfYear}': String(weekOfYear),
             '{ISOWeek}': String(iso.week),
             '{ISOYear}': String(iso.year),
@@ -10293,7 +10305,47 @@ ipcRenderer.on('lumina-close', () => {
                 }
             }
 
-            // 5. 设置日记动态图标
+            // 5. 设置日记自定义属性（仅新创建时）
+            if (docId && isNewDoc) {
+                try {
+                    // 根据模板变量生成纯英文/数字的属性后缀（思源属性名不支持中文）
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    let attrSuffix = `${year}${month}${day}`;
+
+                    const weekdaysEN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    const seasonMapEN = ['Winter', 'Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Winter'];
+
+                    // 检测模板中是否使用了星期相关变量（兼容 {WeekdayXX} 和 {{now | WeekdayXX}} 语法）
+                    const hasWeekday = /{(Weekday|WeekdayCN|WeekdayCN2|WeekdayCNFull|WeekdayEN)}/.test(template) || /{{\s*now\s*\|\s*Weekday/.test(template);
+                    // 检测模板中是否使用了季节相关变量
+                    const hasSeason = /{(Season|SeasonEN)}/.test(template) || /{{\s*now\s*\|\s*Season/.test(template);
+
+                    if (hasWeekday) {
+                        attrSuffix += weekdaysEN[date.getDay()];
+                    }
+                    if (hasSeason) {
+                        attrSuffix += seasonMapEN[date.getMonth()];
+                    }
+
+                    const attrName = `custom-dailynote-${attrSuffix}`;
+                    await fetch('/api/attr/setBlockAttrs', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: docId,
+                            attrs: {
+                                [attrName]: attrSuffix
+                            }
+                        })
+                    });
+                } catch (e) {
+                    console.warn('设置日记自定义属性失败:', e);
+                }
+            }
+
+            // 6. 设置日记动态图标
             if (docId && this.dailyNoteIconType) {
                 try {
                     const dateStr = date.toISOString().split('T')[0];
