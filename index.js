@@ -8687,7 +8687,7 @@ ipcRenderer.on('lumina-close', () => {
         oldTags.forEach(tag => {
             if (seenTags.has(tag)) return;
             seenTags.add(tag);
-            const tagRegex = new RegExp(`#${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\s|$|[，。！？；：""''（）【】])`, 'g');
+            const tagRegex = new RegExp(`#${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$|[，。！？；：""''（）【】])`, 'g');
             template = template.replace(tagRegex, () => {
                 const ph = `__LPH${phIndex++}__`;
                 placeholders.push({ ph, value: `#${tag}` });
@@ -8701,7 +8701,7 @@ ipcRenderer.on('lumina-close', () => {
         // 从模板中提取旧纯内容
         let oldPureInTemplate = template;
         placeholders.forEach(p => {
-            oldPureInTemplate = oldPureInTemplate.replace(new RegExp(p.ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\s*', 'g'), ' ');
+            oldPureInTemplate = oldPureInTemplate.replace(new RegExp(p.ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'g'), ' ');
         });
         oldPureInTemplate = normalizeSpaces(oldPureInTemplate);
 
