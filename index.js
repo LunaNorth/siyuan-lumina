@@ -451,6 +451,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
         this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
         this.enterToSubmit = false; // 输入框回车直接提交
+        this.showSidebarDock = false; // 是否显示侧边栏 Dock（默认不显示）
+        this.showLifeLogRecords = false; // 是否显示读取到的 LifeLog 记录（默认不显示）
         this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG }; // 图书视图字体大小配置
         this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG }; // 图书视图同步配置
         this.autoCollapseLines = DEFAULT_AUTO_COLLAPSE_LINES; // 长笔记自动折叠行数
@@ -682,6 +684,31 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 this.ensureMobileTopBarEntry();
             }, 1000);
         } else {
+            if (this.showSidebarDock) {
+                this.addDock({
+                    config: {
+                        position: "RightBottom",
+                        size: { width: 400, height: 0 },
+                        icon: "iconLightWord",
+                        title: "轻语",
+                        hotkey: "⌥⌘D",
+                    },
+                    data: {},
+                    type: "lumina_desktop_dock",
+                    init: (dock) => {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'fn__flex-1 fn__flex-column north-shuoshuo-dock-view';
+                        wrapper.style.cssText = 'overflow:hidden;height:100%;';
+                        dock.element.appendChild(wrapper);
+                        this.render(wrapper);
+                    },
+                    show: () => {
+                        this.loadShuoshuos();
+                    },
+                    destroy: () => {}
+                });
+            }
+
             this._luminaTopBarElement = this.addTopBar({
                 icon: "iconLightWord",
                 title: "轻语",
@@ -2660,6 +2687,27 @@ ipcRenderer.on('lumina-close', () => {
                                 </div>
                             </div>
 
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>显示侧边栏</h4>
+                                        <p>开启后，在思源笔记右侧 Dock 栏显示轻语侧边栏。</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.showSidebarDock ? 'on' : ''}" id="settings-show-sidebar-dock-switch"></div>
+                                </div>
+                            </div>
+
+                            <!-- 显示 LifeLog 记录 -->
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>显示 LifeLog 记录</h4>
+                                        <p>开启后，在说说视图中显示本年度从思源笔记读取到的 LifeLog 记录。</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.showLifeLogRecords ? 'on' : ''}" id="settings-show-lifelog-records-switch"></div>
+                                </div>
+                            </div>
+
                             <!-- 字体大小设置 -->
                             <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-section-header">
@@ -3748,6 +3796,10 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     getContainerMainView(container) {
+        // Dock 侧边栏始终只显示笔记列表视图，不参与视图切换
+        if (container?.closest?.('.north-shuoshuo-dock-view')) {
+            return 'notes';
+        }
         const menuActive = container?.querySelector?.('.north-shuoshuo-menu-list .north-shuoshuo-menu-item.active[data-view]')?.dataset?.view;
         if (menuActive) return menuActive;
         const sidebarActive = container?.querySelector?.('.north-shuoshuo-sidebar .north-shuoshuo-nav-item.active[data-view]')?.dataset?.view;
@@ -3955,7 +4007,7 @@ ipcRenderer.on('lumina-close', () => {
                     return /https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content);
                 }
                 if (this.filterQuery === 'lifelog') {
-                    return !!this.extractType(content);
+                    return !!this.extractType(content) || !!s._isLifeLog;
                 }
                 if (this.filterQuery === 'has-comment') {
                     return content.includes('[MEMO:') || /^关联自：/.test(content);
@@ -4027,6 +4079,9 @@ ipcRenderer.on('lumina-close', () => {
 
         // 应用长笔记自动折叠
         requestAnimationFrame(() => this.applyAutoCollapse());
+
+        // 为 LifeLog 标签应用动态颜色
+        this.applyLifeLogTagColors();
 
         // 应用视图样式（异步，但不阻塞）
         this.applyViewStyle();
@@ -4194,21 +4249,64 @@ ipcRenderer.on('lumina-close', () => {
     // 渲染单个笔记卡片
     renderNoteCard(item) {
         const dateStr = this.formatDate(item.created);
-        const pinnedIcon = item.pinned ? `<span class="north-shuoshuo-note-pinned">${ICONS.pin}</span>` : '';
+        const pinnedIcon = item.pinned && !item._isLifeLog ? `<span class="north-shuoshuo-note-pinned">${ICONS.pin}</span>` : '';
         const memoRelations = this.renderMemoRelations(item.content);
+        const isLifeLog = item._isLifeLog;
+        // LifeLog 类型标签：优先用 _lifeLogType（来自 queryLifeLogRecords），为空时从 content 回退提取
+        const lifeLogType = item._lifeLogType || this.extractType(item.content) || '';
+        const lifeLogTypeBadge = isLifeLog && lifeLogType ? `<span class="north-shuoshuo-lifelog-type-badge" data-lifelog-type="${this.escapeHtml(lifeLogType)}">${this.escapeHtml(lifeLogType)}</span>` : '';
         return `
-            <div class="north-shuoshuo-note-card ${item.pinned ? 'pinned' : ''}" data-id="${item.id}">
+            <div class="north-shuoshuo-note-card ${item.pinned ? 'pinned' : ''} ${isLifeLog ? 'lifelog-record' : ''}" data-id="${item.id}">
+                ${lifeLogTypeBadge}
                 <div class="north-shuoshuo-note-header">
                     <span class="north-shuoshuo-note-date">${dateStr}</span>
                     <div class="north-shuoshuo-note-actions">
                         ${pinnedIcon}
-                        <span class="north-shuoshuo-note-menu" data-id="${item.id}">${ICONS.moreH}</span>
+                        ${!isLifeLog ? `<span class="north-shuoshuo-note-menu" data-id="${item.id}">${ICONS.moreH}</span>` : ''}
                     </div>
                 </div>
                 ${this.renderNoteContent(item.content)}
                 ${memoRelations}
             </div>
         `;
+    }
+
+    // 获取 LifeLog 类型颜色：优先读取 LifeLog 插件 CSS 定义的 --en-lifelog-border-color，未定义时用哈希算法兜底
+    getLifeLogTypeColor(type) {
+        if (!type) return '';
+        // 创建临时 NodeParagraph 元素匹配 LifeLog 插件的 CSS 规则
+        const temp = document.createElement('div');
+        temp.setAttribute('data-type', 'NodeParagraph');
+        temp.setAttribute('custom-lifelog-type', type);
+        temp.style.display = 'none';
+        document.body.appendChild(temp);
+        const styles = getComputedStyle(temp);
+        let color = styles.getPropertyValue('--en-lifelog-border-color').trim();
+        document.body.removeChild(temp);
+        // 如果 CSS 没定义，用哈希算法生成稳定颜色
+        if (!color) {
+            let hash = 0;
+            for (let i = 0; i < type.length; i++) {
+                hash = type.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = Math.abs(hash % 360);
+            color = `hsl(${hue}, 70%, 55%)`;
+        }
+        return color;
+    }
+
+    // 渲染完成后为 LifeLog 标签应用动态颜色
+    applyLifeLogTagColors() {
+        if (!this.container) return;
+        const badges = this.container.querySelectorAll('.north-shuoshuo-lifelog-type-badge');
+        badges.forEach(badge => {
+            const type = badge.getAttribute('data-lifelog-type');
+            if (!type) return;
+            const color = this.getLifeLogTypeColor(type);
+            if (color) {
+                badge.style.backgroundColor = color;
+            }
+        });
     }
 
     // 提取 MEMO 引用
@@ -4807,6 +4905,9 @@ ipcRenderer.on('lumina-close', () => {
 
         // 筛选数据
         let filtered = this.shuoshuos;
+
+        // 表格视图不显示 LifeLog 记录（只读，避免误删除）
+        filtered = filtered.filter(s => !s._isLifeLog);
 
         // 日期筛选
         if (this.selectedDate) {
@@ -7983,6 +8084,19 @@ ipcRenderer.on('lumina-close', () => {
         // 笔记卡片菜单
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (listEl) {
+            // LifeLog 卡片右键菜单
+            listEl.addEventListener('contextmenu', (e) => {
+                const lifeLogCard = e.target.closest('.north-shuoshuo-note-card.lifelog-record');
+                if (lifeLogCard) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const id = lifeLogCard.dataset.id;
+                    if (id) {
+                        this.showLifeLogMenu(id, lifeLogCard, e.clientX, e.clientY);
+                    }
+                }
+            });
+
             listEl.addEventListener('click', (e) => {
                 const menuEl = e.target.closest('.north-shuoshuo-note-menu');
                 if (menuEl) {
@@ -7993,6 +8107,8 @@ ipcRenderer.on('lumina-close', () => {
                     }
                     return;
                 }
+
+
                 
                 // 处理 MEMO 引用点击
                 const memoRef = e.target.closest('.north-shuoshuo-memo-ref');
@@ -8487,6 +8603,26 @@ ipcRenderer.on('lumina-close', () => {
     // 提取类型（#类型# 格式，前后都有#号）
     extractType(content) {
         if (!content) return '';
+        
+        // 优先识别开头 "类型：" 格式（只在内容开头有效）
+        const prefixMatch = content.trim().match(/^([^\s:：\n]+)[：:]\s*/);
+        if (prefixMatch) {
+            const type = prefixMatch[1].trim();
+            if (type && !/^\d+$/.test(type)) {
+                return type;
+            }
+        }
+        
+        // 识别 "时间 类型：内容" 格式（如 09:44 记录：内容，来自思源同步）
+        const timeTypeMatch = content.trim().match(/^\d{1,2}:\d{2}\s+([^\s:：\n]+)[：:]\s*/);
+        if (timeTypeMatch) {
+            const type = timeTypeMatch[1].trim();
+            if (type && !/^\d+$/.test(type)) {
+                return type;
+            }
+        }
+        
+        // 兼容旧的 #类型# 格式
         const typeRegex = /#([\w\u4e00-\u9fa5-]+)#/g;
         const types = [];
         let match;
@@ -8527,12 +8663,21 @@ ipcRenderer.on('lumina-close', () => {
         const placeholders = [];
         let phIndex = 0;
 
-        // 先替换类型标记（#类型#），避免类型名被误判为标签
+        // 先替换类型标记（#类型# 或 类型：），避免类型名被误判为标签
         if (oldType) {
+            // 替换 #类型# 格式
             const typeRegex = new RegExp(`#${oldType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}#`, 'g');
             template = template.replace(typeRegex, () => {
                 const ph = `__LPH${phIndex++}__`;
                 placeholders.push({ ph, value: `#${oldType}#` });
+                return ph;
+            });
+            
+            // 替换开头 "类型：" 格式
+            const prefixTypeRegex = new RegExp(`^${oldType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[：:]\\s*`);
+            template = template.replace(prefixTypeRegex, () => {
+                const ph = `__LPH${phIndex++}__`;
+                placeholders.push({ ph, value: `${oldType}：` });
                 return ph;
             });
         }
@@ -9488,9 +9633,8 @@ ipcRenderer.on('lumina-close', () => {
     extractAllTags() {
         const tagSet = new Set();
         this.shuoshuos.forEach(s => {
-            if (s.tags && s.tags.length > 0) {
-                s.tags.forEach(tag => tagSet.add(tag));
-            }
+            const tags = this.extractTags(s.content);
+            tags.forEach(tag => tagSet.add(tag));
         });
         return Array.from(tagSet).sort();
     }
@@ -9751,7 +9895,7 @@ ipcRenderer.on('lumina-close', () => {
             'no-tag': noTagCount,
             'has-image': hasImageCount,
             'has-link': hasLinkCount,
-            'lifelog': this.shuoshuos.filter(s => !!this.extractType(s.content)).length,
+            'lifelog': this.shuoshuos.filter(s => !!this.extractType(s.content) || !!s._isLifeLog).length,
             'has-comment': this.shuoshuos.filter(s => {
                 const c = s.content || '';
                 return c.includes('[MEMO:') || /^关联自：/.test(c);
@@ -9895,8 +10039,12 @@ ipcRenderer.on('lumina-close', () => {
             // 提取普通标签 #标签
             const tags = this.extractTags(content);
 
-            // 只要有任何 #xxx# 高亮标签，就添加时间前缀
+            // 提取类型（支持 #类型# 和开头"类型："两种格式）
+            const typeStr = this.extractType(content);
+
+            // 只要有 #xxx# 高亮标签或开头类型，就添加时间前缀
             const hasHighlight = highlights.length > 0;
+            const hasType = !!typeStr;
 
             let pureContent = content;
 
@@ -9904,6 +10052,11 @@ ipcRenderer.on('lumina-close', () => {
             highlights.forEach(h => {
                 pureContent = pureContent.replace(new RegExp(`#${h}#\\s*`, 'g'), '');
             });
+
+            // 如果是开头"类型："格式（且没有#类型#高亮），移除前缀避免重复
+            if (hasType && !hasHighlight) {
+                pureContent = pureContent.replace(/^[^\s:：\n]+[：:]\s*/, '').trim();
+            }
 
             // 保留普通标签在内容中，让思源笔记自动识别 #标签 格式
             pureContent = pureContent.trim();
@@ -9926,15 +10079,15 @@ ipcRenderer.on('lumina-close', () => {
             if (lines.length === 0 || (lines.length === 1 && !lines[0])) return;
 
             // 构建日记内容
-            // 如果有 #类型# 高亮标签，使用原格式：21:40 类型：内容
-            // 如果没有高亮标签，使用引用块格式：> [!NOTE] ✏️ 2026-04-30 21:35\n> 内容
+            // 如果有 #类型# 高亮标签或开头类型，使用原格式：21:40 类型：内容
+            // 如果没有高亮标签也没有开头类型，使用引用块格式：> [!NOTE] ✏️ 2026-04-30 21:35\n> 内容
             let diaryContent;
 
-            if (hasHighlight) {
-                // 有 #类型# 高亮标签，思源笔记格式：时间 类型：内容
-                const highlightStr = highlights.join(' ');
+            if (hasHighlight || hasType) {
+                // 有类型标记，思源笔记格式：时间 类型：内容
+                const displayType = hasHighlight ? highlights.join(' ') : typeStr;
                 // 第一行：时间 + 类型 + 冒号 + 内容
-                diaryContent = `${timeStr} ${highlightStr}：${lines[0]}`;
+                diaryContent = `${timeStr} ${displayType}：${lines[0]}`;
 
                 // 如果有更多行，添加换行和后续内容
                 if (lines.length > 1) {
@@ -10021,14 +10174,18 @@ ipcRenderer.on('lumina-close', () => {
             }
 
             if (blockId && typeof blockId === 'string') {
-                // 设置自定义属性
-                // 将类型和标签分开保存，便于后续加载时区分
-                const attrResult = await this.setLuminaBlockAttrs(blockId, {
-                    date: dateTimeStr,
-                    content: contentWithoutTags,
-                    tag: tags.join(' '),  // 只保存标签
-                    type: highlights.join(' ')  // 保存类型（#类型# 格式中的类型名）
-                });
+                // LifeLog（类型：内容）不设置 custom-lumina-* 属性，避免 loadShuoshuosFromSiyuan 读取到导致重复显示
+                // LifeLog 由 queryLifeLogRecords 通过 custom-lifelog-* 属性单独读取
+                if (!hasType) {
+                    // 设置自定义属性
+                    // 将类型和标签分开保存，便于后续加载时区分
+                    const attrResult = await this.setLuminaBlockAttrs(blockId, {
+                        date: dateTimeStr,
+                        content: contentWithoutTags,
+                        tag: tags.join(' '),  // 只保存标签
+                        type: highlights.join(' ')  // 保存类型（#类型# 格式中的类型名）
+                    });
+                }
             }
 
             return blockId; // 返回 blockId，供调用方保存到说说对象
@@ -10368,6 +10525,63 @@ ipcRenderer.on('lumina-close', () => {
                 }
             }
 
+            // 7. 设置年份和月份文件夹的排序（新创建的排在前面）
+            try {
+                const pathParts = hPath.split('/');
+                if (pathParts.length >= 2) {
+                    const yearStr = pathParts[0];
+                    const monthStr = pathParts[1];
+                    const year = parseInt(yearStr, 10);
+                    const month = parseInt(monthStr, 10);
+                    if (!isNaN(year) && !isNaN(month)) {
+                        // 年份排序：值越小排越前（新年份 = 小值）
+                        const yearSort = 9999 - year;
+                        // 月份排序：值越小排越前（新月份 = 小值）
+                        const monthSort = 12 - month + 1;
+
+                        // 设置年份文件夹排序
+                        const yearPath = pathParts[0];
+                        const yearIdsRes = await fetch('/api/filetree/getIDsByHPath', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notebook: nbId, path: yearPath })
+                        });
+                        const yearIdsResult = await yearIdsRes.json();
+                        if (yearIdsResult.code === 0 && yearIdsResult.data && yearIdsResult.data.length > 0) {
+                            await fetch('/api/attr/setBlockAttrs', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    id: yearIdsResult.data[0],
+                                    attrs: { 'custom-sy-sort': String(yearSort) }
+                                })
+                            });
+                        }
+
+                        // 设置月份文件夹排序
+                        const monthPath = pathParts.slice(0, 2).join('/');
+                        const monthIdsRes = await fetch('/api/filetree/getIDsByHPath', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ notebook: nbId, path: monthPath })
+                        });
+                        const monthIdsResult = await monthIdsRes.json();
+                        if (monthIdsResult.code === 0 && monthIdsResult.data && monthIdsResult.data.length > 0) {
+                            await fetch('/api/attr/setBlockAttrs', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    id: monthIdsResult.data[0],
+                                    attrs: { 'custom-sy-sort': String(monthSort) }
+                                })
+                            });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('设置日记文件夹排序失败:', e);
+            }
+
             return docId;
         } catch (e) {
             console.error('获取或创建日记文档失败:', e);
@@ -10583,6 +10797,8 @@ ipcRenderer.on('lumina-close', () => {
         if (options.hideTags) {
             // 移除内容中的标签，避免重复显示
             displayText = displayText.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim();
+            // 移除开头的"类型："前缀（类型标记）
+            displayText = displayText.replace(/^[^\s:：\n]+[：:]\s*/, '').trim();
             displayText = displayText.replace(/\n{3,}/g, '\n\n').trim();
         }
         
@@ -11148,6 +11364,178 @@ ipcRenderer.on('lumina-close', () => {
                 }
             });
         }, 0);
+    }
+
+    // 显示 LifeLog 卡片菜单（编辑 + 打开文档）
+    // mouseX/mouseY: 右键点击时的鼠标位置（可选）
+    showLifeLogMenu(id, triggerEl, mouseX, mouseY) {
+        const existingMenu = document.querySelector('.north-shuoshuo-note-menu-dropdown');
+        if (existingMenu) existingMenu.remove();
+
+        const item = this.shuoshuos.find(s => s.id === id);
+        if (!item) return;
+
+        const menu = document.createElement('div');
+        menu.className = 'north-shuoshuo-note-menu-dropdown';
+        menu.innerHTML = `
+            <div class="north-shuoshuo-menu-item" data-action="edit">
+                <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconEdit"></use></svg></span>
+                <span class="north-shuoshuo-menu-text">编辑</span>
+            </div>
+            <div class="north-shuoshuo-menu-item" data-action="jump">
+                <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconOpen"></use></svg></span>
+                <span class="north-shuoshuo-menu-text">打开文档</span>
+            </div>
+        `;
+
+        document.body.appendChild(menu);
+
+        menu.style.position = 'fixed';
+        menu.style.zIndex = '99999';
+        const menuWidth = menu.offsetWidth;
+        const menuHeight = menu.offsetHeight;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        if (mouseX != null && mouseY != null) {
+            // 基于鼠标位置定位
+            let top = mouseY;
+            let left = mouseX;
+            if (top + menuHeight > viewportHeight) top = mouseY - menuHeight;
+            if (left + menuWidth > viewportWidth) left = viewportWidth - menuWidth - 8;
+            menu.style.top = `${top}px`;
+            menu.style.left = `${left}px`;
+        } else {
+            const rect = triggerEl.getBoundingClientRect();
+            if (rect.bottom + 4 + menuHeight > viewportHeight) {
+                menu.style.top = `${rect.top - menuHeight - 4}px`;
+            } else {
+                menu.style.top = `${rect.bottom + 4}px`;
+            }
+            menu.style.left = `${rect.left - 120}px`;
+        }
+
+        menu.addEventListener('click', async (e) => {
+            const menuItem = e.target.closest('.north-shuoshuo-menu-item');
+            if (!menuItem) return;
+            const action = menuItem.dataset.action;
+            menu.remove();
+            switch (action) {
+                case 'edit':
+                    await this.editLifeLog(id);
+                    break;
+                case 'jump':
+                    if (item.boundBlockId) {
+                        await this.openSiyuanBlockAndCloseMobileShell(item.boundBlockId);
+                    }
+                    break;
+            }
+        });
+
+        setTimeout(() => {
+            document.addEventListener('click', function closeMenu(e) {
+                if (!menu.contains(e.target)) {
+                    menu.remove();
+                    document.removeEventListener('click', closeMenu);
+                }
+            });
+        }, 0);
+    }
+
+    // 编辑 LifeLog（弹窗编辑思源块内容）
+    async editLifeLog(id) {
+        const item = this.shuoshuos.find(s => s.id === id);
+        if (!item || !item.boundBlockId) return;
+
+        // 获取思源块原始内容
+        let originalContent = '';
+        try {
+            const response = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stmt: `SELECT content FROM blocks WHERE id = '${item.boundBlockId}'` })
+            });
+            const result = await response.json();
+            if (result.code === 0 && result.data && result.data.length > 0) {
+                originalContent = result.data[0].content || '';
+            }
+        } catch (e) {}
+
+        // 构造默认编辑内容：时间 类型：内容
+        const timeStr = this.formatTimeForDiary(item.created);
+        const typeStr = item._lifeLogType || this.extractType(originalContent) || '';
+        const defaultContent = originalContent || `${timeStr} ${typeStr}：${item.content || ''}`;
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); display: flex;
+            align-items: center; justify-content: center; z-index: 99999;
+        `;
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            background: var(--b3-theme-background); padding: 24px; border-radius: 12px;
+            width: 500px; max-width: 90%; max-height: 80vh; overflow: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15); color: var(--b3-theme-on-background);
+        `;
+        dialog.innerHTML = `
+            <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">编辑 LifeLog</div>
+            <textarea id="lifelog-edit-content" style="
+                width: 100%; min-height: 120px; padding: 12px;
+                border: 1px solid var(--b3-border-color); border-radius: 8px;
+                font-size: 14px; font-family: inherit; resize: vertical;
+                outline: none; box-sizing: border-box; margin-bottom: 16px;
+                background: var(--b3-theme-background); color: var(--b3-theme-on-background);
+            ">${this.escapeHtml(defaultContent)}</textarea>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button id="lifelog-edit-cancel" style="
+                    padding: 8px 16px; border: 1px solid var(--b3-border-color);
+                    background: var(--b3-theme-background); border-radius: 6px;
+                    cursor: pointer; font-size: 14px; color: var(--b3-theme-on-background);
+                ">取消</button>
+                <button id="lifelog-edit-save" style="
+                    padding: 8px 16px; border: none; background: var(--b3-theme-primary);
+                    color: var(--b3-theme-on-primary); border-radius: 6px;
+                    cursor: pointer; font-size: 14px;
+                ">保存</button>
+            </div>
+        `;
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        const textarea = dialog.querySelector('#lifelog-edit-content');
+        textarea.focus();
+
+        dialog.querySelector('#lifelog-edit-cancel').addEventListener('click', () => overlay.remove());
+
+        dialog.querySelector('#lifelog-edit-save').addEventListener('click', async () => {
+            const newContent = textarea.value.trim();
+            if (!newContent) {
+                showMessage('内容不能为空');
+                return;
+            }
+            try {
+                const updateResponse = await fetch('/api/block/updateBlock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dataType: 'markdown', data: newContent, id: item.boundBlockId })
+                });
+                const updateResult = await updateResponse.json();
+                if (updateResult.code === 0) {
+                    overlay.remove();
+                    showMessage('已保存');
+                    // 刷新说说列表以显示更新后的内容
+                    await this.loadShuoshuos();
+                    this.refreshMountedShuoshuoViews();
+                } else {
+                    showMessage('保存失败: ' + (updateResult.msg || '未知错误'));
+                }
+            } catch (e) {
+                showMessage('保存失败');
+            }
+        });
+
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
     }
 
     // 置顶/取消置顶
@@ -11736,6 +12124,11 @@ ipcRenderer.on('lumina-close', () => {
             // 移除所有 #类型# 格式（前后都有#号）
             pureContent = pureContent.replace(/#([\w\/\u4e00-\u9fa5-]+)#\s*/g, '').trim();
             
+            // 移除开头 "类型：" 格式（如果存在）
+            if (types) {
+                pureContent = pureContent.replace(new RegExp(`^${types.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[：:]\\s*`), '').trim();
+            }
+            
             // 移除所有 #标签 格式（只有开头有#号）
             tags.forEach(tag => {
                 pureContent = pureContent.replace(new RegExp(`#${tag}\\s*`, 'g'), '');
@@ -11825,13 +12218,16 @@ ipcRenderer.on('lumina-close', () => {
             }
 
             // 5. 更新自定义属性（属性中保存纯内容、标签和类型）
-            const dateTimeStr = this.formatDateTimeAttr(shuoshuo.created);
-            await this.setLuminaBlockAttrs(blockId, {
-                date: dateTimeStr,
-                content: pureContent,
-                tag: tags.join(' '),  // 保存标签
-                type: types  // 保存类型（#类型# 格式中的类型名）
-            });
+            // LifeLog（类型：内容）不设置 custom-lumina-* 属性，避免 loadShuoshuosFromSiyuan 读取到导致重复
+            if (!types) {
+                const dateTimeStr = this.formatDateTimeAttr(shuoshuo.created);
+                await this.setLuminaBlockAttrs(blockId, {
+                    date: dateTimeStr,
+                    content: pureContent,
+                    tag: tags.join(' '),  // 保存标签
+                    type: types  // 保存类型（#类型# 格式中的类型名）
+                });
+            }
 
             return true;
         } catch (e) {
@@ -11885,7 +12281,9 @@ ipcRenderer.on('lumina-close', () => {
             if (this.syncMode === 'dailynote') {
                 item.boundBlockId = blockId;
                 await this.saveShuoshuos();
-                showMessage("已同步到日记，并与此说说绑定");
+                // LifeLog（类型：内容）提示与普通说说区分
+                const isLifeLog = !!this.extractType(item.content);
+                showMessage(isLifeLog ? "已同步到日记" : "已同步到日记，并与此说说绑定");
             } else {
                 showMessage("已同步到指定文档");
             }
@@ -12042,6 +12440,11 @@ ipcRenderer.on('lumina-close', () => {
 
     deleteShuoshuo(id) {
         const item = this.shuoshuos.find(s => s.id === id);
+        // LifeLog 记录为只读，不允许删除
+        if (item && item._isLifeLog) {
+            showMessage('LifeLog 记录为只读，无法删除');
+            return;
+        }
         this.confirmAboveMobileShell("⚠️ 确认删除", "确定要删除这条笔记吗？\n\n如果已绑定到思源笔记块，将同时删除对应的块。", async () => {
             // 如果有绑定的思源块，先删除块
             this.shuoshuos = this.shuoshuos.filter(s => s.id !== id);
@@ -12556,18 +12959,23 @@ ipcRenderer.on('lumina-close', () => {
             if (blockContent !== oldContent || tagsChanged) {
                 // 从旧说说内容中提取类型，用于更新属性
                 const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
-                let currentType = attrs['custom-lumina-type'] || '';
-                if (index !== -1) {
-                    currentType = this.extractType(this.shuoshuos[index].content);
-                }
+                // 如果块不在当前说说列表中，不设置属性（避免给 LifeLog 等未绑定块设置属性）
+                if (index === -1) return;
                 
-                await this.setLuminaBlockAttrs(blockId, {
-                    date: attrs['custom-lumina-date'] || '',
-                    content: blockContent,
-                    tag: newTagStr,
-                    type: currentType
-                });
-                // console.log('[轻语] 已自动同步块内容到属性:', blockId);
+                let currentType = attrs['custom-lumina-type'] || '';
+                currentType = this.extractType(this.shuoshuos[index].content);
+                const isLifeLog = !!this.shuoshuos[index]._isLifeLog || !!currentType;
+                
+                // LifeLog（类型：内容）不设置 custom-lumina-* 属性
+                if (!isLifeLog) {
+                    await this.setLuminaBlockAttrs(blockId, {
+                        date: attrs['custom-lumina-date'] || '',
+                        content: blockContent,
+                        tag: newTagStr,
+                        type: currentType
+                    });
+                    // console.log('[轻语] 已自动同步块内容到属性:', blockId);
+                }
 
                 // index 已在上面声明，这里直接使用
                 if (index !== -1) {
@@ -12783,6 +13191,10 @@ ipcRenderer.on('lumina-close', () => {
 
     // 切换主视图（说说视图 vs 设置视图）
     switchMainView(view, navItem) {
+        // Dock 侧边栏始终只显示笔记列表视图，不参与视图切换
+        if (this.container?.closest?.('.north-shuoshuo-dock-view') && view !== 'notes') {
+            return;
+        }
         const flomoArea = this.container.querySelector('.north-shuoshuo-flomo-area');
         const settingsArea = this.container.querySelector('#shuoshuo-settings-area');
 
@@ -13095,6 +13507,36 @@ ipcRenderer.on('lumina-close', () => {
                 this.enterToSubmit = enterSubmitSwitch.classList.contains('on');
                 this.syncEnterKeyHint();
                 await this.saveConfig();
+            });
+        }
+
+        // 显示侧边栏
+        const showSidebarDockSwitch = this.container.querySelector('#settings-show-sidebar-dock-switch');
+        if (showSidebarDockSwitch) {
+            // 使用 cloneNode 防止重复绑定事件
+            showSidebarDockSwitch.replaceWith(showSidebarDockSwitch.cloneNode(true));
+            const newShowSidebarDockSwitch = this.container.querySelector('#settings-show-sidebar-dock-switch');
+            newShowSidebarDockSwitch.addEventListener('click', async () => {
+                newShowSidebarDockSwitch.classList.toggle('on');
+                this.showSidebarDock = newShowSidebarDockSwitch.classList.contains('on');
+                await this.saveConfig();
+                showMessage(this.showSidebarDock ? '已开启侧边栏，请刷新界面生效' : '已关闭侧边栏，请刷新界面生效');
+            });
+        }
+
+        // 显示 LifeLog 记录
+        const showLifeLogRecordsSwitch = this.container.querySelector('#settings-show-lifelog-records-switch');
+        if (showLifeLogRecordsSwitch) {
+            // 使用 cloneNode 防止重复绑定事件（bindSettingsEvents 每次切换设置视图都会调用）
+            showLifeLogRecordsSwitch.replaceWith(showLifeLogRecordsSwitch.cloneNode(true));
+            const newShowLifeLogRecordsSwitch = this.container.querySelector('#settings-show-lifelog-records-switch');
+            newShowLifeLogRecordsSwitch.addEventListener('click', async () => {
+                newShowLifeLogRecordsSwitch.classList.toggle('on');
+                this.showLifeLogRecords = newShowLifeLogRecordsSwitch.classList.contains('on');
+                await this.saveConfig();
+                await this.loadShuoshuos();
+                this.refreshMountedShuoshuoViews();
+                showMessage(this.showLifeLogRecords ? '已开启 LifeLog 记录显示' : '已关闭 LifeLog 记录显示');
             });
         }
 
@@ -14525,6 +14967,16 @@ ipcRenderer.on('lumina-close', () => {
                 }
             }
 
+            // 3. 从思源笔记查询 LifeLog 记录（根据设置开关决定是否加载）
+            let lifeLogRecords = [];
+            if (this.showLifeLogRecords) {
+                try {
+                    lifeLogRecords = await this.queryLifeLogRecords();
+                } catch (e) {
+                    // console.warn('[轻语] 加载 LifeLog 记录失败:', e.message);
+                }
+            }
+
             if (this._lastLoadShuoshuosFromSiyuanOk) {
                 // 合并策略：
                 // - 已绑定的说说以思源SQL数据为准（覆盖本地缓存）
@@ -14554,25 +15006,200 @@ ipcRenderer.on('lumina-close', () => {
                     }
                 }
 
-                // 添加思源中有但本地没有的新绑定块
+                // 收集 LifeLog 的原始块ID（boundBlockId），用于去重
+                const lifeLogBlockIds = new Set();
+                for (const lr of lifeLogRecords) {
+                    if (lr.boundBlockId) lifeLogBlockIds.add(lr.boundBlockId);
+                }
+
+                // 添加思源中有但本地没有的新绑定块（排除已被 LifeLog 占用的块，避免重复显示）
                 for (const siyuan of boundFromSiyuan) {
-                    if (!processedBoundIds.has(siyuan.boundBlockId)) {
+                    if (!processedBoundIds.has(siyuan.boundBlockId) && !lifeLogBlockIds.has(siyuan.boundBlockId)) {
                         merged.push(siyuan);
                     }
                 }
 
+                // 添加 LifeLog 记录
+                merged.push(...lifeLogRecords);
+
                 this.shuoshuos = merged;
             } else {
-                // 没有绑定的块，直接使用本地数据
-                this.shuoshuos = localShuoshuos;
+                // 没有绑定的块，直接使用本地数据 + LifeLog 记录
+                // 本地数据中也要排除 boundBlockId 属于 LifeLog 的（避免旧缓存重复）
+                const lifeLogBlockIds = new Set();
+                for (const lr of lifeLogRecords) {
+                    if (lr.boundBlockId) lifeLogBlockIds.add(lr.boundBlockId);
+                }
+                const filteredLocal = localShuoshuos.filter(s => !s.boundBlockId || !lifeLogBlockIds.has(s.boundBlockId));
+                this.shuoshuos = [...filteredLocal, ...lifeLogRecords];
             }
         } catch (e) {
             console.warn("加载笔记失败", e);
             this.shuoshuos = [];
         }
 
+        // 如果关闭 LifeLog 显示，过滤掉所有 LifeLog 记录（包括本地输入的类型：内容格式）
+        if (!this.showLifeLogRecords) {
+            this.shuoshuos = this.shuoshuos.filter(s => !s._isLifeLog && !this.extractType(s.content));
+        }
+
         // 更新已绑定块ID的缓存
         this._updateBoundCache();
+    }
+
+    // 查询思源笔记中带有 LifeLog 属性的记录（今年）
+    // 支持两种方式：1) 有 custom-lifelog-* 属性的块 2) 日记文档中内容匹配 HH:mm 类型：内容 格式的块
+    async queryLifeLogRecords() {
+        const records = [];
+        const seenIds = new Set();
+
+        // 方式1：查询带有 custom-lifelog-* 属性的块（LifeLog 插件标准方式）
+        const sql1 = `
+            SELECT 
+                b.id,
+                b.content,
+                a1.value AS lifelog_date,
+                a2.value AS lifelog_time,
+                a3.value AS lifelog_type
+            FROM blocks b
+            INNER JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
+            INNER JOIN attributes a2 ON b.id = a2.block_id AND a2.name = 'custom-lifelog-time'
+            LEFT JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
+            WHERE 
+                b.type = 'p' 
+                AND substr(b.created, 1, 4) = strftime('%Y', 'now')
+            ORDER BY 
+                a1.value DESC, 
+                a2.value DESC
+            LIMIT -1
+        `;
+        try {
+            const resp1 = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stmt: sql1 })
+            });
+            const result1 = await resp1.json();
+            if (result1.code === 0 && result1.data) {
+                for (const row of result1.data) {
+                    seenIds.add(row.id);
+                    records.push(this._parseLifeLogRow(row, true));
+                }
+            }
+        } catch (e) {
+            // console.warn('[轻语] 查询 LifeLog 属性记录失败:', e.message);
+        }
+
+        // 方式2：查询日记文档中内容匹配 HH:mm 类型：内容 格式的块（无 custom-lifelog-* 属性）
+        // 兼容自定义 daily note 路径模板下未设置 LifeLog 属性的记录
+        const sql2 = `
+            SELECT 
+                b.id,
+                b.content,
+                b.created AS created_raw,
+                NULL AS lifelog_date,
+                NULL AS lifelog_time,
+                NULL AS lifelog_type
+            FROM blocks b
+            LEFT JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
+            WHERE 
+                b.type = 'p' 
+                AND a1.block_id IS NULL
+                AND (b.content GLOB '[0-9]:[0-9][0-9] *' OR b.content GLOB '[0-9][0-9]:[0-9][0-9] *')
+                AND substr(b.created, 1, 4) = strftime('%Y', 'now')
+            LIMIT -1
+        `;
+        try {
+            const resp2 = await fetch('/api/query/sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stmt: sql2 })
+            });
+            const result2 = await resp2.json();
+            if (result2.code === 0 && result2.data) {
+                for (const row of result2.data) {
+                    if (seenIds.has(row.id)) continue;
+                    // 用 JS 验证内容是否符合 LifeLog 格式（有类型提取结果）
+                    const contentStr = (row.content || '').trim();
+                    const extractedType = this.extractType(contentStr);
+                    if (!extractedType) continue; // 不符合 LifeLog 格式，跳过
+                    seenIds.add(row.id);
+                    records.push(this._parseLifeLogRow(row, false));
+                }
+            }
+        } catch (e) {
+            // console.warn('[轻语] 查询日记 LifeLog 格式记录失败:', e.message);
+        }
+
+        // 按时间倒序排序
+        records.sort((a, b) => b.created - a.created);
+        return records;
+    }
+
+    // 安全解析思源 blocks.created 字段（支持 YYYYMMDDHHMMSS 字符串或毫秒时间戳）
+    _parseBlockTime(raw) {
+        if (!raw) return Date.now();
+        const str = String(raw).trim();
+
+        // 1. 纯数字且长度 > 10，视为毫秒时间戳
+        if (/^\d+$/.test(str) && str.length > 10) {
+            const ts = parseInt(str, 10);
+            if (!isNaN(ts)) return ts;
+        }
+
+        // 2. YYYYMMDDHHMMSS 格式（长度 >= 14）
+        if (str.length >= 14) {
+            const year = str.substring(0, 4);
+            const month = str.substring(4, 6);
+            const day = str.substring(6, 8);
+            const hour = str.substring(8, 10);
+            const minute = str.substring(10, 12);
+            const dateTimeStr = `${year}-${month}-${day} ${hour}:${minute}`;
+            const parsed = new Date(dateTimeStr.replace(/-/g, '/')).getTime();
+            if (!isNaN(parsed)) return parsed;
+        }
+
+        // 3. 最后尝试直接解析
+        const parsed = new Date(str).getTime();
+        return isNaN(parsed) ? Date.now() : parsed;
+    }
+
+    // 解析 LifeLog 查询行数据为统一记录格式
+    _parseLifeLogRow(row, hasAttr) {
+        let contentStr = (row.content || '').trim();
+        const extractedType = this.extractType(contentStr);
+        const typeStr = row.lifelog_type || extractedType || '';
+        // 移除内容中可能存在的时间前缀（如 10:16 ）
+        contentStr = contentStr.replace(/^\d{1,2}:\d{2}\s*/, '').trim();
+        // 如果内容以"类型："开头，移除类型前缀获取纯内容
+        if (typeStr) {
+            const typePrefixRegex = new RegExp(`^${typeStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[：:]\\s*`);
+            contentStr = contentStr.replace(typePrefixRegex, '').trim();
+        }
+        // 解析日期时间为时间戳（方式1有 lifelog_date/time，方式2用 created_raw）
+        let created;
+        if (row.lifelog_date && row.lifelog_time) {
+            const dateTimeStr = `${row.lifelog_date} ${row.lifelog_time}`;
+            created = new Date(dateTimeStr.replace(/-/g, '/')).getTime();
+        } else if (row.created_raw) {
+            created = this._parseBlockTime(row.created_raw);
+        } else {
+            created = Date.now();
+        }
+        if (isNaN(created)) created = Date.now();
+
+        return {
+            id: `lifelog_${row.id}`,
+            content: contentStr,
+            tags: [],
+            pinned: false,
+            created: created,
+            updated: created,
+            boundBlockId: row.id,
+            _isLifeLog: true,
+            _lifeLogType: typeStr,
+            _hasLifeLogAttr: hasAttr
+        };
     }
 
     // 从思源SQL加载数据并刷新列表（渲染前调用，确保数据最新）
@@ -15008,6 +15635,8 @@ ipcRenderer.on('lumina-close', () => {
             this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
             this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...(data.fontSizeConfig || data.fontSize || {}) };
             this.enterToSubmit = data.enterToSubmit === true || data.enterToSubmit === 'true' || data.enterToSubmit === 1;
+            this.showSidebarDock = data.showSidebarDock === true || data.showSidebarDock === 'true' || data.showSidebarDock === 1;
+            this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
             this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
             this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
             this.queryVisibility = { lifelog: false, 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, ...(data.queryVisibility || {}) };
@@ -15087,6 +15716,8 @@ ipcRenderer.on('lumina-close', () => {
                 morandiColor: this.morandiColor,
                 fontSizeConfig: this.fontSizeConfig,
                 enterToSubmit: this.enterToSubmit,
+                showSidebarDock: this.showSidebarDock,
+                showLifeLogRecords: this.showLifeLogRecords,
                 bookshelfFontConfig: this.bookshelfFontConfig,
                 bookshelfSyncConfig: this.bookshelfSyncConfig,
                 queryVisibility: this.queryVisibility,
@@ -15125,7 +15756,10 @@ ipcRenderer.on('lumina-close', () => {
 
     async saveShuoshuos() {
         try {
-            await this.saveData(STORAGE_NAME, this.shuoshuos);
+            // 过滤掉可以从思源读取的 LifeLog（有 boundBlockId 的），避免重复保存
+            // 但保留本地创建的 LifeLog（无 boundBlockId），这样不开自动同步时也能显示
+            const localOnly = this.shuoshuos.filter(s => !(s._isLifeLog && s.boundBlockId));
+            await this.saveData(STORAGE_NAME, localOnly);
             // 保存后更新已绑定块ID的缓存
             this._updateBoundCache();
         } catch (e) {

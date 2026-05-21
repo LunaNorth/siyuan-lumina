@@ -24,11 +24,30 @@
     --moments-hover-bg: rgba(0,0,0,0.05);
 }
 
+/* ========== 侧边栏 Dock 简化视图（只保留输入区+笔记列表） ========== */
+.north-shuoshuo-dock-view .north-shuoshuo-sidebar,
+.north-shuoshuo-dock-view .north-shuoshuo-flomo-sidebar {
+    display: none !important;
+}
+
+.north-shuoshuo-dock-view .north-shuoshuo-input-area {
+    padding: 8px 12px 12px;
+}
+
+.north-shuoshuo-dock-view .north-shuoshuo-notes-list {
+    padding: 12px 12px;
+}
+
+.north-shuoshuo-dock-view .north-shuoshuo-note-card {
+    padding: 10px 12px;
+    margin-bottom: 10px;
+}
+
 /* ========== 最左侧导航栏（保留原来的窄边栏�?========== */
 .north-shuoshuo-sidebar {
     width: 70px;
-    background: var(--b3-theme-surface);
-    border-right: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-background);
+    border-right: 1px solid color-mix(in srgb, var(--b3-border-color) 60%, transparent);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -114,11 +133,11 @@
     margin-top: auto;
 }
 
-/* ========== 中间 Flomo 侧边�?========== */
+/* ========== 中间 Flomo 侧边========== */
 .north-shuoshuo-flomo-sidebar {
     width: 260px;
-    background-color: var(--b3-theme-surface);
-    border-right: 1px solid var(--b3-border-color);
+    background-color: var(--b3-theme-background);
+    border-right: 1px solid color-mix(in srgb, var(--b3-border-color) 60%, transparent);
     padding: 8px 20px 20px;
     display: flex;
     flex-direction: column;
@@ -171,7 +190,7 @@
 .north-shuoshuo-heatmap-cell {
     width: 100%;
     aspect-ratio: 1;
-    background-color: var(--b3-theme-surface-lighter);
+    background-color: color-mix(in srgb, var(--b3-theme-surface-lighter) 40%, transparent);
     border-radius: 5px;
     cursor: pointer;
     position: relative;
@@ -557,7 +576,7 @@
 /* 标签菜单弹窗 */
 .north-shuoshuo-tag-menu-dropdown {
     background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     box-shadow: var(--b3-dialog-shadow);
     padding: 6px 0;
@@ -614,7 +633,7 @@
 /* 删除子菜�?*/
 .north-shuoshuo-tag-submenu {
     background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     box-shadow: var(--b3-dialog-shadow);
     padding: 6px 0;
@@ -696,7 +715,7 @@
     flex: 1;
     height: 32px;
     padding: 0 10px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 4px;
     font-size: 14px;
     background: var(--b3-theme-surface);
@@ -753,18 +772,18 @@
     flex-direction: column;
     background-color: var(--b3-theme-background);
     overflow: hidden;
-    /* border-left: 1px solid var(--b3-border-color); */
+    /* border-left: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent); */
 }
 
 /* 输入区域 */
 .north-shuoshuo-input-area {
     padding: 8px 30px 20px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-input-box {
-    background-color: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    background-color: var(--b3-theme-background);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 90%, transparent);
     border-radius: 12px;
     padding: 12px 16px;
     transition: all 0.3s ease;
@@ -796,7 +815,7 @@
     align-items: center;
     gap: 6px;
     padding: 6px 10px;
-    background: var(--b3-theme-surface);
+    background: var(--b3-theme-background);
     border-radius: 8px;
     border: 1px solid var(--b3-border-color);
     transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
@@ -891,7 +910,7 @@
     align-items: center;
     justify-content: center;
     border: none;
-    background: var(--b3-theme-surface);
+    background: var(--b3-theme-background);
     border-radius: 8px;
     cursor: pointer;
     color: var(--b3-theme-on-surface-light);
@@ -1055,7 +1074,7 @@
 /* 日历弹层 */
 .north-shuoshuo-calendar-popup {
     background: var(--b3-theme-background);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 12px;
     box-shadow: var(--b3-dialog-shadow);
     padding: 16px 20px 20px;
@@ -1069,7 +1088,7 @@
     justify-content: space-between;
     margin-bottom: 14px;
     padding-bottom: 12px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .calendar-popup-title {
@@ -1193,8 +1212,9 @@
 
 /* 笔记卡片样式 */
 .north-shuoshuo-note-card {
-    background-color: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    position: relative;
+    background-color: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 70%, transparent);
     border-radius: 8px;
     padding: 14px;
     margin-bottom: 16px;
@@ -1257,6 +1277,24 @@
     flex-shrink: 0;
 }
 
+/* LifeLog 类型标签（贴在卡片右上角） */
+.north-shuoshuo-lifelog-type-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px 3px 12px;
+    background: var(--en-lifelog-border-color, var(--b3-theme-primary));
+    color: var(--b3-theme-on-primary);
+    border-radius: 0 8px 0 8px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+    z-index: 2;
+}
+
 .north-shuoshuo-note-date {
     font-size: 12px;
     color: var(--b3-theme-on-surface-light);
@@ -1269,7 +1307,8 @@
     -webkit-user-select: text;
 }
 
-.north-shuoshuo-note-menu {
+.north-shuoshuo-note-menu,
+.north-shuoshuo-lifelog-menu {
     color: var(--b3-theme-on-surface-light);
     cursor: pointer;
     font-size: 14px;
@@ -1282,12 +1321,14 @@
     transition: all 0.2s;
 }
 
-.north-shuoshuo-note-menu:hover {
+.north-shuoshuo-note-menu:hover,
+.north-shuoshuo-lifelog-menu:hover {
     background-color: var(--b3-list-hover);
     color: var(--b3-theme-on-surface);
 }
 
-.north-shuoshuo-note-menu svg {
+.north-shuoshuo-note-menu svg,
+.north-shuoshuo-lifelog-menu svg {
     width: 14px;
     height: 14px;
 }
@@ -1533,7 +1574,7 @@
 
 .north-shuoshuo-note-content hr {
     border: none;
-    border-top: 1px solid var(--b3-border-color);
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     margin: 10px 0;
 }
 
@@ -1641,7 +1682,7 @@
     overflow-x: auto;
     margin: 8px 0;
     font-size: 12px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-note-content pre code {
@@ -1772,7 +1813,7 @@
     box-shadow: var(--b3-dialog-shadow);
     padding: 5px 0;
     min-width: 150px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-note-menu-dropdown .north-shuoshuo-menu-item {
@@ -1948,7 +1989,7 @@
 .north-shuoshuo-settings-nav {
     width: 280px;
     background-color: var(--b3-theme-background);
-    border-right: 1px solid var(--b3-border-color);
+    border-right: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     padding: 24px 16px;
     overflow-y: auto;
     flex-shrink: 0;
@@ -2053,7 +2094,7 @@
 .north-shuoshuo-page-header {
     margin-bottom: 32px;
     padding-bottom: 16px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-page-title {
@@ -2074,10 +2115,10 @@
 }
 
 .north-shuoshuo-section-card {
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     padding: 20px 24px;
-    background: var(--b3-theme-surface);
+    background: var(--b3-theme-background);
     margin-bottom: 16px;
 }
 
@@ -2180,7 +2221,7 @@
 .north-shuoshuo-select-field {
     width: 100%;
     padding: 10px 36px 10px 14px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     font-size: 14px;
     background: var(--b3-theme-surface);
@@ -2209,7 +2250,7 @@
 .north-shuoshuo-btn-icon {
     width: 38px;
     height: 38px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-surface);
     border-radius: 8px;
     cursor: pointer;
@@ -2237,7 +2278,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 0;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-toggle-row:last-child {
@@ -2985,7 +3026,7 @@
     display: flex;
     align-items: center;
     padding: 8px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
@@ -3134,7 +3175,7 @@
     color: var(--b3-theme-on-background);
     margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 /* 随机漫步 */
@@ -3151,7 +3192,7 @@
     padding: 12px 14px;
     position: relative;
     border-radius: 8px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-radio-group.horizontal .north-shuoshuo-radio-item:hover {
@@ -3217,7 +3258,7 @@
     display: inline-block;
     padding: 8px 12px;
     background-color: var(--b3-theme-surface-lighter);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     font-size: 13px;
     color: var(--b3-theme-on-surface);
@@ -3227,7 +3268,7 @@
 /* 标签选择�?*/
 .north-shuoshuo-tag-picker {
     background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     box-shadow: var(--b3-dialog-shadow);
     min-width: 200px;
@@ -3239,7 +3280,7 @@
     display: flex;
     align-items: center;
     padding: 10px 12px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-background);
 }
 
@@ -3275,7 +3316,7 @@
     align-items: center;
     gap: 8px;
     transition: background 0.15s;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-tag-picker-item:last-child {
@@ -3334,7 +3375,7 @@
     justify-content: space-between;
     padding: 16px 20px;
     background: var(--b3-theme-surface);
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     margin: -20px -30px 20px;
 }
 
@@ -3400,7 +3441,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-modal-title {
@@ -3473,7 +3514,7 @@
     justify-content: flex-end;
     gap: 10px;
     padding: 16px 20px;
-    border-top: 1px solid var(--b3-border-color);
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-background);
 }
 
@@ -3493,7 +3534,7 @@
     gap: 6px;
     padding: 6px 12px;
     background: var(--b3-theme-surface-lighter);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     cursor: pointer;
     font-size: 13px;
@@ -3523,7 +3564,7 @@
 
 .north-shuoshuo-radio-group.vertical .north-shuoshuo-radio-item {
     padding: 10px 12px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s;
@@ -3941,7 +3982,7 @@
     flex-direction: column;
     position: relative;
     z-index: 1;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     max-height: calc(100vh - 200px);
 }
 
@@ -3991,7 +4032,7 @@
 
 .north-shuoshuo-review-card-footer {
     margin-top: auto;
-    border-top: 1px solid var(--b3-border-color);
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     padding-top: 16px;
     display: flex;
     justify-content: space-between;
@@ -4155,7 +4196,7 @@
 .north-shuoshuo-year-selector select {
     appearance: none;
     background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     padding: 8px 32px 8px 12px;
     font-size: 14px;
@@ -4835,7 +4876,7 @@
     color: var(--b3-theme-on-background);
     margin-bottom: 20px;
     padding-bottom: 12px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -5079,7 +5120,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-icon-picker-title {
@@ -5108,7 +5149,7 @@
 /* 标签�?*/
 .north-shuoshuo-icon-tabs {
     display: flex;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     margin-bottom: 16px;
 }
 
@@ -5157,7 +5198,7 @@
 .north-shuoshuo-emoji-search-input {
     width: 100%;
     padding: 8px 12px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     font-size: 14px;
     outline: none;
@@ -5284,7 +5325,7 @@
 .north-shuoshuo-icon-text-input {
     width: 100%;
     padding: 10px 12px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     font-size: 14px;
     text-align: center;
@@ -5408,7 +5449,7 @@
 
 .north-shuoshuo-radio-preview.siyuan-theme-preview {
     background: linear-gradient(135deg, var(--b3-theme-background) 0%, var(--b3-theme-surface) 100%);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     position: relative;
     overflow: hidden;
 }
@@ -6732,7 +6773,7 @@
 /* 引用选择�?*/
 .north-shuoshuo-mention-picker {
     background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     box-shadow: var(--b3-dialog-shadow);
     min-width: 280px;
@@ -6753,7 +6794,7 @@
     padding: 10px 14px;
     cursor: pointer;
     transition: background 0.15s;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .north-shuoshuo-mention-picker-item:last-child {
@@ -6834,7 +6875,7 @@
     line-height: 1.6;
     color: var(--b3-theme-on-background);
     background: var(--b3-theme-background);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     resize: vertical;
     outline: none;
@@ -6862,7 +6903,7 @@
 .north-shuoshuo-memo-detail-links {
     margin-top: 0;
     padding: 16px 20px;
-    border-top: 1px solid var(--b3-border-color);
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     flex-shrink: 0;
 }
 
@@ -7036,7 +7077,7 @@
 
 .north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-header {
     background: var(--b3-theme-surface);
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     padding: 16px 24px;
     display: flex;
     align-items: center;
@@ -7055,7 +7096,7 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-surface);
     cursor: pointer;
     display: flex;
@@ -7108,7 +7149,7 @@
     background: var(--b3-theme-surface);
     border-radius: 12px;
     padding: 16px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     transition: border-color 0.2s;
     cursor: pointer;
 }
@@ -7505,7 +7546,7 @@
     --b3-theme-primary-lightest: #EFE8EF;
 }
 
-/* =================== 莫兰迪主�?- 完整组件适配 =================== */
+/* =================== 莫兰迪主题配色- 完整组件适配 =================== */
 
 /* 左侧导航�?*/
 .theme-morandi .north-shuoshuo-sidebar {
@@ -7705,7 +7746,7 @@
 }
 
 .theme-morandi .north-shuoshuo-input-area {
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background-color: transparent;
 }
 
@@ -9194,7 +9235,7 @@
 .theme-siyuan .north-shuoshuo-quick-overlay-content {
     background: var(--b3-theme-surface);
     box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .theme-siyuan .quick-overlay-header {
@@ -9210,7 +9251,7 @@
 }
 
 .theme-siyuan .quick-overlay-toolbar {
-    border-top: 1px solid var(--b3-border-color);
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .theme-siyuan .quick-overlay-toolbar-icon {
@@ -9250,7 +9291,7 @@
 .theme-morandi .north-shuoshuo-quick-overlay-content {
     background: var(--b3-theme-surface);
     box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .theme-morandi .quick-overlay-header {
@@ -9266,7 +9307,7 @@
 }
 
 .theme-morandi .quick-overlay-toolbar {
-    border-top: 1px solid var(--b3-border-color);
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .theme-morandi .quick-overlay-toolbar-icon {
@@ -9377,7 +9418,7 @@
     height: 32px;
     padding: 0 10px;
     /* background: var(--b3-theme-surface-light); */
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -9789,7 +9830,7 @@
     gap: 12px;
     padding: 10px 16px;
     background: var(--b3-theme-background);
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     flex-shrink: 0;
     min-height: 48px;
     flex-wrap: wrap;
@@ -9812,7 +9853,7 @@
 .north-shuoshuo-table-filter-input {
     height: 28px;
     padding: 0 8px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     font-size: 12px;
     background: var(--b3-theme-surface);
@@ -9830,7 +9871,7 @@
 .north-shuoshuo-table-filter-select {
     height: 28px;
     padding: 0 24px 0 8px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     font-size: 12px;
     background: var(--b3-theme-surface);
@@ -9926,7 +9967,7 @@
 .north-shuoshuo-table-filter-reset {
     height: 28px;
     padding: 0 12px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     font-size: 12px;
     background: var(--b3-theme-surface);
@@ -10748,7 +10789,7 @@
 
 .lumina-moments-item {
     display: flex;
-    background-color: var(--moments-card-bg);
+    background-color: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
     border-radius: 8px;
     padding: 16px;
     position: relative;
@@ -11601,7 +11642,7 @@
 /* 顶部工具�?*/
 .lumina-bookshelf-header {
     background: var(--b3-theme-background);
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     padding: 10px 20px;
     position: sticky;
     top: 0;
@@ -11620,7 +11661,7 @@
 .lumina-bookshelf-search {
     display: flex; align-items: center;
     background: var(--b3-theme-background);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     padding: 5px 10px;
     gap: 6px;
@@ -11642,7 +11683,7 @@
 .lumina-bookshelf-filter-btn {
     display: flex; align-items: center; gap: 4px;
     padding: 4px 9px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-background);
     border-radius: 6px;
     font-size: 12px; color: var(--b3-theme-on-background);
@@ -11662,7 +11703,7 @@
 .lumina-bookshelf-dropdown {
     position: absolute; top: calc(100% + 4px); left: 0;
     background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     box-shadow: var(--b3-dialog-shadow);
     min-width: 130px; z-index: 200;
@@ -11711,7 +11752,7 @@
 .lumina-bookshelf-action-btn {
     display: flex; align-items: center; gap: 4px;
     padding: 5px 10px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-background);
     border-radius: 6px;
     font-size: 12px; color: var(--b3-theme-on-surface);
@@ -11798,7 +11839,7 @@
     padding: 10px;
     transition: border-color 150ms ease;
     cursor: pointer;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     display: flex; gap: 10px; align-items: flex-start;
     position: relative; overflow: hidden;
     user-select: text;
@@ -11819,7 +11860,7 @@
     width: 68px; height: 92px;
     border-radius: 6px;
     overflow: hidden; flex-shrink: 0;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     position: relative;
     background: linear-gradient(135deg, var(--b3-theme-surface-lighter), var(--b3-theme-background));
 }
@@ -11897,7 +11938,7 @@
 .lumina-bookshelf-tag-status { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 500; line-height: 1.4; }
 .lumina-bookshelf-tag-status.done { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lightest); border: 1px solid var(--b3-theme-primary-lighter); }
 .lumina-bookshelf-tag-status.reading { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lightest); border: 1px solid var(--b3-theme-primary-lighter); }
-.lumina-bookshelf-tag-status.unread { color: var(--b3-theme-on-surface-light); background: var(--b3-theme-surface-lighter); border: 1px solid var(--b3-border-color); }
+.lumina-bookshelf-tag-status.unread { color: var(--b3-theme-on-surface-light); background: var(--b3-theme-surface-lighter); border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent); }
 .lumina-bookshelf-stats-line { font-size: 10px; color: var(--b3-theme-on-surface-light); line-height: 1.3; display: flex; align-items: center; gap: 4px; }
 .lumina-bookshelf-stat-dot { color: var(--b3-border-color); }
 .lumina-bookshelf-time { font-size: 10px; color: var(--b3-theme-on-surface-light); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -11912,7 +11953,7 @@
     border-radius: 14px;
     padding: 14px 20px;
     margin-bottom: 12px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     display: flex;
     align-items: flex-start;
     gap: 16px;
@@ -11926,7 +11967,7 @@
     display: flex; align-items: center; gap: 6px;
     padding: 6px 14px;
     background: var(--b3-theme-background);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     font-size: 12px; color: var(--b3-theme-on-surface);
     cursor: pointer; transition: all 150ms ease;
@@ -11951,7 +11992,7 @@
     width: 82px; height: 110px;
     border-radius: 8px;
     overflow: hidden; flex-shrink: 0;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: linear-gradient(135deg, var(--b3-theme-surface-lighter), var(--b3-theme-background));
 }
 .lumina-bookshelf-detail-cover .lumina-bookshelf-cover-inner { font-size: 12px; padding: 8px; }
@@ -11969,7 +12010,7 @@
 .lumina-bookshelf-detail-badge {
     font-size: 11px; padding: 3px 10px;
     border-radius: 4px; font-weight: 500;
-    background: var(--b3-theme-background); border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-background); border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 .lumina-bookshelf-detail-badge.done { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lightest); border-color: var(--b3-theme-primary-lighter); }
 .lumina-bookshelf-detail-badge.reading { color: var(--b3-theme-primary); background: var(--b3-theme-primary-lightest); border-color: var(--b3-theme-primary-lighter); }
@@ -12007,7 +12048,7 @@
 .lumina-bookshelf-detail-section-title {
     font-size: 14px; font-weight: 600; color: var(--b3-theme-on-background);
     margin-bottom: 12px; padding-bottom: 8px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     /* display: none; */
 }
 
@@ -12020,7 +12061,7 @@
     /* background: var(--b3-theme-background); */
     border-radius: 10px;
     padding: 14px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     transition: border-color 150ms ease;
     user-select: text;
     -webkit-user-select: text;
@@ -12151,7 +12192,7 @@
 .lumina-bookshelf-note-dropdown {
     position: fixed;
     background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     box-shadow: var(--b3-dialog-shadow);
     padding: 4px 0;
@@ -12188,7 +12229,7 @@
 .lumina-bookshelf-context-menu {
     position: fixed;
     background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     box-shadow: var(--b3-dialog-shadow);
     padding: 6px 0;
@@ -12223,7 +12264,7 @@
 /* Daily Note 路径模板 textarea 样式 */
 #settings-daily-note-path-template {
     padding: 10px 12px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 8px;
     background: var(--b3-theme-surface);
     min-height: 60px;
@@ -12257,7 +12298,7 @@
     cursor: pointer;
     padding: 5px 12px;
     border-radius: 6px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-background);
     color: var(--b3-theme-on-surface);
     transition: all 0.15s ease;
@@ -12344,7 +12385,7 @@
     padding: 16px;
     border-radius: 10px;
     background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
 .daily-note-icon-color-group {
@@ -12403,7 +12444,7 @@
     font-size: 13px;
     color: var(--b3-theme-on-surface-light);
     background: var(--b3-theme-background);
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     padding: 4px 10px;
     width: fit-content;
@@ -12430,7 +12471,7 @@
     cursor: pointer;
     padding: 4px 10px;
     border-radius: 6px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-surface);
     color: var(--b3-theme-primary);
     transition: all 0.15s ease;
@@ -12490,7 +12531,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 18px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     flex-shrink: 0;
 }
 
@@ -12550,7 +12591,7 @@
     cursor: pointer;
     padding: 5px 10px;
     border-radius: 6px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-surface);
     color: var(--b3-theme-on-surface);
     transition: all 0.15s ease;
@@ -12578,7 +12619,7 @@
 
 .daily-note-vars-footer {
     padding: 10px 18px;
-    border-top: 1px solid var(--b3-border-color);
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     font-size: 12px;
     color: var(--b3-theme-on-surface-light);
     text-align: center;
@@ -12591,7 +12632,7 @@
     align-items: center;
     gap: 8px;
     padding: 10px 18px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-surface);
     flex-shrink: 0;
 }
@@ -12601,7 +12642,7 @@
     min-width: 0;
     height: 32px;
     padding: 0 10px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     border-radius: 6px;
     background: var(--b3-theme-background);
     color: var(--b3-theme-on-background);
@@ -12623,7 +12664,7 @@
     cursor: pointer;
     padding: 5px 12px;
     border-radius: 6px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-background);
     color: var(--b3-theme-on-surface);
     transition: all 0.15s ease;
@@ -12648,7 +12689,7 @@
 /* 弹窗内文档树预览 */
 .daily-note-vars-tree-wrap {
     padding: 10px 18px;
-    border-bottom: 1px solid var(--b3-border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-surface);
     font-size: 13px;
     line-height: 1.8;
@@ -12729,7 +12770,7 @@
     cursor: pointer;
     padding: 6px 10px;
     border-radius: 6px;
-    border: 1px solid var(--b3-border-color);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background: var(--b3-theme-background);
     transition: all 0.15s ease;
     user-select: none;
@@ -12799,7 +12840,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         justify-content: space-between;
         padding: 6px 16px;
         background: var(--b3-theme-surface);
-        border-bottom: 1px solid var(--b3-border-color);
+        border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
         height: 40px;
         box-sizing: border-box;
         position: relative;
@@ -12870,7 +12911,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         visibility: hidden;
         transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), visibility 0.3s;
         background: var(--b3-theme-surface);
-        border-right: 1px solid var(--b3-border-color);
+        border-right: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
         padding: 12px 16px 16px;
         overflow-y: auto;
         overflow-x: hidden;
@@ -12911,7 +12952,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         gap: 10px;
         padding: 8px 16px;
         background: var(--b3-theme-surface);
-        border-bottom: 1px solid var(--b3-border-color);
+        border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     }
     .north-shuoshuo-mobile-search-bar.show {
         display: flex;
@@ -12924,7 +12965,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         padding: 6px 12px;
         background: var(--b3-theme-background);
         border-radius: 8px;
-        border: 1px solid var(--b3-border-color);
+        border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     }
     .mobile-search-icon {
         width: 16px;
@@ -12957,7 +12998,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         height: 56px;
         flex-shrink: 0;
         background: var(--b3-theme-surface);
-        border-top: 1px solid var(--b3-border-color);
+        border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
         box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
     }
     .mobile-tab-item {
@@ -13000,7 +13041,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     .north-shuoshuo-settings-nav {
         width: 100%;
         border-right: none;
-        border-bottom: 1px solid var(--b3-border-color);
+        border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
         flex-shrink: 0;
         max-height: 180px;
         overflow-y: auto;
