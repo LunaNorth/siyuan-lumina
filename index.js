@@ -7,6 +7,12 @@ const MOMENTS_CONFIG_NAME = "lumina-moments-config";
 const BOOKS_STORAGE_NAME = "lumina-bookshelf-data";
 const TAB_TYPE = "shuoshuo-tab";
 
+// 数据备份键名（防止主存储损坏/丢失时无法恢复）
+const STORAGE_BACKUP_NAME = "shuoshuo-data-backup";
+const CONFIG_BACKUP_NAME = "shuoshuo-config-backup";
+const MOMENTS_BACKUP_NAME = "lumina-moments-backup";
+const BOOKS_BACKUP_NAME = "lumina-bookshelf-backup";
+
 // 莫兰迪配色方案
 const MORANDI_COLORS = [
     // 浅色系列
@@ -458,6 +464,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.autoCollapseLines = DEFAULT_AUTO_COLLAPSE_LINES; // 长笔记自动折叠行数
         this._refreshTimer = null; // 防抖刷新定时器
         this._boundBlockIdsCache = new Set(); // 已绑定块ID的缓存（用于快速查找）
+        this._saveLocks = new Map(); // save/load 并发锁
         this.moments = []; // 朋友圈数据
         this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', fontSize: { mode: 'default', customSize: 14.5 } };
         this.books = []; // 图书书架数据
@@ -662,6 +669,52 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.eventBus.on('ws-main', this._wsHandler);
 
         console.log("Shuoshuo plugin loaded");
+    }
+
+    // ============ 数据保护：并发锁 + 备份恢复 ============
+    async _withSaveLock(key, fn) {
+        while (this._saveLocks.has(key)) {
+            try { await this._saveLocks.get(key); } catch (e) {}
+        }
+        let resolve;
+        const promise = new Promise(r => { resolve = r; });
+        this._saveLocks.set(key, promise);
+        try {
+            return await fn();
+        } finally {
+            this._saveLocks.delete(key);
+            resolve();
+        }
+    }
+
+    async _backupData(key, backupKey) {
+        try {
+            const existing = await this.loadData(key);
+            const hasData = Array.isArray(existing)
+                ? existing.length > 0
+                : (existing && Object.keys(existing).length > 0);
+            if (hasData) {
+                await this.saveData(backupKey, existing);
+            }
+        } catch (e) {
+            // 忽略备份失败
+        }
+    }
+
+    async _restoreFromBackup(key, backupKey) {
+        try {
+            const backup = await this.loadData(backupKey);
+            const hasData = Array.isArray(backup)
+                ? backup.length > 0
+                : (backup && Object.keys(backup).length > 0);
+            if (hasData) {
+                await this.saveData(key, backup);
+                return backup;
+            }
+        } catch (e) {
+            // 忽略恢复失败
+        }
+        return null;
     }
 
     onLayoutReady() {
@@ -10629,8 +10682,9 @@ ipcRenderer.on('lumina-close', () => {
                 
                 // 查找该 h2 到下一个 h2 之间的最后一个块
                 // 必须限制 parent_id = docId，只选文档的直接子块，避免选中引用块/列表等容器内部的子块
+                // 同时排除容器块类型（l=列表, b=引述块, s=超级块），防止 insertBlock 把新内容插入到容器块内部导致嵌套
                 let lastBlockQuery = `SELECT id, created FROM blocks 
-                                      WHERE root_id = '${docId}' AND type != 'd' AND parent_id = '${docId}' AND created > '${h2Created}'`;
+                                      WHERE root_id = '${docId}' AND type NOT IN ('d', 'l', 'b', 's') AND parent_id = '${docId}' AND created > '${h2Created}'`;
                 if (nextH2Created) {
                     lastBlockQuery += ` AND created < '${nextH2Created}'`;
                 }
@@ -10646,16 +10700,18 @@ ipcRenderer.on('lumina-close', () => {
                 if (lastBlockResult.code === 0 && lastBlockResult.data && lastBlockResult.data.length > 0) {
                     previousId = lastBlockResult.data[0].id;
                 } else {
+                    // h2 下只有容器块（如引述块），直接使用 h2Id 作为插入锚点
                     previousId = h2Id;
                 }
             } else {
                 // 没有对应日期的 h2，创建它
+                // 排除容器块类型（l=列表, b=引述块, s=超级块），防止 insertBlock 把 h2 插入到容器块内部
                 const lastBlockResponse = await fetch('/api/query/sql', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         stmt: `SELECT id, created FROM blocks 
-                               WHERE root_id = '${docId}' AND type != 'd' AND parent_id = '${docId}'
+                               WHERE root_id = '${docId}' AND type NOT IN ('d', 'l', 'b', 's') AND parent_id = '${docId}'
                                ORDER BY created DESC LIMIT 1`
                     })
                 });
@@ -14943,108 +14999,127 @@ ipcRenderer.on('lumina-close', () => {
 
 
     async loadShuoshuos() {
-        try {
-            // 1. 先从本地加载未绑定的说说
-            const data = await this.loadData(STORAGE_NAME);
-            const localShuoshuos = data || [];
-
-            // 关键：先把本地数据设到 this.shuoshuos，让 loadShuoshuosFromSiyuan 能查到旧内容模板
-            // 从而保持标签的原始位置不变
-            const previousShuoshuos = this.shuoshuos;
-            this.shuoshuos = localShuoshuos;
-
-            // 2. 从思源笔记查询所有绑定的块（主要数据源）
-            //    思源SQL是最新的数据，确保思源改了说说视图也能看到
-            //    仅在每日笔记模式下执行双向同步，指定文档模式下只单向同步
-            let boundFromSiyuan = [];
-            if (this.syncMode === 'dailynote') {
-                try {
-                    boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
-                } catch (e) {
-                    // 出错时恢复之前的状态
-                    this.shuoshuos = previousShuoshuos;
-                    // console.warn('[轻语] 从思源加载绑定块失败，使用本地数据:', e.message);
+        return this._withSaveLock('shuoshuos', async () => {
+            try {
+                // 1. 先从本地加载未绑定的说说
+                let data = await this.loadData(STORAGE_NAME);
+                // 数据丢失保护：主存储为空时尝试从备份恢复
+                if (!data || data.length === 0) {
+                    const restored = await this._restoreFromBackup(STORAGE_NAME, STORAGE_BACKUP_NAME);
+                    if (restored) {
+                        data = restored;
+                        console.warn('[轻语] 主数据为空，已从备份恢复说说数据');
+                    }
                 }
-            }
+                const localShuoshuos = data || [];
 
-            // 3. 从思源笔记查询 LifeLog 记录（根据设置开关决定是否加载）
-            let lifeLogRecords = [];
-            if (this.showLifeLogRecords) {
-                try {
-                    lifeLogRecords = await this.queryLifeLogRecords();
-                } catch (e) {
-                    // console.warn('[轻语] 加载 LifeLog 记录失败:', e.message);
+                // 关键：先把本地数据设到 this.shuoshuos，让 loadShuoshuosFromSiyuan 能查到旧内容模板
+                // 从而保持标签的原始位置不变
+                const previousShuoshuos = this.shuoshuos;
+                this.shuoshuos = localShuoshuos;
+
+                // 2. 从思源笔记查询所有绑定的块（主要数据源）
+                //    思源SQL是最新的数据，确保思源改了说说视图也能看到
+                //    仅在每日笔记模式下执行双向同步，指定文档模式下只单向同步
+                let boundFromSiyuan = [];
+                if (this.syncMode === 'dailynote') {
+                    try {
+                        boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
+                    } catch (e) {
+                        // 出错时恢复之前的状态
+                        this.shuoshuos = previousShuoshuos;
+                        // console.warn('[轻语] 从思源加载绑定块失败，使用本地数据:', e.message);
+                    }
                 }
-            }
 
-            if (this._lastLoadShuoshuosFromSiyuanOk) {
-                // 合并策略：
-                // - 已绑定的说说以思源SQL数据为准（覆盖本地缓存）
-                // - 未绑定的说说保留本地数据
-                // - 本地有 boundBlockId 但思源 SQL 已查不到的记录视为已删除，清出本地缓存
-                // - 思源中有但本地没有的新绑定块，追加到列表
-                const boundMap = new Map();
-                boundFromSiyuan.forEach(s => boundMap.set(s.boundBlockId, s));
+                // 3. 从思源笔记查询 LifeLog 记录（根据设置开关决定是否加载）
+                let lifeLogRecords = [];
+                if (this.showLifeLogRecords) {
+                    try {
+                        lifeLogRecords = await this.queryLifeLogRecords();
+                    } catch (e) {
+                        // console.warn('[轻语] 加载 LifeLog 记录失败:', e.message);
+                    }
+                }
 
-                const merged = [];
-                const processedBoundIds = new Set();
+                if (this._lastLoadShuoshuosFromSiyuanOk) {
+                    // 合并策略：
+                    // - 已绑定的说说以思源SQL数据为准（覆盖本地缓存）
+                    // - 未绑定的说说保留本地数据
+                    // - 本地有 boundBlockId 但思源 SQL 已查不到的记录视为已删除，清出本地缓存
+                    // - 思源中有但本地没有的新绑定块，追加到列表
+                    const boundMap = new Map();
+                    boundFromSiyuan.forEach(s => boundMap.set(s.boundBlockId, s));
 
-                // 遍历本地说说，已绑定的用思源数据替换
-                for (const local of localShuoshuos) {
-                    if (local.boundBlockId && boundMap.has(local.boundBlockId)) {
-                        const siyuan = boundMap.get(local.boundBlockId);
-                        merged.push({
-                            ...siyuan,
-                            pinned: local.pinned || false,
-                            id: local.id // 保留本地ID维持引用
-                        });
-                        processedBoundIds.add(local.boundBlockId);
-                    } else if (local.boundBlockId) {
-                        continue;
+                    const merged = [];
+                    const processedBoundIds = new Set();
+
+                    // 遍历本地说说，已绑定的用思源数据替换
+                    for (const local of localShuoshuos) {
+                        if (local.boundBlockId && boundMap.has(local.boundBlockId)) {
+                            const siyuan = boundMap.get(local.boundBlockId);
+                            merged.push({
+                                ...siyuan,
+                                pinned: local.pinned || false,
+                                id: local.id // 保留本地ID维持引用
+                            });
+                            processedBoundIds.add(local.boundBlockId);
+                        } else if (local.boundBlockId) {
+                            continue;
+                        } else {
+                            merged.push(local);
+                        }
+                    }
+
+                    // 收集 LifeLog 的原始块ID（boundBlockId），用于去重
+                    const lifeLogBlockIds = new Set();
+                    for (const lr of lifeLogRecords) {
+                        if (lr.boundBlockId) lifeLogBlockIds.add(lr.boundBlockId);
+                    }
+
+                    // 添加思源中有但本地没有的新绑定块（排除已被 LifeLog 占用的块，避免重复显示）
+                    for (const siyuan of boundFromSiyuan) {
+                        if (!processedBoundIds.has(siyuan.boundBlockId) && !lifeLogBlockIds.has(siyuan.boundBlockId)) {
+                            merged.push(siyuan);
+                        }
+                    }
+
+                    // 添加 LifeLog 记录
+                    merged.push(...lifeLogRecords);
+
+                    this.shuoshuos = merged;
+                } else {
+                    // 没有绑定的块，直接使用本地数据 + LifeLog 记录
+                    // 本地数据中也要排除 boundBlockId 属于 LifeLog 的（避免旧缓存重复）
+                    const lifeLogBlockIds = new Set();
+                    for (const lr of lifeLogRecords) {
+                        if (lr.boundBlockId) lifeLogBlockIds.add(lr.boundBlockId);
+                    }
+                    const filteredLocal = localShuoshuos.filter(s => !s.boundBlockId || !lifeLogBlockIds.has(s.boundBlockId));
+                    this.shuoshuos = [...filteredLocal, ...lifeLogRecords];
+                }
+            } catch (e) {
+                console.warn("加载笔记失败", e);
+                // 加载失败时尝试从备份恢复
+                if (!this.shuoshuos || this.shuoshuos.length === 0) {
+                    const restored = await this._restoreFromBackup(STORAGE_NAME, STORAGE_BACKUP_NAME);
+                    if (restored) {
+                        this.shuoshuos = restored;
+                        console.warn('[轻语] 加载异常，已从备份恢复说说数据');
                     } else {
-                        merged.push(local);
+                        this.shuoshuos = [];
                     }
                 }
-
-                // 收集 LifeLog 的原始块ID（boundBlockId），用于去重
-                const lifeLogBlockIds = new Set();
-                for (const lr of lifeLogRecords) {
-                    if (lr.boundBlockId) lifeLogBlockIds.add(lr.boundBlockId);
-                }
-
-                // 添加思源中有但本地没有的新绑定块（排除已被 LifeLog 占用的块，避免重复显示）
-                for (const siyuan of boundFromSiyuan) {
-                    if (!processedBoundIds.has(siyuan.boundBlockId) && !lifeLogBlockIds.has(siyuan.boundBlockId)) {
-                        merged.push(siyuan);
-                    }
-                }
-
-                // 添加 LifeLog 记录
-                merged.push(...lifeLogRecords);
-
-                this.shuoshuos = merged;
-            } else {
-                // 没有绑定的块，直接使用本地数据 + LifeLog 记录
-                // 本地数据中也要排除 boundBlockId 属于 LifeLog 的（避免旧缓存重复）
-                const lifeLogBlockIds = new Set();
-                for (const lr of lifeLogRecords) {
-                    if (lr.boundBlockId) lifeLogBlockIds.add(lr.boundBlockId);
-                }
-                const filteredLocal = localShuoshuos.filter(s => !s.boundBlockId || !lifeLogBlockIds.has(s.boundBlockId));
-                this.shuoshuos = [...filteredLocal, ...lifeLogRecords];
             }
-        } catch (e) {
-            console.warn("加载笔记失败", e);
-            this.shuoshuos = [];
-        }
 
-        // 如果关闭 LifeLog 显示，过滤掉所有 LifeLog 记录（包括本地输入的类型：内容格式）
-        if (!this.showLifeLogRecords) {
-            this.shuoshuos = this.shuoshuos.filter(s => !s._isLifeLog && !this.extractType(s.content));
-        }
+            // 如果关闭 LifeLog 显示，过滤掉所有 LifeLog 记录（包括本地输入的类型：内容格式）
+            if (!this.showLifeLogRecords) {
+                this.shuoshuos = this.shuoshuos.filter(s => !s._isLifeLog && !this.extractType(s.content));
+            }
 
-        // 更新已绑定块ID的缓存
-        this._updateBoundCache();
+            // 更新已绑定块ID的缓存
+            this._updateBoundCache();
+        });
     }
 
     // 查询思源笔记中带有 LifeLog 属性的记录（今年）
@@ -15217,56 +15292,123 @@ ipcRenderer.on('lumina-close', () => {
 
     // ============ 朋友圈数据管理 ============
     async loadMoments() {
-        try {
-            const data = await this.loadData(MOMENTS_STORAGE_NAME);
-            this.moments = data?.moments || [];
-            this.momentsConfig = data?.config || {
-                nickname: '月亮',
-                signature: '言念君子 温其如玉',
-                avatar: null,
-                cover: null,
-                syncToSiyuan: false,
-                syncNotebookId: '',
-                syncMode: 'dailynote',
-                syncDocId: ''
-            };
-        } catch (e) {
-            this.moments = [];
-            this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '' };
-        }
-        // 合并字体大小默认值
-        if (!this.momentsConfig.fontSize) {
-            this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
-        }
+        return this._withSaveLock('moments', async () => {
+            try {
+                let data = await this.loadData(MOMENTS_STORAGE_NAME);
+                // 数据丢失保护：主存储为空时尝试从备份恢复
+                if (!data || Object.keys(data).length === 0) {
+                    const restored = await this._restoreFromBackup(MOMENTS_STORAGE_NAME, MOMENTS_BACKUP_NAME);
+                    if (restored) {
+                        data = restored;
+                        console.warn('[轻语] 主数据为空，已从备份恢复朋友圈数据');
+                    }
+                }
+                this.moments = data?.moments || [];
+                this.momentsConfig = data?.config || {
+                    nickname: '月亮',
+                    signature: '言念君子 温其如玉',
+                    avatar: null,
+                    cover: null,
+                    syncToSiyuan: false,
+                    syncNotebookId: '',
+                    syncMode: 'dailynote',
+                    syncDocId: ''
+                };
+            } catch (e) {
+                // 加载失败时不要粗暴清空，尝试从备份恢复
+                if (!this.moments || this.moments.length === 0) {
+                    const restored = await this._restoreFromBackup(MOMENTS_STORAGE_NAME, MOMENTS_BACKUP_NAME);
+                    if (restored) {
+                        this.moments = restored.moments || [];
+                        this.momentsConfig = restored.config || this.momentsConfig;
+                        console.warn('[轻语] 加载异常，已从备份恢复朋友圈数据');
+                    } else if (!this.moments) {
+                        this.moments = [];
+                    }
+                }
+                if (!this.momentsConfig) {
+                    this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '' };
+                }
+            }
+            // 合并字体大小默认值
+            if (!this.momentsConfig.fontSize) {
+                this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
+            }
+        });
     }
 
     async saveMoments() {
-        try {
-            await this.saveData(MOMENTS_STORAGE_NAME, {
-                moments: this.moments,
-                config: this.momentsConfig
-            });
-        } catch (e) {
-            console.error('保存朋友圈失败', e);
-        }
+        return this._withSaveLock('moments', async () => {
+            try {
+                const dataToSave = {
+                    moments: this.moments,
+                    config: this.momentsConfig
+                };
+                // 空数据保护：如果内存数据为空但存储中有数据，不要覆盖
+                const isEmpty = (!this.moments || this.moments.length === 0) &&
+                    (!this.momentsConfig || (!this.momentsConfig.nickname && !this.momentsConfig.avatar && !this.momentsConfig.cover));
+                if (isEmpty) {
+                    const existing = await this.loadData(MOMENTS_STORAGE_NAME);
+                    const existingHasData = existing && (existing.moments?.length > 0 || existing.config?.nickname || existing.config?.avatar || existing.config?.cover);
+                    if (existingHasData) {
+                        console.warn('[轻语] saveMoments: 内存数据为空但存储非空，跳过保存');
+                        return;
+                    }
+                }
+                await this._backupData(MOMENTS_STORAGE_NAME, MOMENTS_BACKUP_NAME);
+                await this.saveData(MOMENTS_STORAGE_NAME, dataToSave);
+            } catch (e) {
+                console.error('保存朋友圈失败', e);
+            }
+        });
     }
 
     // ============ 图书书架数据管理 ============
     async loadBooks() {
-        try {
-            const data = await this.loadData(BOOKS_STORAGE_NAME);
-            this.books = data?.books || getDefaultBooks();
-        } catch (e) {
-            this.books = getDefaultBooks();
-        }
+        return this._withSaveLock('books', async () => {
+            try {
+                let data = await this.loadData(BOOKS_STORAGE_NAME);
+                // 数据丢失保护：主存储为空时尝试从备份恢复
+                if (!data || Object.keys(data).length === 0) {
+                    const restored = await this._restoreFromBackup(BOOKS_STORAGE_NAME, BOOKS_BACKUP_NAME);
+                    if (restored) {
+                        data = restored;
+                        console.warn('[轻语] 主数据为空，已从备份恢复图书数据');
+                    }
+                }
+                this.books = data?.books || getDefaultBooks();
+            } catch (e) {
+                if (!this.books || this.books.length === 0) {
+                    const restored = await this._restoreFromBackup(BOOKS_STORAGE_NAME, BOOKS_BACKUP_NAME);
+                    if (restored) {
+                        this.books = restored.books || getDefaultBooks();
+                        console.warn('[轻语] 加载异常，已从备份恢复图书数据');
+                    } else {
+                        this.books = getDefaultBooks();
+                    }
+                }
+            }
+        });
     }
 
     async saveBooks() {
-        try {
-            await this.saveData(BOOKS_STORAGE_NAME, { books: this.books });
-        } catch (e) {
-            console.error('保存图书数据失败', e);
-        }
+        return this._withSaveLock('books', async () => {
+            try {
+                const dataToSave = { books: this.books };
+                // 空数据保护
+                if (!this.books || this.books.length === 0) {
+                    const existing = await this.loadData(BOOKS_STORAGE_NAME);
+                    if (existing && existing.books && existing.books.length > 0) {
+                        console.warn('[轻语] saveBooks: 内存数据为空但存储非空，跳过保存');
+                        return;
+                    }
+                }
+                await this._backupData(BOOKS_STORAGE_NAME, BOOKS_BACKUP_NAME);
+                await this.saveData(BOOKS_STORAGE_NAME, dataToSave);
+            } catch (e) {
+                console.error('保存图书数据失败', e);
+            }
+        });
     }
 
     getMomentNextId() {
@@ -15591,59 +15733,69 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     async loadConfig() {
-        try {
-            let data = await this.loadData(CONFIG_STORAGE_NAME);
-            // 如果 data 为空或没有实质内容，尝试从旧配置迁移
-            if (!data || Object.keys(data).length === 0) {
-                data = await this.migrateOldConfig();
-            }
-            this.assistantAvatarUrl = data.assistantAvatarUrl ?? null;
-            this.userAvatarUrl = data.userAvatarUrl ?? null;
-            this.notebookId = data.notebookId ?? DEFAULT_NOTEBOOK_ID;
-            this.autoSync = data.autoSync === true || data.autoSync === 'true' || data.autoSync === 1;
-            this.syncMode = data.syncMode === 'doc' ? 'doc' : 'dailynote';
-            this.syncDocId = data.syncDocId || '';
-            this.dailyNotePathTemplate = data.dailyNotePathTemplate || '';
-            this.dailyNoteIconType = data.dailyNoteIconType || '';
-            this.dailyNoteIconColorWeekday = data.dailyNoteIconColorWeekday || '';
-            this.dailyNoteIconColorWeekend = data.dailyNoteIconColorWeekend || '';
-            this.viewStyle = data.viewStyle === 'card' ? 'card' : 'list';
-            this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', ...(data.flomoConfig || data.flomo || {}) };
-            this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
-            this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.memosConfig || data.memos || {}) };
-            this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...(data.reviewConfig || data.review || {}) };
-            // 软木板墙主题已移除，强制回退到便利贴墙
-            if (this.reviewConfig.theme === 'cork') {
-                this.reviewConfig.theme = 'sticky';
-            }
-            // 优先保留已有的 tagIcons（防止意外覆盖），只有在 data.tagIcons 有值时才更新
-            if (data.tagIcons && Object.keys(data.tagIcons).length > 0) {
-                this.tagIcons = data.tagIcons;
-            } else {
-                // 如果主配置中没有 tagIcons，尝试从备份恢复
-                try {
-                    const backup = await this.loadData('shuoshuo-tag-icons-backup');
-                    if (backup && Object.keys(backup).length > 0) {
-                        this.tagIcons = backup;
+        return this._withSaveLock('config', async () => {
+            try {
+                let data = await this.loadData(CONFIG_STORAGE_NAME);
+                // 数据丢失保护：主存储为空时尝试从备份恢复
+                if (!data || Object.keys(data).length === 0) {
+                    const restored = await this._restoreFromBackup(CONFIG_STORAGE_NAME, CONFIG_BACKUP_NAME);
+                    if (restored) {
+                        data = restored;
+                        console.warn('[轻语] 主配置为空，已从备份恢复配置数据');
                     }
-                } catch (e) {
-                    // 忽略备份读取失败
                 }
+                // 如果 data 为空或没有实质内容，尝试从旧配置迁移
+                if (!data || Object.keys(data).length === 0) {
+                    data = await this.migrateOldConfig();
+                }
+                this.assistantAvatarUrl = data.assistantAvatarUrl ?? null;
+                this.userAvatarUrl = data.userAvatarUrl ?? null;
+                this.notebookId = data.notebookId ?? DEFAULT_NOTEBOOK_ID;
+                this.autoSync = data.autoSync === true || data.autoSync === 'true' || data.autoSync === 1;
+                this.syncMode = data.syncMode === 'doc' ? 'doc' : 'dailynote';
+                this.syncDocId = data.syncDocId || '';
+                this.dailyNotePathTemplate = data.dailyNotePathTemplate || '';
+                this.dailyNoteIconType = data.dailyNoteIconType || '';
+                this.dailyNoteIconColorWeekday = data.dailyNoteIconColorWeekday || '';
+                this.dailyNoteIconColorWeekend = data.dailyNoteIconColorWeekend || '';
+                this.viewStyle = data.viewStyle === 'card' ? 'card' : 'list';
+                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', ...(data.flomoConfig || data.flomo || {}) };
+                this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
+                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.memosConfig || data.memos || {}) };
+                this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...(data.reviewConfig || data.review || {}) };
+                // 软木板墙主题已移除，强制回退到便利贴墙
+                if (this.reviewConfig.theme === 'cork') {
+                    this.reviewConfig.theme = 'sticky';
+                }
+                // 优先保留已有的 tagIcons（防止意外覆盖），只有在 data.tagIcons 有值时才更新
+                if (data.tagIcons && Object.keys(data.tagIcons).length > 0) {
+                    this.tagIcons = data.tagIcons;
+                } else {
+                    // 如果主配置中没有 tagIcons，尝试从备份恢复
+                    try {
+                        const backup = await this.loadData('shuoshuo-tag-icons-backup');
+                        if (backup && Object.keys(backup).length > 0) {
+                            this.tagIcons = backup;
+                        }
+                    } catch (e) {
+                        // 忽略备份读取失败
+                    }
+                }
+                this.pinnedTags = Array.isArray(data.pinnedTags) ? data.pinnedTags : [];
+                this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
+                this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
+                this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...(data.fontSizeConfig || data.fontSize || {}) };
+                this.enterToSubmit = data.enterToSubmit === true || data.enterToSubmit === 'true' || data.enterToSubmit === 1;
+                this.showSidebarDock = data.showSidebarDock === true || data.showSidebarDock === 'true' || data.showSidebarDock === 1;
+                this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
+                this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
+                this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
+                this.queryVisibility = { lifelog: false, 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, ...(data.queryVisibility || {}) };
+                this.autoCollapseLines = typeof data.autoCollapseLines === 'number' ? data.autoCollapseLines : DEFAULT_AUTO_COLLAPSE_LINES;
+            } catch (e) {
+                console.warn("加载配置失败", e);
             }
-            this.pinnedTags = Array.isArray(data.pinnedTags) ? data.pinnedTags : [];
-            this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
-            this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
-            this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...(data.fontSizeConfig || data.fontSize || {}) };
-            this.enterToSubmit = data.enterToSubmit === true || data.enterToSubmit === 'true' || data.enterToSubmit === 1;
-            this.showSidebarDock = data.showSidebarDock === true || data.showSidebarDock === 'true' || data.showSidebarDock === 1;
-            this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
-            this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
-            this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
-            this.queryVisibility = { lifelog: false, 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, ...(data.queryVisibility || {}) };
-            this.autoCollapseLines = typeof data.autoCollapseLines === 'number' ? data.autoCollapseLines : DEFAULT_AUTO_COLLAPSE_LINES;
-        } catch (e) {
-            console.warn("加载配置失败", e);
-        }
+        });
     }
 
     async migrateOldConfig() {
@@ -15681,58 +15833,77 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     async saveConfig() {
-        try {
-            // 如果 tagIcons 为空但之前有值，尝试从备份恢复
-            if (!this.tagIcons || Object.keys(this.tagIcons).length === 0) {
-                try {
-                    const backup = await this.loadData('shuoshuo-tag-icons-backup');
-                    if (backup && Object.keys(backup).length > 0) {
-                        this.tagIcons = backup;
+        return this._withSaveLock('config', async () => {
+            try {
+                // 如果 tagIcons 为空但之前有值，尝试从备份恢复
+                if (!this.tagIcons || Object.keys(this.tagIcons).length === 0) {
+                    try {
+                        const backup = await this.loadData('shuoshuo-tag-icons-backup');
+                        if (backup && Object.keys(backup).length > 0) {
+                            this.tagIcons = backup;
+                        }
+                    } catch (e) {
+                        // 忽略备份读取失败
                     }
-                } catch (e) {
-                    // 忽略备份读取失败
                 }
+
+                const config = {
+                    assistantAvatarUrl: this.assistantAvatarUrl,
+                    userAvatarUrl: this.userAvatarUrl,
+                    notebookId: this.notebookId,
+                    autoSync: this.autoSync,
+                    syncMode: this.syncMode,
+                    syncDocId: this.syncDocId,
+                    dailyNotePathTemplate: this.dailyNotePathTemplate,
+                    dailyNoteIconType: this.dailyNoteIconType,
+                    dailyNoteIconColorWeekday: this.dailyNoteIconColorWeekday,
+                    dailyNoteIconColorWeekend: this.dailyNoteIconColorWeekend,
+                    viewStyle: this.viewStyle,
+                    flomoConfig: this.flomoConfig,
+                    writeathonConfig: this.writeathonConfig,
+                    memosConfig: this.memosConfig,
+                    reviewConfig: this.reviewConfig,
+                    tagIcons: this.tagIcons,
+                    pinnedTags: this.pinnedTags,
+                    themeMode: this.themeMode,
+                    morandiColor: this.morandiColor,
+                    fontSizeConfig: this.fontSizeConfig,
+                    enterToSubmit: this.enterToSubmit,
+                    showSidebarDock: this.showSidebarDock,
+                    showLifeLogRecords: this.showLifeLogRecords,
+                    bookshelfFontConfig: this.bookshelfFontConfig,
+                    bookshelfSyncConfig: this.bookshelfSyncConfig,
+                    queryVisibility: this.queryVisibility,
+                    autoCollapseLines: this.autoCollapseLines
+                };
+
+                // 空数据保护：如果所有关键配置都为空但存储中有数据，不要覆盖
+                const isEmpty = !this.assistantAvatarUrl && !this.userAvatarUrl &&
+                    !this.notebookId && !this.flomoConfig?.accessToken &&
+                    !this.writeathonConfig?.token && !this.memosConfig?.token &&
+                    (!this.tagIcons || Object.keys(this.tagIcons).length === 0);
+                if (isEmpty) {
+                    const existing = await this.loadData(CONFIG_STORAGE_NAME);
+                    const existingHasData = existing && Object.keys(existing).length > 0 &&
+                        (existing.assistantAvatarUrl || existing.userAvatarUrl || existing.notebookId ||
+                         (existing.tagIcons && Object.keys(existing.tagIcons).length > 0));
+                    if (existingHasData) {
+                        console.warn('[轻语] saveConfig: 内存配置为空但存储非空，跳过保存');
+                        return;
+                    }
+                }
+
+                await this._backupData(CONFIG_STORAGE_NAME, CONFIG_BACKUP_NAME);
+                await this.saveData(CONFIG_STORAGE_NAME, config);
+
+                // 同时备份 tagIcons，防止丢失
+                if (this.tagIcons && Object.keys(this.tagIcons).length > 0) {
+                    await this.saveData('shuoshuo-tag-icons-backup', this.tagIcons);
+                }
+            } catch (e) {
+                console.warn("保存配置失败", e);
             }
-
-            const config = {
-                assistantAvatarUrl: this.assistantAvatarUrl,
-                userAvatarUrl: this.userAvatarUrl,
-                notebookId: this.notebookId,
-                autoSync: this.autoSync,
-                syncMode: this.syncMode,
-                syncDocId: this.syncDocId,
-                dailyNotePathTemplate: this.dailyNotePathTemplate,
-                dailyNoteIconType: this.dailyNoteIconType,
-                dailyNoteIconColorWeekday: this.dailyNoteIconColorWeekday,
-                dailyNoteIconColorWeekend: this.dailyNoteIconColorWeekend,
-                viewStyle: this.viewStyle,
-                flomoConfig: this.flomoConfig,
-                writeathonConfig: this.writeathonConfig,
-                memosConfig: this.memosConfig,
-                reviewConfig: this.reviewConfig,
-                tagIcons: this.tagIcons,
-                pinnedTags: this.pinnedTags,
-                themeMode: this.themeMode,
-                morandiColor: this.morandiColor,
-                fontSizeConfig: this.fontSizeConfig,
-                enterToSubmit: this.enterToSubmit,
-                showSidebarDock: this.showSidebarDock,
-                showLifeLogRecords: this.showLifeLogRecords,
-                bookshelfFontConfig: this.bookshelfFontConfig,
-                bookshelfSyncConfig: this.bookshelfSyncConfig,
-                queryVisibility: this.queryVisibility,
-                autoCollapseLines: this.autoCollapseLines
-            };
-
-            await this.saveData(CONFIG_STORAGE_NAME, config);
-
-            // 同时备份 tagIcons，防止丢失
-            if (this.tagIcons && Object.keys(this.tagIcons).length > 0) {
-                await this.saveData('shuoshuo-tag-icons-backup', this.tagIcons);
-            }
-        } catch (e) {
-            console.warn("保存配置失败", e);
-        }
+        });
     }
 
     // 应用视图样式到笔记列表
@@ -15755,17 +15926,30 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     async saveShuoshuos() {
-        try {
-            // 过滤掉可以从思源读取的 LifeLog（有 boundBlockId 的），避免重复保存
-            // 但保留本地创建的 LifeLog（无 boundBlockId），这样不开自动同步时也能显示
-            const localOnly = this.shuoshuos.filter(s => !(s._isLifeLog && s.boundBlockId));
-            await this.saveData(STORAGE_NAME, localOnly);
-            // 保存后更新已绑定块ID的缓存
-            this._updateBoundCache();
-        } catch (e) {
-            console.warn("保存笔记失败", e);
-            showMessage("保存失败: " + e.message);
-        }
+        return this._withSaveLock('shuoshuos', async () => {
+            try {
+                // 过滤掉可以从思源读取的 LifeLog（有 boundBlockId 的），避免重复保存
+                // 但保留本地创建的 LifeLog（无 boundBlockId），这样不开自动同步时也能显示
+                const localOnly = this.shuoshuos.filter(s => !(s._isLifeLog && s.boundBlockId));
+                // 空数据保护：如果内存数据为空但存储中有数据，先备份再检查，防止意外覆盖
+                if (!localOnly || localOnly.length === 0) {
+                    const existing = await this.loadData(STORAGE_NAME);
+                    if (existing && existing.length > 0) {
+                        // 内存为空但存储非空，可能是加载阶段出错，不要覆盖
+                        console.warn('[轻语] saveShuoshuos: 内存数据为空但存储非空，跳过保存');
+                        return;
+                    }
+                }
+                // 保存前先备份旧数据
+                await this._backupData(STORAGE_NAME, STORAGE_BACKUP_NAME);
+                await this.saveData(STORAGE_NAME, localOnly);
+                // 保存后更新已绑定块ID的缓存
+                this._updateBoundCache();
+            } catch (e) {
+                console.warn("保存笔记失败", e);
+                showMessage("保存失败: " + e.message);
+            }
+        });
     }
 
     // ==================== Flomo 同步功能 ====================
@@ -16069,7 +16253,7 @@ ipcRenderer.on('lumina-close', () => {
             return tag;
         });
 
-        await this.saveData(STORAGE_NAME, this.shuoshuos);
+        await this.saveShuoshuos();
         await this.saveConfig();
 
         if (this.selectedTag === oldName) {
@@ -16107,7 +16291,7 @@ ipcRenderer.on('lumina-close', () => {
             this.selectedTag = null;
         }
 
-        await this.saveData(STORAGE_NAME, this.shuoshuos);
+        await this.saveShuoshuos();
         await this.saveConfig();
         this.renderTags();
         this.renderNotes();
@@ -16133,7 +16317,7 @@ ipcRenderer.on('lumina-close', () => {
             this.selectedTag = null;
         }
 
-        await this.saveData(STORAGE_NAME, this.shuoshuos);
+        await this.saveShuoshuos();
         await this.saveConfig();
         this.renderTags();
         this.renderNotes();
