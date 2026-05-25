@@ -466,7 +466,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._boundBlockIdsCache = new Set(); // 已绑定块ID的缓存（用于快速查找）
         this._saveLocks = new Map(); // save/load 并发锁
         this.moments = []; // 朋友圈数据
-        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', fontSize: { mode: 'default', customSize: 14.5 } };
+        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 } };
         this.books = []; // 图书书架数据
         this.bookshelfFilters = { type: 'all', sync: 'synced', status: 'read+reading', sort: 'time' };
         this.bookshelfSearch = '';
@@ -2899,7 +2899,7 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-section-header">
                                     <div>
                                         <div class="north-shuoshuo-section-title">daily note 路径模板</div>
-                                        <div class="north-shuoshuo-section-desc">自定义日记的存放路径，留空则使用笔记本默认配置。可使用日期格式模板变量。</div>
+                                        <div class="north-shuoshuo-section-desc">自定义日记的存放路径，留空则使用思源笔记中笔记本的日记模板也就是这里(笔记本设置 —> 新建日记那里)。同时也可使用日期格式模板变量。</div>
                                     </div>
                                 </div>
                                 <div class="north-shuoshuo-form-row">
@@ -10459,26 +10459,39 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 获取或创建对应日期的日记文档
-    async getOrCreateDailyNoteDoc(date, notebookId = null) {
+    // customTemplate: 可选的自定义模板，如果提供则优先使用
+    // useGlobalTemplate: 是否允许使用全局的 dailyNotePathTemplate（说说功能的配置），默认为 true
+    async getOrCreateDailyNoteDoc(date, notebookId = null, customTemplate = null, useGlobalTemplate = true) {
         const nbId = notebookId || this.notebookId;
         try {
             let template = '';
             
-            // 1. 优先使用用户自定义的 daily note 路径模板
-            if (this.dailyNotePathTemplate && this.dailyNotePathTemplate.trim()) {
+            // 1. 优先使用传入的自定义模板
+            if (customTemplate && customTemplate.trim()) {
+                template = customTemplate.trim();
+            } else if (useGlobalTemplate && this.dailyNotePathTemplate && this.dailyNotePathTemplate.trim()) {
+                // 其次使用用户自定义的 daily note 路径模板（仅当允许使用全局模板时）
                 template = this.dailyNotePathTemplate.trim();
             } else {
-                // 获取笔记本配置的日记保存路径模板
+                // 最后获取笔记本配置的日记保存路径模板
                 const confResponse = await fetch('/api/notebook/getNotebookConf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ notebook: nbId })
                 });
                 const confResult = await confResponse.json();
-                if (confResult.code !== 0) return null;
-                template = confResult.data?.conf?.dailyNoteSavePath || '';
+                if (confResult.code !== 0) {
+                    console.warn('获取笔记本配置失败:', confResult.msg);
+                } else {
+                    template = confResult.data?.conf?.dailyNoteSavePath || '';
+                }
             }
-            if (!template) return null;
+            
+            // 如果仍然没有模板，使用思源默认的 dailyNoteSavePath 模板
+            if (!template) {
+                template = '/daily note/{{now | date "2006/01"}}/{{now | date "2006-01-02"}}';
+                console.log('使用思源默认每日笔记路径模板:', template);
+            }
             
             // 2. 渲染模板为实际路径
             const hPath = this.renderDailyNotePath(template, date);
@@ -12348,6 +12361,43 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    // 上传 base64 图片到思源 assets
+    async uploadBase64ToAssets(base64Data, fileName) {
+        try {
+            const base64Response = await fetch(base64Data);
+            const blob = await base64Response.blob();
+            const file = new File([blob], fileName, { type: blob.type });
+            const formData = new FormData();
+            formData.append('assetsDirPath', '/assets/');
+            formData.append('file[]', file);
+
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = {};
+            if (token) {
+                headers['Authorization'] = `Token ${token}`;
+            }
+
+            const response = await fetch('/api/asset/upload', {
+                method: 'POST',
+                body: formData,
+                headers
+            });
+            const result = await response.json();
+            if (result.code === 0 && result.data.succMap && Object.keys(result.data.succMap).length > 0) {
+                let url = Object.values(result.data.succMap)[0];
+                // 确保返回的是 assets/xxx 格式，不带前导 /
+                if (url.startsWith('/')) {
+                    url = url.substring(1);
+                }
+                return url;
+            }
+            return null;
+        } catch (e) {
+            console.error('上传图片到 assets 失败:', e);
+            return null;
+        }
+    }
+
     // 同步单条朋友圈到思源笔记
     async syncMomentToSiyuan(mid) {
         const m = this.moments.find(x => x.id === mid);
@@ -12369,8 +12419,55 @@ ipcRenderer.on('lumina-close', () => {
 
         // 构建 markdown 内容
         let content = m.text || '';
+
+        // 处理图片：base64 先上传到 assets
+        let imageUrls = [];
         if (m.images && m.images.length > 0) {
-            content += `\n\n📷 [图片${m.images.length}张]`;
+            let hasUpdate = false;
+            const updatedImages = [];
+            for (let i = 0; i < m.images.length; i++) {
+                const imgUrl = m.images[i];
+                if (imgUrl.startsWith('data:')) {
+                    const mimeMatch = imgUrl.match(/data:([^;]+);/);
+                    const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+                    const extMap = {
+                        'image/jpeg': '.jpg',
+                        'image/jpg': '.jpg',
+                        'image/png': '.png',
+                        'image/gif': '.gif',
+                        'image/webp': '.webp',
+                        'image/bmp': '.bmp'
+                    };
+                    const ext = extMap[mimeType] || '.png';
+                    const now = new Date();
+                    const timeStr = now.getFullYear().toString() +
+                        String(now.getMonth() + 1).padStart(2, '0') +
+                        String(now.getDate()).padStart(2, '0') +
+                        String(now.getHours()).padStart(2, '0') +
+                        String(now.getMinutes()).padStart(2, '0') +
+                        String(now.getSeconds()).padStart(2, '0');
+                    const randomStr = Math.random().toString(36).substring(2, 8);
+                    const fileName = `image-${timeStr}-${randomStr}${ext}`;
+                    const assetUrl = await this.uploadBase64ToAssets(imgUrl, fileName);
+                    if (assetUrl) {
+                        updatedImages.push(assetUrl);
+                        hasUpdate = true;
+                    } else {
+                        updatedImages.push(imgUrl);
+                    }
+                } else {
+                    updatedImages.push(imgUrl);
+                }
+            }
+            if (hasUpdate) {
+                m.images = updatedImages;
+                await this.saveMoments();
+            }
+            imageUrls = updatedImages;
+        }
+
+        if (imageUrls.length > 0) {
+            content += '\n\n' + imageUrls.map(url => `![图片](${url})`).join('\n');
         }
         if (m.file) {
             content += `\n\n📎 文件: ${m.file.name}`;
@@ -12395,7 +12492,9 @@ ipcRenderer.on('lumina-close', () => {
 
         try {
             if (syncMode === 'dailynote') {
-                const docId = await this.getOrCreateDailyNoteDoc(new Date(m.created), notebookId);
+                // 朋友圈同步直接使用思源笔记本的 dailyNoteSavePath 配置
+                // 传入空模板和 useGlobalTemplate=false，确保使用思源笔记本配置
+                const docId = await this.getOrCreateDailyNoteDoc(new Date(m.created), notebookId, '', false);
                 if (!docId) {
                     showMessage('无法获取或创建日记文档');
                     return;
@@ -13784,19 +13883,21 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // daily note 路径模板示例点击填入
-        const dailyNoteExamples = this.container.querySelectorAll('.daily-note-example');
+        // daily note 路径模板示例点击填入（说说设置）
         const dailyNoteTemplateTextarea = this.container.querySelector('#settings-daily-note-path-template');
-        dailyNoteExamples.forEach(example => {
-            example.addEventListener('click', () => {
-                const template = example.dataset.template;
-                if (dailyNoteTemplateTextarea && template) {
-                    dailyNoteTemplateTextarea.value = template;
-                    dailyNoteTemplateTextarea.focus();
-                    showMessage('已填入示例模板');
-                }
+        if (dailyNoteTemplateTextarea) {
+            const dailyNoteExamples = this.container.querySelectorAll('#settings-daily-note-path-template ~ .daily-note-examples-row .daily-note-example, #settings-daily-note-path-template + div .daily-note-example');
+            dailyNoteExamples.forEach(example => {
+                example.addEventListener('click', () => {
+                    const template = example.dataset.template;
+                    if (template) {
+                        dailyNoteTemplateTextarea.value = template;
+                        dailyNoteTemplateTextarea.focus();
+                        showMessage('已填入示例模板');
+                    }
+                });
             });
-        });
+        }
 
         // 日记动态图标选择
         const dailyNoteIconOptions = this.container.querySelectorAll('#dailyNoteIconOptions .daily-note-icon-option');
@@ -15327,7 +15428,7 @@ ipcRenderer.on('lumina-close', () => {
                     }
                 }
                 if (!this.momentsConfig) {
-                    this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '' };
+                    this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '' };
                 }
             }
             // 合并字体大小默认值
