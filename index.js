@@ -8151,6 +8151,18 @@ ipcRenderer.on('lumina-close', () => {
             });
 
             listEl.addEventListener('click', (e) => {
+                // 处理图片点击 - 打开图片预览
+                const imgEl = e.target.closest('.north-shuoshuo-note-card img');
+                if (imgEl) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const imgSrc = imgEl.getAttribute('src');
+                    if (imgSrc) {
+                        this.showImagePreview(imgSrc);
+                    }
+                    return;
+                }
+
                 const menuEl = e.target.closest('.north-shuoshuo-note-menu');
                 if (menuEl) {
                     e.stopPropagation();
@@ -8657,8 +8669,8 @@ ipcRenderer.on('lumina-close', () => {
     extractType(content) {
         if (!content) return '';
         
-        // 优先识别开头 "类型：" 格式（只在内容开头有效）
-        const prefixMatch = content.trim().match(/^([^\s:：\n]+)[：:]\s*/);
+        // 优先识别开头 "类型：" 格式（只在内容开头有效，仅限中文字符 + 全角冒号）
+        const prefixMatch = content.trim().match(/^([\u4e00-\u9fa5]+)[：]\s*/);
         if (prefixMatch) {
             const type = prefixMatch[1].trim();
             if (type && !/^\d+$/.test(type)) {
@@ -8667,7 +8679,7 @@ ipcRenderer.on('lumina-close', () => {
         }
         
         // 识别 "时间 类型：内容" 格式（如 09:44 记录：内容，来自思源同步）
-        const timeTypeMatch = content.trim().match(/^\d{1,2}:\d{2}\s+([^\s:：\n]+)[：:]\s*/);
+        const timeTypeMatch = content.trim().match(/^\d{1,2}:\d{2}\s+([\u4e00-\u9fa5]+)[：]\s*/);
         if (timeTypeMatch) {
             const type = timeTypeMatch[1].trim();
             if (type && !/^\d+$/.test(type)) {
@@ -10161,7 +10173,7 @@ ipcRenderer.on('lumina-close', () => {
                 diaryContent = `> [!NOTE] ✏️ ${dateDisplay} ${timeStr}${contentTags.length > 0 ? ' ' + contentTags.join(' ') : ''}`;
 
                 // 添加内容行（每行前面加上 >，包括空行）
-                // 在段落之间插入空行（只有 > 的行）来分隔段落
+                // 保持引述块连续，不添加额外的空行分隔
                 const originalLines = contentWithoutTags.split('\n');
                 for (let i = 0; i < originalLines.length; i++) {
                     const line = originalLines[i];
@@ -10169,11 +10181,6 @@ ipcRenderer.on('lumina-close', () => {
                     
                     // 当前行
                     diaryContent += '\n> ' + trimmedLine;
-                    
-                    // 如果不是最后一行，且下一行也是非空行，则添加空行分隔
-                    if (i < originalLines.length - 1 && trimmedLine && originalLines[i + 1].trim()) {
-                        diaryContent += '\n>';
-                    }
                 }
             }
 
@@ -11511,6 +11518,37 @@ ipcRenderer.on('lumina-close', () => {
         }, 0);
     }
 
+    // 显示图片预览
+    showImagePreview(imgSrc) {
+        const overlay = document.createElement('div');
+        overlay.className = 'north-shuoshuo-image-preview-modal';
+        overlay.innerHTML = `
+            <div class="north-shuoshuo-image-preview-overlay"></div>
+            <div class="north-shuoshuo-image-preview-container">
+                <img src="${imgSrc}" alt="图片预览" class="north-shuoshuo-image-preview-img">
+                <div class="north-shuoshuo-image-preview-close">×</div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        // 点击关闭
+        const closeModal = () => overlay.remove();
+        overlay.querySelector('.north-shuoshuo-image-preview-overlay').addEventListener('click', closeModal);
+        overlay.querySelector('.north-shuoshuo-image-preview-close').addEventListener('click', closeModal);
+        
+        // 点击图片本身也关闭
+        overlay.querySelector('.north-shuoshuo-image-preview-img').addEventListener('click', closeModal);
+
+        // ESC键关闭
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    }
+
     // 编辑 LifeLog（弹窗编辑思源块内容）
     async editLifeLog(id) {
         const item = this.shuoshuos.find(s => s.id === id);
@@ -12254,13 +12292,10 @@ ipcRenderer.on('lumina-close', () => {
                 const emojiMatch = blockquoteHeader.match(/\[!NOTE\]\s+(\S+)/);
                 const emoji = emojiMatch ? emojiMatch[1] : '✏️';
                 updateContent = `> [!NOTE] ${emoji} ${dateStr} ${timePart}${tags.length > 0 ? ' ' + tags.join(' ') : ''}`;
+                // 保持引述块连续，不添加额外的空行分隔
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i].trim();
                     updateContent += '\n> ' + line;
-                    // 在段落之间添加空行分隔
-                    if (i < lines.length - 1 && line && lines[i + 1].trim()) {
-                        updateContent += '\n>';
-                    }
                 }
             } else if (tags.length > 0) {
                 // 如果有标签但没有类型，且原块不是 [!NOTE] 引用块格式
