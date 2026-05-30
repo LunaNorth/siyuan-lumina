@@ -49,7 +49,7 @@ const DEFAULT_REVIEW_CONFIG = {
     contentScopeTags: [], // 用于 include_tags 或 exclude_tags
     timeRange: '6_months', // all, 1_year, 6_months, 3_months, 1_month
     dailyCount: 8, // 4, 8, 12, 16, 20, 24
-    theme: 'sticky' // sticky
+    weightedReview: false // 加权回顾：越久没翻过的越优先
 };
 
 // 主题配置：original (原主题-硬编码绿色), siyuan (适配思源主题)
@@ -447,6 +447,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
+        this.reviewHistory = {}; // {noteId: timestamp} 记录每条笔记上次回顾时间
         this.selectedDate = null;
         this.selectedTag = null;
         this.filterQuery = null; // 检索式筛选：no-tag, has-image, has-link
@@ -465,6 +466,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._refreshTimer = null; // 防抖刷新定时器
         this._boundBlockIdsCache = new Set(); // 已绑定块ID的缓存（用于快速查找）
         this._saveLocks = new Map(); // save/load 并发锁
+        this._wsBroadcast = null;
+        this._wsBroadcastReconnectTimer = null;
+        this._wsBroadcastReconnectRetries = 0;
+        this._wsBroadcastDestroyed = false;
         this.moments = []; // 朋友圈数据
         this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 } };
         this.books = []; // 图书书架数据
@@ -589,18 +594,19 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // ===== 思源 transaction 事件：实时同步块内容到属性 =====
         // 思源每次编辑操作都会触发 transaction 自定义事件
+        // 注意：doOperations 中的 updateBlock 操作的 data 字段已经包含了最新 kramdown 内容，
+        // 可以直接使用，无需再调用 getBlockKramdown API，减少一次网络往返
         this._transactionHandler = (e) => {
             try {
                 const doOperations = e?.detail?.doOperations;
                 if (!doOperations || !Array.isArray(doOperations)) return;
                 
-                // 调试：打印第一个操作的信息
-                // console.log('[轻语] transaction事件:', doOperations.length, '个操作', doOperations[0]?.action, doOperations[0]?.id);
-                
                 // 收集所有需要同步的绑定块ID（使用Set去重）
                 const blocksToSync = new Set();
                 // 收集可能需要异步查询的块ID
                 const needQueryIds = [];
+                // 收集从事件中直接获取到的 kramdown 内容（key: blockId, value: kramdown）
+                const eventKramdowns = {};
                 
                 for (const op of doOperations) {
                     if (!op.id) continue;
@@ -609,9 +615,13 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     const syncActions = ['update', 'insert', 'delete', 'move', 'append', 'prepend'];
                     if (!syncActions.includes(op.action)) continue;
                     
+                    // 如果操作是 updateBlock 且包含 data（kramdown 内容），保存下来
+                    if (op.action === 'update' && op.data && typeof op.data === 'string') {
+                        eventKramdowns[op.id] = op.data;
+                    }
+                    
                     // 情况1：直接操作的是绑定的块
                     if (this._isBoundBlockId(op.id)) {
-                        // console.log('[轻语] 找到绑定块:', op.id);
                         blocksToSync.add(op.id);
                         continue;
                     }
@@ -619,7 +629,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     // 情况2：操作的是绑定块的子元素（如列表项）
                     // 检查 parentId 是否是绑定的块
                     if (op.parentId && this._isBoundBlockId(op.parentId)) {
-                        // console.log('[轻语] transaction找到绑定块的子元素:', op.id, '父块:', op.parentId);
+                        // 从子操作的 data 中提取 kramdown 存入父块
+                        if (op.action === 'update' && op.data && typeof op.data === 'string') {
+                            eventKramdowns[op.parentId] = op.data;
+                        }
                         blocksToSync.add(op.parentId);
                         continue;
                     }
@@ -634,12 +647,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     if (op.nextId) needQueryIds.push(op.nextId);
                 }
                 
-                // 先同步已确认的绑定块
-                if (blocksToSync.size > 0) {
-                    // console.log('[轻语] 同步绑定块:', [...blocksToSync]);
-                }
+                // 先同步已确认的绑定块（传入事件中提取的 kramdown 以跳过 API 调用）
                 blocksToSync.forEach(blockId => {
-                    this._debouncedSyncBoundAttr(blockId);
+                    this._debouncedSyncBoundAttr(blockId, eventKramdowns[blockId]);
                 });
                 
                 // 异步查询其他可能的绑定块（处理列表项插入等情况）
@@ -662,11 +672,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 const data = (event?.detail?.cmd !== undefined) ? event.detail : event;
                 if (!data?.cmd) return;
                 if (data.cmd === 'saved' || data.cmd === 'setblockattrs') {
-                    this._debouncedRefreshBound();
+                    this._handleBlockChange(data);
                 }
             } catch (e) {}
         };
         this.eventBus.on('ws-main', this._wsHandler);
+
+        // 直连思源 WebSocket 广播频道，获取丝滑的实时更新
+        this._connectBroadcastWebSocket();
 
         console.log("Shuoshuo plugin loaded");
     }
@@ -1007,6 +1020,15 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         if (this._wsHandler) {
             try { this.eventBus.off('ws-main', this._wsHandler); } catch (e) {}
             this._wsHandler = null;
+        }
+
+        // 断开 WebSocket 广播连接
+        this._disconnectBroadcastWebSocket();
+
+        // 清理 per-block 防抖定时器
+        if (this._refreshBlockTimers) {
+            Object.values(this._refreshBlockTimers).forEach(t => clearTimeout(t));
+            this._refreshBlockTimers = null;
         }
 
         // 断开 MutationObserver
@@ -1362,8 +1384,25 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 const lines = beforeCursor.split('\n');
                 const currentLine = lines[lines.length - 1];
 
-                const unorderedMatch = currentLine.match(/^(•\s|-\s|\*\s)(.*)$/);
+                const unorderedMatch = currentLine.match(/^(•\s|-\s(?!\[)|\*\s)(.*)$/);
+                const taskMatch = currentLine.match(/^(- \[[ x]\]\s?)(.*)$/);
                 const orderedMatch = currentLine.match(/^(\d+)\.\s(.*)$/);
+
+                if (taskMatch) {
+                    if (!taskMatch[2].trim()) {
+                        e.preventDefault();
+                        lines[lines.length - 1] = '';
+                        input.value = lines.join('\n') + '\n' + afterCursor;
+                        const newPos = lines.join('\n').length + 1;
+                        input.setSelectionRange(newPos, newPos);
+                        return;
+                    }
+                    e.preventDefault();
+                    const newLine = '\n' + taskMatch[1];
+                    input.value = beforeCursor + newLine + afterCursor;
+                    input.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+                    return;
+                }
 
                 if (unorderedMatch) {
                     if (!unorderedMatch[2].trim()) {
@@ -2255,8 +2294,25 @@ editor.addEventListener('keydown', (e) => {
         const lines = beforeCursor.split('\\n');
         const currentLine = lines[lines.length - 1];
 
-        const unorderedMatch = currentLine.match(/^(•\\s|-\\s|\\*\\s)(.*)$/);
+        const unorderedMatch = currentLine.match(/^(•\\s|-\\s(?!\\[)|\\*\\s)(.*)$/);
+        const taskMatch = currentLine.match(/^(- \\[[ x]\\]\\s?)(.*)$/);
         const orderedMatch = currentLine.match(/^(\\d+)\\.\\s(.*)$/);
+
+        if (taskMatch) {
+            if (!taskMatch[2].trim()) {
+                e.preventDefault();
+                lines[lines.length - 1] = '';
+                editor.value = lines.join('\\n') + '\\n' + afterCursor;
+                const newPos = lines.join('\\n').length + 1;
+                editor.setSelectionRange(newPos, newPos);
+                return;
+            }
+            e.preventDefault();
+            const newLine = '\\n' + taskMatch[1];
+            editor.value = beforeCursor + newLine + afterCursor;
+            editor.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+            return;
+        }
 
         if (unorderedMatch) {
             if (!unorderedMatch[2].trim()) {
@@ -2526,6 +2582,7 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                         </div>
 
+                        ${(this.queryVisibility?.lifelog || this.queryVisibility?.['no-tag'] !== false || this.queryVisibility?.['has-image'] !== false || this.queryVisibility?.['has-link'] !== false || this.queryVisibility?.['has-comment']) ? `
                         <div class="north-shuoshuo-query-section">
                             <div class="north-shuoshuo-section-title">检索式</div>
                             <div class="north-shuoshuo-query-list">
@@ -2566,6 +2623,7 @@ ipcRenderer.on('lumina-close', () => {
                                 </div>` : ''}
                             </div>
                         </div>
+                        ` : ''}
 
                         <div class="north-shuoshuo-tags-section">
                             <div class="north-shuoshuo-section-title">全部标签</div>
@@ -2851,6 +2909,21 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- 自定义签名设置 -->
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">自定义签名</div>
+                                        <div class="north-shuoshuo-section-desc">显示在本周记录和每日回顾统计头部的个性签名</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <div class="north-shuoshuo-input-group" style="width: 100%;">
+                                        <input type="text" id="custom-signature-input" class="north-shuoshuo-input-field" placeholder="请输入自定义签名" value="${this.customSignature || '遇事不决，可问春风'}">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- 同步设置 -->
@@ -2892,6 +2965,16 @@ ipcRenderer.on('lumina-close', () => {
                                     <div class="north-shuoshuo-form-hint">
                                         <span>💡</span> 打开目标文档，右键文档标题 → 复制文档块 ID
                                     </div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>自动同步</h4>
+                                        <p>发布说说时自动同步</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.autoSync ? 'on' : ''}" id="settings-auto-sync-switch"></div>
                                 </div>
                             </div>
 
@@ -3043,16 +3126,6 @@ ipcRenderer.on('lumina-close', () => {
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-
-                            <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-toggle-row">
-                                    <div class="north-shuoshuo-toggle-info">
-                                        <h4>自动同步</h4>
-                                        <p>发布说说时自动同步</p>
-                                    </div>
-                                    <div class="north-shuoshuo-switch ${this.autoSync ? 'on' : ''}" id="settings-auto-sync-switch"></div>
                                 </div>
                             </div>
 
@@ -3421,18 +3494,31 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
-                                        <h4>导出数据</h4>
-                                        <p>导出所有说说数据到本地 JSON 文件</p>
+                                        <h4>说说数据 (JSON)</h4>
+                                        <p>将所有说说笔记导出为 JSON 格式</p>
                                     </div>
-                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary north-shuoshuo-btn-small" id="settings-export">导出</button>
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary north-shuoshuo-btn-small" id="settings-export-shuoshuo-json">导出</button>
                                 </div>
-                                
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
-                                        <h4>清空数据</h4>
-                                        <p>清空后数据不可恢复，请谨慎操作</p>
+                                        <h4>说说数据 (MD)</h4>
+                                        <p>将所有说说笔记导出为 Markdown 格式</p>
                                     </div>
-                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-danger north-shuoshuo-btn-small" id="settings-clear">清空</button>
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary north-shuoshuo-btn-small" id="settings-export-shuoshuo-md">导出</button>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>朋友圈数据 (JSON)</h4>
+                                        <p>将所有朋友圈动态导出为 JSON 格式</p>
+                                    </div>
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary north-shuoshuo-btn-small" id="settings-export-moments-json">导出</button>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>朋友圈数据 (MD)</h4>
+                                        <p>将所有朋友圈动态导出为 Markdown 格式</p>
+                                    </div>
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary north-shuoshuo-btn-small" id="settings-export-moments-md">导出</button>
                                 </div>
                             </div>
                         </div>
@@ -3529,31 +3615,13 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-section-header">
                                     <div>
-                                        <div class="north-shuoshuo-section-title">回顾主题</div>
-                                        <div class="north-shuoshuo-section-desc">选择每日回顾的展示样式</div>
+                                        <div class="north-shuoshuo-section-title">加权回顾</div>
+                                        <div class="north-shuoshuo-section-desc">开启后，越久没翻过的笔记越优先展示</div>
                                     </div>
+                                    <div class="north-shuoshuo-switch ${this.reviewConfig.weightedReview ? 'on' : ''}" id="weighted-review-toggle"></div>
                                 </div>
-                                <div class="north-shuoshuo-form-row">
-                                    <div class="north-shuoshuo-radio-group vertical" id="review-theme-group">
-                                        <label class="north-shuoshuo-radio-item ${this.reviewConfig.theme === 'sticky' ? 'selected' : ''}" data-value="sticky">
-                                            <input type="radio" name="review-theme" value="sticky" ${this.reviewConfig.theme === 'sticky' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">便利贴墙</span>
-                                        </label>
-
-                                    </div>
-                                </div>
-                            </div>
-
-                        
-
-                        
-                        
-
-                        
-                        
+                            </div>                                               
                     </div>
-
                         <!-- 朋友圈设置 -->
                         <div class="north-shuoshuo-settings-section" id="setting-group-moments" style="display: none;">
                             <div class="north-shuoshuo-section-card">
@@ -3819,7 +3887,6 @@ ipcRenderer.on('lumina-close', () => {
         // 先从思源加载最新绑定数据，再渲染
         this.loadShuoshuos().then(() => {
             this.renderNotes();
-            this.renderTags();
         });
         // 应用主题模式（默认为原主题）
         setTimeout(() => {
@@ -3892,8 +3959,7 @@ ipcRenderer.on('lumina-close', () => {
                 case 'week':
                 case 'notes':
                 default:
-                    this.renderNotes();
-                    this.renderTags();
+                    this._scheduleRender(this.currentMainView);
                     break;
             }
         } finally {
@@ -3995,10 +4061,23 @@ ipcRenderer.on('lumina-close', () => {
         return html;
     }
 
+    _scheduleRender(view) {
+        requestAnimationFrame(() => {
+            const targetView = view || this.currentMainView;
+            if (targetView === 'notes' || targetView === 'week') {
+                this.renderNotes();
+                this.renderTags();
+            }
+        });
+    }
+
     // 渲染笔记列表
-    renderNotes() {
-        const listEl = this.container.querySelector('#shuoshuo-notes-list');
-        if (!listEl) return;
+    async renderNotes() {
+        if (this._renderingNotes) return;
+        this._renderingNotes = true;
+        try {
+            const listEl = this.container.querySelector('#shuoshuo-notes-list');
+            if (!listEl) return;
         
         // 更新检索式数量
         this.updateQueryCounts();
@@ -4009,6 +4088,9 @@ ipcRenderer.on('lumina-close', () => {
         const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
         if (sidebar) sidebar.style.display = '';
         listEl.classList.remove('review-mode', 'table-layout');
+
+        this.syncEnterKeyHint();
+        this._rebuildQuerySections();
 
         // 根据选中日期、标签或搜索关键词筛选
         let filtered = this.shuoshuos;
@@ -4113,6 +4195,23 @@ ipcRenderer.on('lumina-close', () => {
             // 平铺布局：按日期分组
             const groups = this.groupNotesByDate(sorted);
             let html = '';
+
+            // 本周记录视图显示统计头部
+            if (this.currentMainView === 'week') {
+                html += `
+                    <div class="north-shuoshuo-week-header-bar">
+                        <div class="north-shuoshuo-week-header-left">
+                            <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconCalendar"></use></svg>
+                            <span>本周 · 共 ${sorted.length} 条</span>
+                        </div>
+                        <div class="north-shuoshuo-week-header-center">
+                            <span class="north-shuoshuo-week-signature">${this.customSignature || '遇事不决，可问春风'}</span>
+                        </div>
+                        <div class="north-shuoshuo-week-header-right"></div>
+                    </div>
+                `;
+            }
+
             for (const [dateKey, notes] of groups) {
                 const groupTitle = this.getDateGroupTitle(dateKey);
                 html += `<div class="north-shuoshuo-date-group">${groupTitle}</div>`;
@@ -4154,6 +4253,13 @@ ipcRenderer.on('lumina-close', () => {
         const monthsEl = this.container.querySelector('.north-shuoshuo-months');
         if (monthsEl) {
             monthsEl.innerHTML = this.generateHeatmapMonths();
+        }
+
+        this.renderTags();
+        } catch (e) {
+            // 渲染异常忽略
+        } finally {
+            this._renderingNotes = false;
         }
     }
 
@@ -4465,95 +4571,142 @@ ipcRenderer.on('lumina-close', () => {
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
 
-        // 隐藏输入区域，恢复侧边栏显示
+        // 显示输入区域和侧边栏（类似本周记录）
         const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
-        if (inputArea) inputArea.style.display = 'none';
+        if (inputArea) inputArea.style.display = 'block';
         const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
         if (sidebar) sidebar.style.display = '';
 
-        // 移除笔记布局相关类名，避免影响回顾视图
-        listEl.classList.add('review-mode');
+        // 移除笔记布局相关类名
+        listEl.classList.remove('review-mode');
 
-        // 获取回顾笔记
-        const reviewNotes = this.getReviewNotes();
-
-        if (reviewNotes.length === 0) {
-            const theme = 'sticky';
-            const emptyClass = 'north-shuoshuo-sticky-review-empty';
+        // 如果没有笔记，显示空状态
+        if (this.shuoshuos.length === 0) {
             listEl.innerHTML = `
-                <div class="${emptyClass}">
-                    <div class="north-shuoshuo-empty-state" style="padding: 80px 20px; text-align: center;">
-                        <div class="north-shuoshuo-empty-icon" style="font-size: 48px; margin-bottom: 16px;">📭</div>
-                        <div class="north-shuoshuo-empty-text" style="font-size: 16px; margin-bottom: 8px;">暂无符合条件的笔记</div>
-                        <div class="north-shuoshuo-empty-hint" style="font-size: 13px;">试着在设置中调整回顾规则或添加更多笔记吧</div>
-                    </div>
+                <div class="north-shuoshuo-review-empty">
+                    <div class="north-shuoshuo-review-empty-icon">🕰️</div>
+                    <div class="north-shuoshuo-review-empty-title">还没有笔记</div>
+                    <div class="north-shuoshuo-review-empty-hint">在上方输入框写下第一条想法吧</div>
                 </div>
             `;
             return;
         }
 
-        this.renderReviewSticky(listEl, reviewNotes);
-    }
-
-    renderReviewSticky(listEl, reviewNotes) {
-        const today = new Date();
-        const month = today.getMonth() + 1;
-        const date = today.getDate();
-        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-        const weekday = weekdays[today.getDay()];
-        const colors = ['note-color-1', 'note-color-2', 'note-color-3', 'note-color-4', 'note-color-5', 'note-color-6'];
-
+        // 初始显示提示界面，点击按钮后才展示笔记
+        const dailyCount = this.reviewConfig?.dailyCount || 8;
         listEl.innerHTML = `
-            <div class="north-shuoshuo-sticky-review-container">
-                <div class="north-shuoshuo-sticky-review-header">
-                    <div class="north-shuoshuo-sticky-review-label">DAILY REVIEW</div>
-                    <div class="north-shuoshuo-sticky-review-title">${month} 月 ${date} 日 · ${weekday}</div>
-                </div>
-                <div class="north-shuoshuo-sticky-wall">
-                    ${reviewNotes.map((note, index) => {
-                        const colorClass = colors[index % colors.length];
-                        const timeStr = this.formatTimeForDiary(note.created);
-                        const dateStr = this.formatDate(note.created).split(' ')[0];
-                        const noteDateKey = this.formatDateKey(new Date(note.created));
-                        const todayKey = this.formatDateKey(new Date());
-                        const displayTime = noteDateKey === todayKey ? timeStr : dateStr;
-                        const tags = note.tags || [];
-                        const tagHtml = tags.length > 0 ? `<span class="north-shuoshuo-sticky-tag">${this.escapeHtml(tags[0])}</span>` : '';
-                        return `
-                            <div class="north-shuoshuo-sticky-note ${colorClass}" data-id="${note.id}">
-                                <div class="north-shuoshuo-sticky-note-inner">
-                                    <div class="north-shuoshuo-sticky-note-content">${this.renderNoteContent(note.content, { hideTags: true })}</div>
-                                    <div class="north-shuoshuo-sticky-note-meta">
-                                        ${tagHtml}
-                                        <span class="north-shuoshuo-sticky-time">${displayTime}</span>
-                                    </div>
-                                    <div class="north-shuoshuo-sticky-note-footer">
-                                        <span class="north-shuoshuo-sticky-indicator">${index + 1} / ${reviewNotes.length}</span>
-                                        <button class="north-shuoshuo-sticky-menu-btn" data-id="${note.id}" title="更多">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <circle cx="12" cy="12" r="1"/>
-                                                <circle cx="19" cy="12" r="1"/>
-                                                <circle cx="5" cy="12" r="1"/>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
+            <div class="north-shuoshuo-review-welcome">
+                <div class="north-shuoshuo-review-welcome-icon">🕰️</div>
+                <div class="north-shuoshuo-review-welcome-title">往期的回顾</div>
+                <div class="north-shuoshuo-review-welcome-hint">要不要看看随机的 ${dailyCount} 条笔记？</div>
+                <button class="north-shuoshuo-review-start-btn" id="shuoshuo-review-start">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h3v3h-3zM8 3h3v3H8zM5 8h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8zM12 12v4"/></svg>
+                    随机 ${dailyCount} 条
+                </button>
             </div>
         `;
 
-        listEl.querySelectorAll('.north-shuoshuo-sticky-note').forEach(noteEl => {
-            noteEl.addEventListener('click', (e) => {
-                if (e.target.closest('.north-shuoshuo-sticky-menu-btn')) return;
-                const id = noteEl.dataset.id;
+        // 绑定开始回顾按钮事件
+        const startBtn = listEl.querySelector('#shuoshuo-review-start');
+        if (startBtn) {
+            startBtn.addEventListener('click', () => {
+                this.renderReviewNotes();
+            });
+        }
+    }
+
+    // 渲染回顾笔记列表（点击按钮后显示）
+    renderReviewNotes() {
+        const listEl = this.container.querySelector('#shuoshuo-notes-list');
+        if (!listEl) return;
+
+        // 获取回顾笔记
+        const reviewNotes = this.getReviewNotes();
+        const totalCount = reviewNotes.length;
+        const dailyCount = this.reviewConfig?.dailyCount || 8;
+
+        // 加权回顾模式下，记录本次回顾的笔记时间
+        if (this.reviewConfig?.weightedReview && reviewNotes.length > 0) {
+            const now = Date.now();
+            reviewNotes.forEach(note => {
+                this.reviewHistory[note.id] = now;
+            });
+            this.saveConfig();
+        }
+
+        // 如果没有笔记，显示对应提示
+        if (totalCount === 0) {
+            if (this.shuoshuos.length === 0) {
+                listEl.innerHTML = `
+                    <div class="north-shuoshuo-review-empty">
+                        <div class="north-shuoshuo-review-empty-icon">🕰️</div>
+                        <div class="north-shuoshuo-review-empty-title">还没有笔记</div>
+                        <div class="north-shuoshuo-review-empty-hint">在上方输入框写下第一条想法吧</div>
+                    </div>
+                `;
+            } else {
+                listEl.innerHTML = `
+                    <div class="north-shuoshuo-review-empty">
+                        <div class="north-shuoshuo-review-empty-icon">🕰️</div>
+                        <div class="north-shuoshuo-review-empty-title">没有命中的笔记</div>
+                        <div class="north-shuoshuo-review-empty-hint">当前回顾筛选条件没有命中任何笔记，去设置中调整回顾规则吧</div>
+                        <button class="north-shuoshuo-review-action-btn" id="shuoshuo-review-back" style="margin-top: 16px; padding: 6px 16px; font-size: 13px;">
+                            回到回顾首页
+                        </button>
+                    </div>
+                `;
+                const backBtn = listEl.querySelector('#shuoshuo-review-back');
+                if (backBtn) {
+                    backBtn.addEventListener('click', () => {
+                        this.renderReview();
+                    });
+                }
+            }
+            return;
+        }
+
+        // 按日期分组显示
+        const groups = this.groupNotesByDate(reviewNotes);
+        let notesHtml = '';
+        for (const [dateKey, notes] of groups) {
+            const groupTitle = this.getDateGroupTitle(dateKey);
+            notesHtml += `<div class="north-shuoshuo-date-group">${groupTitle}</div>`;
+            notesHtml += notes.map(item => this.renderNoteCard(item)).join('');
+        }
+
+        listEl.innerHTML = `
+            <div class="north-shuoshuo-review-header-bar">
+                <div class="north-shuoshuo-review-header-left">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h3v3h-3zM8 3h3v3H8zM5 8h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8zM12 12v4"/></svg>
+                    <span>随机 ${dailyCount} 条 · 共 ${totalCount} 条</span>
+                </div>
+                <div class="north-shuoshuo-review-header-center">
+                    <span class="north-shuoshuo-review-signature">${this.customSignature || '遇事不决，可问春风'}</span>
+                </div>
+                <div class="north-shuoshuo-review-header-actions">
+                    <button class="north-shuoshuo-review-action-btn" id="shuoshuo-review-refresh">
+                        <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconRefresh"></use></svg>
+                        换一批
+                    </button>
+                    <button class="north-shuoshuo-review-action-btn" id="shuoshuo-review-back">
+                        <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconLanguage"></use></svg>
+                        回到回顾首页
+                    </button>
+                </div>
+            </div>
+            ${notesHtml}
+        `;
+
+        // 绑定笔记卡片事件
+        listEl.querySelectorAll('.north-shuoshuo-note-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.north-shuoshuo-note-menu')) return;
+                const id = card.dataset.id;
                 this.showMemoDetail(id);
             });
         });
 
-        listEl.querySelectorAll('.north-shuoshuo-sticky-menu-btn').forEach(btn => {
+        listEl.querySelectorAll('.north-shuoshuo-note-card .north-shuoshuo-note-menu').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const id = btn.dataset.id;
@@ -4561,78 +4714,22 @@ ipcRenderer.on('lumina-close', () => {
             });
         });
 
-        // 绑定块引用点击事件
-        this.bindBlockRefEvents();
-    }
-
-    renderReviewCork(listEl, reviewNotes) {
-        const today = new Date();
-        const month = today.getMonth() + 1;
-        const date = today.getDate();
-        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-        const weekday = weekdays[today.getDay()];
-        const colors = [
-            'cork-note-yellow', 'cork-note-pink', 'cork-note-blue', 'cork-note-green',
-            'cork-note-purple', 'cork-note-orange', 'cork-note-cream', 'cork-note-mint'
-        ];
-        const pinColors = ['', 'cork-pin-blue', 'cork-pin-green', 'cork-pin-yellow', 'cork-pin-purple'];
-
-        listEl.innerHTML = `
-            <div class="north-shuoshuo-cork-review-container">
-                <div class="north-shuoshuo-cork-board">
-                    <div class="north-shuoshuo-cork-header">
-                        <h1>${month} 月 ${date} 日 · ${weekday}</h1>
-                        <p>DAILY REVIEW</p>
-                    </div>
-                    <div class="north-shuoshuo-cork-wall">
-                        ${reviewNotes.map((note, index) => {
-                            const colorClass = colors[index % colors.length];
-                            const pinClass = pinColors[index % pinColors.length];
-                            const timeStr = this.formatTimeForDiary(note.created);
-                            const dateStr = this.formatDate(note.created).split(' ')[0];
-                            const noteDateKey = this.formatDateKey(new Date(note.created));
-                            const todayKey = this.formatDateKey(new Date());
-                            const displayTime = noteDateKey === todayKey ? timeStr : dateStr;
-                            const tags = note.tags || [];
-                            const tagHtml = tags.length > 0 ? `<span class="north-shuoshuo-cork-tag">${this.escapeHtml(tags[0])}</span>` : '';
-                            return `
-                                <div class="north-shuoshuo-cork-note ${colorClass} ${pinClass}" data-id="${note.id}">
-                                    <div class="north-shuoshuo-cork-note-time">${displayTime}</div>
-                                    <div class="north-shuoshuo-cork-note-content">${this.renderNoteContent(note.content, { hideTags: true })}</div>
-                                    ${tagHtml}
-                                    <div class="north-shuoshuo-cork-note-footer">${index + 1} / ${reviewNotes.length}</div>
-                                    <button class="north-shuoshuo-cork-menu-btn" data-id="${note.id}" title="更多">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <circle cx="12" cy="12" r="1"/>
-                                            <circle cx="19" cy="12" r="1"/>
-                                            <circle cx="5" cy="12" r="1"/>
-                                        </svg>
-                                    </button>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-            </div>
-        `;
-
-        listEl.querySelectorAll('.north-shuoshuo-cork-note').forEach(noteEl => {
-            noteEl.addEventListener('click', (e) => {
-                if (e.target.closest('.north-shuoshuo-cork-menu-btn')) return;
-                const id = noteEl.dataset.id;
-                this.showMemoDetail(id);
+        // 绑定换一批按钮
+        const refreshBtn = listEl.querySelector('#shuoshuo-review-refresh');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.renderReviewNotes();
             });
-        });
+        }
 
-        listEl.querySelectorAll('.north-shuoshuo-cork-menu-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const id = btn.dataset.id;
-                this.showNoteMenu(id, btn);
+        // 绑定返回按钮
+        const backBtn = listEl.querySelector('#shuoshuo-review-back');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this.renderReview();
             });
-        });
+        }
 
-        // 绑定块引用点击事件
         this.bindBlockRefEvents();
     }
 
@@ -4771,7 +4868,7 @@ ipcRenderer.on('lumina-close', () => {
             }
             const tags = note.tags || [];
             if (tags.length > 0) {
-                memoTag.innerHTML = `<span class="north-shuoshuo-tag-dot"></span>${this.escapeHtml(tags[0])}`;
+                memoTag.innerHTML = `${this.escapeHtml(tags[0])}`;
                 memoTag.style.display = 'inline-flex';
             } else {
                 memoTag.innerHTML = '';
@@ -4930,8 +5027,11 @@ ipcRenderer.on('lumina-close', () => {
 
     // 渲染表格视图
     renderTable() {
-        const listEl = this.container.querySelector('#shuoshuo-notes-list');
-        if (!listEl) return;
+        if (this._renderingTable) return;
+        this._renderingTable = true;
+        try {
+            const listEl = this.container.querySelector('#shuoshuo-notes-list');
+            if (!listEl) return;
 
         // 隐藏输入区域，同时隐藏中间侧边栏（表格视图只展示表格）
         const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
@@ -5308,6 +5408,7 @@ ipcRenderer.on('lumina-close', () => {
         const batchDeleteBtn = listEl.querySelector('#table-batch-delete');
         if (batchDeleteBtn) {
             batchDeleteBtn.addEventListener('click', () => {
+                if (this._deletingInProgress) return;
                 const checkedIds = [...listEl.querySelectorAll('.north-shuoshuo-table-checkbox:checked')]
                     .map(cb => cb.dataset.id)
                     .filter(id => id);
@@ -5337,19 +5438,22 @@ ipcRenderer.on('lumina-close', () => {
 
                 // 使用思源笔记的 confirm 函数格式：confirm(title, message, callback)
                 this.confirmAboveMobileShell(confirmTitle, confirmMsg, async () => {
-                    // 使用字符串比较来确保 id 匹配
-                    const idsToDelete = new Set(checkedIds.map(id => String(id)));
-                    // 先删除绑定的思源块
-                    const notesToDelete = this.shuoshuos.filter(s => idsToDelete.has(String(s.id)));
-                    this.shuoshuos = this.shuoshuos.filter(s => !idsToDelete.has(String(s.id)));
-                    await this.saveShuoshuos();
-                    for (const note of notesToDelete) {
-                        if (note.boundBlockId) {
-                            await this.deleteSiyuanBlock(note.boundBlockId);
+                    this._deletingInProgress = true;
+                    try {
+                        const idsToDelete = new Set(checkedIds.map(id => String(id)));
+                        const notesToDelete = this.shuoshuos.filter(s => idsToDelete.has(String(s.id)));
+                        this.shuoshuos = this.shuoshuos.filter(s => !idsToDelete.has(String(s.id)));
+                        await this.saveShuoshuos();
+                        for (const note of notesToDelete) {
+                            if (note.boundBlockId) {
+                                await this.deleteSiyuanBlock(note.boundBlockId);
+                            }
                         }
+                        this.refreshMountedShuoshuoViews();
+                        showMessage(`已删除 ${checkedIds.length} 条笔记`);
+                    } finally {
+                        this._deletingInProgress = false;
                     }
-                    this.refreshMountedShuoshuoViews();
-                    showMessage(`已删除 ${checkedIds.length} 条笔记`);
                 });
             });
         }
@@ -5358,6 +5462,7 @@ ipcRenderer.on('lumina-close', () => {
         listEl.querySelectorAll('.north-shuoshuo-table-delete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                if (this._deletingInProgress) return;
                 const id = btn.dataset.id;
                 if (!id) {
                     showMessage('删除失败：笔记ID不存在');
@@ -5378,14 +5483,23 @@ ipcRenderer.on('lumina-close', () => {
                 }
                 // 使用思源笔记的 confirm 函数格式：confirm(title, message, callback)
                 this.confirmAboveMobileShell('⚠️ 确认删除', `确定要删除这条笔记吗？\n\n${contentPreview}\n\n此操作不可恢复。`, async () => {
-                    const note = this.shuoshuos.find(s => String(s.id) === String(id));
-                    this.shuoshuos = this.shuoshuos.filter(s => String(s.id) !== String(id));
-                    await this.saveShuoshuos();
-                    if (note && note.boundBlockId) {
-                        await this.deleteSiyuanBlock(note.boundBlockId);
+                    this._deletingInProgress = true;
+                    try {
+                        const noteNow = this.shuoshuos.find(s => String(s.id) === String(id));
+                        if (!noteNow) {
+                            showMessage('该笔记已被删除');
+                            return;
+                        }
+                        this.shuoshuos = this.shuoshuos.filter(s => String(s.id) !== String(id));
+                        await this.saveShuoshuos();
+                        if (noteNow.boundBlockId) {
+                            await this.deleteSiyuanBlock(noteNow.boundBlockId);
+                        }
+                        this.refreshMountedShuoshuoViews();
+                        showMessage('已删除 1 条笔记');
+                    } finally {
+                        this._deletingInProgress = false;
                     }
-                    this.refreshMountedShuoshuoViews();
-                    showMessage('已删除 1 条笔记');
                 });
             });
         });
@@ -5409,6 +5523,11 @@ ipcRenderer.on('lumina-close', () => {
                 if (id) this.showMemoDetail(id);
             });
         });
+        } catch (e) {
+            // 渲染异常忽略
+        } finally {
+            this._renderingTable = false;
+        }
     }
     // 更新表格工具栏状态（批量删除按钮显示/隐藏）
     updateTableToolbar() {
@@ -5747,7 +5866,7 @@ ipcRenderer.on('lumina-close', () => {
             else if (m.images.length === 4) gridClass = 'four';
             else if (m.images.length >= 5 && m.images.length <= 6) gridClass = 'six';
             else if (m.images.length >= 7) gridClass = 'nine';
-            const imgsHtml = m.images.map(src => `<img class="lumina-moments-grid-img" src="${src}" alt="photo">`).join('');
+            const imgsHtml = m.images.map(src => `<img class="lumina-moments-grid-img" src="${src}" alt="photo" loading="lazy">`).join('');
             mediaHtml += `<div class="lumina-moments-media"><div class="lumina-moments-image-grid ${gridClass}">${imgsHtml}</div></div>`;
         }
         if (m.file) {
@@ -5832,23 +5951,30 @@ ipcRenderer.on('lumina-close', () => {
                 if (e.target === coverAvatar || e.target.closest('#momentsCoverAvatar')) return;
                 coverInput.click();
             });
-            coverInput.addEventListener('change', (e) => {
+            coverInput.addEventListener('change', async (e) => {
                 const file = e.target.files[0];
                 if (file) {
                     const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        const img = document.createElement('img');
-                        img.src = ev.target.result;
-                        img.className = 'lumina-moments-cover-img';
-                        const oldSvg = coverSection.querySelector('svg.lumina-moments-cover-img');
-                        const oldImg = coverSection.querySelector('img.lumina-moments-cover-img');
-                        if (oldSvg) coverSection.replaceChild(img, oldSvg);
-                        else if (oldImg) coverSection.replaceChild(img, oldImg);
-                        else coverSection.insertBefore(img, coverSection.firstChild);
-                        this.momentsConfig.cover = ev.target.result;
-                        this.saveMoments();
-                    };
-                    reader.readAsDataURL(file);
+                    const base64Data = await new Promise(resolve => {
+                        reader.onload = () => resolve(reader.result);
+                        reader.readAsDataURL(file);
+                    });
+                    const img = document.createElement('img');
+                    img.src = base64Data;
+                    img.className = 'lumina-moments-cover-img';
+                    const oldSvg = coverSection.querySelector('svg.lumina-moments-cover-img');
+                    const oldImg = coverSection.querySelector('img.lumina-moments-cover-img');
+                    if (oldSvg) coverSection.replaceChild(img, oldSvg);
+                    else if (oldImg) coverSection.replaceChild(img, oldImg);
+                    else coverSection.insertBefore(img, coverSection.firstChild);
+                    const fileName = this._generateImageFileName(base64Data);
+                    const assetUrl = await this.uploadBase64ToAssets(base64Data, fileName);
+                    if (assetUrl) {
+                        this.momentsConfig.cover = assetUrl;
+                    } else {
+                        this.momentsConfig.cover = base64Data;
+                    }
+                    await this.saveMoments();
                 }
                 coverInput.value = '';
             });
@@ -6084,15 +6210,27 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
         if (publishSubmit) {
-            publishSubmit.addEventListener('click', () => {
+            publishSubmit.addEventListener('click', async () => {
                 const text = publishText.value.trim();
                 const linkTitle = container.querySelector('#momentsPublishLinkTitle')?.value.trim() || '';
                 if (!text && pubImages.length === 0 && !linkTitle && !pubFile) return;
+                const uploadedImages = [];
+                for (const img of pubImages) {
+                    if (typeof img === 'string' && img.startsWith('data:')) {
+                        const fileName = this._generateImageFileName(img);
+                        const url = await this.uploadBase64ToAssets(img, fileName);
+                        uploadedImages.push(url || img);
+                    } else {
+                        uploadedImages.push(img);
+                    }
+                }
+                pubImages.length = 0;
+                pubImages.push(...uploadedImages);
                 const mid = this.getMomentNextId();
                 const newMoment = {
                     id: mid,
                     text: text || '',
-                    images: [...pubImages],
+                    images: [...uploadedImages],
                     file: pubFile ? { name: pubFile.name, size: this._formatFileSize(pubFile.size) } : null,
                     link: linkTitle ? { title: linkTitle, url: container.querySelector('#momentsPublishLinkUrl')?.value.trim() || '' } : null,
                     likes: [],
@@ -6104,7 +6242,6 @@ ipcRenderer.on('lumina-close', () => {
                 this.saveMoments();
                 publishPage.classList.remove('active');
                 this._doRenderMoments();
-                // 滚动到顶部
                 if (scrollContainer) scrollContainer.scrollTop = 0;
             });
         }
@@ -6179,12 +6316,22 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
         if (editSave) {
-            editSave.addEventListener('click', () => {
+            editSave.addEventListener('click', async () => {
                 if (!editMid) return;
                 const m = this.moments.find(x => x.id === editMid);
                 if (!m) return;
                 m.text = editText.value.trim();
-                m.images = [...editImgs];
+                const uploadedEditImages = [];
+                for (const img of editImgs) {
+                    if (typeof img === 'string' && img.startsWith('data:')) {
+                        const fileName = this._generateImageFileName(img);
+                        const url = await this.uploadBase64ToAssets(img, fileName);
+                        uploadedEditImages.push(url || img);
+                    } else {
+                        uploadedEditImages.push(img);
+                    }
+                }
+                m.images = uploadedEditImages;
                 if (editFile) {
                     m.file = { name: editFile.name, size: this._formatFileSize(editFile.size) };
                     m.link = null;
@@ -8060,7 +8207,7 @@ ipcRenderer.on('lumina-close', () => {
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && this.enterToSubmit && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
                     e.preventDefault();
-                    this.sendMessage();
+                    this.sendMessage(input.closest('.north-shuoshuo-flomo-area') || input.closest('.north-shuoshuo-container') || this.container);
                     return;
                 }
 
@@ -8074,11 +8221,29 @@ ipcRenderer.on('lumina-close', () => {
                     const lines = beforeCursor.split('\n');
                     const currentLine = lines[lines.length - 1];
                     
-                    // 检查是否是无序列表
-                    const unorderedMatch = currentLine.match(/^(•\s|-\s|\*\s)(.*)$/);
+                    // 检查是否是无序列表（排除任务列表）
+                    const unorderedMatch = currentLine.match(/^(•\s|-\s(?!\[)|\*\s)(.*)$/);
+                    // 检查是否是任务列表
+                    const taskMatch = currentLine.match(/^(- \[[ x]\]\s?)(.*)$/);
                     // 检查是否是有序列表
                     const orderedMatch = currentLine.match(/^(\d+)\.\s(.*)$/);
-                    
+
+                    if (taskMatch) {
+                        if (!taskMatch[2].trim()) {
+                            e.preventDefault();
+                            lines[lines.length - 1] = '';
+                            input.value = lines.join('\n') + '\n' + afterCursor;
+                            const newPos = lines.join('\n').length + 1;
+                            input.setSelectionRange(newPos, newPos);
+                            return;
+                        }
+                        e.preventDefault();
+                        const newLine = '\n' + taskMatch[1];
+                        input.value = beforeCursor + newLine + afterCursor;
+                        input.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+                        return;
+                    }
+
                     if (unorderedMatch) {
                         // 如果当前行只有列表符号（空内容），取消列?
                         if (!unorderedMatch[2].trim()) {
@@ -8122,7 +8287,7 @@ ipcRenderer.on('lumina-close', () => {
                 // Ctrl+Enter ?Cmd+Enter 发布
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault();
-                    this.sendMessage();
+                    this.sendMessage(input.closest('.north-shuoshuo-flomo-area') || input.closest('.north-shuoshuo-container') || this.container);
                 }
             });
         }
@@ -8130,7 +8295,7 @@ ipcRenderer.on('lumina-close', () => {
         // 发送按?
         if (sendBtn) {
             sendBtn.addEventListener('click', () => {
-                this.sendMessage();
+                this.sendMessage(sendBtn.closest('.north-shuoshuo-flomo-area') || sendBtn.closest('.north-shuoshuo-container') || this.container);
             });
         }
 
@@ -8228,6 +8393,8 @@ ipcRenderer.on('lumina-close', () => {
         navItems.forEach(item => {
             item.addEventListener('click', () => {
                 const view = item.dataset.view;
+                const container = item.closest('.north-shuoshuo-flomo-area') || item.closest('.north-shuoshuo-container') || this.container;
+                this.container = container;
                 this.switchMainView(view, item);
             });
         });
@@ -8237,6 +8404,8 @@ ipcRenderer.on('lumina-close', () => {
         mobileTabItems.forEach(item => {
             item.addEventListener('click', () => {
                 const view = item.dataset.view;
+                const container = item.closest('.north-shuoshuo-flomo-area') || item.closest('.north-shuoshuo-container') || this.container;
+                this.container = container;
                 this.switchMainView(view, null);
             });
         });
@@ -8330,18 +8499,21 @@ ipcRenderer.on('lumina-close', () => {
                 const value = e.target.value;
                 const origSearchInput = this.container.querySelector('#shuoshuo-search-input');
                 if (origSearchInput) origSearchInput.value = value;
-                if (value.trim()) {
-                    this.filterQuery = null;
-                    this.selectedTag = null;
-                    this.selectedDate = null;
-                    this.container.querySelectorAll('.north-shuoshuo-heatmap-cell').forEach(c => c.classList.remove('selected'));
-                    this.container.querySelectorAll('.north-shuoshuo-tag-tree-item').forEach(t => t.classList.remove('selected'));
-                    this.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => item.classList.remove('selected'));
-                    this.container.querySelectorAll('.north-shuoshuo-menu-item').forEach(item => item.classList.remove('active'));
-                    this.renderNotes();
-                } else if (!value && this.filterQuery === null) {
-                    this.renderNotes();
-                }
+                clearTimeout(this._mobileSearchDebounce);
+                this._mobileSearchDebounce = setTimeout(() => {
+                    if (value.trim()) {
+                        this.filterQuery = null;
+                        this.selectedTag = null;
+                        this.selectedDate = null;
+                        this.container.querySelectorAll('.north-shuoshuo-heatmap-cell').forEach(c => c.classList.remove('selected'));
+                        this.container.querySelectorAll('.north-shuoshuo-tag-tree-item').forEach(t => t.classList.remove('selected'));
+                        this.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => item.classList.remove('selected'));
+                        this.container.querySelectorAll('.north-shuoshuo-menu-item').forEach(item => item.classList.remove('active'));
+                        this.renderNotes();
+                    } else if (!value && this.filterQuery === null) {
+                        this.renderNotes();
+                    }
+                }, 250);
             });
             mobileSearchInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -8359,6 +8531,8 @@ ipcRenderer.on('lumina-close', () => {
         menuItems.forEach(item => {
             item.addEventListener('click', () => {
                 const view = item.dataset.view;
+                const container = item.closest('.north-shuoshuo-flomo-area') || item.closest('.north-shuoshuo-container') || this.container;
+                this.container = container;
                 
                 // 清除热力图选中
                 this.selectedDate = null;
@@ -8595,8 +8769,9 @@ ipcRenderer.on('lumina-close', () => {
 
     }
 
-    sendMessage() {
-        const input = this.container.querySelector('#shuoshuo-input');
+    sendMessage(container) {
+        const target = container || this.container;
+        const input = target.querySelector('#shuoshuo-input');
         if (!input) return;
 
         const text = input.value.trim();
@@ -8606,9 +8781,9 @@ ipcRenderer.on('lumina-close', () => {
 
         input.value = '';
         input.style.height = 'auto';
-        const sendBtn = this.container.querySelector('#shuoshuo-send');
+        const sendBtn = target.querySelector('#shuoshuo-send');
         if (sendBtn) sendBtn.classList.remove('active');
-        const inputBox = this.container.querySelector('#shuoshuo-input-box');
+        const inputBox = target.querySelector('#shuoshuo-input-box');
         if (inputBox) inputBox.classList.remove('focused');
     }
 
@@ -8640,11 +8815,8 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
 
-        this.refreshMountedShuoshuoViews();
-
-        setTimeout(() => {
-            showMessage("已记录");
-        }, 300);
+        this._lightweightRefreshAfterAdd(shuoshuo);
+        showMessage("已记录");
     }
 
     // 提取标签（格式：#标签，只有开头有#，结尾没有#）
@@ -8829,12 +9001,14 @@ ipcRenderer.on('lumina-close', () => {
                 if (searchClear) {
                     searchClear.style.display = searchInput.value ? 'flex' : 'none';
                 }
-                // 触发重新渲染（带搜索过滤，根据当前视图）
-                if (this.currentMainView === 'table') {
-                    this.renderTable();
-                } else {
-                    this.renderNotes();
-                }
+                clearTimeout(this._searchDebounce);
+                this._searchDebounce = setTimeout(() => {
+                    if (this.currentMainView === 'table') {
+                        this.renderTable();
+                    } else {
+                        this.renderNotes();
+                    }
+                }, 250);
             });
         }
 
@@ -8842,6 +9016,7 @@ ipcRenderer.on('lumina-close', () => {
             searchClear.addEventListener('click', () => {
                 searchInput.value = '';
                 searchClear.style.display = 'none';
+                clearTimeout(this._searchDebounce);
                 if (this.currentMainView === 'table') {
                     this.renderTable();
                 } else {
@@ -9586,7 +9761,6 @@ ipcRenderer.on('lumina-close', () => {
             note.tags = this.extractTags(newContent);
             await this.saveShuoshuos();
             this.renderNotes();
-            this.renderTags();
             
             // 更新详情弹窗中的原文展示
             contentEl.innerHTML = this.renderNoteContent(newContent);
@@ -9899,16 +10073,46 @@ ipcRenderer.on('lumina-close', () => {
             });
         });
         
+        // 保存当前展开和选中的标签状态，防止重新渲染后丢失
+        const expandedTags = new Set();
+        const tagsContainer = this.container?.querySelector('.north-shuoshuo-tags-list');
+        if (tagsContainer) {
+            tagsContainer.querySelectorAll('.north-shuoshuo-tag-tree-item.expanded').forEach(el => {
+                const tag = el.dataset.tag;
+                if (tag) expandedTags.add(tag);
+            });
+        }
+        
         // 构建标签?
         const tagTree = this.buildTagTree(tagCounts);
         
         // 更新侧边栏标签列?
-        const tagsContainer = this.container?.querySelector('.north-shuoshuo-tags-list');
         if (tagsContainer) {
             if (Object.keys(tagCounts).length === 0) {
                 tagsContainer.innerHTML = '<div class="north-shuoshuo-tag-empty">暂无标签</div>';
             } else {
                 tagsContainer.innerHTML = this.renderTagTree(tagTree, 0);
+                // 恢复展开状态
+                if (expandedTags.size > 0) {
+                    tagsContainer.querySelectorAll('.north-shuoshuo-tag-tree-item').forEach(el => {
+                        const tag = el.dataset.tag;
+                        if (tag && expandedTags.has(tag)) {
+                            el.classList.add('expanded');
+                            const childrenEl = el.querySelector('.north-shuoshuo-tag-children');
+                            if (childrenEl) {
+                                childrenEl.classList.add('expanded');
+                                childrenEl.style.maxHeight = 'none';
+                            }
+                        }
+                    });
+                }
+                // 恢复选中状态
+                if (this.selectedTag) {
+                    const selectedEl = tagsContainer.querySelector(`.north-shuoshuo-tag-tree-item[data-tag="${CSS.escape(this.selectedTag)}"]`);
+                    if (selectedEl) {
+                        selectedEl.classList.add('selected');
+                    }
+                }
             }
         }
         
@@ -9973,6 +10177,240 @@ ipcRenderer.on('lumina-close', () => {
                 el.textContent = counts[query];
             }
         });
+    }
+
+    // 提交说说后轻量刷新所有容器（只前置插入新卡片，不触发全量重渲染）
+    _lightweightRefreshAfterAdd(shuoshuo) {
+        if (!shuoshuo) return;
+        const containers = this.getMountedLuminaContainers();
+        if (!containers.length && this.container) containers.push(this.container);
+
+        requestAnimationFrame(() => {
+            const cardHtml = this.renderNoteCard(shuoshuo);
+            for (const container of containers) {
+                if (!(container instanceof HTMLElement) || !document.body.contains(container)) continue;
+                const view = this.getContainerMainView(container);
+                if (view !== 'notes' && view !== 'week') continue;
+
+                const listEl = container.querySelector('#shuoshuo-notes-list');
+                if (!listEl) continue;
+
+                const countEl = container.querySelector('#shuoshuo-count');
+                if (countEl) countEl.textContent = this.shuoshuos.length;
+
+                const firstGroup = listEl.querySelector('.north-shuoshuo-date-group');
+                if (firstGroup) {
+                    firstGroup.insertAdjacentHTML('afterend', cardHtml);
+                } else {
+                    const todayKey = this.formatDateKey(new Date(shuoshuo.created));
+                    const title = this.getDateGroupTitle(todayKey);
+                    listEl.insertAdjacentHTML('afterbegin', `<div class="north-shuoshuo-date-group">${title}</div>${cardHtml}`);
+                }
+            }
+            this.updateQueryCounts();
+            this.applyAutoCollapse();
+        });
+    }
+
+    // 重建侧栏检索式区块（在设置保存后调用，确保切换到说说视图时立即生效）
+    _rebuildQuerySections() {
+        this.getMountedLuminaContainers().forEach(container => {
+            const querySection = container.querySelector('.north-shuoshuo-query-section');
+            if (!querySection) return;
+            const queryList = querySection.querySelector('.north-shuoshuo-query-list');
+            if (!queryList) return;
+            const hasLifeLog = !!this.queryVisibility?.lifelog;
+            const hasNoTag = this.queryVisibility?.['no-tag'] !== false;
+            const hasImage = this.queryVisibility?.['has-image'] !== false;
+            const hasLink = this.queryVisibility?.['has-link'] !== false;
+            const hasComment = !!this.queryVisibility?.['has-comment'];
+            const anyVisible = hasLifeLog || hasNoTag || hasImage || hasLink || hasComment;
+            if (!anyVisible) {
+                querySection.style.display = 'none';
+                return;
+            }
+            querySection.style.display = '';
+            const items = [
+                { visible: hasLifeLog, query: 'lifelog', label: 'LifeLog', icon: 'iconSparkles' },
+                { visible: hasNoTag, query: 'no-tag', label: '无标签', icon: 'iconTags' },
+                { visible: hasImage, query: 'has-image', label: '有图片', icon: 'iconImage' },
+                { visible: hasLink, query: 'has-link', label: '有链接', icon: 'iconLink' },
+                { visible: hasComment, query: 'has-comment', label: '已批注', icon: 'iconRef' }
+            ];
+            const isSelected = (query) => this.filterQuery === query;
+            let html = '';
+            for (const item of items) {
+                if (!item.visible) continue;
+                const selected = isSelected(item.query) ? ' selected' : '';
+                html += `<div class="north-shuoshuo-query-item${selected}" data-query="${item.query}">
+                    <span class="north-shuoshuo-query-icon">
+                        <svg class="icon"><use xlink:href="#${item.icon}"></use></svg>
+                    </span>
+                    <span class="north-shuoshuo-query-text">${item.label}</span>
+                    <span class="north-shuoshuo-query-count" data-query-count="${item.query}">0</span>
+                </div>`;
+            }
+            queryList.innerHTML = html;
+            // 重新绑定点击事件
+            queryList.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    const query = item.dataset.query;
+                    queryList.querySelectorAll('.north-shuoshuo-query-item').forEach(i => i.classList.remove('selected'));
+                    if (this.filterQuery === query) {
+                        this.filterQuery = null;
+                    } else {
+                        item.classList.add('selected');
+                        this.filterQuery = query;
+                    }
+                    this.renderNotes();
+                });
+            });
+        });
+    }
+
+    // 从 MD 文本中提取所有 assets/ 图片路径
+    _extractAssetPaths(mdContent) {
+        const paths = [];
+        const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        let match;
+        while ((match = regex.exec(mdContent)) !== null) {
+            const url = match[2].trim();
+            if (url.startsWith('assets/') || url.startsWith('/assets/')) {
+                const clean = url.startsWith('/') ? url.slice(1) : url;
+                if (!paths.includes(clean)) paths.push(clean);
+            }
+        }
+        return paths;
+    }
+
+    // 纯 JS 生成 ZIP 文件 Blob
+    _createZipBlob(files) {
+        // CRC32 表
+        const crcTable = [];
+        for (let i = 0; i < 256; i++) {
+            let c = i;
+            for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            crcTable[i] = c;
+        }
+        const crc32 = (data) => {
+            let c = 0xFFFFFFFF;
+            for (let i = 0; i < data.length; i++) c = crcTable[(c ^ data[i]) & 0xFF] ^ (c >>> 8);
+            return (c ^ 0xFFFFFFFF) >>> 0;
+        };
+
+        const localHeaders = [];
+        const centralEntries = [];
+        let offset = 0;
+
+        for (const file of files) {
+            const nameBytes = new TextEncoder().encode(file.name);
+            const crc = crc32(file.data);
+            const size = file.data.length;
+            const now = new Date();
+            const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+            const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+
+            // Local file header (30 bytes + filename)
+            const localHeader = new ArrayBuffer(30 + nameBytes.length);
+            const lh = new DataView(localHeader);
+            lh.setUint32(0, 0x04034b50, true);
+            lh.setUint16(4, 20, true);
+            lh.setUint16(6, 0, true);
+            lh.setUint16(8, 0, true);
+            lh.setUint16(10, dosTime, true);
+            lh.setUint16(12, dosDate, true);
+            lh.setUint32(14, crc, true);
+            lh.setUint32(18, size, true);
+            lh.setUint32(22, size, true);
+            lh.setUint16(26, nameBytes.length, true);
+            lh.setUint16(28, 0, true);
+            for (let i = 0; i < nameBytes.length; i++) lh.setUint8(30 + i, nameBytes[i]);
+
+            localHeaders.push({ buffer: localHeader, data: file.data });
+
+            // Central directory entry (46 bytes + filename)
+            const centralEntry = new ArrayBuffer(46 + nameBytes.length);
+            const ce = new DataView(centralEntry);
+            ce.setUint32(0, 0x02014b50, true);
+            ce.setUint16(4, 20, true);
+            ce.setUint16(6, 20, true);
+            ce.setUint16(8, 0, true);
+            ce.setUint16(10, 0, true);
+            ce.setUint16(12, dosTime, true);
+            ce.setUint16(14, dosDate, true);
+            ce.setUint32(16, crc, true);
+            ce.setUint32(20, size, true);
+            ce.setUint32(24, size, true);
+            ce.setUint16(28, nameBytes.length, true);
+            ce.setUint16(30, 0, true);
+            ce.setUint16(32, 0, true);
+            ce.setUint16(34, 0, true);
+            ce.setUint16(36, 0, true);
+            ce.setUint32(38, 0, true);
+            ce.setUint32(42, offset, true);
+            for (let i = 0; i < nameBytes.length; i++) ce.setUint8(46 + i, nameBytes[i]);
+
+            centralEntries.push(centralEntry);
+            offset += 30 + nameBytes.length + size;
+        }
+
+        // End of central directory (22 bytes)
+        const centralSize = centralEntries.reduce((s, e) => s + e.byteLength, 0);
+        const centralOffset = offset;
+        const eocd = new ArrayBuffer(22);
+        const eo = new DataView(eocd);
+        eo.setUint32(0, 0x06054b50, true);
+        eo.setUint16(4, 0, true);
+        eo.setUint16(6, 0, true);
+        eo.setUint16(8, files.length, true);
+        eo.setUint16(10, files.length, true);
+        eo.setUint32(12, centralSize, true);
+        eo.setUint32(16, centralOffset, true);
+        eo.setUint16(20, 0, true);
+
+        // 合并所有片段
+        const parts = [];
+        for (const lh of localHeaders) {
+            parts.push(lh.buffer);
+            parts.push(lh.data.buffer);
+        }
+        for (const ce of centralEntries) {
+            parts.push(ce);
+        }
+        parts.push(eocd);
+        return new Blob(parts, { type: 'application/zip' });
+    }
+
+    // 导出 MD + assets 资源图片为 ZIP 包
+    async _downloadMdWithAssets(mdContent, baseName) {
+        const assetPaths = this._extractAssetPaths(mdContent);
+        const files = [];
+
+        // 添加 MD 文件
+        const mdBytes = new TextEncoder().encode(mdContent);
+        files.push({ name: `${baseName}.md`, data: mdBytes });
+
+        // 添加 assets/ 图片
+        for (const assetPath of assetPaths) {
+            try {
+                const url = '/' + assetPath;
+                const resp = await fetch(url);
+                if (!resp.ok) continue;
+                const blob = await resp.blob();
+                const buffer = await blob.arrayBuffer();
+                files.push({ name: assetPath, data: new Uint8Array(buffer) });
+            } catch (e) {
+                console.warn('导出图片失败:', assetPath, e);
+            }
+        }
+
+        const zipBlob = this._createZipBlob(files);
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${baseName}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     // 构建标签?
@@ -12433,6 +12871,68 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    _generateImageFileName(base64Data) {
+        const mimeMatch = base64Data.match(/data:([^;]+);/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+        const extMap = {
+            'image/jpeg': '.jpg',
+            'image/jpg': '.jpg',
+            'image/png': '.png',
+            'image/gif': '.gif',
+            'image/webp': '.webp',
+            'image/bmp': '.bmp'
+        };
+        const ext = extMap[mimeType] || '.png';
+        const now = new Date();
+        const timeStr = now.getFullYear().toString() +
+            String(now.getMonth() + 1).padStart(2, '0') +
+            String(now.getDate()).padStart(2, '0') +
+            String(now.getHours()).padStart(2, '0') +
+            String(now.getMinutes()).padStart(2, '0') +
+            String(now.getSeconds()).padStart(2, '0');
+        const randomStr = Math.random().toString(36).substring(2, 8);
+        return `image-${timeStr}-${randomStr}${ext}`;
+    }
+
+    async _migrateMomentsImages() {
+        let hasChanges = false;
+        for (const m of this.moments) {
+            if (m.images && m.images.length > 0) {
+                const newImages = [];
+                let changed = false;
+                for (const img of m.images) {
+                    if (typeof img === 'string' && img.startsWith('data:')) {
+                        const fileName = this._generateImageFileName(img);
+                        const url = await this.uploadBase64ToAssets(img, fileName);
+                        if (url) {
+                            newImages.push(url);
+                            changed = true;
+                        } else {
+                            newImages.push(img);
+                        }
+                    } else {
+                        newImages.push(img);
+                    }
+                }
+                if (changed) {
+                    m.images = newImages;
+                    hasChanges = true;
+                }
+            }
+        }
+        if (this.momentsConfig && this.momentsConfig.cover && typeof this.momentsConfig.cover === 'string' && this.momentsConfig.cover.startsWith('data:')) {
+            const fileName = this._generateImageFileName(this.momentsConfig.cover);
+            const url = await this.uploadBase64ToAssets(this.momentsConfig.cover, fileName);
+            if (url) {
+                this.momentsConfig.cover = url;
+                hasChanges = true;
+            }
+        }
+        if (hasChanges) {
+            await this.saveMoments();
+        }
+    }
+
     // 同步单条朋友圈到思源笔记
     async syncMomentToSiyuan(mid) {
         const m = this.moments.find(x => x.id === mid);
@@ -12768,7 +13268,6 @@ ipcRenderer.on('lumina-close', () => {
                 // 重新渲染当前视图（但避免递归调用）
                 if (this.currentMainView === 'notes' || this.currentMainView === 'week') {
                     this.renderNotes();
-                    this.renderTags();
                 }
             }
         } catch (e) {
@@ -12987,7 +13486,7 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 防抖：将绑定块的当前内容同步到 custom-lumina-content 属性
-    _debouncedSyncBoundAttr(blockId) {
+    _debouncedSyncBoundAttr(blockId, kramdown) {
         if (!blockId) return;
         if (!this._syncAttrTimer) this._syncAttrTimer = {};
         if (this._syncAttrTimer[blockId]) {
@@ -12995,44 +13494,43 @@ ipcRenderer.on('lumina-close', () => {
         }
         this._syncAttrTimer[blockId] = setTimeout(async () => {
             delete this._syncAttrTimer[blockId];
-            await this._syncBoundBlockAttr(blockId);
+            await this._syncBoundBlockAttr(blockId, kramdown);
         }, 600);
     }
 
     // 将绑定块的当前内容同步到 custom-lumina-content 属性
-    async _syncBoundBlockAttr(blockId) {
+    async _syncBoundBlockAttr(blockId, preKramdown) {
         try {
-            // 1. 使用 getBlockKramdown 获取编辑器内存中的最新内容
-            //    注意：transaction 事件触发时数据库尚未提交，SQL 查的是旧数据
-            //    而 kramdown 来自编辑器内存，能反映用户刚输入的最新内容
-            const kramdownResponse = await fetch('/api/block/getBlockKramdown', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: blockId })
-            });
-            const kramdownResult = await kramdownResponse.json();
-            if (kramdownResult.code !== 0 || !kramdownResult.data) {
-                // getBlockKramdown 失败，可能是块已被删除，检查块是否存在
-                try {
-                    const sqlResponse = await fetch('/api/query/sql', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ stmt: `SELECT id FROM blocks WHERE id = '${blockId}' LIMIT 1` })
-                    });
-                    const sqlResult = await sqlResponse.json();
-                    if (sqlResult.code === 0 && (!sqlResult.data || sqlResult.data.length === 0)) {
-                        // 块确实已被删除，从本地列表中移除对应的说说
-                        const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
-                        if (index !== -1) {
-                            this.shuoshuos.splice(index, 1);
-                            await this.saveShuoshuos();
-                            this.refreshMountedShuoshuoViews();
+            let kramdown = preKramdown || '';
+            // 如果没传入预提取的 kramdown（来自 transaction 事件），使用 API 获取
+            if (!kramdown) {
+                const kramdownResponse = await fetch('/api/block/getBlockKramdown', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: blockId })
+                });
+                const kramdownResult = await kramdownResponse.json();
+                if (kramdownResult.code !== 0 || !kramdownResult.data) {
+                    try {
+                        const sqlResponse = await fetch('/api/query/sql', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ stmt: `SELECT id FROM blocks WHERE id = '${blockId}' LIMIT 1` })
+                        });
+                        const sqlResult = await sqlResponse.json();
+                        if (sqlResult.code === 0 && (!sqlResult.data || sqlResult.data.length === 0)) {
+                            const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
+                            if (index !== -1) {
+                                this.shuoshuos.splice(index, 1);
+                                await this.saveShuoshuos();
+                                this.refreshMountedShuoshuoViews();
+                            }
                         }
-                    }
-                } catch (e) {}
-                return;
+                    } catch (e) {}
+                    return;
+                }
+                kramdown = kramdownResult.data.kramdown || '';
             }
-            const kramdown = kramdownResult.data.kramdown || '';
             // console.log('[轻语] 父块kramdown:', JSON.stringify(kramdown));
 
             // 2. 从 kramdown 中提取纯文本内容
@@ -13303,19 +13801,97 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    // ============ WebSocket 广播连接：丝滑实时更新 ============
+
+    _connectBroadcastWebSocket() {
+        this._wsBroadcastDestroyed = false;
+        if (this._wsBroadcast) {
+            try { this._wsBroadcast.close(); } catch (e) {}
+            this._wsBroadcast = null;
+        }
+        try {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/broadcast?channel=wsjs`;
+            this._wsBroadcast = new WebSocket(wsUrl);
+            this._wsBroadcast.onopen = () => {
+                this._wsBroadcastReconnectRetries = 0;
+            };
+            this._wsBroadcast.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    this._handleBlockChange(msg);
+                } catch (e) {}
+            };
+            this._wsBroadcast.onclose = () => {
+                this._wsBroadcast = null;
+                if (!this._wsBroadcastDestroyed) {
+                    const delay = Math.min(1000 * Math.pow(2, (this._wsBroadcastReconnectRetries || 0)), 30000);
+                    this._wsBroadcastReconnectRetries = (this._wsBroadcastReconnectRetries || 0) + 1;
+                    this._wsBroadcastReconnectTimer = setTimeout(() => {
+                        this._connectBroadcastWebSocket();
+                    }, delay);
+                }
+            };
+            this._wsBroadcast.onerror = () => {};
+        } catch (e) {
+            if (!this._wsBroadcastDestroyed) {
+                this._wsBroadcastReconnectTimer = setTimeout(() => {
+                    this._connectBroadcastWebSocket();
+                }, 10000);
+            }
+        }
+    }
+
+    _disconnectBroadcastWebSocket() {
+        this._wsBroadcastDestroyed = true;
+        if (this._wsBroadcastReconnectTimer) {
+            clearTimeout(this._wsBroadcastReconnectTimer);
+            this._wsBroadcastReconnectTimer = null;
+        }
+        if (this._wsBroadcast) {
+            try {
+                this._wsBroadcast.onclose = null;
+                this._wsBroadcast.close();
+            } catch (e) {}
+            this._wsBroadcast = null;
+        }
+    }
+
+    _handleBlockChange(data) {
+        if (!this.autoSync) return;
+        const cmd = data.cmd || '';
+        const blockId = data.id || null;
+        const isBlockChange = cmd === 'saved' || cmd === 'setblockattrs' || cmd === 'updated';
+        if (!isBlockChange) return;
+        if (blockId) {
+            if (this._isBoundBlockId(blockId)) {
+                this._debouncedRefreshBound(blockId);
+            }
+        } else {
+            this._debouncedRefreshBound();
+        }
+    }
+
     // 防抖刷新绑定的块（避免频繁请求）
     _debouncedRefreshBound(specificBlockId) {
-        if (this._refreshTimer) {
-            clearTimeout(this._refreshTimer);
-        }
-        this._refreshTimer = setTimeout(() => {
-            this._refreshTimer = null;
-            if (specificBlockId) {
-                this._refreshSingleBoundBlock(specificBlockId);
-            } else {
-                this.refreshBoundBlocks();
+        if (specificBlockId) {
+            if (!this._refreshBlockTimers) this._refreshBlockTimers = {};
+            if (this._refreshBlockTimers[specificBlockId]) {
+                clearTimeout(this._refreshBlockTimers[specificBlockId]);
             }
-        }, 800); // 800ms 防抖：用户连续修改时只触发一次
+            this._refreshBlockTimers[specificBlockId] = setTimeout(() => {
+                delete this._refreshBlockTimers[specificBlockId];
+                this._refreshSingleBoundBlock(specificBlockId);
+            }, 250);
+        } else {
+            if (this._refreshTimer) {
+                clearTimeout(this._refreshTimer);
+            }
+            this._refreshTimer = setTimeout(() => {
+                this._refreshTimer = null;
+                this.refreshBoundBlocks();
+            }, 800);
+        }
     }
 
     // 刷新单个绑定块的数据（更高效，只查一个块）
@@ -13367,13 +13943,21 @@ ipcRenderer.on('lumina-close', () => {
 
             await this.saveShuoshuos();
 
-            // 如果当前正在显示说说视图，重新渲染
             if ((this.currentMainView === 'notes' || this.currentMainView === 'week') && this.container) {
+                const card = this.container.querySelector(`.north-shuoshuo-note-card[data-id="${existing.id}"]`);
+                if (card) {
+                    card.classList.add('north-shuoshuo-note-highlight');
+                    setTimeout(() => card.classList.remove('north-shuoshuo-note-highlight'), 1500);
+                }
                 this.renderNotes();
-                this.renderTags();
+                if (card) {
+                    const newCard = this.container.querySelector(`.north-shuoshuo-note-card[data-id="${existing.id}"]`);
+                    if (newCard) {
+                        newCard.classList.add('north-shuoshuo-note-highlight');
+                        setTimeout(() => newCard.classList.remove('north-shuoshuo-note-highlight'), 1500);
+                    }
+                }
             }
-
-            // console.log('[轻语] 已实时同步思源块变更:', blockId);
         } catch (e) {
             // console.warn('[轻语] 刷新单个绑定块失败:', e.message);
         }
@@ -13491,14 +14075,19 @@ ipcRenderer.on('lumina-close', () => {
             // 先显示视图框架，然后异步加载最新数据后渲染内容
             if (flomoArea) flomoArea.style.display = 'flex';
             if (settingsArea) settingsArea.style.display = 'none';
-            // 显示输入区域（仅 notes 视图）
+            // 显示输入区域（仅 notes 和 week 视图显示输入框，review 也显示）
             const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
-            if (inputArea) inputArea.style.display = (view === 'notes' || view === 'week') ? 'block' : 'none';
+            if (inputArea) inputArea.style.display = (view === 'notes' || view === 'week' || view === 'review') ? 'block' : 'none';
             const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
             if (sidebar) sidebar.style.display = view === 'stats' || view === 'table' ? 'none' : '';
             // 恢复 notes-list 的 padding（书架视图会清除它）
             const notesList = this.container.querySelector('#shuoshuo-notes-list');
             if (notesList) notesList.style.padding = '';
+            // 立即清空列表内容，避免旧视图残留导致闪烁
+            if (view === 'review' || view === 'random') {
+                const listEl = this.container.querySelector('#shuoshuo-notes-list');
+                if (listEl) listEl.innerHTML = '';
+            }
             // 异步加载思源数据并渲染
             this.loadShuoshuos().then(() => {
                 if (this.currentMainView === view) {
@@ -13676,8 +14265,35 @@ ipcRenderer.on('lumina-close', () => {
                 
                 const targetGroup = this.container.querySelector(`#setting-group-${setting}`);
                 if (targetGroup) targetGroup.style.display = 'block';
+
+                // 数据管理页面不需要保存/取消按钮
+                const actionsBar = this.container.querySelector('.north-shuoshuo-actions');
+                if (actionsBar) {
+                    actionsBar.style.display = setting === 'data' ? 'none' : '';
+                }
             });
         });
+
+        // 初始化设置页面：每次打开设置都默认显示说说视图
+        const defaultSetting = 'view';
+        const navItems = this.container.querySelectorAll('.north-shuoshuo-settings-nav-item');
+        navItems.forEach(item => {
+            if (item.dataset.setting === defaultSetting) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+        this.container.querySelectorAll('.north-shuoshuo-settings-section').forEach(group => {
+            group.style.display = 'none';
+        });
+        const targetGroup = this.container.querySelector(`#setting-group-${defaultSetting}`);
+        if (targetGroup) targetGroup.style.display = 'block';
+
+        const actionsBar = this.container.querySelector('.north-shuoshuo-actions');
+        if (actionsBar) {
+            actionsBar.style.display = '';
+        }
 
         // 视图样式下拉框
         const viewStyleSelect = this.container.querySelector('#view-style-select');
@@ -13727,6 +14343,16 @@ ipcRenderer.on('lumina-close', () => {
                 await this.loadShuoshuos();
                 this.refreshMountedShuoshuoViews();
                 showMessage(this.showLifeLogRecords ? '已开启 LifeLog 记录显示' : '已关闭 LifeLog 记录显示');
+            });
+        }
+
+        // 加权回顾开关
+        const weightedReviewToggle = this.container.querySelector('#weighted-review-toggle');
+        if (weightedReviewToggle) {
+            weightedReviewToggle.replaceWith(weightedReviewToggle.cloneNode(true));
+            const newWeightedReviewToggle = this.container.querySelector('#weighted-review-toggle');
+            newWeightedReviewToggle.addEventListener('click', () => {
+                newWeightedReviewToggle.classList.toggle('on');
             });
         }
 
@@ -13902,8 +14528,10 @@ ipcRenderer.on('lumina-close', () => {
 
         const saveBtn = this.container.querySelector('#settings-save');
         const cancelBtn = this.container.querySelector('#settings-cancel');
-        const exportBtn = this.container.querySelector('#settings-export');
-        const clearBtn = this.container.querySelector('#settings-clear');
+        const exportShuoshuoJsonBtn = this.container.querySelector('#settings-export-shuoshuo-json');
+        const exportShuoshuoMdBtn = this.container.querySelector('#settings-export-shuoshuo-md');
+        const exportMomentsJsonBtn = this.container.querySelector('#settings-export-moments-json');
+        const exportMomentsMdBtn = this.container.querySelector('#settings-export-moments-md');
 
         // 绑定同步模式切换事件
         const syncModeSelect = this.container.querySelector('#sync-mode-select');
@@ -14127,8 +14755,16 @@ ipcRenderer.on('lumina-close', () => {
                 const autoCollapseSelect = this.container.querySelector('#auto-collapse-lines');
                 this.autoCollapseLines = parseInt(autoCollapseSelect?.value || '0', 10);
 
+                // 获取自定义签名
+                const signatureInput = this.container.querySelector('#custom-signature-input');
+                this.customSignature = signatureInput?.value?.trim() || '遇事不决，可问春风';
+
                 this.notebookId = notebookId;
+                const prevAutoSync = this.autoSync;
                 this.autoSync = autoSync;
+                if (this.autoSync && !prevAutoSync) {
+                    this._connectBroadcastWebSocket();
+                }
 
                 await this.saveConfig();
 
@@ -14137,14 +14773,14 @@ ipcRenderer.on('lumina-close', () => {
                 const reviewTags = Array.from(this.container.querySelectorAll('#review-tags-select input:checked')).map(cb => cb.value);
                 const reviewTimeRange = this.container.querySelector('#review-time-range')?.value || '6_months';
                 const reviewDailyCount = parseInt(this.container.querySelector('#review-daily-count')?.value || '8');
-                const reviewTheme = 'sticky';
+                const weightedReview = this.container.querySelector('#weighted-review-toggle')?.classList?.contains('on') || false;
 
                 this.reviewConfig = {
                     contentScope: reviewScope,
                     contentScopeTags: reviewTags,
                     timeRange: reviewTimeRange,
                     dailyCount: reviewDailyCount,
-                    theme: reviewTheme
+                    weightedReview: weightedReview
                 };
 
                 await this.saveConfig();
@@ -14178,6 +14814,10 @@ ipcRenderer.on('lumina-close', () => {
                 this.bookshelfSyncConfig.syncDocId = bookshelfSyncDocId;
                 await this.saveConfig();
 
+                // 保存后立即应用涉及 DOM 的配置
+                this._rebuildQuerySections();
+                this.syncEnterKeyHint();
+
                 showMessage('设置已保存');
             };
         }
@@ -14209,28 +14849,97 @@ ipcRenderer.on('lumina-close', () => {
             };
         }
 
-        if (exportBtn) {
-            exportBtn.onclick = () => {
+        if (exportShuoshuoJsonBtn) {
+            exportShuoshuoJsonBtn.onclick = () => {
+                const dateStr = new Date().toISOString().split('T')[0];
                 const data = JSON.stringify(this.shuoshuos, null, 2);
                 const blob = new Blob([data], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `shuoshuo-backup-${new Date().toISOString().split('T')[0]}.json`;
+                a.download = `shuoshuo-backup-${dateStr}.json`;
                 a.click();
                 URL.revokeObjectURL(url);
-                showMessage('数据已导出');
+                showMessage('说说数据 (JSON) 已导出');
             };
         }
 
-        if (clearBtn) {
-            clearBtn.onclick = async () => {
-                this.confirmAboveMobileShell('⚠️ 确认删除', '确定要清空所有数据吗？此操作不可恢复！', async () => {
-                    this.shuoshuos = [];
-                    await this.saveData(STORAGE_NAME, this.shuoshuos);
-                    this.refreshMountedShuoshuoViews();
-                    showMessage('数据已清空');
-                });
+        if (exportShuoshuoMdBtn) {
+            exportShuoshuoMdBtn.onclick = async () => {
+                const dateStr = new Date().toISOString().split('T')[0];
+                const now = new Date();
+                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                let md = `# 说说备份\n> 导出时间：${dateStr} ${timeStr}\n> 共 ${this.shuoshuos.length} 条笔记\n\n---\n\n`;
+                const sorted = [...this.shuoshuos].sort((a, b) => (a.created || 0) - (b.created || 0));
+                for (const s of sorted) {
+                    const d = new Date(s.created || Date.now());
+                    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                    const tags = (s.tags || []).map(t => `#${t}`).join(' ');
+                    md += `## ${dateKey} ${t}\n\n${s.content || ''}\n\n`;
+                    if (tags) md += `${tags}\n\n`;
+                    md += `---\n\n`;
+                }
+                const baseName = `shuoshuo-backup-${dateStr}`;
+                await this._downloadMdWithAssets(md, baseName);
+                showMessage('说说数据 (MD) 已导出');
+            };
+        }
+
+        if (exportMomentsJsonBtn) {
+            exportMomentsJsonBtn.onclick = async () => {
+                let momentsData = [];
+                try {
+                    momentsData = await this.loadData(MOMENTS_STORAGE_NAME) || [];
+                } catch (e) {
+                    momentsData = [];
+                }
+                const dateStr = new Date().toISOString().split('T')[0];
+                const data = JSON.stringify(momentsData, null, 2);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `moments-backup-${dateStr}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showMessage('朋友圈数据 (JSON) 已导出');
+            };
+        }
+
+        if (exportMomentsMdBtn) {
+            exportMomentsMdBtn.onclick = async () => {
+                let momentsData = [];
+                try {
+                    momentsData = await this.loadData(MOMENTS_STORAGE_NAME) || [];
+                } catch (e) {
+                    momentsData = [];
+                }
+                const moments = momentsData?.moments || this.moments || [];
+                const dateStr = new Date().toISOString().split('T')[0];
+                const now = new Date();
+                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                let md = `# 朋友圈备份\n> 导出时间：${dateStr} ${timeStr}\n> 共 ${moments.length} 条动态\n\n---\n\n`;
+                const sorted = [...moments].sort((a, b) => (a.created || 0) - (b.created || 0));
+                for (const m of sorted) {
+                    const d = new Date(m.created || Date.now());
+                    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                    md += `## ${dateKey} ${t}\n\n${m.text || m.content || ''}\n\n`;
+                    if (m.images && m.images.length > 0) {
+                        for (const img of m.images) {
+                            md += `![图片](${img})\n`;
+                        }
+                        md += '\n';
+                    }
+                    if (m.link && m.link.title) {
+                        md += `🔗 [${m.link.title}](${m.link.url || '#'})\n\n`;
+                    }
+                    md += `---\n\n`;
+                }
+                const baseName = `moments-backup-${dateStr}`;
+                await this._downloadMdWithAssets(md, baseName);
+                showMessage('朋友圈数据 (MD) 已导出');
             };
         }
 
@@ -14267,17 +14976,6 @@ ipcRenderer.on('lumina-close', () => {
                 if (tagsRow) {
                     tagsRow.style.display = (value === 'include_tags' || value === 'exclude_tags') ? 'block' : 'none';
                 }
-            });
-        });
-
-        // 回顾主题单选
-        const themeItems = this.container.querySelectorAll('#review-theme-group .north-shuoshuo-radio-item');
-        themeItems.forEach(item => {
-            item.addEventListener('click', () => {
-                const radio = item.querySelector('input[type="radio"]');
-                if (radio) radio.checked = true;
-                themeItems.forEach(i => i.classList.remove('selected'));
-                item.classList.add('selected');
             });
         });
 
@@ -15076,64 +15774,6 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
-    // 渲染每日回顾
-    renderReviewNotes() {
-        const listEl = this.container?.querySelector('#shuoshuo-notes-list');
-        if (!listEl) return;
-
-        // 获取今天的笔?
-        const today = new Date();
-        const todayKey = this.formatDateKey(today);
-
-        // 获取历史同期（往前推1年?年?年）
-        const historyYears = [1, 2, 3];
-        const historyNotes = [];
-
-        historyYears.forEach(yearOffset => {
-            const historyDate = new Date(today);
-            historyDate.setFullYear(historyDate.getFullYear() - yearOffset);
-            const historyKey = this.formatDateKey(historyDate);
-
-            const notes = this.shuoshuos.filter(s => {
-                const noteDate = new Date(s.created);
-                return this.formatDateKey(noteDate) === historyKey;
-            });
-
-            if (notes.length > 0) {
-                historyNotes.push({
-                    year: historyDate.getFullYear(),
-                    notes: notes
-                });
-            }
-        });
-
-        if (historyNotes.length === 0) {
-            listEl.innerHTML = `
-                <div class="north-shuoshuo-empty-state">
-                    <div class="north-shuoshuo-empty-icon">📅</div>
-                    <div class="north-shuoshuo-empty-text">历史上的今天没有记录</div>
-                    <div class="north-shuoshuo-empty-hint">继续记录，未来的你会感谢现在坚持的自己</div>
-                </div>
-            `;
-            return;
-        }
-
-        listEl.innerHTML = historyNotes.map(({ year, notes }) => `
-            <div class="north-shuoshuo-review-section">
-                <div class="north-shuoshuo-review-year">${year}年的今天</div>
-                ${notes.map(item => `
-                    <div class="north-shuoshuo-note-card ${item.pinned ? 'pinned' : ''}" data-id="${item.id}">
-                        <div class="north-shuoshuo-note-header">
-                            <span class="north-shuoshuo-note-date">${this.formatDate(item.created)}</span>
-                        </div>
-                        <div class="north-shuoshuo-note-content">${this.formatContent(item.content)}</div>
-                    </div>
-                `).join('')}
-            </div>
-        `).join('');
-    }
-
-
     async loadShuoshuos() {
         return this._withSaveLock('shuoshuos', async () => {
             try {
@@ -15259,13 +15899,11 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 查询思源笔记中带有 LifeLog 属性的记录（今年）
-    // 支持两种方式：1) 有 custom-lifelog-* 属性的块 2) 日记文档中内容匹配 HH:mm 类型：内容 格式的块
+    // 只查询带有 custom-lifelog-* 属性的块（LifeLog 插件标准方式）
     async queryLifeLogRecords() {
         const records = [];
-        const seenIds = new Set();
 
-        // 方式1：查询带有 custom-lifelog-* 属性的块（LifeLog 插件标准方式）
-        const sql1 = `
+        const sql = `
             SELECT 
                 b.id,
                 b.content,
@@ -15275,7 +15913,7 @@ ipcRenderer.on('lumina-close', () => {
             FROM blocks b
             INNER JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
             INNER JOIN attributes a2 ON b.id = a2.block_id AND a2.name = 'custom-lifelog-time'
-            LEFT JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
+            INNER JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
             WHERE 
                 b.type = 'p' 
                 AND substr(b.created, 1, 4) = strftime('%Y', 'now')
@@ -15285,61 +15923,19 @@ ipcRenderer.on('lumina-close', () => {
             LIMIT -1
         `;
         try {
-            const resp1 = await fetch('/api/query/sql', {
+            const resp = await fetch('/api/query/sql', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ stmt: sql1 })
+                body: JSON.stringify({ stmt: sql })
             });
-            const result1 = await resp1.json();
-            if (result1.code === 0 && result1.data) {
-                for (const row of result1.data) {
-                    seenIds.add(row.id);
+            const result = await resp.json();
+            if (result.code === 0 && result.data) {
+                for (const row of result.data) {
                     records.push(this._parseLifeLogRow(row, true));
                 }
             }
         } catch (e) {
             // console.warn('[轻语] 查询 LifeLog 属性记录失败:', e.message);
-        }
-
-        // 方式2：查询日记文档中内容匹配 HH:mm 类型：内容 格式的块（无 custom-lifelog-* 属性）
-        // 兼容自定义 daily note 路径模板下未设置 LifeLog 属性的记录
-        const sql2 = `
-            SELECT 
-                b.id,
-                b.content,
-                b.created AS created_raw,
-                NULL AS lifelog_date,
-                NULL AS lifelog_time,
-                NULL AS lifelog_type
-            FROM blocks b
-            LEFT JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
-            WHERE 
-                b.type = 'p' 
-                AND a1.block_id IS NULL
-                AND (b.content GLOB '[0-9]:[0-9][0-9] *' OR b.content GLOB '[0-9][0-9]:[0-9][0-9] *')
-                AND substr(b.created, 1, 4) = strftime('%Y', 'now')
-            LIMIT -1
-        `;
-        try {
-            const resp2 = await fetch('/api/query/sql', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ stmt: sql2 })
-            });
-            const result2 = await resp2.json();
-            if (result2.code === 0 && result2.data) {
-                for (const row of result2.data) {
-                    if (seenIds.has(row.id)) continue;
-                    // 用 JS 验证内容是否符合 LifeLog 格式（有类型提取结果）
-                    const contentStr = (row.content || '').trim();
-                    const extractedType = this.extractType(contentStr);
-                    if (!extractedType) continue; // 不符合 LifeLog 格式，跳过
-                    seenIds.add(row.id);
-                    records.push(this._parseLifeLogRow(row, false));
-                }
-            }
-        } catch (e) {
-            // console.warn('[轻语] 查询日记 LifeLog 格式记录失败:', e.message);
         }
 
         // 按时间倒序排序
@@ -15470,6 +16066,10 @@ ipcRenderer.on('lumina-close', () => {
             if (!this.momentsConfig.fontSize) {
                 this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
             }
+            // 后台迁移已存在的 base64 图片到 assets 目录
+            setTimeout(() => {
+                this._migrateMomentsImages();
+            }, 3000);
         });
     }
 
@@ -15899,10 +16499,6 @@ ipcRenderer.on('lumina-close', () => {
                 this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
                 this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.memosConfig || data.memos || {}) };
                 this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...(data.reviewConfig || data.review || {}) };
-                // 软木板墙主题已移除，强制回退到便利贴墙
-                if (this.reviewConfig.theme === 'cork') {
-                    this.reviewConfig.theme = 'sticky';
-                }
                 // 优先保留已有的 tagIcons（防止意外覆盖），只有在 data.tagIcons 有值时才更新
                 if (data.tagIcons && Object.keys(data.tagIcons).length > 0) {
                     this.tagIcons = data.tagIcons;
@@ -15928,6 +16524,8 @@ ipcRenderer.on('lumina-close', () => {
                 this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
                 this.queryVisibility = { lifelog: false, 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, ...(data.queryVisibility || {}) };
                 this.autoCollapseLines = typeof data.autoCollapseLines === 'number' ? data.autoCollapseLines : DEFAULT_AUTO_COLLAPSE_LINES;
+                this.customSignature = data.customSignature || '遇事不决，可问春风';
+                this.reviewHistory = data.reviewHistory || {};
             } catch (e) {
                 console.warn("加载配置失败", e);
             }
@@ -16010,7 +16608,9 @@ ipcRenderer.on('lumina-close', () => {
                     bookshelfFontConfig: this.bookshelfFontConfig,
                     bookshelfSyncConfig: this.bookshelfSyncConfig,
                     queryVisibility: this.queryVisibility,
-                    autoCollapseLines: this.autoCollapseLines
+                    autoCollapseLines: this.autoCollapseLines,
+                    customSignature: this.customSignature,
+                    reviewHistory: this.reviewHistory
                 };
 
                 // 空数据保护：如果所有关键配置都为空但存储中有数据，不要覆盖
@@ -16067,15 +16667,6 @@ ipcRenderer.on('lumina-close', () => {
                 // 过滤掉可以从思源读取的 LifeLog（有 boundBlockId 的），避免重复保存
                 // 但保留本地创建的 LifeLog（无 boundBlockId），这样不开自动同步时也能显示
                 const localOnly = this.shuoshuos.filter(s => !(s._isLifeLog && s.boundBlockId));
-                // 空数据保护：如果内存数据为空但存储中有数据，先备份再检查，防止意外覆盖
-                if (!localOnly || localOnly.length === 0) {
-                    const existing = await this.loadData(STORAGE_NAME);
-                    if (existing && existing.length > 0) {
-                        // 内存为空但存储非空，可能是加载阶段出错，不要覆盖
-                        console.warn('[轻语] saveShuoshuos: 内存数据为空但存储非空，跳过保存');
-                        return;
-                    }
-                }
                 // 保存前先备份旧数据
                 await this._backupData(STORAGE_NAME, STORAGE_BACKUP_NAME);
                 await this.saveData(STORAGE_NAME, localOnly);
@@ -16535,7 +17126,7 @@ ipcRenderer.on('lumina-close', () => {
 
     // 根据回顾配置获取回顾笔记
     getReviewNotes() {
-        const { contentScope, contentScopeTags, timeRange, dailyCount } = this.reviewConfig;
+        const { contentScope, contentScopeTags, timeRange, dailyCount, weightedReview } = this.reviewConfig;
         
         let filtered = [...this.shuoshuos];
         
@@ -16564,28 +17155,40 @@ ipcRenderer.on('lumina-close', () => {
         
         // 2. 按内容范围筛选
         if (contentScope === 'no_tags') {
-            // 无标签
             filtered = filtered.filter(s => !s.tags || s.tags.length === 0);
         } else if (contentScope === 'include_tags' && contentScopeTags.length > 0) {
-            // 包含指定标签（只要包含其中一个就算）
             filtered = filtered.filter(s => {
                 if (!s.tags || s.tags.length === 0) return false;
                 return contentScopeTags.some(tag => s.tags.includes(tag));
             });
         } else if (contentScope === 'exclude_tags' && contentScopeTags.length > 0) {
-            // 排除指定标签
             filtered = filtered.filter(s => {
                 if (!s.tags || s.tags.length === 0) return true;
                 return !contentScopeTags.some(tag => s.tags.includes(tag));
             });
         }
-        // contentScope === 'all' 不筛选
+
+        if (weightedReview) {
+            // 加权算法：越久没翻过的越优先
+            const now = Date.now();
+            const sevenDays = 7 * 24 * 60 * 60 * 1000;
+            const scored = filtered.map(s => {
+                const lastReview = this.reviewHistory[s.id] || 0;
+                let score;
+                if (lastReview === 0) {
+                    score = now + Math.random() * sevenDays;
+                } else {
+                    score = (now - lastReview) + Math.random() * sevenDays * 0.3;
+                }
+                return { note: s, score };
+            });
+            scored.sort((a, b) => b.score - a.score);
+            return scored.slice(0, dailyCount).map(item => item.note);
+        }
         
-        // 3. 随机打乱
-        filtered = filtered.sort(() => Math.random() - 0.5);
-        
-        // 4. 限制数量
-        return filtered.slice(0, dailyCount);
+        // 3. 随机打乱并限制数量
+        const shuffled = filtered.sort(() => Math.random() - 0.5);
+        return shuffled.slice(0, dailyCount);
     }
 
     // MD5 加密（浏览器可用版本）
