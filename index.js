@@ -10209,6 +10209,7 @@ ipcRenderer.on('lumina-close', () => {
             }
             this.updateQueryCounts();
             this.applyAutoCollapse();
+            this.renderTags();
         });
     }
 
