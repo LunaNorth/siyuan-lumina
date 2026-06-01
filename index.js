@@ -460,6 +460,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.enterToSubmit = false; // 输入框回车直接提交
         this.showSidebarDock = false; // 是否显示侧边栏 Dock（默认不显示）
         this.showLifeLogRecords = false; // 是否显示读取到的 LifeLog 记录（默认不显示）
+        this.compactMode = false; // 紧凑模式（默认关闭）
         this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG }; // 图书视图字体大小配置
         this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG }; // 图书视图同步配置
         this.autoCollapseLines = DEFAULT_AUTO_COLLAPSE_LINES; // 长笔记自动折叠行数
@@ -2791,6 +2792,16 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
+                                        <h4>紧凑模式</h4>
+                                        <p>开启后，说说视图中的笔记间距更紧凑，类似memos的布局</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.compactMode ? 'on' : ''}" id="settings-compact-mode-switch"></div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
                                         <h4>回车直接提交</h4>
                                         <p>开启后，在主输入框按 Enter 直接发布；Shift+Enter 仍然换行。</p>
                                     </div>
@@ -4237,6 +4248,9 @@ ipcRenderer.on('lumina-close', () => {
 
         // 应用视图样式（异步，但不阻塞）
         this.applyViewStyle();
+
+        // 应用紧凑模式
+        this.applyCompactMode();
 
         // 更新热力图
         const heatmapEl = this.container.querySelector('.north-shuoshuo-heatmap');
@@ -8370,9 +8384,11 @@ ipcRenderer.on('lumina-close', () => {
                     const noteCard = taskCheckbox.closest('.north-shuoshuo-note-card');
                     if (taskItem && noteCard) {
                         const shuoshuoId = noteCard.dataset.id;
-                        const taskLine = taskItem.dataset.taskLine;
-                        if (shuoshuoId && taskLine) {
-                            this.toggleTaskCheckbox(shuoshuoId, taskLine);
+                        // 获取当前任务在卡片所有任务项中的索引
+                        const taskItems = noteCard.querySelectorAll('.task-item');
+                        const taskIndex = Array.from(taskItems).indexOf(taskItem);
+                        if (shuoshuoId && taskIndex !== -1) {
+                            this.toggleTaskCheckbox(shuoshuoId, taskIndex);
                         }
                     }
                     return;
@@ -11716,29 +11732,39 @@ ipcRenderer.on('lumina-close', () => {
         return { html, nextIndex: i };
     }
 
-    async toggleTaskCheckbox(shuoshuoId, taskLine) {
+    async toggleTaskCheckbox(shuoshuoId, taskIndex) {
         const shuoshuo = this.shuoshuos.find(s => s.id === shuoshuoId);
         if (!shuoshuo || !shuoshuo.content) return;
 
-        // 解码 HTML entities（因为 taskLine 来自 escapeHtml 后的属性）
-        const textarea = document.createElement('textarea');
-        textarea.innerHTML = taskLine;
-        const decodedLine = textarea.value;
+        // 按行分割内容，找到所有任务行
+        const lines = shuoshuo.content.split('\n');
+        const taskLineIndices = [];
+        lines.forEach((line, idx) => {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('- [x] ') || trimmed.startsWith('- [X] ')) {
+                taskLineIndices.push(idx);
+            }
+        });
 
-        // 在内容中查找任务行
-        if (!shuoshuo.content.includes(decodedLine)) return;
+        // 使用索引定位到具体的任务行
+        if (taskIndex < 0 || taskIndex >= taskLineIndices.length) return;
+        const lineIdx = taskLineIndices[taskIndex];
+        const targetLine = lines[lineIdx];
 
         // 切换 [ ] 和 [x]
-        let newLine;
-        if (decodedLine.includes('[ ]')) {
-            newLine = decodedLine.replace('[ ]', '[x]');
-        } else if (decodedLine.includes('[x]') || decodedLine.includes('[X]')) {
-            newLine = decodedLine.replace(/\[x\]/i, '[ ]');
+        let newLine, isChecked;
+        if (targetLine.includes('[ ]')) {
+            newLine = targetLine.replace('[ ]', '[x]');
+            isChecked = true;
+        } else if (targetLine.includes('[x]') || targetLine.includes('[X]')) {
+            newLine = targetLine.replace(/\[x\]/i, '[ ]');
+            isChecked = false;
         } else {
             return;
         }
 
-        const newContent = shuoshuo.content.replace(decodedLine, newLine);
+        lines[lineIdx] = newLine;
+        const newContent = lines.join('\n');
         if (newContent === shuoshuo.content) return;
 
         shuoshuo.content = newContent;
@@ -11750,8 +11776,22 @@ ipcRenderer.on('lumina-close', () => {
             await this.syncShuoshuoToSiyuan(shuoshuo);
         }
 
-        // 重新渲染
-        this.refreshMountedShuoshuoViews();
+        // 就地更新 DOM 中的复选框状态，避免全量重渲染导致滚动
+        const containers = this.getMountedLuminaContainers();
+        if (!containers.length && this.container) containers.push(this.container);
+        containers.forEach(container => {
+            const card = container.querySelector(`.north-shuoshuo-note-card[data-id="${shuoshuoId}"]`);
+            if (!card) return;
+            const taskItems = card.querySelectorAll('.task-item');
+            if (taskIndex >= taskItems.length) return;
+            const taskItem = taskItems[taskIndex];
+            const checkbox = taskItem.querySelector('.shuoshuo-task-checkbox');
+            if (checkbox) {
+                checkbox.checked = isChecked;
+            }
+            // 更新 data-task-line 为切换后的值，确保下次点击能匹配（兼容旧版传参方式）
+            taskItem.dataset.taskLine = newLine;
+        });
     }
 
     escapeHtml(text) {
@@ -14347,6 +14387,22 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // 紧凑模式
+        const compactModeSwitch = this.container.querySelector('#settings-compact-mode-switch');
+        if (compactModeSwitch) {
+            compactModeSwitch.replaceWith(compactModeSwitch.cloneNode(true));
+            const newCompactModeSwitch = this.container.querySelector('#settings-compact-mode-switch');
+            newCompactModeSwitch.addEventListener('click', async () => {
+                newCompactModeSwitch.classList.toggle('on');
+                this.compactMode = newCompactModeSwitch.classList.contains('on');
+                await this.saveConfig();
+                this.applyCompactMode();
+                // 刷新所有视图
+                this.refreshMountedShuoshuoViews();
+                showMessage(this.compactMode ? '已开启紧凑模式' : '已关闭紧凑模式');
+            });
+        }
+
         // 加权回顾开关
         const weightedReviewToggle = this.container.querySelector('#weighted-review-toggle');
         if (weightedReviewToggle) {
@@ -14818,6 +14874,7 @@ ipcRenderer.on('lumina-close', () => {
                 // 保存后立即应用涉及 DOM 的配置
                 this._rebuildQuerySections();
                 this.syncEnterKeyHint();
+                this.applyFontSizeConfig();
 
                 showMessage('设置已保存');
             };
@@ -16521,6 +16578,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.enterToSubmit = data.enterToSubmit === true || data.enterToSubmit === 'true' || data.enterToSubmit === 1;
                 this.showSidebarDock = data.showSidebarDock === true || data.showSidebarDock === 'true' || data.showSidebarDock === 1;
                 this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
+                this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
                 this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
                 this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
                 this.queryVisibility = { lifelog: false, 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, ...(data.queryVisibility || {}) };
@@ -16606,6 +16664,7 @@ ipcRenderer.on('lumina-close', () => {
                     enterToSubmit: this.enterToSubmit,
                     showSidebarDock: this.showSidebarDock,
                     showLifeLogRecords: this.showLifeLogRecords,
+                    compactMode: this.compactMode,
                     bookshelfFontConfig: this.bookshelfFontConfig,
                     bookshelfSyncConfig: this.bookshelfSyncConfig,
                     queryVisibility: this.queryVisibility,
@@ -16660,6 +16719,17 @@ ipcRenderer.on('lumina-close', () => {
                 return;
             }
         }
+    }
+
+    // 应用紧凑模式
+    applyCompactMode() {
+        const containers = this.getMountedLuminaContainers();
+        if (!containers.length && this.container) containers.push(this.container);
+        containers.forEach(container => {
+            if (container) {
+                container.classList.toggle('north-shuoshuo-compact', this.compactMode);
+            }
+        });
     }
 
     async saveShuoshuos() {
@@ -17105,8 +17175,6 @@ ipcRenderer.on('lumina-close', () => {
 
     // 应用字体大小配置
     applyFontSizeConfig() {
-        const container = this.container?.querySelector('.north-shuoshuo-container');
-
         let fontSize;
         switch (this.fontSizeConfig.mode) {
             case 'siyuan':
@@ -17118,9 +17186,15 @@ ipcRenderer.on('lumina-close', () => {
             default:
                 fontSize = '14.5px';
         }
-        if (container) {
-            container.style.setProperty('--shuoshuo-content-font-size', fontSize);
-        }
+        // 应用到所有已挂载容器
+        const containers = this.getMountedLuminaContainers();
+        if (!containers.length && this.container) containers.push(this.container);
+        containers.forEach(container => {
+            const shuoshuoContainer = container.querySelector('.north-shuoshuo-container');
+            if (shuoshuoContainer) {
+                shuoshuoContainer.style.setProperty('--shuoshuo-content-font-size', fontSize);
+            }
+        });
         // 同时设置到根元素，让轻语速记浮层等也能使用
         document.documentElement.style.setProperty('--shuoshuo-content-font-size', fontSize);
     }

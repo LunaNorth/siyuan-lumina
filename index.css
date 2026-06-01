@@ -1269,7 +1269,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     min-width: 0;
     overflow: hidden;
 }
@@ -1341,7 +1341,7 @@
     font-size: var(--shuoshuo-content-font-size, 14.5px);
     line-height: 2;
     color: var(--b3-theme-on-background);
-    margin-bottom: 8px;
+    margin-bottom: 0px;
     word-wrap: break-word;
     overflow-wrap: break-word;
     word-break: break-word;
@@ -1349,6 +1349,52 @@
     overflow: hidden;
     user-select: text;
     -webkit-user-select: text;
+}
+
+/* Lumina: 紧凑模式 */
+.north-shuoshuo-compact .north-shuoshuo-input-area {
+    border-bottom: none !important;
+}
+
+.north-shuoshuo-compact .north-shuoshuo-notes-list:not(.card-layout) {
+    padding: 0px 24px 16px !important;
+}
+
+.north-shuoshuo-compact .north-shuoshuo-date-group {
+    margin: 12px 0 !important;
+    padding: 0 4px !important;
+}
+
+.north-shuoshuo-compact .north-shuoshuo-note-card {
+    padding: 4px 14px 8px !important;
+    margin-bottom: 8px !important;
+    border-radius: 8px !important;
+    min-height: 0 !important;
+}
+
+.north-shuoshuo-compact .north-shuoshuo-note-header {
+    margin-bottom: 0px !important;
+    min-height: 0 !important;
+    line-height: 1.25 !important;
+}
+
+.north-shuoshuo-compact .north-shuoshuo-note-date,
+.north-shuoshuo-compact .north-shuoshuo-note-time {
+    line-height: 1.25 !important;
+}
+
+.north-shuoshuo-compact .north-shuoshuo-note-content {
+    margin: 0 !important;
+    line-height: 1.6 !important;
+}
+
+.north-shuoshuo-compact .north-shuoshuo-note-content p {
+    margin: 0 0 8px !important;
+    line-height: 1.6 !important;
+}
+
+.north-shuoshuo-compact .north-shuoshuo-note-content p:last-child {
+    margin-bottom: 0 !important;
 }
 
 .north-shuoshuo-note-tag {
@@ -1364,16 +1410,18 @@
 
 /* 内容中的标签样式 */
 .north-shuoshuo-note-content .north-shuoshuo-tag {
-    display: inline-block;
+    display: inline;
     background-color: var(--b3-theme-primary-lightest);
     color: var(--b3-theme-primary);
-    font-size: 12px;
-    padding: 1px 4px;
-    border-radius: 3px;
-    margin-left: 3px;
+    font-size: calc(var(--shuoshuo-content-font-size, 14.5px) - 2px);
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-left: 4px;
     cursor: pointer;
     transition: background-color 0.2s;
-    line-height: 1.4;
+    vertical-align: baseline;
+    position: relative;
+    top: -1px;
 }
 
 .north-shuoshuo-note-content .north-shuoshuo-tag:hover {
@@ -1523,10 +1571,10 @@
 
 /* 九宫格图片布局 */
 .north-shuoshuo-image-grid {
-    margin-top: 12px;
+    /* margin-top: 0px; */
     display: grid;
     gap: 4px;
-    max-width: 100%;
+    max-width: 50%;
 }
 
 /* 单张图片 */
@@ -1645,16 +1693,53 @@
 
 /* 有序列表 */
 .north-shuoshuo-note-content ol {
-    margin: 6px 0;
-    padding-left: 24px;
-    list-style-type: decimal;
+    margin: 0;
+    padding-left: 0;
+    list-style-type: none;
+    counter-reset: list-counter;
+}
+
+.north-shuoshuo-note-content ol li {
+    position: relative;
+    padding-left: 20px;
+    counter-increment: list-counter;
+}
+
+.north-shuoshuo-note-content ol li::before {
+    content: counter(list-counter) ".";
+    position: absolute;
+    top: 0;
+    left: 0;
+    color: var(--b3-theme-on-surface);
+    font-size: inherit;
 }
 
 /* 无序列表 */
 .north-shuoshuo-note-content ul {
-    margin: 6px 0;
+    margin: 0;
+    padding-left: 0;
+    list-style-type: none;
+}
+
+.north-shuoshuo-note-content ul li {
+    position: relative;
     padding-left: 20px;
-    list-style-type: disc;
+}
+
+.north-shuoshuo-note-content ul li.task-item {
+    padding-left: 0;
+}
+
+.north-shuoshuo-note-content ul li:not(.task-item)::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: 6px;
+    width: 6px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background-color: var(--b3-theme-on-surface);
 }
 
 /* 任务列表 */
@@ -1803,15 +1888,14 @@
 
 /* 列表样式 - 自然圆点列表 */
 .north-shuoshuo-note-content ul {
-    margin: 4px 0;
-    padding-left: 20px;
-    list-style-type: disc;
+    margin: 0;
+    padding-left: 0;
+    list-style-type: none;
 }
 
 .north-shuoshuo-note-content li {
-    margin: 4px 0;
-    line-height: 1.6;
-    display: list-item;
+    margin: 0;
+    line-height: 1.7;
 }
 
 /* 确保标签和文字对�?*/
@@ -2141,6 +2225,11 @@
     min-height: 36px;
     font-size: 13px;
     border-radius: 6px;
+}
+
+/* 设置视图中的输入框固定字体大小，不随内容字体大小改变 */
+.north-shuoshuo-settings-section .north-shuoshuo-input-field {
+    font-size: 16px !important;
 }
 
 
@@ -12465,6 +12554,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         width: 16px;
         height: 16px;
     }
+    
     .mobile-header-title {
         font-size: 16px;
         font-weight: 600;
