@@ -450,6 +450,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.reviewHistory = {}; // {noteId: timestamp} 记录每条笔记上次回顾时间
         this.selectedDate = null;
         this.selectedTag = null;
+        this.gallerySelectedTag = null;
         this.filterQuery = null; // 检索式筛选：no-tag, has-image, has-link
         this.queryVisibility = { lifelog: false, 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false }; // 检索式可见性配置
         this.tagIcons = {}; // 标签图标映射 {tagName: emoji/icon}
@@ -461,6 +462,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.showSidebarDock = false; // 是否显示侧边栏 Dock（默认不显示）
         this.showLifeLogRecords = false; // 是否显示读取到的 LifeLog 记录（默认不显示）
         this.compactMode = false; // 紧凑模式（默认关闭）
+        this.galleryColumnCount = 3; // 拾光视图列数（默认3列）
         this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG }; // 图书视图字体大小配置
         this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG }; // 图书视图同步配置
         this.autoCollapseLines = DEFAULT_AUTO_COLLAPSE_LINES; // 长笔记自动折叠行数
@@ -2468,6 +2470,9 @@ ipcRenderer.on('lumina-close', () => {
                         <button class="north-shuoshuo-nav-item active" data-view="notes" title="说说">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
                         </button>
+                        <button class="north-shuoshuo-nav-item" data-view="gallery" title="拾光">
+                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                        </button>
                         <button class="north-shuoshuo-nav-item" data-view="table" title="表格">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v18H3V3zm2 2v5h14V5H5zm14 7H5v5h14v-5zM5 10h4v2H5v-2zm6 0h4v2h-4v-2z"/></svg>
                         </button>
@@ -2713,6 +2718,12 @@ ipcRenderer.on('lumina-close', () => {
                             </svg>
                             <span>说说视图</span>
                         </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="gallery">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/>
+                            </svg>
+                            <span>拾光视图</span>
+                        </div>
                         <div class="north-shuoshuo-settings-nav-item" data-setting="flomo">
                             <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
@@ -2932,6 +2943,28 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-form-row">
                                     <div class="north-shuoshuo-input-group" style="width: 100%;">
                                         <input type="text" id="custom-signature-input" class="north-shuoshuo-input-field" placeholder="请输入自定义签名" value="${this.customSignature || '遇事不决，可问春风'}">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 拾光视图设置 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-gallery" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div class="north-shuoshuo-section-title">拾光视图（照片墙）</div>
+                                        <div class="north-shuoshuo-section-desc">设置照片墙的显示列数</div>
+                                    </div>
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 80px;">
+                                        <select id="settings-gallery-columns" class="north-shuoshuo-select-field">
+                                            <option value="3" ${this.galleryColumnCount === 3 ? 'selected' : ''}>3 列</option>
+                                            <option value="4" ${this.galleryColumnCount === 4 ? 'selected' : ''}>4 列</option>
+                                            <option value="5" ${this.galleryColumnCount === 5 ? 'selected' : ''}>5 列</option>
+                                            <option value="6" ${this.galleryColumnCount === 6 ? 'selected' : ''}>6 列</option>
+                                            <option value="7" ${this.galleryColumnCount === 7 ? 'selected' : ''}>7 列</option>
+                                            <option value="8" ${this.galleryColumnCount === 8 ? 'selected' : ''}>8 列</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -4098,7 +4131,8 @@ ipcRenderer.on('lumina-close', () => {
         if (inputArea) inputArea.style.display = 'block';
         const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
         if (sidebar) sidebar.style.display = '';
-        listEl.classList.remove('review-mode', 'table-layout');
+        listEl.classList.remove('review-mode', 'table-layout', 'gallery-layout');
+        listEl.style.padding = '';
 
         this.syncEnterKeyHint();
         this._rebuildQuerySections();
@@ -4592,7 +4626,7 @@ ipcRenderer.on('lumina-close', () => {
         if (sidebar) sidebar.style.display = '';
 
         // 移除笔记布局相关类名
-        listEl.classList.remove('review-mode');
+        listEl.classList.remove('review-mode', 'gallery-layout');
 
         // 如果没有笔记，显示空状态
         if (this.shuoshuos.length === 0) {
@@ -4760,7 +4794,7 @@ ipcRenderer.on('lumina-close', () => {
         if (inputArea) inputArea.style.display = 'none';
         const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
         if (sidebar) sidebar.style.display = '';
-        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout');
+        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout', 'gallery-layout');
 
         if (this.shuoshuos.length === 0) {
             listEl.innerHTML = `
@@ -5052,7 +5086,7 @@ ipcRenderer.on('lumina-close', () => {
         if (inputArea) inputArea.style.display = 'none';
         const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
         if (sidebar) sidebar.style.display = 'none';
-        listEl.classList.remove('review-mode', 'card-layout', 'list-layout');
+        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'gallery-layout');
         listEl.classList.add('table-layout');
 
         // 初始化表格排序状态
@@ -5569,7 +5603,7 @@ ipcRenderer.on('lumina-close', () => {
         if (inputArea) inputArea.style.display = 'none';
         const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
         if (sidebar) sidebar.style.display = 'none';
-        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout');
+        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout', 'gallery-layout');
 
         // 获取年份列表（从最早记录到当前年）
         const currentYear = new Date().getFullYear();
@@ -5695,7 +5729,7 @@ ipcRenderer.on('lumina-close', () => {
     _doRenderMoments() {
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
-        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout');
+        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout', 'gallery-layout');
 
         const cfg = this.momentsConfig || {};
         const nickname = cfg.nickname || '月亮';
@@ -6833,6 +6867,215 @@ ipcRenderer.on('lumina-close', () => {
                 importInput.value = '';
             });
         }
+    }
+
+    renderGallery() {
+        const listEl = this.container.querySelector('#shuoshuo-notes-list');
+        if (!listEl) return;
+        listEl.style.padding = '0';
+        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout');
+        listEl.classList.add('gallery-layout');
+
+        const allTags = new Set();
+        const items = [];
+        this.shuoshuos.forEach(s => {
+            const { text, images } = this.extractContentAndImages(s.content);
+            if (images.length > 0) {
+                let displayText = text;
+                if (!displayText.trim() && s.content) {
+                    displayText = s.content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '').trim();
+                }
+                // 移除内容中的标签（#标签名格式），避免重复显示
+                displayText = displayText.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim();
+                displayText = displayText.replace(/\n{3,}/g, '\n\n').trim();
+                const tags = s.tags || [];
+                tags.forEach(t => allTags.add(t));
+                images.forEach(img => {
+                    items.push({
+                        id: s.id,
+                        img: img,
+                        text: displayText || img.alt || '',
+                        created: s.created,
+                        tags: tags
+                    });
+                });
+            }
+        });
+
+        items.sort((a, b) => b.created - a.created);
+
+        const sortedTags = [...allTags].sort((a, b) => a.localeCompare(b, 'zh'));
+        const selectedTag = this.gallerySelectedTag;
+        const filteredItems = selectedTag
+            ? items.filter(item => item.tags && item.tags.some(t => t === selectedTag || t.startsWith(selectedTag + '/')))
+            : items;
+
+        if (items.length === 0) {
+            listEl.innerHTML = `
+                <div class="north-shuoshuo-gallery-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <p>暂无照片，在说说中添加图片后就会出现在这里</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (filteredItems.length === 0) {
+            listEl.innerHTML = `
+                <div class="north-shuoshuo-gallery-header">
+                    <div class="north-shuoshuo-gallery-header-top">
+                        <div class="north-shuoshuo-gallery-header-title">拾光</div>
+                        <div class="north-shuoshuo-gallery-header-meta">
+                            <span class="north-shuoshuo-gallery-header-count">${items.length} 张照片</span>
+                        </div>
+                    </div>
+                    ${sortedTags.length > 0 ? `
+                    <div class="north-shuoshuo-gallery-tags">
+                        <span class="north-shuoshuo-gallery-tag-chip ${!selectedTag ? 'active' : ''}" data-tag="">全部</span>
+                        ${sortedTags.map(t => `
+                        <span class="north-shuoshuo-gallery-tag-chip ${selectedTag === t ? 'active' : ''}" data-tag="${this.escapeHtml(t)}">${this.escapeHtml(t)}</span>
+                        `).join('')}
+                    </div>
+                    ` : ''}
+                </div>
+                <div class="north-shuoshuo-gallery-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <p>该标签下暂无照片</p>
+                </div>
+            `;
+            this._bindGalleryEvents(listEl, filteredItems);
+            return;
+        }
+
+        const dates = filteredItems.map(i => i.created).sort((a, b) => a - b);
+        const earliestDate = new Date(dates[0]);
+        const latestDate = new Date(dates[dates.length - 1]);
+        const dateRangeStr = earliestDate.getFullYear() === latestDate.getFullYear()
+            ? `${earliestDate.getFullYear()}.${String(earliestDate.getMonth()+1).padStart(2,'0')} - ${String(latestDate.getMonth()+1).padStart(2,'0')}.${String(latestDate.getDate()).padStart(2,'0')}`
+            : `${earliestDate.getFullYear()}.${String(earliestDate.getMonth()+1).padStart(2,'0')} - ${latestDate.getFullYear()}.${String(latestDate.getMonth()+1).padStart(2,'0')}.${String(latestDate.getDate()).padStart(2,'0')}`;
+
+        listEl.innerHTML = `
+            <div class="north-shuoshuo-gallery-header">
+                <div class="north-shuoshuo-gallery-header-top">
+                    <div class="north-shuoshuo-gallery-header-title">拾光</div>
+                    <div class="north-shuoshuo-gallery-header-meta">
+                        <span class="north-shuoshuo-gallery-header-date">${dateRangeStr}</span>
+                        <span class="north-shuoshuo-gallery-header-dot">·</span>
+                        <span class="north-shuoshuo-gallery-header-count">${filteredItems.length} 张照片</span>
+                    </div>
+                </div>
+                ${sortedTags.length > 0 ? `
+                <div class="north-shuoshuo-gallery-tags">
+                    <span class="north-shuoshuo-gallery-tag-chip ${!selectedTag ? 'active' : ''}" data-tag="">全部</span>
+                    ${sortedTags.map(t => `
+                    <span class="north-shuoshuo-gallery-tag-chip ${selectedTag === t ? 'active' : ''}" data-tag="${this.escapeHtml(t)}">${this.escapeHtml(t)}</span>
+                    `).join('')}
+                </div>
+                ` : ''}
+            </div>
+            <div class="north-shuoshuo-gallery-masonry" style="column-count: ${this.galleryColumnCount};">
+                ${filteredItems.map(item => {
+                    const date = new Date(item.created);
+                    const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+                    return `
+                        <div class="north-shuoshuo-gallery-item" data-id="${item.id}">
+                            <div class="north-shuoshuo-gallery-img-wrapper">
+                                <img src="${item.img.url}" alt="${this.escapeHtml(item.img.alt)}" loading="lazy">
+                                <div class="north-shuoshuo-gallery-overlay">
+                                    ${item.tags && item.tags.length > 0 ? `<div class="north-shuoshuo-gallery-overlay-tags">${item.tags.map(t => this.escapeHtml(t)).join(' ')}</div>` : ''}
+                                    <div class="north-shuoshuo-gallery-overlay-text">${this.escapeHtml(item.text || '')}</div>
+                                    <div class="north-shuoshuo-gallery-overlay-date">${dateStr}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+
+        this._bindGalleryEvents(listEl, filteredItems);
+    }
+
+    _bindGalleryEvents(listEl, filteredItems) {
+        listEl.querySelectorAll('.north-shuoshuo-gallery-tag-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const tag = chip.dataset.tag;
+                this.gallerySelectedTag = tag || null;
+                this.renderGallery();
+            });
+        });
+
+        listEl.querySelectorAll('.north-shuoshuo-gallery-item').forEach(el => {
+            el.addEventListener('click', async () => {
+                const id = el.dataset.id;
+                if (id) {
+                    const flomoArea = this.container.querySelector('.north-shuoshuo-flomo-area');
+                    const settingsArea = this.container.querySelector('#shuoshuo-settings-area');
+                    const navItem = this.container.querySelector('.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="notes"]');
+
+                    this.currentMainView = 'notes';
+                    if (flomoArea) flomoArea.style.display = 'flex';
+                    if (settingsArea) settingsArea.style.display = 'none';
+                    const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
+                    if (inputArea) inputArea.style.display = 'block';
+                    const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
+                    if (sidebar) sidebar.style.display = '';
+
+                    const mobileTabbar = this.container.querySelector('.north-shuoshuo-mobile-tabbar');
+                    if (mobileTabbar) {
+                        const mainArea = this.container.querySelector('.north-shuoshuo-main');
+                        if (mainArea) mainArea.appendChild(mobileTabbar);
+                    }
+                    const mobileHeader = this.container.querySelector('.north-shuoshuo-mobile-header');
+                    if (mobileHeader) mobileHeader.style.display = this.isMobile ? '' : 'none';
+                    const mobileSearchBar = this.container.querySelector('.north-shuoshuo-mobile-search-bar');
+                    if (mobileSearchBar) mobileSearchBar.classList.remove('show');
+                    const notesList = this.container.querySelector('#shuoshuo-notes-list');
+                    if (notesList) notesList.style.padding = '';
+
+                    if (this.isMobile && !this.isInMobileShell()) {
+                        document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
+                            el.style.setProperty('display', 'none', 'important');
+                        });
+                    }
+
+                    this.container.querySelectorAll('.north-shuoshuo-sidebar .north-shuoshuo-nav-item').forEach(item => item.classList.remove('active'));
+                    if (navItem) navItem.classList.add('active');
+
+                    this.container.querySelectorAll('.north-shuoshuo-menu-list .north-shuoshuo-menu-item').forEach(item => item.classList.remove('active'));
+                    const targetMenu = this.container.querySelector('.north-shuoshuo-menu-list .north-shuoshuo-menu-item[data-view="notes"]');
+                    if (targetMenu) targetMenu.classList.add('active');
+
+                    this.container.querySelectorAll('.north-shuoshuo-mobile-tabbar .mobile-tab-item').forEach(item => item.classList.remove('active'));
+                    const targetMobileTab = this.container.querySelector('.north-shuoshuo-mobile-tabbar .mobile-tab-item[data-view="notes"]');
+                    if (targetMobileTab) targetMobileTab.classList.add('active');
+
+                    await this.loadShuoshuos();
+                    this.renderNotes();
+                    listEl.classList.add('gallery-exit');
+                    setTimeout(() => listEl.classList.remove('gallery-exit'), 1000);
+                    const checkInterval = setInterval(() => {
+                        const noteCard = this.container.querySelector(`.north-shuoshuo-note-card[data-id="${id}"]`);
+                        if (noteCard) {
+                            clearInterval(checkInterval);
+                            noteCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                            noteCard.classList.add('north-shuoshuo-note-card-flash');
+                            setTimeout(() => noteCard.classList.remove('north-shuoshuo-note-card-flash'), 2000);
+                        }
+                    }, 50);
+                    setTimeout(() => clearInterval(checkInterval), 5000);
+                }
+            });
+        });
     }
 
     _switchBookshelfView(viewName) {
@@ -8845,8 +9088,8 @@ ipcRenderer.on('lumina-close', () => {
         let match;
         while ((match = tagRegex.exec(content)) !== null) {
             const tag = match[1].trim();
-            // 过滤掉纯数字、空字符串
-            if (tag && !/^\d+$/.test(tag)) {
+            // 过滤掉空字符串
+            if (tag) {
                 tags.push(tag);
             }
         }
@@ -14112,6 +14355,18 @@ ipcRenderer.on('lumina-close', () => {
             const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
             if (sidebar) sidebar.style.display = 'none';
             this.renderBookshelf();
+        } else if (view === 'gallery') {
+            if (flomoArea) flomoArea.style.display = 'flex';
+            if (settingsArea) settingsArea.style.display = 'none';
+            const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
+            if (inputArea) inputArea.style.display = 'none';
+            const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
+            if (sidebar) sidebar.style.display = 'none';
+            this.loadShuoshuos().then(() => {
+                if (this.currentMainView === 'gallery') {
+                    this.renderGallery();
+                }
+            });
         } else if (needsRefresh.includes(view)) {
             // 先显示视图框架，然后异步加载最新数据后渲染内容
             if (flomoArea) flomoArea.style.display = 'flex';
@@ -14400,6 +14655,24 @@ ipcRenderer.on('lumina-close', () => {
                 // 刷新所有视图
                 this.refreshMountedShuoshuoViews();
                 showMessage(this.compactMode ? '已开启紧凑模式' : '已关闭紧凑模式');
+            });
+        }
+
+        // 拾光视图列数
+        const galleryColumnsInput = this.container.querySelector('#settings-gallery-columns');
+        if (galleryColumnsInput) {
+            galleryColumnsInput.value = this.galleryColumnCount;
+            galleryColumnsInput.addEventListener('change', async () => {
+                let val = parseInt(galleryColumnsInput.value, 10);
+                if (isNaN(val) || val < 2) val = 2;
+                if (val > 8) val = 8;
+                galleryColumnsInput.value = val;
+                this.galleryColumnCount = val;
+                await this.saveConfig();
+                if (this.currentMainView === 'gallery') {
+                    this.renderGallery();
+                }
+                showMessage(`拾光视图列数已设置为 ${val} 列`);
             });
         }
 
@@ -16579,6 +16852,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.showSidebarDock = data.showSidebarDock === true || data.showSidebarDock === 'true' || data.showSidebarDock === 1;
                 this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
                 this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
+                this.galleryColumnCount = typeof data.galleryColumnCount === 'number' ? data.galleryColumnCount : 3;
                 this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
                 this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
                 this.queryVisibility = { lifelog: false, 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, ...(data.queryVisibility || {}) };
@@ -16665,6 +16939,7 @@ ipcRenderer.on('lumina-close', () => {
                     showSidebarDock: this.showSidebarDock,
                     showLifeLogRecords: this.showLifeLogRecords,
                     compactMode: this.compactMode,
+                    galleryColumnCount: this.galleryColumnCount,
                     bookshelfFontConfig: this.bookshelfFontConfig,
                     bookshelfSyncConfig: this.bookshelfSyncConfig,
                     queryVisibility: this.queryVisibility,

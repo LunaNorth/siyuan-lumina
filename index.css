@@ -87,7 +87,7 @@
 
 .north-shuoshuo-nav-bottom {
     margin-top: auto;
-    margin-bottom: 60px;
+    margin-bottom: 12px;
     padding: 10px 0;
     display: flex;
     justify-content: center;
@@ -13003,5 +13003,258 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
 
     .mobile-calendar-day:active {
         transform: scale(0.95);
+    }
+}
+
+/* Lumina: 拾光视图 - 照片墙 */
+.north-shuoshuo-gallery-header {
+    padding: 16px 24px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--b3-theme-background);
+}
+
+.north-shuoshuo-gallery-header-top {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.north-shuoshuo-gallery-header-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--b3-theme-on-background);
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-gallery-header-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--b3-theme-on-surface);
+    font-size: 13px;
+}
+
+.north-shuoshuo-gallery-header-date {
+    color: var(--b3-theme-on-surface-light);
+}
+
+.north-shuoshuo-gallery-header-dot {
+    color: var(--b3-theme-on-surface-light);
+    opacity: 0.5;
+}
+
+.north-shuoshuo-gallery-header-count {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+}
+
+.north-shuoshuo-gallery-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 2px 0;
+}
+
+.north-shuoshuo-gallery-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    font-size: 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    color: var(--b3-theme-on-surface);
+    background: color-mix(in srgb, var(--b3-theme-surface-lighter) 60%, transparent);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.north-shuoshuo-gallery-tag-chip:hover {
+    background: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary-lightest);
+}
+
+.north-shuoshuo-gallery-tag-chip.active {
+    background: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+    border-color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-gallery-masonry {
+    column-gap: 6px;
+    padding: 0 24px 20px;
+}
+
+.north-shuoshuo-gallery-item {
+    break-inside: avoid;
+    margin-bottom: 6px;
+    cursor: pointer;
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+}
+
+.north-shuoshuo-gallery-img-wrapper {
+    position: relative;
+    width: 100%;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.north-shuoshuo-gallery-img-wrapper img {
+    width: 100%;
+    display: block;
+    border-radius: 6px;
+}
+
+.north-shuoshuo-gallery-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.05) 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 14px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    border-radius: 6px;
+}
+
+.north-shuoshuo-gallery-item:hover .north-shuoshuo-gallery-overlay {
+    opacity: 1;
+}
+
+.north-shuoshuo-gallery-overlay-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+    color: rgba(255,255,255,0.8);
+    font-size: 12px;
+}
+
+.north-shuoshuo-gallery-overlay-tags:empty {
+    display: none;
+}
+
+.north-shuoshuo-gallery-overlay-tags::before {
+    content: '#';
+    color: rgba(255,255,255,0.5);
+    font-size: 11px;
+    margin-right: 2px;
+}
+
+.north-shuoshuo-gallery-overlay-text {
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    word-break: break-all;
+}
+
+.north-shuoshuo-gallery-overlay-date {
+    color: rgba(255,255,255,0.7);
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+.north-shuoshuo-gallery-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 24px;
+    color: var(--b3-theme-on-surface);
+}
+
+.north-shuoshuo-gallery-empty svg {
+    opacity: 0.4;
+    margin-bottom: 16px;
+}
+
+.north-shuoshuo-gallery-empty p {
+    font-size: 14px;
+    color: var(--b3-theme-on-surface-light);
+    text-align: center;
+}
+
+.north-shuoshuo-note-card-flash {
+    animation: north-shuoshuo-flash 2s ease;
+}
+
+@keyframes north-shuoshuo-flash {
+    0%, 100% { box-shadow: none; }
+    25% { box-shadow: 0 0 0 3px var(--b3-theme-primary); }
+}
+
+/* 拾光视图列表布局 */
+.north-shuoshuo-notes-list.gallery-layout {
+    padding: 0 !important;
+}
+
+/* 拾光到说说视图平滑过渡 */
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-date-group,
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card {
+    animation: north-shuoshuo-fade-up 0.45s ease both;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-date-group {
+    animation-delay: 0.02s;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card {
+    animation-delay: 0.05s;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card:nth-child(3) {
+    animation-delay: 0.15s;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card:nth-child(4) {
+    animation-delay: 0.2s;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card:nth-child(5) {
+    animation-delay: 0.25s;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card:nth-child(6) {
+    animation-delay: 0.3s;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card:nth-child(7) {
+    animation-delay: 0.35s;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card:nth-child(8) {
+    animation-delay: 0.4s;
+}
+
+.north-shuoshuo-notes-list.gallery-exit .north-shuoshuo-note-card:nth-child(n+9) {
+    animation-delay: 0.45s;
+}
+
+@keyframes north-shuoshuo-fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
