@@ -18258,8 +18258,13 @@ ipcRenderer.on('lumina-close', () => {
                 // 过滤掉可以从思源读取的 LifeLog（有 boundBlockId 的），避免重复保存
                 // 但保留本地创建的 LifeLog（无 boundBlockId），这样不开自动同步时也能显示
                 const localOnly = this.shuoshuos.filter(s => !(s._isLifeLog && s.boundBlockId));
-                // 保存前先备份旧数据
-                await this._backupData(STORAGE_NAME, STORAGE_BACKUP_NAME);
+                if (localOnly.length === 0) {
+                    // 全部删除时同时清除备份，防止 loadShuoshuos 从备份恢复已删除的数据
+                    await this.saveData(STORAGE_BACKUP_NAME, []);
+                } else {
+                    // 保存前先备份旧数据
+                    await this._backupData(STORAGE_NAME, STORAGE_BACKUP_NAME);
+                }
                 await this.saveData(STORAGE_NAME, localOnly);
                 // 保存后更新已绑定块ID的缓存
                 this._updateBoundCache();
