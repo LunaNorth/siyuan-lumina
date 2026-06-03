@@ -2,6 +2,7 @@
     display: flex;
     height: 100%;
     max-height: 100%;
+    min-height: 0;
     overflow: hidden;
     position: relative;
     /* 日历弹窗复用朋友圈样式所需的变量*/
@@ -43,7 +44,18 @@
     margin-bottom: 10px;
 }
 
-/* ========== 最左侧导航栏（保留原来的窄边栏�?========== */
+/* LifeLog 视图内容使用默认字体 */
+.lifelog-record .north-shuoshuo-note-content {
+    font-family: initial;
+}
+
+/* LifeLog 头部栏刷新按钮悬停效果 */
+#lifelog-dock-refresh:hover {
+    background-color: var(--b3-theme-surface-lighter) !important;
+    color: var(--b3-theme-primary) !important;
+}
+
+/* ========== 最左侧导航栏（保留原来的窄边栏） ========== */
 .north-shuoshuo-sidebar {
     width: 70px;
     background: var(--b3-theme-background);
@@ -144,6 +156,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     flex-shrink: 0;
+    min-height: 0;
     writing-mode: horizontal-tb;
 }
 
@@ -153,6 +166,7 @@
     justify-content: space-between;
     margin-bottom: 20px;
     padding: 0 4px;
+    flex-shrink: 0;
     writing-mode: horizontal-tb;
 }
 
@@ -177,6 +191,7 @@
     margin-bottom: 20px;
     position: relative;
     overflow: visible;
+    flex-shrink: 0;
 }
 
 .north-shuoshuo-heatmap {
@@ -244,6 +259,7 @@
     margin-bottom: 10px;
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
 }
 
 .north-shuoshuo-menu-item {
@@ -379,10 +395,10 @@
 /* 标签 */
 .north-shuoshuo-tags-section {
     margin-top: 8px;
-    flex: 1;
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    min-height: 160px;
     overflow: hidden;
 }
 
@@ -401,9 +417,11 @@
     overflow-x: hidden;
     overflow-y: auto;
     margin: 0 -12px;
-    padding: 0 12px;
-    flex: 1;
+    padding: 0 12px 16px;
+    flex: 1 1 auto;
     min-height: 0;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* 标签列表 hover 时，所有标签的箭头和右侧信息都显示 */
@@ -763,6 +781,7 @@
     background-color: var(--b3-theme-background);
     overflow: hidden;
     height: 100%;
+    min-height: 0;
 }
 
 /* ========== 右侧主内容区（卡片列表） ========== */
@@ -772,6 +791,7 @@
     flex-direction: column;
     background-color: var(--b3-theme-background);
     overflow: hidden;
+    min-height: 0;
     /* border-left: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent); */
 }
 
@@ -807,6 +827,7 @@
     padding: 0 0 12px 0;
     margin-bottom: 4px;
     position: relative;
+    flex-shrink: 0;
 }
 
 .north-shuoshuo-search-input-wrapper {
@@ -1354,10 +1375,6 @@
 /* Lumina: 紧凑模式 */
 .north-shuoshuo-compact .north-shuoshuo-input-area {
     border-bottom: none !important;
-}
-
-.north-shuoshuo-compact .north-shuoshuo-notes-list:not(.card-layout) {
-    padding: 0px 24px 16px !important;
 }
 
 .north-shuoshuo-compact .north-shuoshuo-date-group {
@@ -13257,4 +13274,290 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* ========== LifeLog 视图类型筛选 ========== */
+.north-shuoshuo-lifelog-types-section {
+    margin-top: 8px;
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 160px;
+    overflow: hidden;
+}
+
+.north-shuoshuo-lifelog-types-section .north-shuoshuo-section-title {
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-lifelog-types-list {
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    margin: 0 -12px;
+    padding: 0 12px 16px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.north-shuoshuo-lifelog-type-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px 6px 20px;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+    position: relative;
+    min-height: 28px;
+    color: var(--b3-theme-on-surface);
+    box-sizing: border-box;
+    border-radius: 6px;
+    margin-bottom: 2px;
+}
+
+.north-shuoshuo-lifelog-type-item:hover {
+    background-color: var(--b3-list-hover);
+}
+
+.north-shuoshuo-lifelog-type-item.selected {
+    background-color: var(--b3-list-hover) !important;
+}
+
+.north-shuoshuo-lifelog-type-item.selected .north-shuoshuo-lifelog-type-name,
+.north-shuoshuo-lifelog-type-item.selected .north-shuoshuo-lifelog-type-count {
+    color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-lifelog-type-name {
+    flex: 1;
+    font-size: 14px;
+    color: var(--b3-theme-on-background);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 400;
+}
+
+.north-shuoshuo-lifelog-type-count {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    min-width: 20px;
+    text-align: right;
+    margin-left: 4px;
+}
+
+/* ========== LifeLog 加载更多 ========== */
+.north-shuoshuo-load-more {
+    text-align: center;
+    padding: 16px 0;
+}
+
+.north-shuoshuo-load-more-btn {
+    background: var(--b3-theme-surface);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 8px;
+    color: var(--b3-theme-primary);
+    font-size: 13px;
+    padding: 8px 24px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    outline: none;
+}
+
+.north-shuoshuo-load-more-btn:hover {
+    background: var(--b3-list-hover);
+    border-color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-load-more-btn:active {
+    opacity: 0.8;
+}
+
+
+/* ========== LifeLog 视图类型筛选 ========== */
+.north-shuoshuo-lifelog-types-section {
+    margin-top: 8px;
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 160px;
+    overflow: hidden;
+}
+
+.north-shuoshuo-lifelog-types-section .north-shuoshuo-section-title {
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-lifelog-types-list {
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    margin: 0 -12px;
+    padding: 0 12px 16px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.north-shuoshuo-lifelog-type-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px 6px 20px;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+    position: relative;
+    min-height: 28px;
+    color: var(--b3-theme-on-surface);
+    box-sizing: border-box;
+    border-radius: 6px;
+    margin-bottom: 2px;
+}
+
+.north-shuoshuo-lifelog-type-item:hover {
+    background-color: var(--b3-list-hover);
+}
+
+.north-shuoshuo-lifelog-type-item.selected {
+    background-color: var(--b3-list-hover) !important;
+}
+
+.north-shuoshuo-lifelog-type-item.selected .north-shuoshuo-lifelog-type-name,
+.north-shuoshuo-lifelog-type-item.selected .north-shuoshuo-lifelog-type-count {
+    color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-lifelog-type-name {
+    flex: 1;
+    font-size: 14px;
+    color: var(--b3-theme-on-background);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 400;
+}
+
+.north-shuoshuo-lifelog-type-count {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    min-width: 20px;
+    text-align: right;
+    margin-left: 4px;
+}
+
+/* ========== LifeLog ========== */
+.north-shuoshuo-load-more {
+    text-align: center;
+    padding: 16px 0;
+}
+
+.north-shuoshuo-load-more-btn {
+    background: var(--b3-theme-surface);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 8px;
+    color: var(--b3-theme-primary);
+    font-size: 13px;
+    padding: 8px 24px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    outline: none;
+}
+
+.north-shuoshuo-load-more-btn:hover {
+    background: var(--b3-list-hover);
+    border-color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-load-more-btn:active {
+    opacity: 0.8;
+}
+
+/* LifeLog 输入框下方类型选择条 */
+.north-shuoshuo-lifelog-input-types {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 0 4px;
+    align-items: center;
+    margin: 12px 0 0;
+}
+
+.north-shuoshuo-lifelog-input-type {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
+    background: var(--b3-theme-surface);
+    color: var(--b3-theme-on-surface);
+    border: 1px solid var(--b3-border-color);
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.north-shuoshuo-lifelog-input-type:hover {
+    background: var(--b3-theme-primary-lightest);
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-lifelog-input-type.active {
+    background: var(--b3-theme-primary);
+    color: #fff;
+    border-color: var(--b3-theme-primary);
+}
+
+/* LifeLog 输入框左下角选中类型 chip */
+.north-shuoshuo-lifelog-current-type-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--b3-theme-primary);
+    color: #fff;
+    border: 1px solid var(--b3-theme-primary);
+    white-space: nowrap;
+}
+
+/* LifeLog ��ͼ�ʼ��б�����С����߾࣬ʹ��Ƭ���ȸ����� */
+.north-shuoshuo-notes-list.lifelog-layout {
+    padding: 16px 16px !important;
+}
+
+.north-shuoshuo-notes-list.lifelog-layout .north-shuoshuo-week-header-bar {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.north-shuoshuo-notes-list.lifelog-layout .north-shuoshuo-note-card {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* LifeLog ����������ʾ��ǩ */
+.north-shuoshuo-lifelog-setting-hint {
+    font-size: 10px;
+    color: var(--b3-theme-primary);
+    background: var(--b3-theme-primary-lightest);
+    border-radius: 3px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 2px;
+    line-height: 1.6;
 }
