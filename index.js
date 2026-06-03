@@ -5422,6 +5422,33 @@ ipcRenderer.on('lumina-close', () => {
             const hue = Math.abs(hash % 360);
             color = `hsl(${hue}, 70%, 55%)`;
         }
+        // 暗色模式下调暗颜色，避免亮色太刺眼（通过 :root[data-theme-mode=dark] 识别）
+        if (document.documentElement.getAttribute('data-theme-mode') === 'dark') {
+            color = this._darkenColor(color);
+        }
+        return color;
+    }
+
+    // 暗色模式下将亮色调暗：通过添加透明度（rgba/hsla），让暗色背景透出自然变暗
+    _darkenColor(color) {
+        // 尝试解析 hex 颜色 #RRGGBB
+        const hex = color.match(/^#([0-9a-f]{6})$/i);
+        if (hex) {
+            const r = parseInt(hex[1].slice(0, 2), 16);
+            const g = parseInt(hex[1].slice(2, 4), 16);
+            const b = parseInt(hex[1].slice(4, 6), 16);
+            return `rgba(${r}, ${g}, ${b}, 0.35)`;
+        }
+        // 尝试解析 rgb(r, g, b) 颜色
+        const rgb = color.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+        if (rgb) {
+            return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, 0.35)`;
+        }
+        // 尝试解析 hsl(h, s%, l%) 颜色
+        const hsl = color.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i);
+        if (hsl) {
+            return `hsla(${hsl[1]}, ${hsl[2]}%, ${hsl[3]}%, 0.35)`;
+        }
         return color;
     }
 
