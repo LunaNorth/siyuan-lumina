@@ -471,8 +471,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogRefreshTimer = null; // LifeLog 实时刷新防抖定时器
         this._lifelogRefreshInFlight = false; // LifeLog 刷新中的并发保护
         this._lifelogRefreshQueued = false; // LifeLog 刷新期间收到变更后的补刷标记
+        this._lifelogStatsPeriod = 'year'; // LifeLog 统计视图的时间范围（all/year/month/week/today）
+        this._lifelogStatsFilterType = ''; // LifeLog 统计视图的类型筛选
+        this._lifelogStatsCustomStart = null; // LifeLog 统计视图自定义起始时间（毫秒）
+        this._lifelogStatsCustomEnd = null; // LifeLog 统计视图自定义结束时间（毫秒）
         this.compactMode = false; // 紧凑模式（默认关闭）
-        // LifeLog 紧凑模式已移除，与说说视图共用 compactMode
+        this.lifeLogCompactMode = false; // LifeLog 紧凑模式（默认关闭，独立于说说视图）
         this.galleryColumnCount = 3; // 拾光视图列数（默认3列）
         this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG }; // 图书视图字体大小配置
         this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG }; // 图书视图同步配置
@@ -2564,6 +2568,9 @@ ipcRenderer.on('lumina-close', () => {
                         <button class="north-shuoshuo-nav-item" data-view="lifelog" title="LifeLog">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm1 2v16h12V4H6z"/><path d="M7 7h10v2H7zM7 11h10v2H7zM7 15h6v2H7z"/></svg>
                         </button>
+                        <button class="north-shuoshuo-nav-item" data-view="lifelog-stats" title="LifeLog统计">
+                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M128 128h768v85.333H128V128z m0 170.667h768V896H128V298.667z m85.333 85.333v426.667h597.334V384H213.333z m85.334 85.333h128v256H298.667V469.333z m170.666 0h128v256h-128V469.333z m170.667 0h128v256h-128V469.333z"/></svg>
+                        </button>
                         <button class="north-shuoshuo-nav-item" data-view="bookshelf" title="图书">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 16H8c-.55 0-1-.45-1-1V6h10v13z"/></svg>
                         </button>
@@ -2890,7 +2897,7 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
                                         <h4>紧凑模式</h4>
-                                        <p>开启后，说说视图中的笔记间距更紧凑，类似memos的布局 <span class="north-shuoshuo-lifelog-setting-hint">共用于 LifeLog 视图</span></p>
+                                        <p>开启后，说说视图中的笔记间距更紧凑，类似memos的布局</p>
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.compactMode ? 'on' : ''}" id="settings-compact-mode-switch"></div>
                                 </div>
@@ -3846,6 +3853,13 @@ ipcRenderer.on('lumina-close', () => {
                                 </div>
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
+                                        <h4>紧凑模式</h4>
+                                        <p>开启后，LifeLog 视图中的笔记间距更紧凑，类似memos的布局</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.lifeLogCompactMode ? 'on' : ''}" id="lifelog-settings-compact-mode-switch"></div>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
                                         <h4>显示 LifeLog 侧边栏</h4>
                                         <p>开启后，在思源笔记右侧 Dock 栏显示 LifeLog 侧边栏（图标：<svg class="icon" style="width:14px;height:14px;vertical-align:middle;"><use xlink:href="#iconSpreadEven"></use></svg>）。</p>
                                     </div>
@@ -4111,6 +4125,9 @@ ipcRenderer.on('lumina-close', () => {
                         this.renderLifeLog();
                     }
                     break;
+                case 'lifelog-stats':
+                    this.renderLifeLogStats();
+                    break;
                 case 'week':
                 case 'notes':
                 default:
@@ -4194,6 +4211,7 @@ ipcRenderer.on('lumina-close', () => {
             seen.add(container);
             if (container.closest?.('.north-shuoshuo-lifelog-dock-view')) return true;
             if (this.getContainerMainView(container) === 'lifelog') return true;
+            if (this.getContainerMainView(container) === 'lifelog-stats') return true;
             return container === this.container && this.currentMainView === 'lifelog' && !!container.querySelector?.('#shuoshuo-notes-list');
         });
     }
@@ -4214,13 +4232,20 @@ ipcRenderer.on('lumina-close', () => {
             containers.forEach(container => {
                 if (!(container instanceof HTMLElement) || !document.body.contains(container)) return;
                 this.container = container;
-                this.currentMainView = 'lifelog';
-                if (container.closest?.('.north-shuoshuo-lifelog-dock-view')) {
-                    this.renderLifeLogDockView();
+                const containerView = this.getContainerMainView(container);
+                if (containerView === 'lifelog-stats') {
+                    this.currentMainView = 'lifelog-stats';
+                    this.renderLifeLogStats();
+                    rendered = true;
                 } else {
-                    this.renderLifeLog(resetLimit);
+                    this.currentMainView = 'lifelog';
+                    if (container.closest?.('.north-shuoshuo-lifelog-dock-view')) {
+                        this.renderLifeLogDockView();
+                    } else {
+                        this.renderLifeLog(resetLimit);
+                    }
+                    rendered = true;
                 }
-                rendered = true;
             });
         } finally {
             this.container = previousContainer;
@@ -4491,7 +4516,8 @@ ipcRenderer.on('lumina-close', () => {
         // 应用视图样式（异步，但不阻塞）
         this.applyViewStyle();
 
-        // 应用紧凑模式
+        // 应用紧凑模式（并清除 LifeLog 的紧凑样式残留）
+        this.container.classList.remove('north-shuoshuo-lifelog-compact');
         this.applyCompactMode();
 
         // 更新热力图
@@ -4665,8 +4691,9 @@ ipcRenderer.on('lumina-close', () => {
     renderLifeLog(resetLimit = true) {
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
-        // 应用紧凑模式（与说说视图共用 compactMode 配置）
-        this.container.classList.toggle('north-shuoshuo-compact', this.compactMode);
+        // 应用紧凑模式（LifeLog 独立 compact 配置，不影响说说视图；并清除说说视图的紧凑样式残留）
+        this.container.classList.remove('north-shuoshuo-compact');
+        this.container.classList.toggle('north-shuoshuo-lifelog-compact', this.lifeLogCompactMode);
         listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout', 'gallery-layout');
         // 清除其他视图残留的内联样式，确保宽度与说说视图一致
         listEl.style.padding = '';
@@ -5040,8 +5067,9 @@ ipcRenderer.on('lumina-close', () => {
     renderLifeLogDockView() {
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
-        // 应用紧凑模式（与说说视图共用 compactMode 配置）
-        this.container.classList.toggle('north-shuoshuo-compact', this.compactMode);
+        // 应用紧凑模式（LifeLog 独立 compact 配置，不影响说说视图；并清除说说视图的紧凑样式残留）
+        this.container.classList.remove('north-shuoshuo-compact');
+        this.container.classList.toggle('north-shuoshuo-lifelog-compact', this.lifeLogCompactMode);
         listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout', 'gallery-layout');
         listEl.style.padding = '';
         listEl.style.maxWidth = '';
@@ -5365,6 +5393,437 @@ ipcRenderer.on('lumina-close', () => {
         });
     }
 
+    // 渲染 LifeLog 统计视图
+    renderLifeLogStats() {
+        const listEl = this.container.querySelector('#shuoshuo-notes-list');
+        if (!listEl) return;
+
+        this.container.classList.remove('north-shuoshuo-compact', 'north-shuoshuo-lifelog-compact');
+        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout', 'gallery-layout');
+        listEl.style.padding = '';
+        listEl.style.maxWidth = '';
+        listEl.style.width = '';
+
+        // 隐藏输入区域、搜索栏、菜单、标签、检索式、热力图、统计等
+        const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
+        if (inputArea) inputArea.style.display = 'none';
+        const searchBar = this.container.querySelector('#shuoshuo-search-bar');
+        if (searchBar) searchBar.style.display = 'none';
+        const menuList = this.container.querySelector('.north-shuoshuo-menu-list');
+        if (menuList) menuList.style.display = 'none';
+        const tagsSection = this.container.querySelector('.north-shuoshuo-tags-section');
+        if (tagsSection) tagsSection.style.display = 'none';
+        const querySection = this.container.querySelector('.north-shuoshuo-query-section');
+        if (querySection) querySection.style.display = 'none';
+        const statsContainer = this.container.querySelector('.north-shuoshuo-stats');
+        if (statsContainer) statsContainer.style.display = 'none';
+        const heatmapContainer = this.container.querySelector('.north-shuoshuo-heatmap-container');
+        if (heatmapContainer) heatmapContainer.style.display = 'none';
+        const typeSection = this.container.querySelector('.north-shuoshuo-lifelog-types-section');
+        if (typeSection) typeSection.style.display = 'none';
+
+        // ==== 计算统计数据 ====
+        const records = this.lifeLogRecords || [];
+        if (!records.length) {
+            listEl.innerHTML = `<div class="north-shuoshuo-lifelog-stats-empty">暂无 LifeLog 记录</div>`;
+            return;
+        }
+
+        // 当前选中的时间范围 & 类型筛选
+        const period = this._lifelogStatsPeriod || 'year';
+        const selectedType = this._lifelogStatsFilterType || '';
+        const now = new Date();
+        const year = now.getFullYear();
+
+        // 计算时间范围起始
+        let periodStart, periodEnd;
+        let isAllPeriod = false;
+        if (this._lifelogStatsCustomStart != null && this._lifelogStatsCustomEnd != null) {
+            periodStart = this._lifelogStatsCustomStart;
+            periodEnd = this._lifelogStatsCustomEnd;
+        } else if (period === 'all') {
+            isAllPeriod = true;
+        } else {
+            switch (period) {
+                case 'year':
+                    periodStart = new Date(year, 0, 1);
+                    break;
+                case 'month':
+                    periodStart = new Date(year, now.getMonth(), 1);
+                    break;
+                case 'week': {
+                    const dayOfWeek = now.getDay();
+                    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                    periodStart = new Date(year, now.getMonth(), now.getDate() - diff);
+                    periodStart.setHours(0, 0, 0, 0);
+                    break;
+                }
+                case 'pastYear': {
+                    periodStart = new Date(now);
+                    periodStart.setFullYear(periodStart.getFullYear() - 1);
+                    periodStart.setHours(0, 0, 0, 0);
+                    break;
+                }
+                case 'today':
+                    periodStart = new Date(year, now.getMonth(), now.getDate());
+                    break;
+                default:
+                    periodStart = new Date(year, 0, 1);
+            }
+            if (periodStart instanceof Date) periodStart.setHours(0, 0, 0, 0);
+            periodEnd = now.getTime();
+        }
+
+        // 筛选当前范围的记录
+        let filtered;
+        if (isAllPeriod) {
+            filtered = [...records];
+        } else {
+            const periodStartMs = typeof periodStart === 'number' ? periodStart : periodStart.getTime();
+            filtered = records.filter(r => r.created >= periodStartMs && r.created <= periodEnd);
+        }
+        // 类型筛选
+        if (selectedType) {
+            filtered = filtered.filter(r => r._lifeLogType === selectedType);
+        }
+        if (!filtered.length) {
+            listEl.innerHTML = `<div class="north-shuoshuo-lifelog-stats-empty">该时段暂无 LifeLog 记录</div>`;
+            return;
+        }
+
+        // 按时间升序排列
+        const sorted = [...filtered].sort((a, b) => a.created - b.created);
+
+        // 计算每条记录的时长
+        const typeDurations = {};
+        for (let i = 0; i < sorted.length; i++) {
+            const record = sorted[i];
+            const type = record._lifeLogType || '未分类';
+            if (!typeDurations[type]) {
+                typeDurations[type] = { totalMs: 0, count: 0 };
+            }
+            typeDurations[type].count++;
+            if (i > 0) {
+                const durationMs = record.created - sorted[i - 1].created;
+                if (durationMs > 0 && durationMs < 86400000 * 3) {
+                    typeDurations[type].totalMs += durationMs;
+                }
+            }
+        }
+
+        // 获取所有类型列表
+        const allTypes = [...new Set(records.map(r => r._lifeLogType || '未分类'))].sort();
+
+        // 统计总数据
+        const totalRecords = filtered.length;
+        const totalDurationMs = Object.values(typeDurations).reduce((sum, t) => sum + t.totalMs, 0);
+        const daysSet = new Set();
+        filtered.forEach(r => {
+            const d = new Date(r.created);
+            daysSet.add(`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`);
+        });
+        const recordDays = daysSet.size;
+
+        // 按时长排序（降序）
+        const typeEntries = Object.entries(typeDurations).sort((a, b) => b[1].totalMs - a[1].totalMs);
+        // 按记录数排序（用于图表）
+        const typeEntriesByCount = Object.entries(typeDurations).sort((a, b) => b[1].count - a[1].count);
+
+        // 格式化时长
+        const formatDuration = (ms) => {
+            const totalMinutes = Math.round(ms / 60000);
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            if (hours > 0) {
+                return minutes > 0 ? `${hours}时${minutes}分` : `${hours}时`;
+            }
+            return `${minutes}分`;
+        };
+
+        // 时间范围名称
+        const periodNames = { all: '全部', pastYear: '近一年', year: '本年', month: '本月', week: '本周', today: '今日' };
+
+        const self = this;
+        const escapeHtml = (str) => {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        };
+
+        // 类型筛选标签
+        let typeTagsHtml = allTypes.map(type => {
+            const active = type === selectedType ? ' active' : '';
+            return `<span class="lifelog-stats-tag${active}" data-stats-type="${escapeHtml(type)}">${escapeHtml(type)}</span>`;
+        }).join('');
+
+        // 类型分布卡片
+        let distCardsHtml = '';
+        typeEntries.forEach(([type, data]) => {
+            const color = this._getLifeLogTypeColorLight(type);
+            distCardsHtml += `
+                <div class="lifelog-stats-dist-card">
+                    <div class="lifelog-stats-dist-card-left">
+                        <span class="lifelog-stats-dist-dot" style="background:${color || '#5b8ff9'}"></span>
+                        <span class="lifelog-stats-dist-name">${escapeHtml(type)}</span>
+                    </div>
+                    <span class="lifelog-stats-dist-time">${formatDuration(data.totalMs)}</span>
+                </div>
+            `;
+        });
+
+        // 柱状图
+        const maxCount = typeEntriesByCount.length > 0 ? typeEntriesByCount[0][1].count : 1;
+        let chartBarsHtml = '';
+        let chartLegendHtml = '';
+        typeEntriesByCount.forEach(([type, data]) => {
+            const color = this._getLifeLogTypeColorLight(type);
+            const heightPct = Math.max(4, (data.count / maxCount) * 100);
+            chartBarsHtml += `
+                <div class="lifelog-stats-chart-bar-item">
+                    <div class="lifelog-stats-chart-bar" style="height:${heightPct}%;background:${color || '#5b8ff9'}">
+                        <span class="lifelog-stats-chart-bar-tip">${escapeHtml(type)}: ${data.count}条</span>
+                    </div>
+                    <span class="lifelog-stats-chart-bar-label">${escapeHtml(type)}</span>
+                </div>
+            `;
+            chartLegendHtml += `
+                <div class="lifelog-stats-legend-item">
+                    <span class="lifelog-stats-legend-dot" style="background:${color || '#5b8ff9'}"></span>
+                    <span>${escapeHtml(type)}: ${data.count}</span>
+                </div>
+            `;
+        });
+
+        // 时间段统计（用于第二行 3 格）
+        const yearDur = this._calcPeriodDuration(records, 'year');
+        const monthDur = this._calcPeriodDuration(records, 'month');
+        const weekDur = this._calcPeriodDuration(records, 'week');
+        const todayDur = this._calcPeriodDuration(records, 'today');
+
+        // 根据当前时间段计算日期输入框的默认值
+        let dateStartVal, dateEndVal;
+        if (period === 'all') {
+            // 全部：从最早记录到今天
+            const minCreated = Math.min(...records.map(r => r.created));
+            dateStartVal = new Date(minCreated);
+            dateEndVal = new Date(now);
+        } else if (period === 'year') {
+            dateStartVal = new Date(year, 0, 1);
+            dateEndVal = new Date(now);
+        } else if (period === 'month') {
+            dateStartVal = new Date(year, now.getMonth(), 1);
+            dateEndVal = new Date(now);
+        } else if (period === 'week') {
+            const dayOfWeek = now.getDay();
+            const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            dateStartVal = new Date(year, now.getMonth(), now.getDate() - diff);
+            dateStartVal.setHours(0, 0, 0, 0);
+            dateEndVal = new Date(now);
+        } else if (period === 'pastYear') {
+            const pastYearStart = new Date(now);
+            pastYearStart.setFullYear(pastYearStart.getFullYear() - 1);
+            pastYearStart.setHours(0, 0, 0, 0);
+            dateStartVal = pastYearStart;
+            dateEndVal = new Date(now);
+        } else if (period === 'today') {
+            dateStartVal = new Date(year, now.getMonth(), now.getDate());
+            dateEndVal = new Date(year, now.getMonth(), now.getDate());
+        } else {
+            dateStartVal = new Date(year, 0, 1);
+            dateEndVal = new Date(now);
+        }
+
+        const html = `
+            <div class="north-shuoshuo-lifelog-stats">
+                <!-- ===== 筛选区 ===== -->
+                <div class="lifelog-stats-filter-section">
+                    <div class="lifelog-stats-date-filter">
+                        <div class="lifelog-stats-period-nav">
+                            ${['all', 'pastYear', 'year', 'month', 'week', 'today'].map(p =>
+                                `<button class="lifelog-stats-period-btn${p === period ? ' active' : ''}" data-period="${p}">${periodNames[p]}</button>`
+                            ).join('')}
+                        </div>
+                        <div class="lifelog-stats-date-range">
+                            <input type="date" class="lifelog-stats-date-input" id="lifelog-stats-date-start" value="${dateStartVal.getFullYear()}-${String(dateStartVal.getMonth() + 1).padStart(2, '0')}-${String(dateStartVal.getDate()).padStart(2, '0')}">
+                            <span class="lifelog-stats-date-separator">-</span>
+                            <input type="date" class="lifelog-stats-date-input" id="lifelog-stats-date-end" value="${dateEndVal.getFullYear()}-${String(dateEndVal.getMonth() + 1).padStart(2, '0')}-${String(dateEndVal.getDate()).padStart(2, '0')}">
+                            <button class="lifelog-stats-btn lifelog-stats-btn-primary" id="lifelog-stats-date-apply">应用</button>
+                            <button class="lifelog-stats-btn lifelog-stats-btn-default" id="lifelog-stats-date-reset">重置</button>
+                        </div>
+                    </div>
+                    <div class="lifelog-stats-type-filter">
+                        <span class="lifelog-stats-filter-label">类型</span>
+                        <span class="lifelog-stats-tag${!selectedType ? ' active' : ''}" data-stats-type="">全部</span>
+                        ${typeTagsHtml}
+                    </div>
+                </div>
+
+                <!-- ===== 统计卡片 第一行 ===== -->
+                <div class="lifelog-stats-grid">
+                    <div class="lifelog-stats-stat-card">
+                        <div class="lifelog-stats-stat-label">总时长</div>
+                        <div class="lifelog-stats-stat-value">${formatDuration(totalDurationMs)}</div>
+                    </div>
+                    <div class="lifelog-stats-stat-card">
+                        <div class="lifelog-stats-stat-label">本年</div>
+                        <div class="lifelog-stats-stat-value">${formatDuration(yearDur)}</div>
+                    </div>
+                    <div class="lifelog-stats-stat-card">
+                        <div class="lifelog-stats-stat-label">本月</div>
+                        <div class="lifelog-stats-stat-value">${formatDuration(monthDur)}</div>
+                    </div>
+                    <div class="lifelog-stats-stat-card">
+                        <div class="lifelog-stats-stat-label">本周</div>
+                        <div class="lifelog-stats-stat-value">${formatDuration(weekDur)}</div>
+                    </div>
+                    <div class="lifelog-stats-stat-card">
+                        <div class="lifelog-stats-stat-label">今日</div>
+                        <div class="lifelog-stats-stat-value">${formatDuration(todayDur)}</div>
+                    </div>
+                </div>
+
+                <!-- ===== 统计卡片 第二行 ===== -->
+                <div class="lifelog-stats-grid lifelog-stats-grid-3">
+                    <div class="lifelog-stats-stat-card">
+                        <div class="lifelog-stats-stat-label">总记录</div>
+                        <div class="lifelog-stats-stat-value">${totalRecords}</div>
+                    </div>
+                    <div class="lifelog-stats-stat-card">
+                        <div class="lifelog-stats-stat-label">使用类型</div>
+                        <div class="lifelog-stats-stat-value">${typeEntries.length}</div>
+                    </div>
+                    <div class="lifelog-stats-stat-card">
+                        <div class="lifelog-stats-stat-label">记录天数</div>
+                        <div class="lifelog-stats-stat-value">${recordDays}</div>
+                    </div>
+                </div>
+
+                <!-- ===== 类型分布 ===== -->
+                <div class="lifelog-stats-dist-section">
+                    <div class="lifelog-stats-section-title"><svg class="icon" style="width:16px;height:16px;vertical-align:-3px;margin-right:4px;"><use xlink:href="#iconSpreadEven"></use></svg>类型分布</div>
+                    <div class="lifelog-stats-dist-cards">
+                        ${distCardsHtml}
+                    </div>
+                </div>
+
+                <!-- ===== 图表 ===== -->
+                <div class="lifelog-stats-chart-card">
+                    <div class="lifelog-stats-chart-header">
+                        <div class="lifelog-stats-chart-title-group">
+                            <div class="lifelog-stats-chart-title-text">
+                                <span class="lifelog-stats-chart-title">类型分布</span>
+                            </div>
+                        </div>
+                        <div class="lifelog-stats-chart-meta">
+                            <span class="lifelog-stats-chart-meta-num">${totalRecords}</span>
+                            <span>📊 ${typeEntries.length}类</span>
+                        </div>
+                    </div>
+                    <div class="lifelog-stats-chart-body">
+                        ${chartBarsHtml}
+                    </div>
+                    <div class="lifelog-stats-chart-footer">
+                        ${chartLegendHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        listEl.innerHTML = html;
+
+        // 绑定时间范围切换事件
+        listEl.querySelectorAll('.lifelog-stats-period-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const p = this.dataset.period;
+                if (self._lifelogStatsPeriod === p) return;
+                self._lifelogStatsPeriod = p;
+                self._lifelogStatsCustomStart = null;
+                self._lifelogStatsCustomEnd = null;
+                self.renderLifeLogStats();
+            });
+        });
+
+        // 绑定类型筛选事件
+        listEl.querySelectorAll('.lifelog-stats-tag').forEach(tag => {
+            tag.addEventListener('click', function() {
+                const type = this.dataset.statsType;
+                if (self._lifelogStatsFilterType === type) return;
+                self._lifelogStatsFilterType = type;
+                self.renderLifeLogStats();
+            });
+        });
+
+        // 绑定日期应用事件
+        const applyBtn = listEl.querySelector('#lifelog-stats-date-apply');
+        const resetBtn = listEl.querySelector('#lifelog-stats-date-reset');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', function() {
+                const startInput = listEl.querySelector('#lifelog-stats-date-start');
+                const endInput = listEl.querySelector('#lifelog-stats-date-end');
+                if (!startInput || !endInput) return;
+                const startVal = startInput.value;
+                const endVal = endInput.value;
+                if (!startVal || !endVal) return;
+                const startMs = new Date(startVal + 'T00:00:00').getTime();
+                const endMs = new Date(endVal + 'T23:59:59').getTime();
+                if (isNaN(startMs) || isNaN(endMs)) return;
+                self._lifelogStatsCustomStart = startMs;
+                self._lifelogStatsCustomEnd = endMs;
+                self.renderLifeLogStats();
+            });
+        }
+        if (resetBtn) {
+            resetBtn.addEventListener('click', function() {
+                self._lifelogStatsCustomStart = null;
+                self._lifelogStatsCustomEnd = null;
+                self._lifelogStatsPeriod = 'year';
+                self.renderLifeLogStats();
+            });
+        }
+    }
+
+    // 辅助：计算某个时间段的时长（用于底部时间段统计）
+    _calcPeriodDuration(records, period) {
+        const now = new Date();
+        const year = now.getFullYear();
+        let start;
+        switch (period) {
+            case 'year':
+                start = new Date(year, 0, 1);
+                break;
+            case 'month':
+                start = new Date(year, now.getMonth(), 1);
+                break;
+            case 'week': {
+                const d = now.getDay();
+                const diff = d === 0 ? 6 : d - 1;
+                start = new Date(year, now.getMonth(), now.getDate() - diff);
+                start.setHours(0, 0, 0, 0);
+                break;
+            }
+            case 'pastYear': {
+                start = new Date(now);
+                start.setFullYear(start.getFullYear() - 1);
+                start.setHours(0, 0, 0, 0);
+                break;
+            }
+            case 'today':
+                start = new Date(year, now.getMonth(), now.getDate());
+                break;
+            default:
+                return 0;
+        }
+        start.setHours(0, 0, 0, 0);
+        const end = now.getTime();
+        const filtered = records.filter(r => r.created >= start.getTime() && r.created <= end);
+        const sorted = [...filtered].sort((a, b) => a.created - b.created);
+        let total = 0;
+        for (let i = 1; i < sorted.length; i++) {
+            const d = sorted[i].created - sorted[i - 1].created;
+            if (d > 0 && d < 86400000 * 3) total += d;
+        }
+        return total;
+    }
+
     // 渲染单个 LifeLog 卡片（带类型标签）
     renderLifeLogCard(item) {
         const dateStr = this.formatDate(item.created);
@@ -5448,6 +5907,28 @@ ipcRenderer.on('lumina-close', () => {
         const hsl = color.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i);
         if (hsl) {
             return `hsla(${hsl[1]}, ${hsl[2]}%, ${hsl[3]}%, 0.35)`;
+        }
+        return color;
+    }
+
+    // 获取 LifeLog 类型的明亮色（不随暗色模式调暗，用于柱状图等需要保持亮色的场景）
+    _getLifeLogTypeColorLight(type) {
+        if (!type) return '';
+        const temp = document.createElement('div');
+        temp.setAttribute('data-type', 'NodeParagraph');
+        temp.setAttribute('custom-lifelog-type', type);
+        temp.style.display = 'none';
+        document.body.appendChild(temp);
+        const styles = getComputedStyle(temp);
+        let color = styles.getPropertyValue('--en-lifelog-border-color').trim();
+        document.body.removeChild(temp);
+        if (!color) {
+            let hash = 0;
+            for (let i = 0; i < type.length; i++) {
+                hash = type.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = Math.abs(hash % 360);
+            color = `hsl(${hue}, 70%, 55%)`;
         }
         return color;
     }
@@ -15510,6 +15991,20 @@ ipcRenderer.on('lumina-close', () => {
                     this.renderLifeLog();
                 }
             });
+        } else if (view === 'lifelog-stats') {
+            // LifeLog 统计视图
+            if (flomoArea) flomoArea.style.display = 'flex';
+            if (settingsArea) settingsArea.style.display = 'none';
+            const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
+            if (inputArea) inputArea.style.display = 'none';
+            const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
+            if (sidebar) sidebar.style.display = 'none';
+            // 异步加载 LifeLog 数据并渲染统计
+            this.loadLifeLogData().then(() => {
+                if (this.currentMainView === 'lifelog-stats') {
+                    this.renderLifeLogStats();
+                }
+            });
         } else if (view === 'gallery') {
             if (flomoArea) flomoArea.style.display = 'flex';
             if (settingsArea) settingsArea.style.display = 'none';
@@ -15915,6 +16410,30 @@ ipcRenderer.on('lumina-close', () => {
                 this.showLifelogSidebarDock = newLifelogSidebarDockSwitch.classList.contains('on');
                 await this.saveConfig();
                 showMessage(this.showLifelogSidebarDock ? '已开启 LifeLog 侧边栏，请刷新界面生效' : '已关闭 LifeLog 侧边栏，请刷新界面生效');
+            });
+        }
+
+        // LifeLog 紧凑模式
+        const lifelogCompactModeSwitch = this.container.querySelector('#lifelog-settings-compact-mode-switch');
+        if (lifelogCompactModeSwitch) {
+            lifelogCompactModeSwitch.replaceWith(lifelogCompactModeSwitch.cloneNode(true));
+            const newLifelogCompactModeSwitch = this.container.querySelector('#lifelog-settings-compact-mode-switch');
+            newLifelogCompactModeSwitch.addEventListener('click', async () => {
+                newLifelogCompactModeSwitch.classList.toggle('on');
+                this.lifeLogCompactMode = newLifelogCompactModeSwitch.classList.contains('on');
+                await this.saveConfig();
+                // 刷新 LifeLog 视图
+                if (this.currentMainView === 'lifelog') {
+                    this.renderLifeLog();
+                }
+                // 如果有 LifeLog dock 视图也刷新
+                const dockContainers = this.getMountedLifeLogContainers();
+                dockContainers.forEach(c => {
+                    if (c.closest?.('.north-shuoshuo-lifelog-dock-view')) {
+                        this.renderLifeLogDockView();
+                    }
+                });
+                showMessage(this.lifeLogCompactMode ? 'LifeLog 已开启紧凑模式' : 'LifeLog 已关闭紧凑模式');
             });
         }
 
@@ -18123,6 +18642,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.showLifelogSidebarDock = data.showLifelogSidebarDock === true || data.showLifelogSidebarDock === 'true' || data.showLifelogSidebarDock === 1;
                 this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
                 this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
+                this.lifeLogCompactMode = data.lifeLogCompactMode === true || data.lifeLogCompactMode === 'true' || data.lifeLogCompactMode === 1;
                 this.galleryColumnCount = typeof data.galleryColumnCount === 'number' ? data.galleryColumnCount : 3;
                 this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
                 this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
@@ -18211,6 +18731,7 @@ ipcRenderer.on('lumina-close', () => {
                     showLifelogSidebarDock: this.showLifelogSidebarDock,
                     showLifeLogRecords: this.showLifeLogRecords,
                     compactMode: this.compactMode,
+                    lifeLogCompactMode: this.lifeLogCompactMode,
                     galleryColumnCount: this.galleryColumnCount,
                     bookshelfFontConfig: this.bookshelfFontConfig,
                     bookshelfSyncConfig: this.bookshelfSyncConfig,

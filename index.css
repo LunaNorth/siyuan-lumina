@@ -1414,6 +1414,48 @@
     margin-bottom: 0 !important;
 }
 
+/* Lumina: LifeLog 紧凑模式（独立于说说视图） */
+.north-shuoshuo-lifelog-compact .north-shuoshuo-input-area {
+    border-bottom: none !important;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-date-group {
+    margin: 12px 0 !important;
+    padding: 0 4px !important;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-note-card {
+    padding: 4px 14px 8px !important;
+    margin-bottom: 8px !important;
+    border-radius: 8px !important;
+    min-height: 0 !important;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-note-header {
+    margin-bottom: 0px !important;
+    min-height: 0 !important;
+    line-height: 1.25 !important;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-note-date,
+.north-shuoshuo-lifelog-compact .north-shuoshuo-note-time {
+    line-height: 1.25 !important;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-note-content {
+    margin: 0 !important;
+    line-height: 1.6 !important;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-note-content p {
+    margin: 0 0 8px !important;
+    line-height: 1.6 !important;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-note-content p:last-child {
+    margin-bottom: 0 !important;
+}
+
 .north-shuoshuo-note-tag {
     display: inline-block;
     background-color: var(--b3-theme-primary-lightest);
@@ -13560,4 +13602,388 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     vertical-align: middle;
     margin-left: 2px;
     line-height: 1.6;
+}
+
+/* ========== LifeLog 统计视图 ========== */
+.north-shuoshuo-lifelog-stats {
+    padding: 16px 20px;
+    height: 100%;
+    overflow-y: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.north-shuoshuo-lifelog-stats-empty {
+    padding: 80px 24px;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 14px;
+}
+
+/* ===== 筛选区 ===== */
+.lifelog-stats-filter-section {
+    background: var(--b3-theme-background);
+    padding: 14px 18px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 30%, transparent);
+    flex-shrink: 0;
+}
+
+.lifelog-stats-date-filter {
+    margin-bottom: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.lifelog-stats-date-range {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.lifelog-stats-date-input {
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+    outline: none;
+    width: 130px;
+    background: var(--b3-theme-background);
+    font-family: inherit;
+}
+
+.lifelog-stats-date-separator {
+    color: var(--b3-theme-on-surface-light);
+    font-size: 14px;
+}
+
+.lifelog-stats-btn {
+    padding: 5px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    font-family: inherit;
+}
+
+.lifelog-stats-btn-primary {
+    background: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+}
+
+.lifelog-stats-btn-default {
+    background: color-mix(in srgb, var(--b3-theme-surface-lighter) 60%, transparent);
+    color: var(--b3-theme-on-surface);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+}
+
+/* 时间范围切换 */
+.lifelog-stats-period-nav {
+    display: flex;
+    gap: 6px;
+}
+
+.lifelog-stats-period-btn {
+    padding: 6px 16px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+    border-radius: 4px;
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-surface);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.lifelog-stats-period-btn:hover {
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+
+.lifelog-stats-period-btn.active {
+    background: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+    border-color: var(--b3-theme-primary);
+}
+
+/* 类型筛选 */
+.lifelog-stats-type-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.lifelog-stats-filter-label {
+    font-size: 14px;
+    color: var(--b3-theme-on-surface-light);
+    margin-right: 4px;
+}
+
+.lifelog-stats-tag {
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-surface-light);
+    transition: all 0.15s;
+    font-family: inherit;
+}
+
+.lifelog-stats-tag:hover {
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+
+.lifelog-stats-tag.active {
+    background: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+    border-color: var(--b3-theme-primary);
+}
+
+/* ===== 统计卡片 ===== */
+.lifelog-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.lifelog-stats-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.lifelog-stats-stat-card {
+    background: var(--b3-theme-background);
+    border-radius: 8px;
+    padding: 18px 14px;
+    text-align: center;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 25%, transparent);
+}
+
+.lifelog-stats-stat-label {
+    font-size: 14px;
+    color: var(--b3-theme-on-surface-light);
+    margin-bottom: 6px;
+}
+
+.lifelog-stats-stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ===== 类型分布 ===== */
+.lifelog-stats-dist-section {
+    flex-shrink: 0;
+}
+
+.lifelog-stats-section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 30%, transparent);
+}
+
+.lifelog-stats-dist-cards {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.lifelog-stats-dist-card {
+    flex: 1;
+    min-width: 140px;
+    background: var(--b3-theme-background);
+    border-radius: 8px;
+    padding: 10px 14px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 25%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.lifelog-stats-dist-card-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lifelog-stats-dist-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.lifelog-stats-dist-name {
+    font-size: 14px;
+    color: var(--b3-theme-on-surface);
+}
+
+.lifelog-stats-dist-time {
+    font-size: 14px;
+    color: var(--b3-theme-on-surface-light);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ===== 图表 ===== */
+.lifelog-stats-chart-card {
+    background: var(--b3-theme-background);
+    border-radius: 12px;
+    padding: 18px 20px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 25%, transparent);
+    flex-shrink: 0;
+}
+
+.lifelog-stats-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 20%, transparent);
+}
+
+.lifelog-stats-chart-title-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lifelog-stats-chart-icon {
+    width: 32px;
+    height: 32px;
+    background: color-mix(in srgb, var(--b3-theme-warning) 15%, transparent);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.lifelog-stats-chart-title-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.lifelog-stats-chart-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+}
+
+.lifelog-stats-chart-subtitle {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    margin-top: 2px;
+}
+
+.lifelog-stats-chart-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--b3-theme-on-surface);
+}
+
+.lifelog-stats-chart-meta-num {
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+}
+
+.lifelog-stats-chart-body {
+    display: flex;
+    height: 120px;
+    gap: 8px;
+    align-items: flex-end;
+    padding: 0 6px;
+    margin-bottom: 8px;
+}
+
+.lifelog-stats-chart-bar-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    justify-content: flex-end;
+}
+
+.lifelog-stats-chart-bar {
+    width: 100%;
+    border-radius: 6px 6px 0 0;
+    min-height: 4px;
+    transition: height 0.3s ease;
+    position: relative;
+    cursor: pointer;
+}
+
+/* 柱状图 hover tooltip */
+.lifelog-stats-chart-bar-tip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-6px);
+    background: rgba(0,0,0,0.78);
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-variant-numeric: tabular-nums;
+    z-index: 10;
+}
+
+.lifelog-stats-chart-bar:hover .lifelog-stats-chart-bar-tip {
+    opacity: 1;
+}
+
+.lifelog-stats-chart-bar-label {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+    font-weight: 500;
+}
+
+.lifelog-stats-chart-footer {
+    display: flex;
+    gap: 16px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 20%, transparent);
+    flex-wrap: wrap;
+}
+
+.lifelog-stats-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+}
+
+.lifelog-stats-legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
 }
