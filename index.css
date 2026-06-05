@@ -158,6 +158,11 @@
     flex-shrink: 0;
     min-height: 0;
     writing-mode: horizontal-tb;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.north-shuoshuo-flomo-sidebar::-webkit-scrollbar {
+    display: none;
 }
 
 /* 统计数据 */
@@ -422,6 +427,11 @@
     min-height: 0;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.north-shuoshuo-tags-list::-webkit-scrollbar {
+    display: none;
 }
 
 /* 标签列表 hover 时，所有标签的箭头和右侧信息都显示 */
@@ -1058,6 +1068,8 @@
     overflow-y: auto;
     padding: 20px 30px;
     max-height: 100%;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
 /* 笔记总数�?*/
@@ -1318,6 +1330,18 @@
     line-height: 1.4;
     white-space: nowrap;
     z-index: 2;
+}
+
+/* LifeLog 类型标签内的持续时间文字 */
+.north-shuoshuo-lifelog-duration {
+    margin-left: 6px;
+    font-weight: 400;
+    font-size: 11px;
+}
+
+/* 暗色模式下持续时间文字降低不透明度 */
+:root[data-theme-mode=dark] .north-shuoshuo-lifelog-duration {
+    opacity: 0.8;
 }
 
 .north-shuoshuo-note-date {
@@ -3470,6 +3494,7 @@
     border-radius: 12px;
     font-size: 13px;
     color: var(--b3-theme-on-surface-light);
+    min-height: 16px;
 }
 
 /* 本周记录顶部信息栏 */
@@ -3484,6 +3509,7 @@
     border-radius: 12px;
     font-size: 13px;
     color: var(--b3-theme-on-surface-light);
+    min-height: 16px;
 }
 
 .north-shuoshuo-week-header-left {
@@ -3542,6 +3568,49 @@
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+/* LifeLog 视图专用 header 条 */
+.north-shuoshuo-lifelog-week-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    margin: 0 0 16px;
+    background: var(--b3-theme-background);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 90%, transparent);
+    border-radius: 12px;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    min-height: 16px;
+}
+
+.north-shuoshuo-lifelog-all-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    margin: 0 0 16px;
+    background: var(--b3-theme-background);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 90%, transparent);
+    border-radius: 12px;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    min-height: 16px;
+}
+
+.north-shuoshuo-lifelog-review-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    margin: 0 0 16px;
+    background: var(--b3-theme-background);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 90%, transparent);
+    border-radius: 12px;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    min-height: 16px;
 }
 
 .north-shuoshuo-review-action-btn {
@@ -13585,12 +13654,18 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     margin-right: 0;
 }
 
+.north-shuoshuo-notes-list.lifelog-layout .north-shuoshuo-lifelog-week-header-bar,
+.north-shuoshuo-notes-list.lifelog-layout .north-shuoshuo-lifelog-all-header-bar,
+.north-shuoshuo-notes-list.lifelog-layout .north-shuoshuo-lifelog-review-header-bar {
+    margin-left: 0;
+    margin-right: 0;
+}
+
 .north-shuoshuo-notes-list.lifelog-layout .north-shuoshuo-note-card {
     margin-left: 0;
     margin-right: 0;
 }
 
-/* LifeLog ����������ʾ��ǩ */
 .north-shuoshuo-lifelog-setting-hint {
     font-size: 10px;
     color: var(--b3-theme-primary);
@@ -13613,6 +13688,11 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     display: flex;
     flex-direction: column;
     gap: 12px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.north-shuoshuo-lifelog-stats::-webkit-scrollbar {
+    display: none;
 }
 
 .north-shuoshuo-lifelog-stats-empty {
@@ -13986,4 +14066,129 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     height: 8px;
     border-radius: 2px;
     flex-shrink: 0;
+}
+
+/* ===== 统计明细表 ===== */
+.lifelog-stats-detail-table-card {
+    background: var(--b3-theme-background);
+    border-radius: 12px;
+    padding: 18px 20px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 25%, transparent);
+    flex-shrink: 0;
+}
+
+.lifelog-stats-detail-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.lifelog-stats-detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    min-width: 480px;
+}
+
+.lifelog-stats-detail-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--b3-theme-background);
+    z-index: 1;
+    padding: 8px 3px;
+    text-align: center;
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 15%, transparent);
+    font-weight: 600;
+    color: var(--b3-theme-on-surface);
+    white-space: nowrap;
+}
+
+.lifelog-stats-detail-th-type {
+    text-align: left !important;
+    min-width: 44px;
+}
+
+.lifelog-stats-detail-th-total {
+    min-width: 56px;
+}
+
+.lifelog-stats-detail-th-month {
+    min-width: 50px;
+    max-width: 60px;
+}
+
+.lifelog-stats-detail-table tbody td,
+.lifelog-stats-detail-table tfoot td {
+    padding: 6px 3px;
+    text-align: center;
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 15%, transparent);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.lifelog-stats-detail-cell-type {
+    text-align: left !important;
+    font-weight: 500;
+    color: var(--b3-theme-on-background);
+    white-space: nowrap;
+    padding-left: 6px !important;
+    vertical-align: middle;
+}
+
+.lifelog-stats-detail-cell-total-row {
+    background: transparent;
+    font-weight: 600;
+    border-bottom: none !important;
+    color: var(--b3-theme-primary);
+}
+
+.lifelog-stats-detail-cell-total-row .lifelog-stats-detail-cell-type {
+    font-weight: 700;
+}
+
+.lifelog-stats-detail-cell-empty {
+    color: var(--b3-theme-on-surface-light);
+    font-size: 11px;
+}
+
+/* 时长独占一行 */
+.lifelog-stats-detail-val-duration {
+    font-size: 10px;
+    /* font-weight: 600; */
+    color: var(--b3-theme-on-background);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.3;
+}
+
+/* 百分比和条数在同一行 */
+.lifelog-stats-detail-val-sub {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+    align-items: center;
+    line-height: 1.3;
+}
+
+.lifelog-stats-detail-val-pct {
+    font-size: 10px;
+    color: var(--b3-theme-primary);
+}
+
+.lifelog-stats-detail-val-count {
+    font-size: 10px;
+    color: var(--b3-theme-on-surface-light);
+}
+
+.lifelog-stats-detail-cell-total-row .lifelog-stats-detail-val-duration,
+.lifelog-stats-detail-cell-total-row .lifelog-stats-detail-val-count,
+.lifelog-stats-detail-cell-total-row .lifelog-stats-detail-val-sub {
+    color: var(--b3-theme-primary);
+    font-weight: 500;
+}
+
+.lifelog-stats-detail-table tbody tr:hover td {
+    background: color-mix(in srgb, var(--b3-theme-background-light) 50%, transparent);
+}
+
+.lifelog-stats-detail-table tbody tr:hover .lifelog-stats-detail-cell-type {
+    background: color-mix(in srgb, var(--b3-theme-background-light) 50%, transparent);
 }

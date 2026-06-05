@@ -2805,6 +2805,12 @@ ipcRenderer.on('lumina-close', () => {
                             </svg>
                             <span>说说视图</span>
                         </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="sync">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                            </svg>
+                            <span>说说同步设置</span>
+                        </div>
                         <div class="north-shuoshuo-settings-nav-item" data-setting="gallery">
                             <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/>
@@ -2828,12 +2834,6 @@ ipcRenderer.on('lumina-close', () => {
                                 <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
                             </svg>
                             <span>Memos 同步</span>
-                        </div>
-                        <div class="north-shuoshuo-settings-nav-item" data-setting="sync">
-                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
-                            </svg>
-                            <span>说说同步设置</span>
                         </div>
                         <div class="north-shuoshuo-settings-nav-item" data-setting="data">
                             <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -2891,9 +2891,6 @@ ipcRenderer.on('lumina-close', () => {
                                         <span class="north-shuoshuo-select-arrow">▼</span>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
                                         <h4>紧凑模式</h4>
@@ -2901,9 +2898,6 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.compactMode ? 'on' : ''}" id="settings-compact-mode-switch"></div>
                                 </div>
-                            </div>
-
-                            <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
                                         <h4>回车直接提交</h4>
@@ -2911,9 +2905,6 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.enterToSubmit ? 'on' : ''}" id="settings-enter-submit-switch"></div>
                                 </div>
-                            </div>
-
-                            <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
                                         <h4>显示侧边栏</h4>
@@ -2923,37 +2914,24 @@ ipcRenderer.on('lumina-close', () => {
                                 </div>
                             </div>
 
-                            <!-- 字体大小设置 -->
                             <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header">
-                                    <div>
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                    <div style="flex: 1; min-width: 0;">
                                         <div class="north-shuoshuo-section-title">字体大小</div>
                                         <div class="north-shuoshuo-section-desc">调整说说内容的字体大小 <span class="north-shuoshuo-lifelog-setting-hint">共用于 LifeLog 视图</span></div>
                                     </div>
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 160px;">
+                                        <select id="font-size-mode-select" class="north-shuoshuo-select-field">
+                                            <option value="default" ${this.fontSizeConfig.mode === 'default' ? 'selected' : ''}>默认（14.5px）</option>
+                                            <option value="siyuan" ${this.fontSizeConfig.mode === 'siyuan' ? 'selected' : ''}>跟随思源编辑器</option>
+                                            <option value="custom" ${this.fontSizeConfig.mode === 'custom' ? 'selected' : ''}>自定义</option>
+                                        </select>
+                                        <span class="north-shuoshuo-select-arrow">▼</span>
+                                    </div>
                                 </div>
-                                
-                                <div class="north-shuoshuo-form-row">
-                                    <div class="north-shuoshuo-radio-group vertical" id="font-size-mode-group">
-                                        <label class="north-shuoshuo-radio-item ${this.fontSizeConfig.mode === 'default' ? 'selected' : ''}" data-mode="default">
-                                            <input type="radio" name="font-size-mode" value="default" ${this.fontSizeConfig.mode === 'default' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">默认（14.5px）</span>
-                                        </label>
-                                        <label class="north-shuoshuo-radio-item ${this.fontSizeConfig.mode === 'siyuan' ? 'selected' : ''}" data-mode="siyuan">
-                                            <input type="radio" name="font-size-mode" value="siyuan" ${this.fontSizeConfig.mode === 'siyuan' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">跟随思源编辑器</span>
-                                        </label>
-                                        <label class="north-shuoshuo-radio-item ${this.fontSizeConfig.mode === 'custom' ? 'selected' : ''}" data-mode="custom">
-                                            <input type="radio" name="font-size-mode" value="custom" ${this.fontSizeConfig.mode === 'custom' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">自定义</span>
-                                        </label>
-                                    </div>
-                                    <div class="north-shuoshuo-form-row" id="font-size-custom-row" style="display: ${this.fontSizeConfig.mode === 'custom' ? 'flex' : 'none'}; align-items: center; gap: 8px; margin-top: 8px;">
-                                        <input type="number" id="font-size-custom-input" style="width: 80px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="24" step="0.5" value="${this.fontSizeConfig.customSize || 14.5}">
-                                        <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">px</span>
-                                    </div>
+                                <div class="north-shuoshuo-form-row" id="font-size-custom-row" style="display: ${this.fontSizeConfig.mode === 'custom' ? 'flex' : 'none'}; align-items: center; gap: 8px; margin-top: 8px;">
+                                    <input type="number" id="font-size-custom-input" style="width: 80px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="24" step="0.5" value="${this.fontSizeConfig.customSize || 14.5}">
+                                    <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">px</span>
                                 </div>
                             </div>
 
@@ -2989,6 +2967,7 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                 </div>
                             </div>
+
                             <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
                                     <div style="flex: 1; min-width: 0;">
@@ -3007,11 +2986,7 @@ ipcRenderer.on('lumina-close', () => {
                                         <span class="north-shuoshuo-select-arrow">▼</span>
                                     </div>
                                 </div>
-                            </div>
-
-                            <!-- 自定义签名设置 -->
-                            <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header">
+                                <div class="north-shuoshuo-section-header" style="margin-top: 12px;">
                                     <div>
                                         <div class="north-shuoshuo-section-title">自定义签名</div>
                                         <div class="north-shuoshuo-section-desc">显示在本周记录和每日回顾统计头部的个性签名 <span class="north-shuoshuo-lifelog-setting-hint">共用于 LifeLog 视图</span></div>
@@ -3020,28 +2995,6 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-form-row">
                                     <div class="north-shuoshuo-input-group" style="width: 100%;">
                                         <input type="text" id="custom-signature-input" class="north-shuoshuo-input-field" placeholder="请输入自定义签名" value="${this.customSignature || '遇事不决，可问春风'}">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 拾光视图设置 -->
-                        <div class="north-shuoshuo-settings-section" id="setting-group-gallery" style="display: none;">
-                            <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
-                                    <div style="flex: 1; min-width: 0;">
-                                        <div class="north-shuoshuo-section-title">拾光视图（照片墙）</div>
-                                        <div class="north-shuoshuo-section-desc">设置照片墙的显示列数</div>
-                                    </div>
-                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 80px;">
-                                        <select id="settings-gallery-columns" class="north-shuoshuo-select-field">
-                                            <option value="3" ${this.galleryColumnCount === 3 ? 'selected' : ''}>3 列</option>
-                                            <option value="4" ${this.galleryColumnCount === 4 ? 'selected' : ''}>4 列</option>
-                                            <option value="5" ${this.galleryColumnCount === 5 ? 'selected' : ''}>5 列</option>
-                                            <option value="6" ${this.galleryColumnCount === 6 ? 'selected' : ''}>6 列</option>
-                                            <option value="7" ${this.galleryColumnCount === 7 ? 'selected' : ''}>7 列</option>
-                                            <option value="8" ${this.galleryColumnCount === 8 ? 'selected' : ''}>8 列</option>
-                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -3062,10 +3015,7 @@ ipcRenderer.on('lumina-close', () => {
                                         <span class="north-shuoshuo-select-arrow">▼</span>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-top: 12px;">
                                     <div style="flex: 1; min-width: 0;">
                                         <div class="north-shuoshuo-section-title">同步模式</div>
                                         <div class="north-shuoshuo-section-desc">选择说说同步到思源笔记的方式</div>
@@ -3087,9 +3037,6 @@ ipcRenderer.on('lumina-close', () => {
                                         <span>💡</span> 打开目标文档，右键文档标题 → 复制文档块 ID
                                     </div>
                                 </div>
-                            </div>
-
-                            <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
                                         <h4>自动同步</h4>
@@ -3257,22 +3204,40 @@ ipcRenderer.on('lumina-close', () => {
                                         <div class="north-shuoshuo-section-desc">将现有说说批量同步到思源笔记</div>
                                     </div>
                                 </div>
-                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
-                                    <label class="north-shuoshuo-checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: var(--b3-theme-on-surface);">
-                                        <input type="checkbox" id="settings-full-sync" style="width: 16px; height: 16px; cursor: pointer;">
-                                        <span>全量同步（包括已同步过的笔记）</span>
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <label class="north-shuoshuo-checkbox-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--b3-theme-on-surface);white-space:nowrap;">
+                                        <input type="checkbox" id="settings-full-sync" style="width:14px;height:14px;cursor:pointer;">
+                                        全量同步
                                     </label>
-                                </div>
-                                <div class="north-shuoshuo-form-row">
-                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="settings-start-sync" style="width: 100%;">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="settings-start-sync" style="display:flex;align-items:center;gap:4px;padding:4px 12px;font-size:12px;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97-.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
                                         </svg>
                                         开始同步
                                     </button>
+                                    <span style="font-size:11px;color:var(--b3-theme-on-surface-light);">增量同步仅同步未绑定笔记；全量同步会重新同步所有（可能重复）</span>
                                 </div>
-                                <div class="north-shuoshuo-form-hint">
-                                    <span>💡</span> 增量同步仅同步未绑定的笔记；全量同步会重新同步所有笔记（可能产生重复内容）
+                            </div>
+                        </div>
+
+                        <!-- 拾光视图设置 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-gallery" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div class="north-shuoshuo-section-title">拾光视图（照片墙）</div>
+                                        <div class="north-shuoshuo-section-desc">设置照片墙的显示列数</div>
+                                    </div>
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 80px;">
+                                        <select id="settings-gallery-columns" class="north-shuoshuo-select-field">
+                                            <option value="3" ${this.galleryColumnCount === 3 ? 'selected' : ''}>3 列</option>
+                                            <option value="4" ${this.galleryColumnCount === 4 ? 'selected' : ''}>4 列</option>
+                                            <option value="5" ${this.galleryColumnCount === 5 ? 'selected' : ''}>5 列</option>
+                                            <option value="6" ${this.galleryColumnCount === 6 ? 'selected' : ''}>6 列</option>
+                                            <option value="7" ${this.galleryColumnCount === 7 ? 'selected' : ''}>7 列</option>
+                                            <option value="8" ${this.galleryColumnCount === 8 ? 'selected' : ''}>8 列</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -3752,11 +3717,11 @@ ipcRenderer.on('lumina-close', () => {
                                         <div class="north-shuoshuo-section-desc">设置朋友圈中展示的昵称和签名</div>
                                     </div>
                                 </div>
-                                <div class="north-shuoshuo-form-row">
+                                <div class="north-shuoshuo-form-row" style="margin-bottom:4px;">
                                     <label class="north-shuoshuo-form-label">昵称</label>
                                     <input type="text" class="north-shuoshuo-input-field" id="moments-nickname-input" placeholder="输入昵称..." value="${this.momentsConfig?.nickname || '月亮'}">
                                 </div>
-                                <div class="north-shuoshuo-form-row">
+                                <div class="north-shuoshuo-form-row" style="margin-bottom:0;">
                                     <label class="north-shuoshuo-form-label">个性签名</label>
                                     <input type="text" class="north-shuoshuo-input-field" id="moments-signature-input" placeholder="输入个性签名..." value="${this.momentsConfig?.signature || '言念君子 温其如玉'}">
                                 </div>
@@ -3775,10 +3740,7 @@ ipcRenderer.on('lumina-close', () => {
                                         <span class="north-shuoshuo-select-arrow">▼</span>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-top: 12px;">
                                     <div style="flex: 1; min-width: 0;">
                                         <div class="north-shuoshuo-section-title">同步模式</div>
                                         <div class="north-shuoshuo-section-desc">选择说说同步到思源笔记的方式</div>
@@ -3803,34 +3765,23 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
 
                             <div class="north-shuoshuo-section-card">
-                                <div class="north-shuoshuo-section-header">
-                                    <div>
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 0;">
+                                    <div style="flex: 1; min-width: 0;">
                                         <div class="north-shuoshuo-section-title">字体大小</div>
                                         <div class="north-shuoshuo-section-desc">调整朋友圈内容的字体大小（仅移动端生效）</div>
                                     </div>
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 160px;">
+                                        <select id="moments-font-size-mode-select" class="north-shuoshuo-select-field">
+                                            <option value="default" ${this.momentsConfig?.fontSize?.mode === 'default' ? 'selected' : ''}>默认（14.5px）</option>
+                                            <option value="siyuan" ${this.momentsConfig?.fontSize?.mode === 'siyuan' ? 'selected' : ''}>跟随思源编辑器</option>
+                                            <option value="custom" ${this.momentsConfig?.fontSize?.mode === 'custom' ? 'selected' : ''}>自定义</option>
+                                        </select>
+                                        <span class="north-shuoshuo-select-arrow">▼</span>
+                                    </div>
                                 </div>
-                                <div class="north-shuoshuo-form-row">
-                                    <div class="north-shuoshuo-radio-group vertical" id="moments-font-size-mode-group">
-                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.fontSize?.mode === 'default' ? 'selected' : ''}" data-mode="default">
-                                            <input type="radio" name="moments-font-size-mode" value="default" ${this.momentsConfig?.fontSize?.mode === 'default' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">默认（14.5px）</span>
-                                        </label>
-                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.fontSize?.mode === 'siyuan' ? 'selected' : ''}" data-mode="siyuan">
-                                            <input type="radio" name="moments-font-size-mode" value="siyuan" ${this.momentsConfig?.fontSize?.mode === 'siyuan' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">跟随思源编辑器</span>
-                                        </label>
-                                        <label class="north-shuoshuo-radio-item ${this.momentsConfig?.fontSize?.mode === 'custom' ? 'selected' : ''}" data-mode="custom">
-                                            <input type="radio" name="moments-font-size-mode" value="custom" ${this.momentsConfig?.fontSize?.mode === 'custom' ? 'checked' : ''}>
-                                            <span class="north-shuoshuo-radio-check"></span>
-                                            <span class="north-shuoshuo-radio-label">自定义</span>
-                                        </label>
-                                    </div>
-                                    <div class="north-shuoshuo-form-row" id="moments-font-size-custom-row" style="display: ${this.momentsConfig?.fontSize?.mode === 'custom' ? 'flex' : 'none'}; align-items: center; gap: 8px; margin-top: 8px;">
-                                        <input type="number" id="moments-font-size-custom-input" style="width: 80px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="24" step="0.5" value="${this.momentsConfig?.fontSize?.customSize || 14.5}">
-                                        <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">px</span>
-                                    </div>
+                                <div class="north-shuoshuo-form-row" id="moments-font-size-custom-row" style="display: ${this.momentsConfig?.fontSize?.mode === 'custom' ? 'flex' : 'none'}; align-items: center; gap: 8px; margin-top: 8px;">
+                                    <input type="number" id="moments-font-size-custom-input" style="width: 80px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="24" step="0.5" value="${this.momentsConfig?.fontSize?.customSize || 14.5}">
+                                    <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">px</span>
                                 </div>
                             </div>
                         </div>
@@ -4922,17 +4873,20 @@ ipcRenderer.on('lumina-close', () => {
             });
             const weekSorted = [...weekRecords].sort((a, b) => b.created - a.created);
             html += `
-                <div class="north-shuoshuo-week-header-bar">
+                <div class="north-shuoshuo-lifelog-week-header-bar">
                     <div class="north-shuoshuo-week-header-left">
                         <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconCalendar"></use></svg>
                         <span>本周 · 共 ${weekSorted.length} 条</span>
                     </div>
-                    <span class="north-shuoshuo-week-signature">${this.customSignature || '遇事不决，可问春风'}</span>
+                    <div class="north-shuoshuo-week-header-center">
+                        <span class="north-shuoshuo-week-signature">${this.customSignature || '遇事不决，可问春风'}</span>
+                    </div>
                 </div>
             `;
             if (weekSorted.length === 0) {
                 html += `<div class="north-shuoshuo-note-card" style="text-align: center; color: #999; padding: 40px;">本周暂无 LifeLog 记录</div>`;
             } else {
+                this._precalculateLifeLogDurations(weekSorted);
                 const groups = this.groupNotesByDate(weekSorted);
                 for (const [dateKey, notes] of groups) {
                     html += `<div class="north-shuoshuo-date-group">${this.getDateGroupTitle(dateKey)}</div>`;
@@ -4942,7 +4896,7 @@ ipcRenderer.on('lumina-close', () => {
         } else {
             // 全部 LifeLog（默认）
             html += `
-                <div class="north-shuoshuo-week-header-bar">
+                <div class="north-shuoshuo-lifelog-all-header-bar">
                     <div class="north-shuoshuo-week-header-left">
                         <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconCalendar"></use></svg>
                         <span>LifeLog · 共 ${sorted.length} 条</span>
@@ -4964,6 +4918,7 @@ ipcRenderer.on('lumina-close', () => {
             } else {
                 // 分页显示
                 const displayItems = sorted.slice(0, this._lifelogDisplayLimit);
+                this._precalculateLifeLogDurations(displayItems);
                 const groups = this.groupNotesByDate(displayItems);
                 for (const [dateKey, notes] of groups) {
                     html += `<div class="north-shuoshuo-date-group">${this.getDateGroupTitle(dateKey)}</div>`;
@@ -5192,7 +5147,7 @@ ipcRenderer.on('lumina-close', () => {
             </div>`;
         } else {
             html += `
-                <div class="north-shuoshuo-week-header-bar">
+                <div class="north-shuoshuo-lifelog-week-header-bar">
                     <div class="north-shuoshuo-week-header-left">
                         <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconCalendar"></use></svg>
                         <span>LifeLog · 共 ${sorted.length} 条</span>
@@ -5205,6 +5160,7 @@ ipcRenderer.on('lumina-close', () => {
                 </div>
             `;
             const displayItems = sorted.slice(0, this._lifelogDisplayLimit || 200);
+            this._precalculateLifeLogDurations(displayItems);
             const groups = this.groupNotesByDate(displayItems);
             for (const [dateKey, notes] of groups) {
                 html += `<div class="north-shuoshuo-date-group">${this.getDateGroupTitle(dateKey)}</div>`;
@@ -5321,7 +5277,7 @@ ipcRenderer.on('lumina-close', () => {
 
         const totalCount = records.length;
         let html = `
-            <div class="north-shuoshuo-review-header-bar">
+            <div class="north-shuoshuo-lifelog-review-header-bar">
                 <div class="north-shuoshuo-review-header-left">
                     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h3v3h-3zM8 3h3v3H8zM5 8h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8zM12 12v4"/></svg>
                     <span>随机 ${dailyCount} 条 · 共 ${totalCount} 条</span>
@@ -5342,6 +5298,7 @@ ipcRenderer.on('lumina-close', () => {
             </div>
         `;
 
+        this._precalculateLifeLogDurations(selected);
         const groups = this.groupNotesByDate(selected);
         for (const [dateKey, notes] of groups) {
             html += `<div class="north-shuoshuo-date-group">${this.getDateGroupTitle(dateKey)}</div>`;
@@ -5725,6 +5682,7 @@ ipcRenderer.on('lumina-close', () => {
                         ${chartLegendHtml}
                     </div>
                 </div>
+                ${this._renderLifeLogStatsDetailTable(sorted, formatDuration, escapeHtml)}
             </div>
         `;
 
@@ -5824,11 +5782,168 @@ ipcRenderer.on('lumina-close', () => {
         return total;
     }
 
+    // 预计算 LifeLog 列表中的持续时间（排序为倒序，后一项为前一项的前一条记录）
+    _precalculateLifeLogDurations(sorted) {
+        for (let i = 0; i < sorted.length - 1; i++) {
+            sorted[i]._durationMs = sorted[i].created - sorted[i + 1].created;
+        }
+    }
+
+    // 渲染 LifeLog 统计明细表（按类型 × 日期分布）
+    _renderLifeLogStatsDetailTable(sorted, formatDuration, escapeHtml) {
+        if (!sorted.length) return '';
+
+        // 按月份分组计算各类型耗时
+        const monthMap = {}; // monthIndex (0-11) -> { type -> { count, ms } }
+        const allTypesSet = new Set();
+        const allMonths = Array.from({ length: 12 }, (_, i) => i); // 固定显示 1-12 月
+
+        // 初始化 monthMap 结构
+        for (const monthIdx of allMonths) monthMap[monthIdx] = {};
+
+        // 按全局顺序计算每条记录的耗时并归到对应月份的类型下
+        for (let i = 1; i < sorted.length; i++) {
+            const r = sorted[i];
+            const type = r._lifeLogType || '未分类';
+            const d = new Date(r.created);
+            const monthIdx = d.getMonth(); // 0-11
+            const gap = r.created - sorted[i - 1].created;
+            if (gap > 0 && gap < 86400000 * 3) {
+                if (!monthMap[monthIdx][type]) monthMap[monthIdx][type] = { count: 0, ms: 0 };
+                monthMap[monthIdx][type].ms += gap;
+            }
+            allTypesSet.add(type);
+        }
+
+        // 统计每条记录（计数）
+        for (const r of sorted) {
+            const type = r._lifeLogType || '未分类';
+            const d = new Date(r.created);
+            const monthIdx = d.getMonth();
+            if (!monthMap[monthIdx][type]) monthMap[monthIdx][type] = { count: 0, ms: 0 };
+            monthMap[monthIdx][type].count++;
+            allTypesSet.add(type);
+        }
+
+        const allTypes = [...allTypesSet].sort();
+
+        // 计算各类型总计
+        const typeTotals = {};
+        for (const type of allTypes) {
+            let totalMs = 0, totalCount = 0;
+            for (const monthIdx of allMonths) {
+                const d = monthMap[monthIdx][type];
+                if (d) {
+                    totalMs += d.ms;
+                    totalCount += d.count;
+                }
+            }
+            typeTotals[type] = { ms: totalMs, count: totalCount };
+        }
+
+        // 全局总计
+        const grandMs = Object.values(typeTotals).reduce((s, t) => s + t.ms, 0);
+        const grandCount = Object.values(typeTotals).reduce((s, t) => s + t.count, 0);
+
+        // 生成单格内容：时长在上，百分比+条数在下同行
+        const cellContent = (ms, count) => {
+            if (!ms && !count) return '<span class="lifelog-stats-detail-cell-empty">-</span>';
+            const pct = grandMs > 0 ? (ms / grandMs * 100).toFixed(2) : '0.00';
+            return `<div class="lifelog-stats-detail-val-duration">${formatDuration(ms)}</div>
+                <div class="lifelog-stats-detail-val-sub">
+                    <span class="lifelog-stats-detail-val-pct">${pct}%</span>
+                    <span class="lifelog-stats-detail-val-count">${count}条</span>
+                </div>`;
+        };
+
+        // 生成表格 HTML
+        let html = `
+            <div class="lifelog-stats-detail-table-card">
+                <div class="lifelog-stats-section-title">
+                    <svg class="icon" style="width:16px;height:16px;vertical-align:-3px;margin-right:4px;"><use xlink:href="#iconTable"></use></svg>
+                    统计明细
+                </div>
+                <div class="lifelog-stats-detail-table-wrapper">
+                    <table class="lifelog-stats-detail-table">
+                        <thead>
+                            <tr>
+                                <th class="lifelog-stats-detail-th-type">类型</th>
+                                <th class="lifelog-stats-detail-th-total">总计</th>
+                                ${allMonths.map(m => `<th class="lifelog-stats-detail-th-month">${m + 1}月</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${allTypes.map(type => {
+                                const t = typeTotals[type];
+                                let row = `<tr>
+                                    <td class="lifelog-stats-detail-cell-type">${escapeHtml(type)}</td>
+                                    <td class="lifelog-stats-detail-cell-total">${cellContent(t.ms, t.count)}</td>`;
+                                for (const monthIdx of allMonths) {
+                                    const d = monthMap[monthIdx][type];
+                                    if (d && d.count > 0) {
+                                        row += `<td class="lifelog-stats-detail-cell-day">${cellContent(d.ms, d.count)}</td>`;
+                                    } else {
+                                        row += `<td class="lifelog-stats-detail-cell-day">-</td>`;
+                                    }
+                                }
+                                row += `</tr>`;
+                                return row;
+                            }).join('')}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td class="lifelog-stats-detail-cell-type lifelog-stats-detail-cell-total-row">总计</td>
+                                <td class="lifelog-stats-detail-cell-total lifelog-stats-detail-cell-total-row">
+                                    <div class="lifelog-stats-detail-val-sub">
+                                        <span class="lifelog-stats-detail-val-count">${grandCount}条</span>
+                                    </div>
+                                    <div class="lifelog-stats-detail-val-duration">${formatDuration(grandMs)}</div>
+                                </td>
+                                ${allMonths.map(monthIdx => {
+                                    const dayData = monthMap[monthIdx] || {};
+                                    const monthTotalMs = Object.values(dayData).reduce((s, d) => s + d.ms, 0);
+                                    const monthTotalCount = Object.values(dayData).reduce((s, d) => s + d.count, 0);
+                                    if (monthTotalCount > 0) {
+                                        return `<td class="lifelog-stats-detail-cell-day lifelog-stats-detail-cell-total-row">
+                                            <div class="lifelog-stats-detail-val-sub">
+                                                <span class="lifelog-stats-detail-val-count">${monthTotalCount}条</span>
+                                            </div>
+                                            <div class="lifelog-stats-detail-val-duration">${formatDuration(monthTotalMs)}</div>
+                                        </td>`;
+                                    } else {
+                                        return `<td class="lifelog-stats-detail-cell-day lifelog-stats-detail-cell-total-row">-</td>`;
+                                    }
+                                }).join('')}
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>`;
+
+        return html;
+    }
+
+    // 格式化持续时间（毫秒 → "X时X分"）
+    _formatDuration(ms) {
+        if (!ms || ms < 60000) return '';
+        const totalMinutes = Math.round(ms / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        if (hours > 0) {
+            return `持续：${hours}时${minutes}分`;
+        }
+        return `持续：${minutes}分`;
+    }
+
     // 渲染单个 LifeLog 卡片（带类型标签）
     renderLifeLogCard(item) {
         const dateStr = this.formatDate(item.created);
         const lifeLogType = item._lifeLogType || '';
-        const lifeLogTypeBadge = lifeLogType ? `<span class="north-shuoshuo-lifelog-type-badge" data-lifelog-type="${this.escapeHtml(lifeLogType)}">${this.escapeHtml(lifeLogType)}</span>` : '';
+        let lifeLogTypeBadge = '';
+        if (lifeLogType) {
+            const durationHtml = item._durationMs ? `<span class="north-shuoshuo-lifelog-duration">${this._formatDuration(item._durationMs)}</span>` : '';
+            lifeLogTypeBadge = `<span class="north-shuoshuo-lifelog-type-badge" data-lifelog-type="${this.escapeHtml(lifeLogType)}">${this.escapeHtml(lifeLogType)}${durationHtml}</span>`;
+        }
         return `
             <div class="north-shuoshuo-note-card lifelog-record" data-id="${item.id}">
                 ${lifeLogTypeBadge}
@@ -11983,7 +12098,9 @@ ipcRenderer.on('lumina-close', () => {
 
     // 更新检索式数量
     updateQueryCounts() {
-        if (!this.container) return;
+        const containers = this.getMountedLuminaContainers();
+        if (!containers.length && this.container) containers.push(this.container);
+        if (!containers.length) return;
         
         let noTagCount = 0;
         let hasImageCount = 0;
@@ -12008,11 +12125,13 @@ ipcRenderer.on('lumina-close', () => {
             }).length
         };
         
-        this.container.querySelectorAll('.north-shuoshuo-query-count').forEach(el => {
-            const query = el.dataset.queryCount;
-            if (query && counts[query] !== undefined) {
-                el.textContent = counts[query];
-            }
+        containers.forEach(container => {
+            container.querySelectorAll('.north-shuoshuo-query-count').forEach(el => {
+                const query = el.dataset.queryCount;
+                if (query && counts[query] !== undefined) {
+                    el.textContent = counts[query];
+                }
+            });
         });
     }
 
@@ -12031,6 +12150,12 @@ ipcRenderer.on('lumina-close', () => {
 
                 const listEl = container.querySelector('#shuoshuo-notes-list');
                 if (!listEl) continue;
+
+                // 如果有空状态提示（还没有笔记），先清除它
+                const hasRealCards = listEl.querySelector('.north-shuoshuo-note-card[data-id]');
+                if (!hasRealCards) {
+                    listEl.innerHTML = '';
+                }
 
                 const countEl = container.querySelector('#shuoshuo-count');
                 if (countEl) countEl.textContent = this.shuoshuos.length;
@@ -12087,21 +12212,9 @@ ipcRenderer.on('lumina-close', () => {
                 </div>`;
             }
             queryList.innerHTML = html;
-            // 重新绑定点击事件
-            queryList.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
-                item.addEventListener('click', (e) => {
-                    const query = item.dataset.query;
-                    queryList.querySelectorAll('.north-shuoshuo-query-item').forEach(i => i.classList.remove('selected'));
-                    if (this.filterQuery === query) {
-                        this.filterQuery = null;
-                    } else {
-                        item.classList.add('selected');
-                        this.filterQuery = query;
-                    }
-                    this.renderNotes();
-                });
-            });
         });
+        // 重建后重新计算并更新检索式数量
+        this.updateQueryCounts();
     }
 
     // 从 MD 文本中提取所有 assets/ 图片路径
@@ -16115,6 +16228,9 @@ ipcRenderer.on('lumina-close', () => {
         const heatmapContainer = this.container.querySelector('.north-shuoshuo-heatmap-container');
         if (heatmapContainer) heatmapContainer.style.display = '';
 
+        // 恢复菜单列表事件绑定（innerHTML 替换后原事件监听丢失）
+        this._rebindMenuItems();
+
         // 恢复统计
         const statsContainer = this.container.querySelector('.north-shuoshuo-stats');
         if (statsContainer) statsContainer.style.display = '';
@@ -16159,6 +16275,43 @@ ipcRenderer.on('lumina-close', () => {
             statLabels[1].textContent = '标签';
             statLabels[2].textContent = '天';
         }
+    }
+
+    // 重新绑定菜单列表事件（innerHTML替换后事件监听丢失）
+    _rebindMenuItems() {
+        const self = this;
+        const menuItems = this.container.querySelectorAll('.north-shuoshuo-menu-list .north-shuoshuo-menu-item[data-view]');
+        menuItems.forEach(item => {
+            // 避免重复绑定
+            if (item._menuBound) return;
+            item._menuBound = true;
+            item.addEventListener('click', () => {
+                const view = item.dataset.view;
+                const container = item.closest('.north-shuoshuo-flomo-area') || item.closest('.north-shuoshuo-container') || self.container;
+                self.container = container;
+
+                // 清除热力图选中
+                self.selectedDate = null;
+                self.container.querySelectorAll('.north-shuoshuo-heatmap-cell').forEach(c => {
+                    c.classList.remove('selected');
+                });
+
+                // 清除标签选中
+                self.selectedTag = null;
+                self.container.querySelectorAll('.north-shuoshuo-tag-tree-item').forEach(t => {
+                    t.classList.remove('selected');
+                });
+
+                // 清除检索式选中
+                self.filterQuery = null;
+                self.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+
+                // 切换视图
+                self.switchMainView(view, null);
+            });
+        });
     }
 
     // 加载笔记本列?
@@ -16250,25 +16403,21 @@ ipcRenderer.on('lumina-close', () => {
         }
 
         // 绑定朋友圈字体大小模式选择事件
-        const momentsFontSizeModeItems = this.container.querySelectorAll('#moments-font-size-mode-group .north-shuoshuo-radio-item');
+        const momentsFontSizeModeSelect = this.container.querySelector('#moments-font-size-mode-select');
         const momentsFontSizeCustomRow = this.container.querySelector('#moments-font-size-custom-row');
         const momentsFontSizeCustomInput = this.container.querySelector('#moments-font-size-custom-input');
-        momentsFontSizeModeItems.forEach(item => {
-            item.addEventListener('click', async () => {
-                const mode = item.dataset.mode;
+        if (momentsFontSizeModeSelect) {
+            momentsFontSizeModeSelect.addEventListener('change', async () => {
+                const mode = momentsFontSizeModeSelect.value;
                 if (!this.momentsConfig) this.momentsConfig = {};
                 if (!this.momentsConfig.fontSize) this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
                 this.momentsConfig.fontSize.mode = mode;
-                momentsFontSizeModeItems.forEach(i => i.classList.remove('selected'));
-                item.classList.add('selected');
-                const radio = item.querySelector('input[type="radio"]');
-                if (radio) radio.checked = true;
                 if (momentsFontSizeCustomRow) {
                     momentsFontSizeCustomRow.style.display = mode === 'custom' ? 'flex' : 'none';
                 }
                 await this.saveMoments();
             });
-        });
+        }
         if (momentsFontSizeCustomInput) {
             momentsFontSizeCustomInput.addEventListener('input', async () => {
                 let size = parseFloat(momentsFontSizeCustomInput.value);
@@ -16533,22 +16682,14 @@ ipcRenderer.on('lumina-close', () => {
         });
 
         // 绑定字体大小模式选择事件
-        const fontSizeModeItems = this.container.querySelectorAll('#font-size-mode-group .north-shuoshuo-radio-item');
+        const fontSizeModeSelect = this.container.querySelector('#font-size-mode-select');
         const fontSizeCustomRow = this.container.querySelector('#font-size-custom-row');
         const fontSizeCustomInput = this.container.querySelector('#font-size-custom-input');
         
-        fontSizeModeItems.forEach(item => {
-            item.addEventListener('click', async () => {
-                const mode = item.dataset.mode;
+        if (fontSizeModeSelect) {
+            fontSizeModeSelect.addEventListener('change', async () => {
+                const mode = fontSizeModeSelect.value;
                 this.fontSizeConfig.mode = mode;
-                
-                // 更新选中状态
-                fontSizeModeItems.forEach(i => i.classList.remove('selected'));
-                item.classList.add('selected');
-                
-                // 更新 radio 输入
-                const radio = item.querySelector('input[type="radio"]');
-                if (radio) radio.checked = true;
                 
                 // 显示/隐藏自定义输入框
                 if (fontSizeCustomRow) {
@@ -16561,7 +16702,7 @@ ipcRenderer.on('lumina-close', () => {
                 // 保存设置
                 await this.saveConfig();
             });
-        });
+        }
         
         // 自定义字体大小输入
         if (fontSizeCustomInput) {
@@ -16651,12 +16792,13 @@ ipcRenderer.on('lumina-close', () => {
             };
         }
 
-        const saveBtn = this.container.querySelector('#settings-save');
-        const cancelBtn = this.container.querySelector('#settings-cancel');
         const exportShuoshuoJsonBtn = this.container.querySelector('#settings-export-shuoshuo-json');
         const exportShuoshuoMdBtn = this.container.querySelector('#settings-export-shuoshuo-md');
         const exportMomentsJsonBtn = this.container.querySelector('#settings-export-moments-json');
         const exportMomentsMdBtn = this.container.querySelector('#settings-export-moments-md');
+
+        const saveBtn = this.container.querySelector('#settings-save');
+        const cancelBtn = this.container.querySelector('#settings-cancel');
 
         // 绑定同步模式切换事件
         const syncModeSelect = this.container.querySelector('#sync-mode-select');
@@ -16725,10 +16867,8 @@ ipcRenderer.on('lumina-close', () => {
             dot.addEventListener('click', () => {
                 const group = dot.dataset.colorGroup;
                 const color = dot.dataset.color;
-                // 更新同组所有圆点状态
                 this.container.querySelectorAll(`.daily-note-icon-color-dot[data-color-group="${group}"]`).forEach(d => d.classList.remove('active'));
                 dot.classList.add('active');
-                // 同步更新输入框
                 const input = this.container.querySelector(`.daily-note-icon-color-input[data-color-group="${group}"]`);
                 if (input) input.value = color.replace(/^#/, '');
                 updateIconPreview();
@@ -16739,7 +16879,6 @@ ipcRenderer.on('lumina-close', () => {
                 const group = input.dataset.colorGroup;
                 const val = input.value.trim();
                 const fullColor = val ? (val.startsWith('#') ? val : '#' + val) : '';
-                // 更新圆点状态
                 this.container.querySelectorAll(`.daily-note-icon-color-dot[data-color-group="${group}"]`).forEach(d => {
                     d.classList.toggle('active', fullColor && d.dataset.color === fullColor);
                 });
@@ -16855,12 +16994,9 @@ ipcRenderer.on('lumina-close', () => {
             saveBtn.onclick = async () => {
                 const notebookId = this.container.querySelector('#settings-notebook-select')?.value || '';
                 const autoSyncSwitchEl = this.container.querySelector('#settings-auto-sync-switch');
-                // 明确转换为布尔值
                 const autoSync = autoSyncSwitchEl?.classList.contains('on') ? true : false;
-                // 获取选中的视图样式
                 const viewStyleSelect = this.container.querySelector('#view-style-select');
                 this.viewStyle = viewStyleSelect?.value || 'list';
-                // 获取同步模式和指定文档ID
                 this.syncMode = this.container.querySelector('#sync-mode-select')?.value || 'dailynote';
                 this.syncDocId = this.container.querySelector('#settings-sync-doc-id')?.value?.trim() || '';
                 this.dailyNotePathTemplate = this.container.querySelector('#settings-daily-note-path-template')?.value?.trim() || '';
@@ -16870,66 +17006,49 @@ ipcRenderer.on('lumina-close', () => {
                 this.dailyNoteIconColorWeekday = weekdayColorInput?.value?.trim() || '';
                 this.dailyNoteIconColorWeekend = weekendColorInput?.value?.trim() || '';
 
-                // 获取检索式可见性配置
                 const queryVisibilityCheckboxes = this.container.querySelectorAll('input[name="query-visibility"]');
                 queryVisibilityCheckboxes.forEach(cb => {
                     this.queryVisibility[cb.value] = cb.checked;
                 });
 
-                // 获取长笔记自动折叠配置
                 const autoCollapseSelect = this.container.querySelector('#auto-collapse-lines');
                 this.autoCollapseLines = parseInt(autoCollapseSelect?.value || '0', 10);
 
-                // 获取自定义签名
                 const signatureInput = this.container.querySelector('#custom-signature-input');
                 this.customSignature = signatureInput?.value?.trim() || '遇事不决，可问春风';
+
+                const themeModeInput = this.container.querySelector('#theme-mode-grid input[name="theme-mode"]:checked');
+                if (themeModeInput) this.themeMode = themeModeInput.value;
+                const activeMorandi = this.container.querySelector('.north-shuoshuo-morandi-option.selected');
+                if (activeMorandi) this.morandiColor = activeMorandi.dataset.color;
 
                 this.notebookId = notebookId;
                 const prevAutoSync = this.autoSync;
                 this.autoSync = autoSync;
-                if (this.autoSync && !prevAutoSync) {
-                    this._connectBroadcastWebSocket();
-                }
-
+                if (this.autoSync && !prevAutoSync) this._connectBroadcastWebSocket();
                 await this.saveConfig();
 
-                // 保存回顾设置
                 const reviewScope = this.container.querySelector('input[name="review-content-scope"]:checked')?.value || 'all';
                 const reviewTags = Array.from(this.container.querySelectorAll('#review-tags-select input:checked')).map(cb => cb.value);
                 const reviewTimeRange = this.container.querySelector('#review-time-range')?.value || '6_months';
                 const reviewDailyCount = parseInt(this.container.querySelector('#review-daily-count')?.value || '8');
                 const weightedReview = this.container.querySelector('#weighted-review-toggle')?.classList?.contains('on') || false;
-
-                this.reviewConfig = {
-                    contentScope: reviewScope,
-                    contentScopeTags: reviewTags,
-                    timeRange: reviewTimeRange,
-                    dailyCount: reviewDailyCount,
-                    weightedReview: weightedReview
-                };
-
+                this.reviewConfig = { contentScope: reviewScope, contentScopeTags: reviewTags, timeRange: reviewTimeRange, dailyCount: reviewDailyCount, weightedReview: weightedReview };
                 await this.saveConfig();
 
-                // 保存朋友圈设置
                 const momentsNickname = this.container.querySelector('#moments-nickname-input')?.value?.trim() || '月亮';
                 const momentsSignature = this.container.querySelector('#moments-signature-input')?.value?.trim() || '言念君子 温其如玉';
                 const momentsNotebookId = this.container.querySelector('#moments-notebook-select')?.value || '';
                 const momentsSyncMode = this.container.querySelector('#moments-sync-mode-select')?.value || 'dailynote';
                 const momentsSyncDocId = this.container.querySelector('#moments-sync-doc-id')?.value?.trim() || '';
-                const momentsFontSizeMode = this.container.querySelector('input[name="moments-font-size-mode"]:checked')?.value || 'default';
-                const momentsFontSizeCustom = parseFloat(this.container.querySelector('#moments-font-size-custom-input')?.value) || 14.5;
                 if (!this.momentsConfig) this.momentsConfig = {};
                 this.momentsConfig.nickname = momentsNickname;
                 this.momentsConfig.signature = momentsSignature;
                 this.momentsConfig.syncNotebookId = momentsNotebookId;
                 this.momentsConfig.syncMode = momentsSyncMode;
                 this.momentsConfig.syncDocId = momentsSyncDocId;
-                if (!this.momentsConfig.fontSize) this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
-                this.momentsConfig.fontSize.mode = momentsFontSizeMode;
-                this.momentsConfig.fontSize.customSize = momentsFontSizeCustom;
                 await this.saveMoments();
 
-                // 保存图书视图同步设置
                 const bookshelfNotebookId = this.container.querySelector('#bookshelf-notebook-select')?.value || '';
                 const bookshelfSyncMode = this.container.querySelector('input[name="bookshelf-sync-mode"]:checked')?.value || 'dailynote';
                 const bookshelfSyncDocId = this.container.querySelector('#bookshelf-sync-doc-id')?.value?.trim() || '';
@@ -16939,12 +17058,18 @@ ipcRenderer.on('lumina-close', () => {
                 this.bookshelfSyncConfig.syncDocId = bookshelfSyncDocId;
                 await this.saveConfig();
 
-                // 保存后立即应用涉及 DOM 的配置
                 this._rebuildQuerySections();
                 this.syncEnterKeyHint();
                 this.applyFontSizeConfig();
+                this.applyThemeMode();
 
                 showMessage('设置已保存');
+            };
+        }
+
+        if (cancelBtn) {
+            cancelBtn.onclick = () => {
+                this.switchMainView('notes', this.container.querySelector('.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="notes"]'));
             };
         }
 
@@ -16965,13 +17090,6 @@ ipcRenderer.on('lumina-close', () => {
                 await this.batchSyncToSiyuan(isFullSync);
                 // 同步完成后取消勾选全量同步
                 if (fullSyncCheckbox) fullSyncCheckbox.checked = false;
-            };
-        }
-
-        if (cancelBtn) {
-            cancelBtn.onclick = () => {
-                // 返回说说视图
-                this.switchMainView('notes', this.container.querySelector('.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="notes"]'));
             };
         }
 
@@ -19227,22 +19345,22 @@ ipcRenderer.on('lumina-close', () => {
 
     // 应用主题模式
     applyThemeMode() {
-        const container = this.container?.querySelector('.north-shuoshuo-container');
-        if (!container) return;
+        const target = this.container?.querySelector('.north-shuoshuo-container') || this.container?.closest('.north-shuoshuo-container') || (this.container?.classList?.contains('north-shuoshuo-container') ? this.container : null);
+        if (!target) return;
         
         // 移除所有主题类
-        container.classList.remove('theme-original', 'theme-siyuan', 'theme-morandi');
+        target.classList.remove('theme-original', 'theme-siyuan', 'theme-morandi');
         MORANDI_COLORS.forEach(c => {
-            container.classList.remove(`morandi-${c.key}`);
+            target.classList.remove(`morandi-${c.key}`);
         });
         
         // 添加当前主题模式类
         const themeToApply = this.themeMode || 'original';
-        container.classList.add(`theme-${themeToApply}`);
+        target.classList.add(`theme-${themeToApply}`);
         
         // 如果是莫兰迪主题，添加具体配色类
         if (themeToApply === 'morandi' && this.morandiColor) {
-            container.classList.add(`morandi-${this.morandiColor}`);
+            target.classList.add(`morandi-${this.morandiColor}`);
         }
     }
 
