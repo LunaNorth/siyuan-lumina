@@ -451,8 +451,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.selectedDate = null;
         this.selectedTag = null;
         this.gallerySelectedTag = null;
-        this.filterQuery = null; // 检索式筛选：no-tag, has-image, has-link
-        this.queryVisibility = { 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false }; // 检索式可见性配置
+        this.filterQuery = null; // 检索式筛选：no-tag, has-image, has-link, custom:xxx
+        this.customQueries = []; // 自定义检索式列表
+        this.queryVisibility = { 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, 'is-archived': false }; // 检索式可见性配置
         this.tagIcons = {}; // 标签图标映射 {tagName: emoji/icon}
         this.pinnedTags = []; // 置顶标签列表
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
@@ -460,7 +461,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
         this.enterToSubmit = false; // 输入框回车直接提交
         this.showSidebarDock = false; // 是否显示侧边栏 Dock（默认不显示）
+        this.AUTO_OPEN_KEY = 'lumina_auto_open'; // 启动时自动打开轻语 localStorage 键名
         this.showLifelogSidebarDock = false; // 是否显示 LifeLog 侧边栏 Dock
+        this.showLifeLogSidebar = true; // 是否在轻语侧边栏显示 LifeLog 视图入口
+        this.showBookshelfSidebar = true; // 是否在轻语侧边栏显示图书视图入口
         this.showLifeLogRecords = false; // 是否显示读取到的 LifeLog 记录（默认不显示）
         this.lifeLogRecords = []; // LifeLog 记录（仅用于 LifeLog 视图）
         this._lifelogSelectedType = ''; // LifeLog 视图当前选中的类型（左侧筛选）
@@ -489,7 +493,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._wsBroadcastReconnectRetries = 0;
         this._wsBroadcastDestroyed = false;
         this.moments = []; // 朋友圈数据
-        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 } };
+        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, showMomentsSidebar: true };
         this.books = []; // 图书书架数据
         this.bookshelfFilters = { type: 'all', sync: 'synced', status: 'read+reading', sort: 'time' };
         this.bookshelfSearch = '';
@@ -871,6 +875,13 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // 在 onLayoutReady 中也触发一次数据加载（补充保障）
         // 主要数据刷新机制在 switchMainView 视图切换时已实现
+
+        // 自动打开轻语（通过 localStorage 标志控制，默认关闭）
+        if (localStorage.getItem(this.AUTO_OPEN_KEY) === 'true') {
+            setTimeout(() => {
+                this.openShuoshuoTab();
+            }, 500);
+        }
     }
 
     ensureMobileTopBarEntry() {
@@ -1570,6 +1581,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 content: processed,
                 tags: tags,
                 pinned: false,
+                archived: false,
                 created: Date.now(),
                 updated: Date.now()
             };
@@ -2509,6 +2521,7 @@ ipcRenderer.on('lumina-close', () => {
             content: processed,
             tags: tags,
             pinned: false,
+            archived: false,
             created: now,
             updated: now
         };
@@ -2562,18 +2575,24 @@ ipcRenderer.on('lumina-close', () => {
                         <button class="north-shuoshuo-nav-item" data-view="stats" title="统计">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M341.333333 938.666667H128a42.666667 42.666667 0 0 1-42.666667-42.666667V405.333333a42.666667 42.666667 0 0 1 42.666667-42.666666h213.333333V128a42.666667 42.666667 0 0 1 42.666667-42.666667h256a42.666667 42.666667 0 0 1 42.666667 42.666667v405.333333h213.333333a42.666667 42.666667 0 0 1 42.56 39.466667L938.666667 576v320a42.666667 42.666667 0 0 1-39.466667 42.56L896 938.666667H341.333333z m0-512H149.333333v448h192V426.666667z m533.333334 170.666666h-192v277.333334h192V597.333333zM618.666667 149.333333H405.333333v725.333334h213.333334V149.333333z"/></svg>
                         </button>
+                        ${this.momentsConfig?.showMomentsSidebar !== false ? `
                         <button class="north-shuoshuo-nav-item" data-view="moments" title="朋友圈">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
                         </button>
+                        ` : ''}
+                        ${this.showLifeLogSidebar ? `
                         <button class="north-shuoshuo-nav-item" data-view="lifelog" title="LifeLog">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm1 2v16h12V4H6z"/><path d="M7 7h10v2H7zM7 11h10v2H7zM7 15h6v2H7z"/></svg>
                         </button>
                         <button class="north-shuoshuo-nav-item" data-view="lifelog-stats" title="LifeLog统计">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M128 128h768v85.333H128V128z m0 170.667h768V896H128V298.667z m85.333 85.333v426.667h597.334V384H213.333z m85.334 85.333h128v256H298.667V469.333z m170.666 0h128v256h-128V469.333z m170.667 0h128v256h-128V469.333z"/></svg>
                         </button>
+                        ` : ''}
+                        ${this.showBookshelfSidebar ? `
                         <button class="north-shuoshuo-nav-item" data-view="bookshelf" title="图书">
                             <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 16H8c-.55 0-1-.45-1-1V6h10v13z"/></svg>
                         </button>
+                        ` : ''}
                     </div>
                     
                     <div class="north-shuoshuo-nav-bottom">
@@ -2610,6 +2629,7 @@ ipcRenderer.on('lumina-close', () => {
                                         <div class="lumina-moments-calendar-title">
                                             <span>轻语日历</span>
                                             <select class="lumina-moments-calendar-year" id="shuoshuo-calendar-year"></select>
+                                            <span class="lumina-moments-calendar-count" id="shuoshuo-calendar-count"></span>
                                             <!-- 移动端月份选择 -->
                                             <select class="mobile-calendar-month" id="mobile-calendar-month">
                                                 <option value="0">1月</option>
@@ -2677,7 +2697,6 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                         </div>
 
-                        ${(this.queryVisibility?.['no-tag'] !== false || this.queryVisibility?.['has-image'] !== false || this.queryVisibility?.['has-link'] !== false || this.queryVisibility?.['has-comment']) ? `
                         <div class="north-shuoshuo-query-section">
                             <div class="north-shuoshuo-section-title">检索式</div>
                             <div class="north-shuoshuo-query-list">
@@ -2709,10 +2728,15 @@ ipcRenderer.on('lumina-close', () => {
                                     <span class="north-shuoshuo-query-text">已批注</span>
                                     <span class="north-shuoshuo-query-count" data-query-count="has-comment">0</span>
                                 </div>` : ''}
+                                ${this.queryVisibility?.['is-archived'] ? `<div class="north-shuoshuo-query-item" data-query="is-archived">
+                                    <span class="north-shuoshuo-query-icon">
+                                        <svg class="icon"><use xlink:href="#iconInbox"></use></svg>
+                                    </span>
+                                    <span class="north-shuoshuo-query-text">已归档</span>
+                                    <span class="north-shuoshuo-query-count" data-query-count="is-archived">0</span>
+                                </div>` : ''}
                             </div>
                         </div>
-                        ` : ''}
-
                         <div class="north-shuoshuo-tags-section">
                             <div class="north-shuoshuo-section-title">全部标签</div>
                             <div class="north-shuoshuo-tags-list">
@@ -2912,6 +2936,13 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.showSidebarDock ? 'on' : ''}" id="settings-show-sidebar-dock-switch"></div>
                                 </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>启动时打开轻语</h4>
+                                        <p>开启后，启动思源笔记自动打开轻语标签页</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${localStorage.getItem(this.AUTO_OPEN_KEY) === 'true' ? 'on' : ''}" id="settings-auto-open-switch"></div>
+                                </div>
                             </div>
 
                             <div class="north-shuoshuo-section-card">
@@ -2964,7 +2995,43 @@ ipcRenderer.on('lumina-close', () => {
                                             <span class="north-shuoshuo-checkbox-check"></span>
                                             <span class="north-shuoshuo-checkbox-label">已批注</span>
                                         </label>
+                                        <label class="north-shuoshuo-checkbox-item">
+                                            <input type="checkbox" name="query-visibility" value="is-archived" ${this.queryVisibility?.['is-archived'] ? 'checked' : ''}>
+                                            <span class="north-shuoshuo-checkbox-check"></span>
+                                            <span class="north-shuoshuo-checkbox-label">已归档</span>
+                                        </label>
                                     </div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card" id="setting-custom-queries-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">自定义检索式</div>
+                                        <div class="north-shuoshuo-section-desc">管理自定义检索式，创建后在侧边栏点击使用</div>
+                                    </div>
+                                    <button class="north-shuoshuo-query-action-btn" id="settings-add-query-btn" title="新建检索式" style="flex-shrink:0;">
+                                        <svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconAdd"></use></svg>
+                                    </button>
+                                </div>
+                                <div class="north-shuoshuo-form-row" id="custom-queries-list">
+                                    ${this.customQueries && this.customQueries.length > 0 ? this.customQueries.map((q, i) => `
+                                    <div class="north-shuoshuo-custom-query-row" data-query-id="${q.id}">
+                                        <span class="north-shuoshuo-custom-query-icon">
+                                            <svg class="icon"><use xlink:href="#${q.icon || 'iconStar'}"></use></svg>
+                                        </span>
+                                        <span class="north-shuoshuo-custom-query-name">${this._escapeHtml(q.name)}</span>
+                                        <span class="north-shuoshuo-custom-query-conditions">${q.conditions.length} 个条件 · ${q.matchMode === 'or' ? '任一满足' : '全部满足'}</span>
+                                        <span class="north-shuoshuo-custom-query-actions">
+                                            <button class="query-item-action" data-action="edit-query" title="编辑">
+                                                <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconEdit"></use></svg>
+                                            </button>
+                                            <button class="query-item-action delete" data-action="delete-query" title="删除">
+                                                <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconClose"></use></svg>
+                                            </button>
+                                        </span>
+                                    </div>
+                                    `).join('') : '<div class="north-shuoshuo-query-empty">暂无自定义检索式，点击上方 + 创建</div>'}
                                 </div>
                             </div>
 
@@ -3783,6 +3850,13 @@ ipcRenderer.on('lumina-close', () => {
                                     <input type="number" id="moments-font-size-custom-input" style="width: 80px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="24" step="0.5" value="${this.momentsConfig?.fontSize?.customSize || 14.5}">
                                     <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">px</span>
                                 </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>显示朋友圈</h4>
+                                        <p>开启后，在轻语侧边栏显示朋友圈视图</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.momentsConfig?.showMomentsSidebar !== false ? 'on' : ''}" id="settings-show-moments-switch"></div>
+                                </div>
                             </div>
                         </div>
 
@@ -3801,6 +3875,13 @@ ipcRenderer.on('lumina-close', () => {
                                         <p>开启后，在 LifeLog 视图中显示本年度从思源笔记读取到的 LifeLog 记录。</p>
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.showLifeLogRecords ? 'on' : ''}" id="lifelog-settings-show-records-switch"></div>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>显示 LifeLog 视图</h4>
+                                        <p>开启后，在轻语侧边栏显示 LifeLog 和 LifeLog 统计视图入口</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.showLifeLogSidebar ? 'on' : ''}" id="lifelog-settings-show-sidebar-switch"></div>
                                 </div>
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
@@ -3907,6 +3988,13 @@ ipcRenderer.on('lumina-close', () => {
                                         <span>💡</span> 打开目标文档，右键文档标题 → 复制文档块 ID
                                     </div>
                                 </div>
+                            </div>
+                            <div class="north-shuoshuo-toggle-row">
+                                <div class="north-shuoshuo-toggle-info">
+                                    <h4>显示图书视图</h4>
+                                    <p>开启后，在轻语侧边栏显示图书视图入口</p>
+                                </div>
+                                <div class="north-shuoshuo-switch ${this.showBookshelfSidebar ? 'on' : ''}" id="bookshelf-settings-show-sidebar-switch"></div>
                             </div>
                         </div>
 
@@ -4359,25 +4447,44 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // 默认排除归档笔记（除非正在查看已归档）
+        if (this.filterQuery !== 'is-archived') {
+            filtered = filtered.filter(s => !s.archived);
+        }
+
         // 检索式筛选
         if (this.filterQuery) {
-            filtered = filtered.filter(s => {
-                const content = s.content || '';
-                const tags = this.extractTags(content);
-                if (this.filterQuery === 'no-tag') {
-                    return tags.length === 0;
+            // 已归档检索式
+            if (this.filterQuery === 'is-archived') {
+                filtered = filtered.filter(s => s.archived === true);
+            } else
+            // 自定义检索式
+            if (this.filterQuery.startsWith('custom:')) {
+                const queryId = this.filterQuery.replace('custom:', '');
+                const query = this.customQueries.find(q => q.id === queryId);
+                if (query) {
+                    filtered = filtered.filter(s => this._matchCustomQuery(s, query));
                 }
-                if (this.filterQuery === 'has-image') {
-                    return content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg)\)/i.test(content);
-                }
-                if (this.filterQuery === 'has-link') {
-                    return /https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content);
-                }
-                if (this.filterQuery === 'has-comment') {
-                    return content.includes('[MEMO:') || /^关联自：/.test(content);
-                }
-                return true;
-            });
+            } else {
+                // 内置检索式
+                filtered = filtered.filter(s => {
+                    const content = s.content || '';
+                    const tags = this.extractTags(content);
+                    if (this.filterQuery === 'no-tag') {
+                        return tags.length === 0;
+                    }
+                    if (this.filterQuery === 'has-image') {
+                        return content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg)\)/i.test(content);
+                    }
+                    if (this.filterQuery === 'has-link') {
+                        return /https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content);
+                    }
+                    if (this.filterQuery === 'has-comment') {
+                        return content.includes('[MEMO:') || /^关联自：/.test(content);
+                    }
+                    return true;
+                });
+            }
         }
 
         // 搜索关键词筛选（内容、标签、日期）
@@ -6592,6 +6699,7 @@ ipcRenderer.on('lumina-close', () => {
                 content: fullContent,
                 tags: tags,
                 pinned: false,
+                archived: false,
                 created: Date.now(),
                 updated: Date.now()
             };
@@ -7187,6 +7295,10 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="north-shuoshuo-stat-label">记录</div>
                         </div>
                         <div class="north-shuoshuo-stat-card">
+                            <div class="north-shuoshuo-stat-number">${stats.totalTags}</div>
+                            <div class="north-shuoshuo-stat-label">标签</div>
+                        </div>
+                        <div class="north-shuoshuo-stat-card">
                             <div class="north-shuoshuo-stat-number">${stats.totalWords.toLocaleString()}</div>
                             <div class="north-shuoshuo-stat-label">字数</div>
                         </div>
@@ -7229,6 +7341,11 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
                     </div>
 
+                    <!-- 每日记录分布 -->
+                    <div class="north-shuoshuo-daily-distribution-section">
+                        ${this.generateDailyDistributionContent(year)}
+                    </div>
+
                     <!-- 月度分布 -->
                     <div class="north-shuoshuo-monthly-distribution-section">
                         ${this.generateMonthlyDistributionContent(year)}
@@ -7238,6 +7355,8 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="north-shuoshuo-word-distribution-section">
                         ${this.generateTopTagsContent()}
                     </div>
+
+                    ${this.generateStatsTagDetailTable(year)}
 
                     <!-- 标签云 -->
                     <div class="north-shuoshuo-tag-cloud-section">
@@ -7434,6 +7553,7 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="lumina-moments-calendar-title">
                                 <span>朋友圈日历</span>
                                 <select class="lumina-moments-calendar-year" id="momentsCalendarYear"></select>
+                                <span class="lumina-moments-calendar-count" id="momentsCalendarCount"></span>
                             </div>
                             <div class="lumina-moments-calendar-close" id="momentsCalendarClose">×</div>
                         </div>
@@ -7631,6 +7751,7 @@ ipcRenderer.on('lumina-close', () => {
         const calendarClose = container.querySelector('#momentsCalendarClose');
         const calendarBody = container.querySelector('#momentsCalendarBody');
         const calendarYear = container.querySelector('#momentsCalendarYear');
+        const calendarCount = container.querySelector('#momentsCalendarCount');
 
         const renderCalendarBody = (year) => {
             if (!calendarBody) return;
@@ -7641,6 +7762,11 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="lumina-moments-calendar-months">${heatmap.months}</div>
                 </div>
             `;
+            // 更新记录数
+            if (calendarCount) {
+                const count = this.moments.filter(m => new Date(m.created).getFullYear() === year).length;
+                calendarCount.textContent = `${count} 条记录`;
+            }
         };
 
         const initCalendarYearOptions = () => {
@@ -9692,6 +9818,214 @@ ipcRenderer.on('lumina-close', () => {
         `;
     }
 
+    // 生成每日记录分布（当月按天展示）
+    generateDailyDistributionContent(year) {
+        const now = new Date();
+        let targetMonth;
+        if (year === now.getFullYear()) {
+            targetMonth = now.getMonth();
+        } else {
+            // 非当前年份，找该年记录最多的月份
+            const monthlyCounts = new Array(12).fill(0);
+            this.shuoshuos.forEach(note => {
+                const date = new Date(note.created);
+                if (date.getFullYear() === year) {
+                    monthlyCounts[date.getMonth()]++;
+                }
+            });
+            let maxIdx = 11;
+            let maxVal = 0;
+            monthlyCounts.forEach((c, i) => {
+                if (c > maxVal) { maxVal = c; maxIdx = i; }
+            });
+            targetMonth = maxIdx;
+        }
+
+        // 该月天数
+        const daysInMonth = new Date(year, targetMonth + 1, 0).getDate();
+        const monthName = `${year}-${String(targetMonth + 1).padStart(2, '0')}`;
+
+        // 统计每日记录数
+        const dailyCounts = new Array(daysInMonth).fill(0);
+        this.shuoshuos.forEach(note => {
+            const date = new Date(note.created);
+            if (date.getFullYear() === year && date.getMonth() === targetMonth) {
+                dailyCounts[date.getDate() - 1]++;
+            }
+        });
+
+        const totalMonth = dailyCounts.reduce((a, b) => a + b, 0);
+        const maxCount = Math.max(...dailyCounts);
+
+        let barsHtml = '';
+        dailyCounts.forEach((count, index) => {
+            const day = index + 1;
+            const percentage = maxCount > 0 ? (count / maxCount * 100) : 0;
+            const tooltip = `${monthName}-${String(day).padStart(2, '0')}: ${count}条`;
+            barsHtml += `
+                <div class="north-shuoshuo-daily-bar" data-lumina-tip="${tooltip}">
+                    <div class="north-shuoshuo-daily-bar-bg">
+                        <div class="north-shuoshuo-daily-bar-fill" style="height: ${percentage}%"></div>
+                    </div>
+                    <span class="north-shuoshuo-daily-bar-count">${count > 0 ? count : '0'}</span>
+                    <span class="north-shuoshuo-daily-bar-label">${day}日</span>
+                </div>
+            `;
+        });
+
+        return `
+            <div class="north-shuoshuo-distribution-section">
+                <div class="north-shuoshuo-distribution-header">
+                    <span>每日记录 — ${monthName}</span>
+                    <span class="north-shuoshuo-distribution-subtitle">${monthName} 共 ${totalMonth} 条</span>
+                </div>
+                <div class="north-shuoshuo-daily-distribution-wrapper">
+                    <div class="north-shuoshuo-daily-distribution">
+                        ${barsHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // 生成统计明细表（标签 × 月份）
+    generateStatsTagDetailTable(year) {
+        // 收集该年所有笔记的标签数据
+        const tagMonthMap = {}; // tag -> { monthIndex (0-11) -> count }
+        const allTagsSet = new Set();
+        const allMonths = Array.from({ length: 12 }, (_, i) => i);
+
+        this.shuoshuos.forEach(note => {
+            const date = new Date(note.created);
+            if (date.getFullYear() !== year) return;
+            const monthIdx = date.getMonth();
+            const tags = note.tags && note.tags.length > 0 ? note.tags : ['(无标签)'];
+            tags.forEach(tag => {
+                if (!tagMonthMap[tag]) tagMonthMap[tag] = {};
+                if (!tagMonthMap[tag][monthIdx]) tagMonthMap[tag][monthIdx] = 0;
+                tagMonthMap[tag][monthIdx]++;
+                allTagsSet.add(tag);
+            });
+        });
+
+        // 如果无标签数据则返回空
+        if (allTagsSet.size === 0 || (allTagsSet.size === 1 && allTagsSet.has('(无标签)'))) {
+            if (!this.shuoshuos.some(n => { const d = new Date(n.created); return d.getFullYear() === year; })) {
+                return '';
+            }
+            // 至少有笔记，检查是否真的没有标签
+            let hasRealTag = false;
+            const tagCountMap = {};
+            this.shuoshuos.forEach(note => {
+                const d = new Date(note.created);
+                if (d.getFullYear() !== year) return;
+                if (note.tags && note.tags.length > 0) {
+                    note.tags.forEach(tag => {
+                        if (tag) { hasRealTag = true; tagCountMap[tag] = (tagCountMap[tag] || 0) + 1; }
+                    });
+                }
+            });
+            if (!hasRealTag) return '';
+        }
+
+        const allTags = [...allTagsSet].sort((a, b) => {
+            // (无标签) 排到最后
+            if (a === '(无标签)') return 1;
+            if (b === '(无标签)') return -1;
+            return a.localeCompare(b, 'zh-CN');
+        });
+
+        // 计算各标签总计
+        const tagTotals = {};
+        for (const tag of allTags) {
+            let total = 0;
+            for (const monthIdx of allMonths) {
+                total += tagMonthMap[tag]?.[monthIdx] || 0;
+            }
+            tagTotals[tag] = total;
+        }
+
+        const grandTotal = Object.values(tagTotals).reduce((s, v) => s + v, 0);
+
+        const cellContent = (count) => {
+            if (!count) return '<span class="lifelog-stats-detail-cell-empty">-</span>';
+            const pct = grandTotal > 0 ? (count / grandTotal * 100).toFixed(1) : '0.0';
+            return `<div class="lifelog-stats-detail-val-sub">
+                        <span class="lifelog-stats-detail-val-pct">${pct}%</span>
+                        <span class="lifelog-stats-detail-val-count">${count}条</span>
+                    </div>`;
+        };
+
+        const escapeHtml = (str) => {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        };
+
+        let html = `
+            <div class="north-shuoshuo-stats-detail-section">
+                <div class="north-shuoshuo-distribution-header">
+                    <span>统计明细</span>
+                    <span class="north-shuoshuo-distribution-subtitle">${year} 年共 ${grandTotal} 条</span>
+                </div>
+                <div class="lifelog-stats-detail-table-wrapper">
+                    <table class="lifelog-stats-detail-table">
+                        <thead>
+                            <tr>
+                                <th class="lifelog-stats-detail-th-type">标签</th>
+                                <th class="lifelog-stats-detail-th-total">总计</th>
+                                ${allMonths.map(m => `<th class="lifelog-stats-detail-th-month">${m + 1}月</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${allTags.map(tag => {
+                                const total = tagTotals[tag];
+                                let row = `<tr>
+                                    <td class="lifelog-stats-detail-cell-type">${escapeHtml(tag)}</td>
+                                    <td class="lifelog-stats-detail-cell-total">${cellContent(total)}</td>`;
+                                for (const monthIdx of allMonths) {
+                                    const count = tagMonthMap[tag]?.[monthIdx] || 0;
+                                    if (count > 0) {
+                                        row += `<td class="lifelog-stats-detail-cell-day">${cellContent(count)}</td>`;
+                                    } else {
+                                        row += `<td class="lifelog-stats-detail-cell-day">-</td>`;
+                                    }
+                                }
+                                row += `</tr>`;
+                                return row;
+                            }).join('')}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td class="lifelog-stats-detail-cell-type lifelog-stats-detail-cell-total-row">总计</td>
+                                <td class="lifelog-stats-detail-cell-total lifelog-stats-detail-cell-total-row">
+                                    <div class="lifelog-stats-detail-val-sub">
+                                        <span class="lifelog-stats-detail-val-count">${grandTotal}条</span>
+                                    </div>
+                                </td>
+                                ${allMonths.map(monthIdx => {
+                                    let monthTotal = 0;
+                                    for (const tag of allTags) {
+                                        monthTotal += tagMonthMap[tag]?.[monthIdx] || 0;
+                                    }
+                                    if (monthTotal > 0) {
+                                        return `<td class="lifelog-stats-detail-cell-day lifelog-stats-detail-cell-total-row">
+                                            <div class="lifelog-stats-detail-val-sub">
+                                                <span class="lifelog-stats-detail-val-count">${monthTotal}条</span>
+                                            </div>
+                                        </td>`;
+                                    } else {
+                                        return `<td class="lifelog-stats-detail-cell-day lifelog-stats-detail-cell-total-row">-</td>`;
+                                    }
+                                }).join('')}
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>`;
+
+        return html;
+    }
+
     // 获取标签图标 HTML
     getTagIconHtml(tagName) {
         const iconConfig = this.tagIcons[tagName] || '';
@@ -9867,8 +10201,19 @@ ipcRenderer.on('lumina-close', () => {
         // 活跃天数
         const activeDays = dateMap.size;
 
+        // 计算标签总数（去重）
+        const tagsSet = new Set();
+        notes.forEach(note => {
+            if (note.tags && note.tags.length > 0) {
+                note.tags.forEach(tag => {
+                    if (tag) tagsSet.add(tag);
+                });
+            }
+        });
+
         return {
             totalNotes,
+            totalTags: tagsSet.size,
             totalWords,
             maxNotesPerDay,
             maxWordsPerDay,
@@ -10608,6 +10953,8 @@ ipcRenderer.on('lumina-close', () => {
         const queryListEl = this.container.querySelector('.north-shuoshuo-query-list');
         if (queryListEl) {
             queryListEl.addEventListener('click', (e) => {
+                // 忽略按钮点击（编辑/删除）
+                if (e.target.closest('.query-item-action, .query-item-actions')) return;
                 const queryItem = e.target.closest('.north-shuoshuo-query-item');
                 if (!queryItem) return;
                 const query = queryItem.dataset.query;
@@ -10773,6 +11120,7 @@ ipcRenderer.on('lumina-close', () => {
             content: content,
             tags: tags,
             pinned: false,
+            archived: false,
             created: Date.now(),
             updated: Date.now()
         };
@@ -10980,6 +11328,7 @@ ipcRenderer.on('lumina-close', () => {
         const calendarYear = this.container.querySelector('#shuoshuo-calendar-year');
         const calendarContent = this.container.querySelector('#shuoshuo-calendar-modal .lumina-moments-calendar-content');
         const calendarTitle = this.container.querySelector('#shuoshuo-calendar-modal .lumina-moments-calendar-title span');
+        const calendarCount = this.container.querySelector('#shuoshuo-calendar-count');
         const mobileMonthSelect = this.container.querySelector('#mobile-calendar-month');
 
         // 移动端日历状态
@@ -11014,6 +11363,12 @@ ipcRenderer.on('lumina-close', () => {
             // 更新标题
             if (calendarTitle) {
                 calendarTitle.textContent = isLifeLogView ? 'LifeLog 日历' : '轻语日历';
+            }
+            // 更新记录数
+            if (calendarCount) {
+                const src = isLifeLogView ? (this.lifeLogRecords || []) : this.shuoshuos;
+                const cnt = src.filter(s => new Date(s.created).getFullYear() === year).length;
+                calendarCount.textContent = `${cnt} 条记录`;
             }
         };
 
@@ -12122,9 +12477,18 @@ ipcRenderer.on('lumina-close', () => {
             'has-comment': this.shuoshuos.filter(s => {
                 const c = s.content || '';
                 return c.includes('[MEMO:') || /^关联自：/.test(c);
-            }).length
+            }).length,
+            'is-archived': this.shuoshuos.filter(s => s.archived === true).length
         };
-        
+
+        // 计算自定义检索式数量
+        if (this.customQueries) {
+            this.customQueries.forEach(q => {
+                const key = 'custom:' + q.id;
+                counts[key] = this.shuoshuos.filter(s => this._matchCustomQuery(s, q)).length;
+            });
+        }
+
         containers.forEach(container => {
             container.querySelectorAll('.north-shuoshuo-query-count').forEach(el => {
                 const query = el.dataset.queryCount;
@@ -12186,21 +12550,24 @@ ipcRenderer.on('lumina-close', () => {
             const hasImage = this.queryVisibility?.['has-image'] !== false;
             const hasLink = this.queryVisibility?.['has-link'] !== false;
             const hasComment = !!this.queryVisibility?.['has-comment'];
-            const anyVisible = hasNoTag || hasImage || hasLink || hasComment;
+            const hasArchived = !!this.queryVisibility?.['is-archived'];
+            const hasCustom = this.customQueries && this.customQueries.length > 0;
+            const anyVisible = hasNoTag || hasImage || hasLink || hasComment || hasArchived || hasCustom;
             if (!anyVisible) {
                 querySection.style.display = 'none';
                 return;
             }
             querySection.style.display = '';
-            const items = [
+            const builtInItems = [
                 { visible: hasNoTag, query: 'no-tag', label: '无标签', icon: 'iconTags' },
                 { visible: hasImage, query: 'has-image', label: '有图片', icon: 'iconImage' },
                 { visible: hasLink, query: 'has-link', label: '有链接', icon: 'iconLink' },
-                { visible: hasComment, query: 'has-comment', label: '已批注', icon: 'iconRef' }
+                { visible: hasComment, query: 'has-comment', label: '已批注', icon: 'iconRef' },
+                { visible: hasArchived, query: 'is-archived', label: '已归档', icon: 'iconInbox' }
             ];
             const isSelected = (query) => this.filterQuery === query;
             let html = '';
-            for (const item of items) {
+            for (const item of builtInItems) {
                 if (!item.visible) continue;
                 const selected = isSelected(item.query) ? ' selected' : '';
                 html += `<div class="north-shuoshuo-query-item${selected}" data-query="${item.query}">
@@ -12211,10 +12578,461 @@ ipcRenderer.on('lumina-close', () => {
                     <span class="north-shuoshuo-query-count" data-query-count="${item.query}">0</span>
                 </div>`;
             }
+            // 如果有自定义检索式，追加到列表（不做分割区分）
+            if (hasCustom) {
+                this.customQueries.forEach(q => {
+                    const queryKey = 'custom:' + q.id;
+                    const selected = isSelected(queryKey) ? ' selected' : '';
+                    html += `<div class="north-shuoshuo-query-item${selected}" data-query="${queryKey}">
+                        <span class="north-shuoshuo-query-icon" style="font-size:14px;">
+                            <svg class="icon"><use xlink:href="#${q.icon || 'iconStar'}"></use></svg>
+                        </span>
+                        <span class="north-shuoshuo-query-text">${this._escapeHtml(q.name)}</span>
+                        <span class="north-shuoshuo-query-count" data-query-count="${queryKey}">0</span>
+                    </div>`;
+                });
+            }
             queryList.innerHTML = html;
         });
         // 重建后重新计算并更新检索式数量
         this.updateQueryCounts();
+    }
+
+    // ========== 自定义检索式编辑器 ==========
+
+    // 打开检索式编辑器（创建或编辑）
+    _openQueryEditor(queryToEdit = null) {
+        const isEdit = !!queryToEdit;
+        const existing = document.querySelector('.north-shuoshuo-query-editor-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'north-shuoshuo-query-editor-overlay';
+        overlay.innerHTML = `
+            <div class="north-shuoshuo-query-editor">
+                <div class="north-shuoshuo-query-editor-header">
+                    <h3>${isEdit ? '编辑检索式' : '新建检索式'}</h3>
+                    <button class="north-shuoshuo-query-editor-close">×</button>
+                </div>
+                <div class="north-shuoshuo-query-editor-body">
+                    <div class="north-shuoshuo-query-field">
+                        <label>检索式名称</label>
+                        <input type="text" id="query-editor-name" placeholder="例如：今日工作笔记" value="${isEdit ? this._escapeHtml(queryToEdit.name) : ''}">
+                    </div>
+                    <div class="north-shuoshuo-query-field">
+                        <label>图标</label>
+                        <div class="north-shuoshuo-icon-picker" id="query-editor-icon-picker">
+                            <div class="north-shuoshuo-icon-picker-current" id="query-editor-icon-current">
+                                <svg class="icon"><use xlink:href="#${isEdit && queryToEdit.icon ? queryToEdit.icon : 'iconStar'}"></use></svg>
+                                <span class="north-shuoshuo-icon-picker-current-name">${isEdit && queryToEdit.icon ? queryToEdit.icon : 'iconStar'}</span>
+                                <span class="north-shuoshuo-icon-picker-arrow">▼</span>
+                            </div>
+                            <div class="north-shuoshuo-icon-picker-grid" id="query-editor-icon-grid" style="display:none;"></div>
+                        </div>
+                    </div>
+                    <div class="north-shuoshuo-query-field">
+                        <label>匹配模式</label>
+                        <div class="north-shuoshuo-query-match-mode">
+                            <button class="north-shuoshuo-query-match-btn ${(!isEdit || queryToEdit.matchMode === 'and') ? 'active' : ''}" data-mode="and">全部满足 (AND)</button>
+                            <button class="north-shuoshuo-query-match-btn ${(isEdit && queryToEdit.matchMode === 'or') ? 'active' : ''}" data-mode="or">任一满足 (OR)</button>
+                        </div>
+                    </div>
+                    <div class="north-shuoshuo-query-field">
+                        <label>筛选条件</label>
+                        <div class="north-shuoshuo-query-conditions" id="query-editor-conditions"></div>
+                        <button class="north-shuoshuo-query-add-condition" id="query-add-condition-btn">+ 添加条件</button>
+                    </div>
+                </div>
+                <div class="north-shuoshuo-query-editor-footer">
+                    <button class="north-shuoshuo-query-btn-cancel">取消</button>
+                    <button class="north-shuoshuo-query-btn-save">${isEdit ? '保存修改' : '创建'}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const conditionsContainer = overlay.querySelector('#query-editor-conditions');
+
+        // 如果编辑模式，加载现有条件
+        if (isEdit && queryToEdit.conditions) {
+            queryToEdit.conditions.forEach(cond => this._addConditionRow(conditionsContainer, cond));
+        } else {
+            // 默认添加一个空条件
+            this._addConditionRow(conditionsContainer);
+        }
+
+        // 添加条件按钮
+        overlay.querySelector('#query-add-condition-btn').addEventListener('click', () => {
+            this._addConditionRow(conditionsContainer);
+        });
+
+        // 匹配模式按钮切换
+        overlay.querySelectorAll('.north-shuoshuo-query-match-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                overlay.querySelectorAll('.north-shuoshuo-query-match-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // 图标选择器
+        const iconNames = ['iconStar', 'iconLanguage', 'iconPanelLeft', 'iconPanelBottom', 'iconPanelRight', 'iconPanelLeftDashed', 'iconPanelBottomDashed', 'iconPanelRightDashed', 'iconSelectAll', 'iconUploadAssets', 'iconDownloadAssets', 'iconKeepContent', 'iconFullWidth', 'iconTurnInto', 'iconGlobe', 'iconPublish', 'iconDocx', 'iconSearchAsset', 'iconAddDoc', 'iconExpandLevel', 'iconWidth', 'iconAlignSettings', 'iconFoldUnFold', 'iconJumpTo', 'iconEnterBack', 'iconEnter', 'iconRecentDocs', 'iconOutline', 'iconCallout', 'iconInclude', 'iconGroups', 'iconCamera', 'iconGallery', 'iconBoard', 'iconTerminal', 'iconSoftWrap', 'iconLink', 'iconLinkOff', 'iconImgDown', 'iconArrowDown', 'iconUnpin', 'iconPin', 'iconOpen', 'iconKey', 'iconClock', 'iconAttr', 'iconPaste', 'iconCopy', 'iconPhone', 'iconEmail', 'iconDrag', 'iconCalendar', 'iconNumber', 'iconIndeterminateCheck', 'iconPlugin', 'iconUsers', 'iconZoomIn', 'iconZoomOut', 'iconFeedback', 'iconCloseRound', 'iconLayout', 'iconFullscreenExit', 'iconFullscreen', 'iconScrollHoriz', 'iconScrollVert', 'iconSparkles', 'iconDatabase', 'iconBIU', 'iconKeyboardHide', 'iconWorkspace', 'iconCloud', 'iconCloudOff', 'iconCloudError', 'iconCloudSucc', 'iconLiandi', 'iconRiffCard', 'iconEyeoff', 'iconEye', 'iconReplace', 'iconRtl', 'iconLtr', 'iconBack', 'iconForward', 'iconLayoutBottom', 'iconLayoutRight', 'iconRef', 'iconFilter', 'iconDark', 'iconLight', 'iconMode', 'iconHistory', 'iconClear', 'iconFormat', 'iconQuit', 'iconDock', 'iconHideDock', 'iconInbox', 'iconGithub', 'iconGitHubI', 'iconHTML5', 'iconSpreadEven', 'iconSpreadOdd', 'iconScrollWrapped', 'iconSelectText', 'iconHand', 'iconSiYuan', 'iconCut', 'iconAdd', 'iconUncheck', 'iconDot', 'iconUnderline', 'iconA', 'iconM', 'iconN', 'iconYuque', 'iconGlobalGraph', 'iconGraph', 'iconLeftTop', 'iconLeftBottom', 'iconRightTop', 'iconRightBottom', 'iconBottomLeft', 'iconBottomRight', 'iconMove', 'iconBazaar', 'iconKeymap', 'iconFont', 'iconVIP', 'iconSuper', 'iconSelect', 'iconSQL', 'iconSup', 'iconSub', 'iconMark', 'iconEdit', 'iconPDF', 'iconVideo', 'iconSplitLR', 'iconSplitTB', 'iconFocus', 'iconSort', 'iconDownload', 'iconUpload', 'iconExact', 'iconRegex', 'iconMenu', 'iconLeft', 'iconRight', 'iconDown', 'iconUp', 'iconTags', 'iconTag', 'iconImage', 'iconRefresh', 'iconUnlock', 'iconLock', 'iconAccount', 'iconMarkdown', 'iconListItem', 'iconBookmarks', 'iconBookmark', 'iconH1', 'iconH2', 'iconH3', 'iconH4', 'iconH5', 'iconH6', 'iconHeadings', 'iconMath', 'iconClose', 'iconRestore', 'iconFiles', 'iconFilesRoot', 'iconMax', 'iconMin', 'iconSettings', 'iconFolder', 'iconSearch', 'iconFile', 'iconHeart', 'iconParagraph', 'iconMp', 'iconQuote', 'iconAfter', 'iconBefore', 'iconInsertLeft', 'iconInsertRight', 'iconDeleteColumn', 'iconDeleteRow', 'iconLine', 'iconCode', 'iconInlineCode'];
+        const gridEl = overlay.querySelector('#query-editor-icon-grid');
+        const currentEl = overlay.querySelector('#query-editor-icon-current');
+        const selectedIcon = isEdit && queryToEdit.icon ? queryToEdit.icon : 'iconStar';
+        iconNames.forEach(name => {
+            const item = document.createElement('div');
+            item.className = 'north-shuoshuo-icon-picker-item' + (name === selectedIcon ? ' selected' : '');
+            item.innerHTML = `<svg class="icon"><use xlink:href="#${name}"></use></svg>`;
+            item.dataset.icon = name;
+            item.title = name;
+            item.addEventListener('click', () => {
+                gridEl.querySelectorAll('.north-shuoshuo-icon-picker-item').forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                currentEl.innerHTML = `<svg class="icon"><use xlink:href="#${name}"></use></svg><span class="north-shuoshuo-icon-picker-current-name">${name}</span><span class="north-shuoshuo-icon-picker-arrow">▼</span>`;
+                gridEl.style.display = 'none';
+            });
+            gridEl.appendChild(item);
+        });
+        currentEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            gridEl.style.display = gridEl.style.display === 'none' ? 'grid' : 'none';
+        });
+        document.addEventListener('click', () => { gridEl.style.display = 'none'; }, { once: false });
+
+        // 关闭
+        const closeModal = () => overlay.remove();
+        overlay.querySelector('.north-shuoshuo-query-editor-close').addEventListener('click', closeModal);
+        overlay.querySelector('.north-shuoshuo-query-btn-cancel').addEventListener('click', closeModal);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeModal();
+        });
+
+        // 保存
+        overlay.querySelector('.north-shuoshuo-query-btn-save').addEventListener('click', () => {
+            this._saveQueryEditor(overlay, queryToEdit);
+        });
+    }
+
+    // 添加一个条件行
+    _addConditionRow(container, condition = null) {
+        const row = document.createElement('div');
+        row.className = 'north-shuoshuo-query-condition';
+
+        const type = condition?.type || 'tag';
+        const op = condition?.operator || 'contains';
+        const val = condition?.value || '';
+
+        // 获取对应类型的运算符选项
+        const opOptions = this._getOperatorOptions(type);
+        // 时间范围不需要值输入
+        const isTimeRange = type === 'timeRange';
+
+        row.innerHTML = `
+            <select class="cond-type">
+                <option value="tag" ${type === 'tag' ? 'selected' : ''}>标签</option>
+                <option value="text" ${type === 'text' ? 'selected' : ''}>文本</option>
+                <option value="date" ${type === 'date' ? 'selected' : ''}>日期</option>
+                <option value="timeRange" ${type === 'timeRange' ? 'selected' : ''}>时间范围</option>
+                <option value="hasImage" ${type === 'hasImage' ? 'selected' : ''}>有图片</option>
+                <option value="hasLink" ${type === 'hasLink' ? 'selected' : ''}>有链接</option>
+                <option value="hasComment" ${type === 'hasComment' ? 'selected' : ''}>已批注</option>
+            </select>
+            <select class="cond-op">${opOptions}</select>
+            ${isTimeRange ? '' : `<input type="text" class="cond-value" placeholder="${type === 'date' ? 'YYYY-MM-DD' : type === 'tag' ? '标签名' : '关键词'}" value="${this._escapeHtml(val)}">`}
+            <button class="cond-remove" title="移除条件">×</button>
+        `;
+
+        // 设置运算符选中
+        const opSelect = row.querySelector('.cond-op');
+        if (condition?.operator) {
+            opSelect.value = condition.operator;
+        }
+
+        // 类型切换时更新运算符
+        row.querySelector('.cond-type').addEventListener('change', (e) => {
+            const newType = e.target.value;
+            const newOpOptions = this._getOperatorOptions(newType);
+            const isTR = newType === 'timeRange';
+            const valInput = row.querySelector('.cond-value');
+
+            // 更新运算符
+            opSelect.innerHTML = newOpOptions;
+
+            // 显示/隐藏值输入
+            if (isTR) {
+                if (valInput) valInput.remove();
+            } else if (!valInput) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'cond-value';
+                input.placeholder = newType === 'date' ? 'YYYY-MM-DD' : newType === 'tag' ? '标签名' : '关键词';
+                const removeBtn = row.querySelector('.cond-remove');
+                row.insertBefore(input, removeBtn);
+            } else {
+                valInput.placeholder = newType === 'date' ? 'YYYY-MM-DD' : newType === 'tag' ? '标签名' : '关键词';
+            }
+        });
+
+        // 移除条件
+        row.querySelector('.cond-remove').addEventListener('click', () => {
+            row.remove();
+        });
+
+        container.appendChild(row);
+    }
+
+    // 获取指定类型的运算符选项 HTML
+    _getOperatorOptions(type) {
+        const ops = {
+            'tag': [
+                { value: 'contains', label: '包含' },
+                { value: 'not_contains', label: '不包含' }
+            ],
+            'text': [
+                { value: 'contains', label: '包含' },
+                { value: 'not_contains', label: '不包含' },
+                { value: 'equals', label: '等于' }
+            ],
+            'date': [
+                { value: 'after', label: '在之后' },
+                { value: 'before', label: '在之前' },
+                { value: 'on', label: '等于' }
+            ],
+            'timeRange': [
+                { value: 'last7d', label: '最近7天' },
+                { value: 'last14d', label: '最近14天' },
+                { value: 'last30d', label: '最近30天' },
+                { value: 'thisWeek', label: '本周' },
+                { value: 'lastWeek', label: '上周' },
+                { value: 'thisMonth', label: '本月' },
+                { value: 'lastMonth', label: '上月' },
+                { value: 'thisYear', label: '今年' },
+                { value: 'lastYear', label: '去年' }
+            ],
+            'boolean': [
+                { value: 'yes', label: '是' },
+                { value: 'no', label: '否' }
+            ]
+        };
+        const list = ops[type] || ops.tag;
+        return list.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+    }
+
+    // 保存检索式
+    _saveQueryEditor(overlay, queryToEdit = null) {
+        const name = overlay.querySelector('#query-editor-name').value.trim();
+        if (!name) {
+            return;
+        }
+
+        const matchMode = overlay.querySelector('.north-shuoshuo-query-match-btn.active')?.dataset.mode || 'and';
+
+        const conditions = [];
+        let hasError = false;
+        overlay.querySelectorAll('.north-shuoshuo-query-condition').forEach(row => {
+            const type = row.querySelector('.cond-type').value;
+            const operator = row.querySelector('.cond-op').value;
+            const valInput = row.querySelector('.cond-value');
+            const value = valInput ? valInput.value.trim() : '';
+
+            // 验证：非 timeRange 类型需要值
+            if (type !== 'timeRange' && !value) {
+                hasError = true;
+                return;
+            }
+
+            conditions.push({ type, operator, value });
+        });
+
+        if (hasError) {
+            return;
+        }
+
+        if (conditions.length === 0) {
+            return;
+        }
+
+        // 读取选中的图标
+        const icon = overlay.querySelector('#query-editor-icon-grid .north-shuoshuo-icon-picker-item.selected')?.dataset?.icon || 'iconStar';
+
+        const newQuery = {
+            id: queryToEdit?.id || 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            icon,
+            name,
+            matchMode,
+            conditions
+        };
+
+        if (queryToEdit) {
+            // 编辑：替换
+            const idx = this.customQueries.findIndex(q => q.id === queryToEdit.id);
+            if (idx >= 0) {
+                this.customQueries[idx] = newQuery;
+            }
+        } else {
+            // 新建：追加
+            this.customQueries.push(newQuery);
+        }
+
+        overlay.remove();
+        this.saveConfig();
+        this._rebuildQuerySections();
+        this._refreshSettingsQueryList();
+    }
+
+    // 删除检索式
+    _deleteCustomQuery(queryId) {
+        const idx = this.customQueries.findIndex(q => q.id === queryId);
+        if (idx < 0) return;
+
+        this.customQueries.splice(idx, 1);
+        if (this.filterQuery === 'custom:' + queryId) {
+            this.filterQuery = null;
+        }
+        this.saveConfig();
+        this._rebuildQuerySections();
+        this._refreshSettingsQueryList();
+        this.renderNotes();
+    }
+
+    // 匹配自定义检索式
+    _matchCustomQuery(note, query) {
+        if (!query || !query.conditions || query.conditions.length === 0) return true;
+
+        const results = query.conditions.map(cond => {
+            return this._matchCondition(note, cond);
+        });
+
+        if (query.matchMode === 'or') {
+            return results.some(r => r === true);
+        } else {
+            return results.every(r => r === true);
+        }
+    }
+
+    // 匹配单个条件
+    _matchCondition(note, cond) {
+        const content = note.content || '';
+        const tags = this.extractTags(content);
+        const created = note.created || 0;
+
+        switch (cond.type) {
+            case 'tag': {
+                const hasTag = tags.some(t => t === cond.value || t.startsWith(cond.value + '/'));
+                return cond.operator === 'contains' ? hasTag : !hasTag;
+            }
+            case 'text': {
+                const lowerContent = content.toLowerCase();
+                const lowerVal = cond.value.toLowerCase();
+                if (cond.operator === 'contains') return lowerContent.includes(lowerVal);
+                if (cond.operator === 'not_contains') return !lowerContent.includes(lowerVal);
+                if (cond.operator === 'equals') return content.trim() === cond.value;
+                return true;
+            }
+            case 'date': {
+                const noteDate = new Date(created);
+                const condDate = new Date(cond.value);
+                if (isNaN(condDate.getTime())) return true; // 无效日期视为通过
+                if (cond.operator === 'before') return noteDate < condDate;
+                if (cond.operator === 'after') return noteDate >= condDate;
+                if (cond.operator === 'on') {
+                    return noteDate.toDateString() === condDate.toDateString();
+                }
+                return true;
+            }
+            case 'timeRange': {
+                const now = Date.now();
+                const noteTime = created;
+                const dayMs = 86400000;
+                switch (cond.operator) {
+                    case 'last7d': return noteTime >= now - 7 * dayMs;
+                    case 'last14d': return noteTime >= now - 14 * dayMs;
+                    case 'last30d': return noteTime >= now - 30 * dayMs;
+                    case 'thisWeek': {
+                        const d = new Date();
+                        const dayOfWeek = d.getDay() || 7;
+                        const weekStart = new Date(d.getFullYear(), d.getMonth(), d.getDate() - dayOfWeek + 1).getTime();
+                        return noteTime >= weekStart;
+                    }
+                    case 'lastWeek': {
+                        const d = new Date();
+                        const dayOfWeek = d.getDay() || 7;
+                        const thisWeekStart = new Date(d.getFullYear(), d.getMonth(), d.getDate() - dayOfWeek + 1);
+                        const lastWeekStart = thisWeekStart.getTime() - 7 * dayMs;
+                        return noteTime >= lastWeekStart && noteTime < thisWeekStart.getTime();
+                    }
+                    case 'thisMonth': {
+                        const d = new Date();
+                        const monthStart = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+                        return noteTime >= monthStart;
+                    }
+                    case 'lastMonth': {
+                        const d = new Date();
+                        const thisMonthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+                        const lastMonthStart = new Date(d.getFullYear(), d.getMonth() - 1, 1).getTime();
+                        return noteTime >= lastMonthStart && noteTime < thisMonthStart.getTime();
+                    }
+                    case 'thisYear': {
+                        const d = new Date();
+                        const yearStart = new Date(d.getFullYear(), 0, 1).getTime();
+                        return noteTime >= yearStart;
+                    }
+                    case 'lastYear': {
+                        const d = new Date();
+                        const thisYearStart = new Date(d.getFullYear(), 0, 1);
+                        const lastYearStart = new Date(d.getFullYear() - 1, 0, 1).getTime();
+                        return noteTime >= lastYearStart && noteTime < thisYearStart.getTime();
+                    }
+                    default: return true;
+                }
+            }
+            case 'hasImage': {
+                const has = content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg)\)/i.test(content);
+                return cond.operator === 'yes' ? has : !has;
+            }
+            case 'hasLink': {
+                const has = /https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content);
+                return cond.operator === 'yes' ? has : !has;
+            }
+            case 'hasComment': {
+                const has = content.includes('[MEMO:') || /^关联自：/.test(content);
+                return cond.operator === 'yes' ? has : !has;
+            }
+            default: return true;
+        }
+    }
+
+    // HTML 转义辅助
+    _escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // 刷新设置视图中的自定义检索式列表
+    _refreshSettingsQueryList() {
+        const listEl = this.container?.querySelector('#custom-queries-list');
+        if (!listEl) return;
+        if (this.customQueries && this.customQueries.length > 0) {
+            listEl.innerHTML = this.customQueries.map((q) => `
+                <div class="north-shuoshuo-custom-query-row" data-query-id="${q.id}">
+                    <span class="north-shuoshuo-custom-query-icon">
+                        <svg class="icon"><use xlink:href="#${q.icon || 'iconStar'}"></use></svg>
+                    </span>
+                    <span class="north-shuoshuo-custom-query-name">${this._escapeHtml(q.name)}</span>
+                    <span class="north-shuoshuo-custom-query-conditions">${q.conditions.length} 个条件 · ${q.matchMode === 'or' ? '任一满足' : '全部满足'}</span>
+                    <span class="north-shuoshuo-custom-query-actions">
+                        <button class="query-item-action" data-action="edit-query" title="编辑">
+                            <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconEdit"></use></svg>
+                        </button>
+                        <button class="query-item-action delete" data-action="delete-query" title="删除">
+                            <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconClose"></use></svg>
+                        </button>
+                    </span>
+                </div>
+            `).join('');
+        } else {
+            listEl.innerHTML = '<div class="north-shuoshuo-query-empty">暂无自定义检索式，点击上方 + 创建</div>';
+        }
     }
 
     // 从 MD 文本中提取所有 assets/ 图片路径
@@ -12513,8 +13331,7 @@ ipcRenderer.on('lumina-close', () => {
 
             // 始终使用标准格式：引用块格式 > [!NOTE] ✏️ 日期 时间 标签
             const dateStr = this.formatDateTimeAttr(timestamp).split(' ')[0];
-            const contentTags = this.extractTags(pureContent);
-            let diaryContent = `> [!NOTE] ✏️ ${dateStr} ${timeStr}${contentTags.length > 0 ? ' ' + contentTags.join(' ') : ''}`;
+            let diaryContent = `> [!NOTE] ✏️ ${dateStr} ${timeStr}${tags.length > 0 ? ' ' + tags.join(' ') : ''}`;
 
             // 添加内容行（每行前面加上 >）
             const originalLines = contentWithoutTags.split('\n');
@@ -13775,6 +14592,10 @@ ipcRenderer.on('lumina-close', () => {
                 <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconGlobe"></use></svg></span>
                 <span class="north-shuoshuo-menu-text">添加到朋友圈</span>
             </div>
+            <div class="north-shuoshuo-menu-item" data-action="archive">
+                <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconInbox"></use></svg></span>
+                <span class="north-shuoshuo-menu-text">${item.archived ? '取消归档' : '归档'}</span>
+            </div>
             <div class="north-shuoshuo-menu-item danger" data-action="delete">
                 <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconTrashcan"></use></svg></span>
                 <span class="north-shuoshuo-menu-text">删除</span>
@@ -13831,6 +14652,17 @@ ipcRenderer.on('lumina-close', () => {
                     break;
                 case 'add-to-moments':
                     await this.addShuoshuoToMoments(id);
+                    break;
+                case 'archive':
+                    item.archived = !item.archived;
+                    item.updated = Date.now();
+                    await this.saveShuoshuos();
+                    this.refreshMountedShuoshuoViews();
+                    // 如果当前是归档筛选且取消归档，回到全部视图
+                    if (this.filterQuery === 'is-archived' && !item.archived) {
+                        this.filterQuery = null;
+                    }
+                    this._rebuildQuerySections();
                     break;
                 case 'delete':
                     this.deleteShuoshuo(id);
@@ -14519,12 +15351,12 @@ ipcRenderer.on('lumina-close', () => {
                     // 清理 luminaContent：移除可能的时间前缀和类型前缀
                     // 处理格式："08:51 学习： 内容" 或 "08:51 #标签 内容" → 提取纯内容
                     // 先尝试匹配 "时间 #标签 内容" 格式
-                    const tagMatch = luminaContent.match(/^\d{2}:\d{2}\s+#[\w\/\u4e00-\u9fa5-]+\s*/);
+                    const tagMatch = luminaContent.match(/^\d{2}:\d{2}(:\d{2})?\s+#[\w\/\u4e00-\u9fa5-]+\s*/);
                     if (tagMatch) {
                         luminaContent = luminaContent.substring(tagMatch[0].length).trim();
                     } else {
                         // 尝试匹配 "时间 类型：内容" 格式
-                        const typeMatch = luminaContent.match(/^\d{2}:\d{2}\s+([^：:]+)[：:]\s*/);
+                        const typeMatch = luminaContent.match(/^\d{2}:\d{2}(:\d{2})?\s+([^：:]+)[：:]\s*/);
                         if (typeMatch) {
                             luminaContent = luminaContent.substring(typeMatch[0].length).trim();
                         }
@@ -14605,6 +15437,7 @@ ipcRenderer.on('lumina-close', () => {
                         content: displayContent,
                         tags: tags,
                         pinned: false,
+                        archived: false,
                         created: created,
                         updated: updated,
                         boundBlockId: blockId // 标记已绑定到思源块
@@ -14693,8 +15526,8 @@ ipcRenderer.on('lumina-close', () => {
                 }
             } else if (tags.length > 0) {
                 // 如果有标签但没有类型，且原块不是 [!NOTE] 引用块格式
-                // 构建 "时间 #标签 内容" 格式
-                updateContent = `${timeStr} #${tags[0]} ${pureContent}`;
+                // 构建 "时间 #标签1 #标签2 内容" 格式
+                updateContent = `${timeStr} ${tags.map(t => '#' + t).join(' ')} ${pureContent}`;
             } else {
                 // 普通格式，直接使用纯内容
                 updateContent = pureContent;
@@ -15195,6 +16028,7 @@ ipcRenderer.on('lumina-close', () => {
                         refreshed.push({
                             ...siyuan,
                             pinned: local.pinned || false,
+                            archived: local.archived || false,
                             id: local.id
                         });
                     } else {
@@ -15634,13 +16468,13 @@ ipcRenderer.on('lumina-close', () => {
                     let detectedType = ''; // 从思源笔记检测到的类型
                     
                     // 先尝试匹配 "时间 #标签 内容" 格式
-                    const tagMatch = blockContent.match(/^\d{2}:\d{2}\s+#[\w\/\u4e00-\u9fa5-]+\s*/);
+                    const tagMatch = blockContent.match(/^\d{2}:\d{2}(:\d{2})?\s+#[\w\/\u4e00-\u9fa5-]+\s*/);
                     if (tagMatch) {
                         // 是 "时间 #标签 内容" 格式，提取纯内容部分
                         pureContent = blockContent.substring(tagMatch[0].length).trim();
                     } else {
                         // 尝试匹配 "时间 类型：内容" 格式（类型可以是中文、英文、数字等）
-                        const typeMatch = blockContent.match(/^\d{2}:\d{2}\s+([^：:]+)[：:]\s*/);
+                        const typeMatch = blockContent.match(/^\d{2}:\d{2}(:\d{2})?\s+([^：:]+)[：:]\s*/);
                         if (typeMatch) {
                             // 是 "时间 类型：内容" 格式，提取纯内容部分
                             pureContent = blockContent.substring(typeMatch[0].length).trim();
@@ -16430,6 +17264,22 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // 显示朋友圈开关
+        const showMomentsSwitch = this.container.querySelector('#settings-show-moments-switch');
+        if (showMomentsSwitch) {
+            showMomentsSwitch.replaceWith(showMomentsSwitch.cloneNode(true));
+            const newShowMomentsSwitch = this.container.querySelector('#settings-show-moments-switch');
+            newShowMomentsSwitch.addEventListener('click', async () => {
+                const isOn = newShowMomentsSwitch.classList.toggle('on');
+                if (!this.momentsConfig) this.momentsConfig = {};
+                this.momentsConfig.showMomentsSidebar = isOn;
+                await this.saveMoments();
+                // 刷新所有视图
+                this.refreshMountedShuoshuoViews();
+                showMessage(isOn ? '已开启朋友圈侧边栏，请刷新界面生效' : '已关闭朋友圈侧边栏，请刷新界面生效');
+            });
+        }
+
         // 初始化开关状态 - 关键：根据当前 autoSync 值设置 UI
         const autoSyncSwitch = this.container.querySelector('#settings-auto-sync-switch');
         if (autoSyncSwitch) {
@@ -16531,6 +17381,46 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // 启动时打开轻语
+        const autoOpenSwitch = this.container.querySelector('#settings-auto-open-switch');
+        if (autoOpenSwitch) {
+            autoOpenSwitch.replaceWith(autoOpenSwitch.cloneNode(true));
+            const newAutoOpenSwitch = this.container.querySelector('#settings-auto-open-switch');
+            newAutoOpenSwitch.addEventListener('click', () => {
+                const isOn = newAutoOpenSwitch.classList.toggle('on');
+                localStorage.setItem(this.AUTO_OPEN_KEY, isOn ? 'true' : 'false');
+                showMessage(isOn ? '已开启启动时打开轻语' : '已关闭启动时打开轻语');
+            });
+        }
+
+        // 自定义检索式 - 新建按钮
+        const settingsAddQueryBtn = this.container.querySelector('#settings-add-query-btn');
+        if (settingsAddQueryBtn) {
+            settingsAddQueryBtn.addEventListener('click', () => {
+                this._openQueryEditor(null);
+            });
+        }
+
+        // 自定义检索式 - 编辑/删除按钮（使用事件委托）
+        const customQueriesList = this.container.querySelector('#custom-queries-list');
+        if (customQueriesList) {
+            customQueriesList.addEventListener('click', (e) => {
+                const btn = e.target.closest('.query-item-action');
+                if (!btn) return;
+                const row = btn.closest('.north-shuoshuo-custom-query-row');
+                if (!row) return;
+                const qId = row.dataset.queryId;
+                const query = this.customQueries.find(q => q.id === qId);
+                if (btn.dataset.action === 'edit-query' && query) {
+                    this._openQueryEditor(query);
+                } else if (btn.dataset.action === 'delete-query') {
+                    this._deleteCustomQuery(qId);
+                    // 刷新设置中的列表
+                    this._refreshSettingsQueryList();
+                }
+            });
+        }
+
         // LifeLog 设置 - 显示 LifeLog 记录开关
         const lifelogShowRecordsSwitch = this.container.querySelector('#lifelog-settings-show-records-switch');
         if (lifelogShowRecordsSwitch) {
@@ -16546,6 +17436,20 @@ ipcRenderer.on('lumina-close', () => {
                     this.renderLifeLog();
                 }
                 showMessage(this.showLifeLogRecords ? '已开启 LifeLog 记录显示' : '已关闭 LifeLog 记录显示');
+            });
+        }
+
+        // LifeLog 设置 - 显示 LifeLog 侧边栏视图开关
+        const lifelogShowSidebarSwitch = this.container.querySelector('#lifelog-settings-show-sidebar-switch');
+        if (lifelogShowSidebarSwitch) {
+            lifelogShowSidebarSwitch.replaceWith(lifelogShowSidebarSwitch.cloneNode(true));
+            const newLifelogShowSidebarSwitch = this.container.querySelector('#lifelog-settings-show-sidebar-switch');
+            newLifelogShowSidebarSwitch.addEventListener('click', async () => {
+                const isOn = newLifelogShowSidebarSwitch.classList.toggle('on');
+                this.showLifeLogSidebar = isOn;
+                await this.saveConfig();
+                this.refreshMountedShuoshuoViews();
+                showMessage(isOn ? '已开启 LifeLog 视图' : '已关闭 LifeLog 视图，请刷新界面生效');
             });
         }
 
@@ -16790,6 +17694,20 @@ ipcRenderer.on('lumina-close', () => {
                 showMessage('正在加载笔记本列表...');
                 this.loadNotebooks();
             };
+        }
+
+        // 图书视图 - 显示侧边栏开关
+        const bookshelfShowSidebarSwitch = this.container.querySelector('#bookshelf-settings-show-sidebar-switch');
+        if (bookshelfShowSidebarSwitch) {
+            bookshelfShowSidebarSwitch.replaceWith(bookshelfShowSidebarSwitch.cloneNode(true));
+            const newBookshelfShowSidebarSwitch = this.container.querySelector('#bookshelf-settings-show-sidebar-switch');
+            newBookshelfShowSidebarSwitch.addEventListener('click', async () => {
+                const isOn = newBookshelfShowSidebarSwitch.classList.toggle('on');
+                this.showBookshelfSidebar = isOn;
+                await this.saveConfig();
+                this.refreshMountedShuoshuoViews();
+                showMessage(isOn ? '已开启图书视图' : '已关闭图书视图，请刷新界面生效');
+            });
         }
 
         const exportShuoshuoJsonBtn = this.container.querySelector('#settings-export-shuoshuo-json');
@@ -18071,6 +18989,7 @@ ipcRenderer.on('lumina-close', () => {
                             merged.push({
                                 ...siyuan,
                                 pinned: local.pinned || false,
+                                archived: local.archived || false,
                                 id: local.id // 保留本地ID维持引用
                             });
                             processedBoundIds.add(local.boundBlockId);
@@ -18189,7 +19108,7 @@ ipcRenderer.on('lumina-close', () => {
         let contentStr = (row.content || '').trim();
         const typeStr = row.lifelog_type || '';
         // 移除内容中可能存在的时间前缀（如 10:16 ）
-        contentStr = contentStr.replace(/^\d{1,2}:\d{2}\s*/, '').trim();
+        contentStr = contentStr.replace(/^\d{1,2}:\d{2}(:\d{2})?\s*/, '').trim();
         // 如果内容以"类型："开头，移除类型前缀获取纯内容
         if (typeStr) {
             const typePrefixRegex = new RegExp(`^${typeStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[：:]\\s*`);
@@ -18211,6 +19130,7 @@ ipcRenderer.on('lumina-close', () => {
             id: `lifelog_${row.id}`,
             content: contentStr,
             tags: [],
+            archived: false,
             pinned: false,
             created: created,
             updated: created,
@@ -18274,7 +19194,7 @@ ipcRenderer.on('lumina-close', () => {
                     }
                 }
                 this.moments = data?.moments || [];
-                this.momentsConfig = data?.config || {
+                this.momentsConfig = data?.config ? { ...this.momentsConfig, ...data.config } : {
                     nickname: '月亮',
                     signature: '言念君子 温其如玉',
                     avatar: null,
@@ -18282,7 +19202,8 @@ ipcRenderer.on('lumina-close', () => {
                     syncToSiyuan: false,
                     syncNotebookId: '',
                     syncMode: 'dailynote',
-                    syncDocId: ''
+                    syncDocId: '',
+                    showMomentsSidebar: true
                 };
             } catch (e) {
                 // 加载失败时不要粗暴清空，尝试从备份恢复
@@ -18758,16 +19679,19 @@ ipcRenderer.on('lumina-close', () => {
                 this.enterToSubmit = data.enterToSubmit === true || data.enterToSubmit === 'true' || data.enterToSubmit === 1;
                 this.showSidebarDock = data.showSidebarDock === true || data.showSidebarDock === 'true' || data.showSidebarDock === 1;
                 this.showLifelogSidebarDock = data.showLifelogSidebarDock === true || data.showLifelogSidebarDock === 'true' || data.showLifelogSidebarDock === 1;
+                this.showLifeLogSidebar = data.showLifeLogSidebar !== false;
+                this.showBookshelfSidebar = data.showBookshelfSidebar !== false;
                 this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
                 this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
                 this.lifeLogCompactMode = data.lifeLogCompactMode === true || data.lifeLogCompactMode === 'true' || data.lifeLogCompactMode === 1;
                 this.galleryColumnCount = typeof data.galleryColumnCount === 'number' ? data.galleryColumnCount : 3;
                 this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
                 this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
-                this.queryVisibility = { 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, ...(data.queryVisibility || {}) };
+                this.queryVisibility = { 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, 'is-archived': false, ...(data.queryVisibility || {}) };
                 this.autoCollapseLines = typeof data.autoCollapseLines === 'number' ? data.autoCollapseLines : DEFAULT_AUTO_COLLAPSE_LINES;
                 this.customSignature = data.customSignature || '遇事不决，可问春风';
                 this.reviewHistory = data.reviewHistory || {};
+                this.customQueries = Array.isArray(data.customQueries) ? data.customQueries : [];
             } catch (e) {
                 console.warn("加载配置失败", e);
             }
@@ -18847,6 +19771,8 @@ ipcRenderer.on('lumina-close', () => {
                     enterToSubmit: this.enterToSubmit,
                     showSidebarDock: this.showSidebarDock,
                     showLifelogSidebarDock: this.showLifelogSidebarDock,
+                    showLifeLogSidebar: this.showLifeLogSidebar,
+                    showBookshelfSidebar: this.showBookshelfSidebar,
                     showLifeLogRecords: this.showLifeLogRecords,
                     compactMode: this.compactMode,
                     lifeLogCompactMode: this.lifeLogCompactMode,
@@ -18856,7 +19782,8 @@ ipcRenderer.on('lumina-close', () => {
                     queryVisibility: this.queryVisibility,
                     autoCollapseLines: this.autoCollapseLines,
                     customSignature: this.customSignature,
-                    reviewHistory: this.reviewHistory
+                    reviewHistory: this.reviewHistory,
+                    customQueries: this.customQueries
                 };
 
                 // 空数据保护：如果所有关键配置都为空但存储中有数据，不要覆盖
@@ -19932,6 +20859,7 @@ ipcRenderer.on('lumina-close', () => {
                 content: contentTrimmed + tagStr,
                 tags: flomoTags, // 仍然保存所有标签用于筛选
                 pinned: false,
+                archived: false,
                 created: new Date(memo.created_at).getTime(),
                 updated: new Date(memo.updated_at).getTime(),
                 source: 'flomo' // 标记来源
@@ -20495,6 +21423,7 @@ ipcRenderer.on('lumina-close', () => {
                 content: content,
                 tags: tags,
                 pinned: false,
+                archived: false,
                 created: createdTime,
                 updated: updatedTime,
                 source: 'writeathon'
@@ -20931,6 +21860,7 @@ ipcRenderer.on('lumina-close', () => {
                 content: processedContent,
                 tags: tags,
                 pinned: false,
+                archived: false,
                 created: createdTime,
                 updated: updatedTime,
                 source: 'memos'
