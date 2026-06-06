@@ -7,12 +7,6 @@ const MOMENTS_CONFIG_NAME = "lumina-moments-config";
 const BOOKS_STORAGE_NAME = "lumina-bookshelf-data";
 const TAB_TYPE = "shuoshuo-tab";
 
-// 数据备份键名（防止主存储损坏/丢失时无法恢复）
-const STORAGE_BACKUP_NAME = "shuoshuo-data-backup";
-const CONFIG_BACKUP_NAME = "shuoshuo-config-backup";
-const MOMENTS_BACKUP_NAME = "lumina-moments-backup";
-const BOOKS_BACKUP_NAME = "lumina-bookshelf-backup";
-
 // 莫兰迪配色方案
 const MORANDI_COLORS = [
     // 浅色系列
@@ -487,6 +481,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.autoCollapseLines = DEFAULT_AUTO_COLLAPSE_LINES; // 长笔记自动折叠行数
         this._refreshTimer = null; // 防抖刷新定时器
         this._boundBlockIdsCache = new Set(); // 已绑定块ID的缓存（用于快速查找）
+
+        // —— 思源绑定块查询缓存（游标分页 + 内存缓存 + 持久化缓存）——
+        this._siyuanPageSize = 500;            // 每批读取 500 条
+        this._siyuanMaxScan = 20000;           // 最多扫描 20000 行（安全边界）
+        this._siyuanMemCacheTTL = 5000;        // 内存缓存 5 秒
+        this._siyuanPersistCacheTTL = 30 * 60 * 1000; // 持久化缓存 30 分钟
+        this._siyuanMemCache = { data: null, timestamp: 0 };
+
         this._saveLocks = new Map(); // save/load 并发锁
         this._wsBroadcast = null;
         this._wsBroadcastReconnectTimer = null;
@@ -736,37 +738,11 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         }
     }
 
-    async _backupData(key, backupKey) {
-        try {
-            const existing = await this.loadData(key);
-            const hasData = Array.isArray(existing)
-                ? existing.length > 0
-                : (existing && Object.keys(existing).length > 0);
-            if (hasData) {
-                await this.saveData(backupKey, existing);
-            }
-        } catch (e) {
-            // 忽略备份失败
-        }
-    }
-
-    async _restoreFromBackup(key, backupKey) {
-        try {
-            const backup = await this.loadData(backupKey);
-            const hasData = Array.isArray(backup)
-                ? backup.length > 0
-                : (backup && Object.keys(backup).length > 0);
-            if (hasData) {
-                await this.saveData(key, backup);
-                return backup;
-            }
-        } catch (e) {
-            // 忽略恢复失败
-        }
-        return null;
-    }
-
     onLayoutReady() {
+        // 清理旧版本遗留的备份数据
+        const oldBackupKeys = ["shuoshuo-data-backup", "shuoshuo-config-backup", "lumina-moments-backup", "lumina-bookshelf-backup"];
+        oldBackupKeys.forEach(k => this.saveData(k, null).catch(() => {}));
+
         const plugin = this;
         if (this.isMobile) {
             this.addDock({
@@ -14568,6 +14544,10 @@ ipcRenderer.on('lumina-close', () => {
                 <span class="north-shuoshuo-menu-text">编辑</span>
             </div>
             <div class="north-shuoshuo-menu-divider"></div>
+            <div class="north-shuoshuo-menu-item" data-action="copy">
+                <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconCopy"></use></svg></span>
+                <span class="north-shuoshuo-menu-text">复制</span>
+            </div>
             <div class="north-shuoshuo-menu-item" data-action="comment">
                 <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconMark"></use></svg></span>
                 <span class="north-shuoshuo-menu-text">批注</span>
@@ -14634,6 +14614,23 @@ ipcRenderer.on('lumina-close', () => {
                     break;
                 case 'edit':
                     this.editNote(id);
+                    break;
+                case 'copy':
+                    try {
+                        await navigator.clipboard.writeText(item.content || '');
+                        showMessage('已复制到剪贴板');
+                    } catch (e) {
+                        // 降级方案
+                        const ta = document.createElement('textarea');
+                        ta.value = item.content || '';
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        showMessage('已复制到剪贴板');
+                    }
                     break;
                 case 'comment':
                     this.commentOnNote(id);
@@ -15294,59 +15291,177 @@ ipcRenderer.on('lumina-close', () => {
 
     // ===== 思源笔记双向绑定相关函数 =====
 
-    /**
-     * 从思源笔记中查询所有绑定了 Lumina 属性的块，加载为说说列表
-     * 通过 SQL 查询具有 custom-lumina-content 属性的块，获取其内容和属性
-     */
+    // ============ 思源绑定块查询：游标分页 + 缓存 + 增量更新 ============
+
+    // 缓存键名（持久化缓存存储键）
+    get SIYUAN_BOUND_CACHE_KEY() { return 'shuoshuo-siyuan-bound-cache'; }
+
+    // 获取内存缓存
+    _getSiyuanMemCache() {
+        const c = this._siyuanMemCache;
+        if (c.data && Date.now() - c.timestamp < this._siyuanMemCacheTTL) {
+            return c.data;
+        }
+        return null;
+    }
+
+    // 设置内存缓存
+    _setSiyuanMemCache(data) {
+        this._siyuanMemCache.data = data;
+        this._siyuanMemCache.timestamp = Date.now();
+    }
+
+    // 获取持久化缓存
+    async _getSiyuanPersistCache() {
+        try {
+            const cached = await this.loadData(this.SIYUAN_BOUND_CACHE_KEY);
+            if (!cached || !cached.data) return null;
+            if (Date.now() - new Date(cached.updatedAt).getTime() > this._siyuanPersistCacheTTL) return null;
+            return cached.data;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // 保存持久化缓存
+    async _setSiyuanPersistCache(data) {
+        try {
+            await this.saveData(this.SIYUAN_BOUND_CACHE_KEY, {
+                data: data,
+                updatedAt: new Date().toISOString(),
+                version: 1
+            });
+        } catch (e) {
+            // 缓存保存失败不影响主流程
+        }
+    }
+
+    // 失效缓存（内存 + 持久化同时清掉）
+    async _invalidateSiyuanBoundCache() {
+        this._siyuanMemCache = { data: null, timestamp: 0 };
+        try {
+            await this.saveData(this.SIYUAN_BOUND_CACHE_KEY, null);
+        } catch (e) {}
+    }
+
+    // 批量查询指定 block 的自定义属性（替代逐条 getBlockAttrs）
+    async _batchFetchLuminaAttrs(blockIds) {
+        if (!blockIds.length) return new Map();
+        const map = new Map();
+        const batchSize = 500;
+        for (let i = 0; i < blockIds.length; i += batchSize) {
+            const batch = blockIds.slice(i, i + batchSize);
+            const quoted = batch.map(id => `'${id.replace(/'/g, "''")}'`).join(',');
+            const rows = await this._sqlQuery(`
+                SELECT block_id, name, value
+                FROM attributes
+                WHERE block_id IN (${quoted})
+                  AND name IN ('custom-lumina-content', 'custom-lumina-date', 'custom-lumina-tag', 'custom-lumina-type')
+            `);
+            for (const row of rows) {
+                if (!map.has(row.block_id)) map.set(row.block_id, {});
+                map.get(row.block_id)[row.name] = row.value;
+            }
+        }
+        return map;
+    }
+
+    // 辅助：执行 /api/query/sql 返回 data 数组
+    async _sqlQuery(stmt) {
+        const resp = await fetch('/api/query/sql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stmt })
+        });
+        const result = await resp.json();
+        if (result.code !== 0 || !Array.isArray(result.data)) return [];
+        return result.data;
+    }
+
+    // 核心方法：从思源查询所有绑定块（游标分页 + 缓存）
     async loadShuoshuosFromSiyuan() {
         this._lastLoadShuoshuosFromSiyuanOk = false;
         this._lastSiyuanBoundBlockIds = null;
+
         try {
-            // 查询所有具有 custom-lumina-content 属性且内容非空的块
-            const sqlResponse = await fetch('/api/query/sql', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    stmt: `SELECT b.id, b.content, b.updated
-                           FROM blocks b
-                           WHERE b.id IN (
-                               SELECT a.block_id
-                               FROM attributes a
-                               WHERE a.name = 'custom-lumina-content' AND a.value != ''
-                           )
-                           ORDER BY b.updated DESC`
-                })
-            });
-            const sqlResult = await sqlResponse.json();
-            if (sqlResult.code !== 0 || !Array.isArray(sqlResult.data)) {
+            // 1. 内存缓存命中 → 直接返回
+            const mem = this._getSiyuanMemCache();
+            if (mem) {
+                this._lastLoadShuoshuosFromSiyuanOk = true;
+                this._lastSiyuanBoundBlockIds = new Set(mem.map(s => s.boundBlockId).filter(Boolean));
+                return mem;
+            }
+
+            // 2. 持久化缓存命中 → 加载并写入内存缓存后返回
+            const persisted = await this._getSiyuanPersistCache();
+            if (persisted) {
+                this._setSiyuanMemCache(persisted);
+                this._lastLoadShuoshuosFromSiyuanOk = true;
+                this._lastSiyuanBoundBlockIds = new Set(persisted.map(s => s.boundBlockId).filter(Boolean));
+                return persisted;
+            }
+
+            // 3. 缓存未命中 → 游标分页扫描
+            // 第一遍：只扫描 blocks 基础信息（游标分页扫完）
+            let allRows = [];
+            let lastId = '';
+            let scanned = 0;
+
+            while (scanned < this._siyuanMaxScan) {
+                const limit = Math.min(this._siyuanPageSize, this._siyuanMaxScan - scanned);
+                const whereCursor = lastId ? `AND b.id > '${lastId.replace(/'/g, "''")}'` : '';
+                const rows = await this._sqlQuery(`
+                    SELECT b.id, b.content, b.updated
+                    FROM attributes a
+                    INNER JOIN blocks b ON b.id = a.block_id
+                    WHERE a.name = 'custom-lumina-content' AND a.value != ''
+                    ${whereCursor}
+                    ORDER BY b.id
+                    LIMIT ${limit}
+                `);
+                if (!rows.length) break;
+                allRows.push(...rows);
+                scanned += rows.length;
+                lastId = rows[rows.length - 1].id;
+            }
+
+            if (scanned >= this._siyuanMaxScan) {
+                console.warn('[轻语] 绑定块扫描达到上限，结果可能不完整');
+            }
+
+            if (!allRows.length) {
+                this._lastLoadShuoshuosFromSiyuanOk = true;
+                this._lastSiyuanBoundBlockIds = new Set();
                 return [];
             }
+
+            // 第二遍：批量查询所有块的自定义属性
+            const blockIds = allRows.map(r => r.id);
+            const attrsMap = await this._batchFetchLuminaAttrs(blockIds);
+
+            // 第三遍：组装说说对象
             this._lastLoadShuoshuosFromSiyuanOk = true;
-            this._lastSiyuanBoundBlockIds = new Set(sqlResult.data.map(row => row?.id).filter(Boolean));
+            this._lastSiyuanBoundBlockIds = new Set(blockIds);
 
             const boundShuoshuos = [];
-            for (const row of sqlResult.data) {
+            for (const row of allRows) {
                 const blockId = row.id;
                 try {
-                    // 获取块的自定义属性
-                    const attrResponse = await fetch('/api/attr/getBlockAttrs', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: blockId })
-                    });
-                    const attrResult = await attrResponse.json();
-                    if (attrResult.code !== 0) continue;
-
-                    const attrs = attrResult.data || {};
+                    const attrs = attrsMap.get(blockId) || {};
                     const attrContent = attrs['custom-lumina-content'] || '';
                     const luminaDate = attrs['custom-lumina-date'] || '';
                     const luminaTag = attrs['custom-lumina-tag'] || '';
-                    const luminaType = attrs['custom-lumina-type'] || '';  // 类型（#类型# 格式中的类型名）
+                    const luminaType = attrs['custom-lumina-type'] || '';
 
                     // 使用 custom-lumina-content 属性值（_syncBoundBlockAttr 已实时同步）
                     // 属性值为空时回退到 SQL 内容
                     let luminaContent = attrContent || (row.content || '').trim();
                     if (!luminaContent) continue;
+
+                    // 清理 luminaContent：移除可能从日记同步过来的引用块前缀
+                    // 格式："[!NOTE] ✏️ 2026-6-5 00:52 内容" → "内容"
+                    // 也处理 "NOTE ✏️ 2026-6-5 00:52 内容"（部分场景下 [! 被剥离）
+                    luminaContent = luminaContent.replace(/^\[?!?NOTE\]?\s*✏️\s*\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}\s*/, '').trim();
 
                     // 清理 luminaContent：移除可能的时间前缀和类型前缀
                     // 处理格式："08:51 学习： 内容" 或 "08:51 #标签 内容" → 提取纯内容
@@ -15366,12 +15481,8 @@ ipcRenderer.on('lumina-close', () => {
                     // 此时应跳过此块，并清除属性值以便下次 SQL 查询也跳过
                     const rowContent = (row.content || '').trim();
                     if (!rowContent && attrContent) {
-                        // 静默清除属性，让下次 SQL 不再查到
-                        this.setLuminaBlockAttrs(blockId, {
-                            content: '',
-                            date: luminaDate,
-                            tag: luminaTag,
-                            type: luminaType
+                        await this.setLuminaBlockAttrs(blockId, {
+                            content: '', date: luminaDate, tag: luminaTag, type: luminaType
                         }).catch(() => {});
                         continue;
                     }
@@ -15384,34 +15495,23 @@ ipcRenderer.on('lumina-close', () => {
                     let created = Date.now();
                     if (luminaDate) {
                         const parsed = new Date(luminaDate.replace(/-/g, '/'));
-                        if (!isNaN(parsed.getTime())) {
-                            created = parsed.getTime();
-                        }
+                        if (!isNaN(parsed.getTime())) created = parsed.getTime();
                     }
 
                     // 根据 row.updated 计算 updated 时间
                     let updated = created;
                     if (row.updated) {
                         const updatedStr = String(row.updated);
-                        // 思源返回的 updated 格式为 YYYYMMDDHHmmss 或 YYYYMMDD
                         if (/^\d{14}$/.test(updatedStr)) {
-                            const y = updatedStr.slice(0, 4);
-                            const M = updatedStr.slice(4, 6);
-                            const d = updatedStr.slice(6, 8);
-                            const h = updatedStr.slice(8, 10);
-                            const m = updatedStr.slice(10, 12);
-                            const s = updatedStr.slice(12, 14);
+                            const y = updatedStr.slice(0,4), M = updatedStr.slice(4,6), d = updatedStr.slice(6,8);
+                            const h = updatedStr.slice(8,10), m = updatedStr.slice(10,12), s = updatedStr.slice(12,14);
                             updated = new Date(`${y}-${M}-${d}T${h}:${m}:${s}`).getTime();
                         } else if (/^\d{8}$/.test(updatedStr)) {
-                            const y = updatedStr.slice(0, 4);
-                            const M = updatedStr.slice(4, 6);
-                            const d = updatedStr.slice(6, 8);
+                            const y = updatedStr.slice(0,4), M = updatedStr.slice(4,6), d = updatedStr.slice(6,8);
                             updated = new Date(`${y}-${M}-${d}`).getTime();
                         } else {
                             const parsedUpdated = new Date(updatedStr.replace(/-/g, '/'));
-                            if (!isNaN(parsedUpdated.getTime())) {
-                                updated = parsedUpdated.getTime();
-                            }
+                            if (!isNaN(parsedUpdated.getTime())) updated = parsedUpdated.getTime();
                         }
                     }
 
@@ -15419,10 +15519,8 @@ ipcRenderer.on('lumina-close', () => {
                     let displayContent;
                     const localShuoshuo = this.shuoshuos.find(s => s.boundBlockId === blockId);
                     if (localShuoshuo && localShuoshuo.content) {
-                        // 使用本地旧内容作为模板，保持标签位置不变
                         displayContent = this.rebuildContentWithNewPureContent(localShuoshuo.content, luminaContent);
                     } else {
-                        // 没有本地记录，默认标签在前
                         displayContent = luminaContent;
                         if (types.length > 0) {
                             displayContent = displayContent + ' ' + types.map(t => `#${t}#`).join(' ');
@@ -15433,19 +15531,24 @@ ipcRenderer.on('lumina-close', () => {
                     }
 
                     boundShuoshuos.push({
-                        id: blockId, // 使用块ID作为唯一标识
+                        id: blockId,
                         content: displayContent,
                         tags: tags,
                         pinned: false,
                         archived: false,
                         created: created,
                         updated: updated,
-                        boundBlockId: blockId // 标记已绑定到思源块
+                        boundBlockId: blockId
                     });
                 } catch (e) {
-                    // console.warn('[轻语] 读取块属性失败:', blockId, e);
+                    // console.warn('[轻语] 处理绑定块失败:', blockId, e);
                 }
             }
+
+            // 4. 写入缓存
+            this._setSiyuanMemCache(boundShuoshuos);
+            await this._setSiyuanPersistCache(boundShuoshuos);
+
             return boundShuoshuos;
         } catch (e) {
             // console.error('[轻语] 从思源查询绑定块失败:', e);
@@ -16439,7 +16542,13 @@ ipcRenderer.on('lumina-close', () => {
                 const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
                 // 如果块不在当前说说列表中，不设置属性（避免给 LifeLog 等未绑定块设置属性）
                 if (index === -1) return;
-                
+
+                // ★ 重要：先清理 blockContent，再保存到属性
+                // 处理子段落在 blockquote 内时 kramdown 不带 > 前缀的情况：
+                // 原始内容可能是 "[!NOTE] ✏️ 2026-6-7 00:17 内容" 或 "NOTE ✏️ 2026-6-7 00:17 内容"
+                // 统一清理为纯内容
+                blockContent = blockContent.replace(/^\[?!?NOTE\]?\s*✏️\s*\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}\s*/, '').trim();
+
                 let currentType = attrs['custom-lumina-type'] || '';
                 currentType = this.extractType(this.shuoshuos[index].content);
                 const isLifeLog = !!this.shuoshuos[index]._isLifeLog || !!currentType;
@@ -16460,7 +16569,7 @@ ipcRenderer.on('lumina-close', () => {
                     // 保留说说视图中的标签和类型格式
                     const oldShuoshuoContent = this.shuoshuos[index].content;
                     const oldType = this.extractType(oldShuoshuoContent); // 提取原来的类型（如 #固#）
-                    
+
                     // 解析思源笔记格式，支持两种格式：
                     // 1. "06:49 #标签 记录111" → 提取纯内容 "记录111"
                     // 2. "06:49 固：激励理论" → 提取纯内容 "激励理论"
@@ -16664,6 +16773,8 @@ ipcRenderer.on('lumina-close', () => {
         const blockId = data.id || null;
         const isBlockChange = cmd === 'saved' || cmd === 'setblockattrs' || cmd === 'updated';
         if (!isBlockChange) return;
+        // 思源侧数据变动，失效绑定块缓存（确保 refreshBoundBlocks 读到最新）
+        this._invalidateSiyuanBoundCache();
         if (blockId) {
             if (this._isBoundBlockId(blockId)) {
                 this._debouncedRefreshBound(blockId);
@@ -16671,7 +16782,6 @@ ipcRenderer.on('lumina-close', () => {
         } else {
             this._debouncedRefreshBound();
         }
-
     }
 
     // 防抖刷新 LifeLog 视图（利用 transaction、ws-main 和广播事件实现实时更新）
@@ -18941,14 +19051,6 @@ ipcRenderer.on('lumina-close', () => {
             try {
                 // 1. 先从本地加载未绑定的说说
                 let data = await this.loadData(STORAGE_NAME);
-                // 数据丢失保护：主存储为空时尝试从备份恢复
-                if (!data || data.length === 0) {
-                    const restored = await this._restoreFromBackup(STORAGE_NAME, STORAGE_BACKUP_NAME);
-                    if (restored) {
-                        data = restored;
-                        console.warn('[轻语] 主数据为空，已从备份恢复说说数据');
-                    }
-                }
                 const localShuoshuos = data || [];
 
                 // 关键：先把本地数据设到 this.shuoshuos，让 loadShuoshuosFromSiyuan 能查到旧内容模板
@@ -19014,15 +19116,8 @@ ipcRenderer.on('lumina-close', () => {
                 }
             } catch (e) {
                 console.warn("加载笔记失败", e);
-                // 加载失败时尝试从备份恢复
                 if (!this.shuoshuos || this.shuoshuos.length === 0) {
-                    const restored = await this._restoreFromBackup(STORAGE_NAME, STORAGE_BACKUP_NAME);
-                    if (restored) {
-                        this.shuoshuos = restored;
-                        console.warn('[轻语] 加载异常，已从备份恢复说说数据');
-                    } else {
-                        this.shuoshuos = [];
-                    }
+                    this.shuoshuos = [];
                 }
             }
 
@@ -19031,40 +19126,63 @@ ipcRenderer.on('lumina-close', () => {
         });
     }
 
-    // 查询思源笔记中带有 LifeLog 属性的记录（今年）
+    // 查询思源笔记中带有 LifeLog 属性的记录（游标分页，不依赖 LIMIT -1）
     // 只查询带有 custom-lifelog-* 属性的块（LifeLog 插件标准方式）
     async queryLifeLogRecords() {
         const records = [];
+        const pageSize = 500;
+        const maxScan = 10000;
+        let scanned = 0;
+        let lastDate = '';
+        let lastTime = '';
+        let lastId = '';
 
-        const sql = `
-            SELECT 
-                b.id,
-                b.content,
-                a1.value AS lifelog_date,
-                a2.value AS lifelog_time,
-                a3.value AS lifelog_type
-            FROM blocks b
-            INNER JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
-            INNER JOIN attributes a2 ON b.id = a2.block_id AND a2.name = 'custom-lifelog-time'
-            INNER JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
-            WHERE 
-                b.type = 'p'
-            ORDER BY 
-                a1.value DESC, 
-                a2.value DESC
-            LIMIT -1
-        `;
         try {
-            const resp = await fetch('/api/query/sql', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ stmt: sql })
-            });
-            const result = await resp.json();
-            if (result.code === 0 && result.data) {
-                for (const row of result.data) {
+            while (scanned < maxScan) {
+                const limit = Math.min(pageSize, maxScan - scanned);
+                // 复合游标：按 (lifelog_date DESC, lifelog_time DESC, b.id) 分页
+                let whereCursor = '';
+                if (lastId) {
+                    const escDate = lastDate.replace(/'/g, "''");
+                    const escTime = lastTime.replace(/'/g, "''");
+                    const escId = lastId.replace(/'/g, "''");
+                    whereCursor = `AND (a1.value < '${escDate}'
+                                   OR (a1.value = '${escDate}' AND a2.value < '${escTime}')
+                                   OR (a1.value = '${escDate}' AND a2.value = '${escTime}' AND b.id > '${escId}'))`;
+                }
+
+                const sql = `
+                    SELECT b.id, b.content,
+                           a1.value AS lifelog_date,
+                           a2.value AS lifelog_time,
+                           a3.value AS lifelog_type
+                    FROM blocks b
+                    INNER JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
+                    INNER JOIN attributes a2 ON b.id = a2.block_id AND a2.name = 'custom-lifelog-time'
+                    INNER JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
+                    WHERE b.type = 'p'
+                    ${whereCursor}
+                    ORDER BY a1.value DESC, a2.value DESC, b.id
+                    LIMIT ${limit}
+                `;
+
+                const resp = await fetch('/api/query/sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stmt: sql })
+                });
+                const result = await resp.json();
+                if (result.code !== 0 || !Array.isArray(result.data) || !result.data.length) break;
+
+                const rows = result.data;
+                for (const row of rows) {
                     records.push(this._parseLifeLogRow(row, true));
                 }
+
+                scanned += rows.length;
+                lastDate = rows[rows.length - 1].lifelog_date || '';
+                lastTime = rows[rows.length - 1].lifelog_time || '';
+                lastId = rows[rows.length - 1].id;
             }
         } catch (e) {
             // console.warn('[轻语] 查询 LifeLog 属性记录失败:', e.message);
@@ -19185,14 +19303,6 @@ ipcRenderer.on('lumina-close', () => {
         return this._withSaveLock('moments', async () => {
             try {
                 let data = await this.loadData(MOMENTS_STORAGE_NAME);
-                // 数据丢失保护：主存储为空时尝试从备份恢复
-                if (!data || Object.keys(data).length === 0) {
-                    const restored = await this._restoreFromBackup(MOMENTS_STORAGE_NAME, MOMENTS_BACKUP_NAME);
-                    if (restored) {
-                        data = restored;
-                        console.warn('[轻语] 主数据为空，已从备份恢复朋友圈数据');
-                    }
-                }
                 this.moments = data?.moments || [];
                 this.momentsConfig = data?.config ? { ...this.momentsConfig, ...data.config } : {
                     nickname: '月亮',
@@ -19206,16 +19316,9 @@ ipcRenderer.on('lumina-close', () => {
                     showMomentsSidebar: true
                 };
             } catch (e) {
-                // 加载失败时不要粗暴清空，尝试从备份恢复
+                // 加载失败时不要粗暴清空
                 if (!this.moments || this.moments.length === 0) {
-                    const restored = await this._restoreFromBackup(MOMENTS_STORAGE_NAME, MOMENTS_BACKUP_NAME);
-                    if (restored) {
-                        this.moments = restored.moments || [];
-                        this.momentsConfig = restored.config || this.momentsConfig;
-                        console.warn('[轻语] 加载异常，已从备份恢复朋友圈数据');
-                    } else if (!this.moments) {
-                        this.moments = [];
-                    }
+                    this.moments = [];
                 }
                 if (!this.momentsConfig) {
                     this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '' };
@@ -19250,7 +19353,6 @@ ipcRenderer.on('lumina-close', () => {
                         return;
                     }
                 }
-                await this._backupData(MOMENTS_STORAGE_NAME, MOMENTS_BACKUP_NAME);
                 await this.saveData(MOMENTS_STORAGE_NAME, dataToSave);
             } catch (e) {
                 console.error('保存朋友圈失败', e);
@@ -19263,24 +19365,10 @@ ipcRenderer.on('lumina-close', () => {
         return this._withSaveLock('books', async () => {
             try {
                 let data = await this.loadData(BOOKS_STORAGE_NAME);
-                // 数据丢失保护：主存储为空时尝试从备份恢复
-                if (!data || Object.keys(data).length === 0) {
-                    const restored = await this._restoreFromBackup(BOOKS_STORAGE_NAME, BOOKS_BACKUP_NAME);
-                    if (restored) {
-                        data = restored;
-                        console.warn('[轻语] 主数据为空，已从备份恢复图书数据');
-                    }
-                }
                 this.books = data?.books || getDefaultBooks();
             } catch (e) {
                 if (!this.books || this.books.length === 0) {
-                    const restored = await this._restoreFromBackup(BOOKS_STORAGE_NAME, BOOKS_BACKUP_NAME);
-                    if (restored) {
-                        this.books = restored.books || getDefaultBooks();
-                        console.warn('[轻语] 加载异常，已从备份恢复图书数据');
-                    } else {
-                        this.books = getDefaultBooks();
-                    }
+                    this.books = getDefaultBooks();
                 }
             }
         });
@@ -19298,7 +19386,6 @@ ipcRenderer.on('lumina-close', () => {
                         return;
                     }
                 }
-                await this._backupData(BOOKS_STORAGE_NAME, BOOKS_BACKUP_NAME);
                 await this.saveData(BOOKS_STORAGE_NAME, dataToSave);
             } catch (e) {
                 console.error('保存图书数据失败', e);
@@ -19631,14 +19718,6 @@ ipcRenderer.on('lumina-close', () => {
         return this._withSaveLock('config', async () => {
             try {
                 let data = await this.loadData(CONFIG_STORAGE_NAME);
-                // 数据丢失保护：主存储为空时尝试从备份恢复
-                if (!data || Object.keys(data).length === 0) {
-                    const restored = await this._restoreFromBackup(CONFIG_STORAGE_NAME, CONFIG_BACKUP_NAME);
-                    if (restored) {
-                        data = restored;
-                        console.warn('[轻语] 主配置为空，已从备份恢复配置数据');
-                    }
-                }
                 // 如果 data 为空或没有实质内容，尝试从旧配置迁移
                 if (!data || Object.keys(data).length === 0) {
                     data = await this.migrateOldConfig();
@@ -19802,7 +19881,6 @@ ipcRenderer.on('lumina-close', () => {
                     }
                 }
 
-                await this._backupData(CONFIG_STORAGE_NAME, CONFIG_BACKUP_NAME);
                 await this.saveData(CONFIG_STORAGE_NAME, config);
 
                 // 同时备份 tagIcons，防止丢失
@@ -19851,13 +19929,6 @@ ipcRenderer.on('lumina-close', () => {
                 // 过滤掉可以从思源读取的 LifeLog（有 boundBlockId 的），避免重复保存
                 // 但保留本地创建的 LifeLog（无 boundBlockId），这样不开自动同步时也能显示
                 const localOnly = this.shuoshuos.filter(s => !(s._isLifeLog && s.boundBlockId));
-                if (localOnly.length === 0) {
-                    // 全部删除时同时清除备份，防止 loadShuoshuos 从备份恢复已删除的数据
-                    await this.saveData(STORAGE_BACKUP_NAME, []);
-                } else {
-                    // 保存前先备份旧数据
-                    await this._backupData(STORAGE_NAME, STORAGE_BACKUP_NAME);
-                }
                 await this.saveData(STORAGE_NAME, localOnly);
                 // 保存后更新已绑定块ID的缓存
                 this._updateBoundCache();
@@ -19865,6 +19936,8 @@ ipcRenderer.on('lumina-close', () => {
                 console.warn("保存笔记失败", e);
                 showMessage("保存失败: " + e.message);
             }
+            // 数据变动后失效思源绑定块缓存（下次 loadShuoshuosFromSiyuan 会重建）
+            this._invalidateSiyuanBoundCache();
         });
     }
 
