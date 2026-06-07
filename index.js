@@ -494,6 +494,18 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._wsBroadcastReconnectTimer = null;
         this._wsBroadcastReconnectRetries = 0;
         this._wsBroadcastDestroyed = false;
+
+        // ===== 分页/无限滚动配置 =====
+        this._notesPageSize = 50;           // 每页笔记数量
+        this._notesDisplayLimit = 50;       // 当前显示上限（动态增长）
+        this._scrollSentinel = null;        // 滚动哨兵元素
+        this._scrollObserverActive = false; // 滚动观察器是否激活
+
+        // ===== 骨架屏状态 =====
+        this._skeletonActive = false;       // 是否正在显示骨架屏
+
+        // ===== 增量渲染缓存（用于检测变化）=====
+        this._lastFilteredIds = [];         // 上次过滤结果的 ID 列表
         this.moments = []; // 朋友圈数据
         this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, showMomentsSidebar: true };
         this.books = []; // 图书书架数据
@@ -736,6 +748,414 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             this._saveLocks.delete(key);
             resolve();
         }
+    }
+
+    // ============ 统一防抖/节流工具 ============
+
+    // 防抖：delay 毫秒内多次调用只执行最后一次
+    // 返回的函数附带 .cancel() 方法用于立即取消
+    _debounce(fn, delay = 300) {
+        const key = fn.name || '_anon_' + Math.random().toString(36).slice(2);
+        if (!this._debounceTimers) this._debounceTimers = {};
+        const debounced = (...args) => {
+            if (this._debounceTimers[key]) clearTimeout(this._debounceTimers[key]);
+            this._debounceTimers[key] = setTimeout(() => {
+                fn.apply(this, args);
+                delete this._debounceTimers[key];
+            }, delay);
+        };
+        debounced.cancel = () => {
+            if (this._debounceTimers[key]) {
+                clearTimeout(this._debounceTimers[key]);
+                delete this._debounceTimers[key];
+            }
+        };
+        return debounced;
+    }
+
+    // 节流：每 delay 毫秒最多执行一次
+    _throttle(fn, delay = 200) {
+        const key = fn.name || '_anon_' + Math.random().toString(36).slice(2);
+        if (!this._throttleTimers) this._throttleTimers = {};
+        if (!this._throttleLastRun) this._throttleLastRun = {};
+        return (...args) => {
+            const now = Date.now();
+            if (this._throttleLastRun[key] && now - this._throttleLastRun[key] < delay) return;
+            this._throttleLastRun[key] = now;
+            fn.apply(this, args);
+        };
+    }
+
+    // 清理所有防抖/节流定时器
+    _clearTimers() {
+        if (this._debounceTimers) {
+            Object.values(this._debounceTimers).forEach(t => clearTimeout(t));
+            this._debounceTimers = {};
+        }
+        if (this._throttleTimers) {
+            Object.values(this._throttleTimers).forEach(t => clearTimeout(t));
+            this._throttleTimers = {};
+        }
+        this._throttleLastRun = {};
+    }
+
+    // ============ 滚动位置管理 ============
+
+    // 保存列表的滚动位置
+    _saveScroll(listEl) {
+        if (!listEl) return 0;
+        const key = listEl.id || listEl.className || 'default';
+        if (!this._scrollPositions) this._scrollPositions = {};
+        this._scrollPositions[key] = listEl.scrollTop;
+        return listEl.scrollTop;
+    }
+
+    // 恢复列表的滚动位置（在下次 rAF 中执行，确保 DOM 已更新）
+    _restoreScroll(listEl) {
+        if (!listEl) return;
+        const key = listEl.id || listEl.className || 'default';
+        if (!this._scrollPositions || this._scrollPositions[key] === undefined) return;
+        const savedTop = this._scrollPositions[key];
+        requestAnimationFrame(() => {
+            listEl.scrollTop = savedTop;
+        });
+    }
+
+    // 生成唯一 ID 的简写
+    _uid() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+
+    // ============ 增量 DOM 更新（只更新变化的卡片，避免整体重绘） ============
+
+    // 对比新旧数据，仅对变化的卡片做最小 DOM 操作
+    // sortedNotes: 排序后的完整笔记数组
+    // listEl: #shuoshuo-notes-list 元素
+    // renderFn: 渲染单张卡片的函数，接收 note 对象返回 HTML 字符串
+    // groupFn: 可选，返回分组标题 HTML
+    _updateNoteListDiff(sortedNotes, listEl, renderFn, groupFn) {
+        if (!listEl) return;
+
+        const newIds = new Set(sortedNotes.map(n => n.id));
+        const existingCards = listEl.querySelectorAll('[data-id]');
+
+        // 1. 删除已移除的 DOM 卡片
+        for (const card of existingCards) {
+            if (!newIds.has(card.dataset.id)) {
+                card.remove();
+            }
+        }
+
+        // 2. 获取当前保留的卡片 ID 列表（按 DOM 顺序）
+        const remainingCards = listEl.querySelectorAll('[data-id]');
+        const remainingIds = Array.from(remainingCards).map(c => c.dataset.id);
+
+        // 3. 找出需要新增的（新数据中不在当前 DOM 里的）
+        const toAdd = sortedNotes.filter(n => !remainingIds.includes(n.id));
+
+        if (toAdd.length === 0) return; // 没有新增
+
+        // 4. 使用 DocumentFragment 批量构建新卡片
+        const fragment = document.createDocumentFragment();
+
+        // 按日期分组处理（新增的笔记通常都在顶部）
+        if (groupFn) {
+            // 使用分组渲染
+            const groups = this.groupNotesByDate(toAdd);
+            for (const [dateKey, notes] of groups) {
+                const groupTitle = this.getDateGroupTitle(dateKey);
+                const groupEl = document.createElement('div');
+                groupEl.className = 'north-shuoshuo-date-group';
+                groupEl.textContent = groupTitle;
+                fragment.appendChild(groupEl);
+
+                notes.forEach(note => {
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = renderFn(note);
+                    const card = wrapper.firstElementChild;
+                    if (card) fragment.appendChild(card);
+                });
+            }
+        } else {
+            // 无分组，直接渲染卡片
+            toAdd.forEach(note => {
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = renderFn(note);
+                const card = wrapper.firstElementChild;
+                if (card) fragment.appendChild(card);
+            });
+        }
+
+        // 5. 插入到列表顶部（新笔记通常在数据的最前面）
+        // 查找第一个分组标题或卡片，在其前面插入
+        const firstChild = listEl.firstChild;
+        if (firstChild) {
+            listEl.insertBefore(fragment, firstChild);
+        } else {
+            listEl.appendChild(fragment);
+        }
+    }
+
+    // 构建单张笔记卡片的 DOM 元素（供增量更新使用）
+    _createNoteCardElement(item) {
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = this.renderNoteCard(item);
+        return wrapper.firstElementChild;
+    }
+
+    // ============ 筛选/排序 + 增量渲染 + 分页 + 骨架屏 ============
+
+    // 获取筛选后的笔记（从 renderNotes 中提取的筛选逻辑）
+    _getFilteredAndSortedNotes() {
+        let filtered = [...this.shuoshuos];
+
+        // 本周视图筛选
+        if (this.currentMainView === 'week') {
+            const now = new Date();
+            const dayOfWeek = now.getDay();
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+            weekStart.setHours(0, 0, 0, 0);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 7);
+            filtered = filtered.filter(s => {
+                const d = new Date(s.created);
+                return d >= weekStart && d < weekEnd;
+            });
+        }
+
+        // 日期筛选
+        if (this.selectedDate) {
+            filtered = filtered.filter(s => {
+                const d = new Date(s.created);
+                return this.formatDateKey(d) === this.selectedDate;
+            });
+        }
+
+        // 标签筛选
+        if (this.selectedTag) {
+            filtered = filtered.filter(s => {
+                if (!s.tags) return false;
+                return s.tags.some(tag => tag === this.selectedTag || tag.startsWith(this.selectedTag + '/'));
+            });
+        }
+
+        // 排除归档
+        if (this.filterQuery !== 'is-archived') {
+            filtered = filtered.filter(s => !s.archived);
+        }
+
+        // 检索式筛选
+        if (this.filterQuery) {
+            if (this.filterQuery === 'is-archived') {
+                filtered = filtered.filter(s => s.archived === true);
+            } else if (this.filterQuery.startsWith('custom:')) {
+                const queryId = this.filterQuery.replace('custom:', '');
+                const query = this.customQueries.find(q => q.id === queryId);
+                if (query) {
+                    filtered = filtered.filter(s => this._matchCustomQuery(s, query));
+                }
+            } else {
+                filtered = filtered.filter(s => {
+                    const content = s.content || '';
+                    const tags = this.extractTags(content);
+                    if (this.filterQuery === 'no-tag') return tags.length === 0;
+                    if (this.filterQuery === 'has-image') return content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg)\)/i.test(content);
+                    if (this.filterQuery === 'has-link') return /https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content);
+                    if (this.filterQuery === 'has-comment') return content.includes('[MEMO:') || /^关联自：/.test(content);
+                    return true;
+                });
+            }
+        }
+
+        // 搜索筛选
+        const searchInput = this.container?.querySelector('#shuoshuo-search-input');
+        const searchText = searchInput ? searchInput.value.trim().toLowerCase() : '';
+        if (searchText) {
+            filtered = filtered.filter(s => {
+                const contentMatch = (s.content || '').toLowerCase().includes(searchText);
+                const tagMatch = s.tags && s.tags.some(tag => tag.toLowerCase().includes(searchText));
+                const dateMatch = this.formatDate(s.created).toLowerCase().includes(searchText);
+                return contentMatch || tagMatch || dateMatch;
+            });
+        }
+
+        // 排序
+        const sorted = [...filtered].sort((a, b) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return b.created - a.created;
+        });
+
+        return sorted;
+    }
+
+    // 只渲染笔记列表区域的 HTML（不含侧边栏/统计/热力图等）
+    // 返回 { html, total, displayed }
+    _buildNoteListHTML(sorted) {
+        const total = sorted.length;
+        const displayLimit = this._notesDisplayLimit;
+        const displayItems = sorted.slice(0, displayLimit);
+        const hasMore = total > displayLimit;
+
+        if (displayItems.length === 0) {
+            let emptyMsg;
+            const searchInput = this.container?.querySelector('#shuoshuo-search-input');
+            const searchText = searchInput ? searchInput.value.trim() : '';
+            if (searchText) {
+                emptyMsg = '没有找到匹配的说说';
+            } else if (this.currentMainView === 'week') {
+                emptyMsg = '本周还没有记录，快去写下第一条想法吧~';
+            } else {
+                emptyMsg = '还没有笔记，在上方输入框写下第一条想法吧~';
+            }
+            return {
+                html: `<div class="north-shuoshuo-note-card" style="text-align: center; color: #999; padding: 40px;">${emptyMsg}</div>`,
+                total: 0,
+                displayed: 0
+            };
+        }
+
+        if (this.viewStyle === 'card') {
+            const searchText = this._getSearchText();
+            const cardOptions = searchText ? { searchText } : {};
+            return {
+                html: this.renderMasonryNotes(displayItems, cardOptions),
+                total,
+                displayed: displayItems.length
+            };
+        }
+
+        // 平铺布局：按日期分组
+        const groups = this.groupNotesByDate(displayItems);
+        let html = '';
+
+        if (this.currentMainView === 'week') {
+            html += `
+                <div class="north-shuoshuo-week-header-bar">
+                    <div class="north-shuoshuo-week-header-left">
+                        <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconCalendar"></use></svg>
+                        <span>本周 · 共 ${total} 条</span>
+                    </div>
+                    <div class="north-shuoshuo-week-header-center">
+                        <span class="north-shuoshuo-week-signature">${this.customSignature || '遇事不决，可问春风'}</span>
+                    </div>
+                    <div class="north-shuoshuo-week-header-right"></div>
+                </div>
+            `;
+        }
+
+        // 获取搜索文本（传递给卡片渲染用于搜索高亮）
+        const searchText = this._getSearchText();
+        const cardOptions = searchText ? { searchText } : {};
+
+        for (const [dateKey, notes] of groups) {
+            html += `<div class="north-shuoshuo-date-group">${this.getDateGroupTitle(dateKey)}</div>`;
+            html += notes.map(item => this.renderNoteCard(item, cardOptions)).join('');
+        }
+
+        // 有更多数据时添加"加载更多"按钮
+        if (hasMore) {
+            html += `<div class="north-shuoshuo-load-more" id="notes-load-more">
+                <button class="north-shuoshuo-load-more-btn" data-notes-load-more>加载更多（${total - displayLimit} 条）</button>
+            </div>`;
+        }
+
+        return { html, total, displayed: displayItems.length };
+    }
+
+    // 增量更新笔记列表（仅替换列表内容，不触及其他区域）
+    _renderNoteListIncremental(sorted) {
+        const listEl = this.container?.querySelector('#shuoshuo-notes-list');
+        if (!listEl) return;
+
+        const result = this._buildNoteListHTML(sorted);
+        this._saveScroll(listEl);
+        listEl.innerHTML = result.html;
+        this._restoreScroll(listEl);
+
+        // 更新统计数字
+        const countEl = this.container?.querySelector('#shuoshuo-count');
+        if (countEl) countEl.textContent = this.shuoshuos.length;
+
+        // 绑定块引用
+        this.bindBlockRefEvents();
+
+        // 长笔记折叠
+        requestAnimationFrame(() => this.applyAutoCollapse());
+
+        // 绑定"加载更多"按钮
+        const loadMoreBtn = listEl.querySelector('[data-notes-load-more]');
+        if (loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', () => {
+                this._notesDisplayLimit += this._notesPageSize;
+                this._renderNoteListIncremental(this._getFilteredAndSortedNotes());
+            });
+        }
+
+        // 设置无限滚动哨兵
+        this._setupInfiniteScroll(listEl);
+
+        // 缓存当前ID列表
+        this._lastFilteredIds = sorted.map(n => n.id);
+    }
+
+    // 显示骨架屏
+    _showSkeleton(listEl) {
+        if (!listEl || this._skeletonActive) return;
+        this._skeletonActive = true;
+        listEl.innerHTML = Array(6).fill(`
+            <div class="north-shuoshuo-note-card" style="pointer-events:none; opacity:0.6;">
+                <div class="north-shuoshuo-note-header">
+                    <span class="north-shuoshuo-note-date" style="display:inline-block;width:80px;height:12px;background:var(--b3-theme-surface-lighter);border-radius:4px;"></span>
+                </div>
+                <div style="margin-top:8px;">
+                    <div style="height:14px;width:85%;background:var(--b3-theme-surface-lighter);border-radius:4px;margin-bottom:6px;"></div>
+                    <div style="height:14px;width:60%;background:var(--b3-theme-surface-lighter);border-radius:4px;margin-bottom:6px;"></div>
+                    <div style="height:14px;width:45%;background:var(--b3-theme-surface-lighter);border-radius:4px;"></div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 隐藏骨架屏
+    _hideSkeleton(listEl) {
+        this._skeletonActive = false;
+    }
+
+    // 设置无限滚动观察器
+    _setupInfiniteScroll(listEl) {
+        if (!listEl) return;
+        // 移除旧的哨兵和观察器
+        if (this._scrollSentinel && this._scrollSentinel.parentNode) {
+            this._scrollSentinel.parentNode.removeChild(this._scrollSentinel);
+        }
+        if (this._scrollObserver) {
+            try { this._scrollObserver.disconnect(); } catch (e) {}
+            this._scrollObserver = null;
+        }
+        this._scrollObserverActive = false;
+
+        // 只有有更多数据时才设置哨兵
+        const loadMoreBtn = listEl.querySelector('[data-notes-load-more]');
+        if (!loadMoreBtn) return;
+
+        // 添加哨兵元素（在加载更多按钮后面）
+        this._scrollSentinel = document.createElement('div');
+        this._scrollSentinel.className = 'scroll-sentinel';
+        this._scrollSentinel.style.height = '1px';
+        loadMoreBtn.parentNode?.appendChild(this._scrollSentinel);
+
+        // 观察哨兵
+        this._scrollObserver = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && !this._scrollObserverActive) {
+                this._scrollObserverActive = true;
+                this._notesDisplayLimit += this._notesPageSize;
+                this._renderNoteListIncremental(this._getFilteredAndSortedNotes());
+            }
+        }, { rootMargin: '200px' });
+
+        this._scrollObserver.observe(this._scrollSentinel);
     }
 
     onLayoutReady() {
@@ -1133,6 +1553,23 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             }
             this._syncAttrTimer = null;
         }
+
+        // 清理统一防抖/节流定时器
+        this._clearTimers();
+        this._scrollPositions = {};
+
+        // 清理无限滚动观察器
+        if (this._scrollObserver) {
+            try { this._scrollObserver.disconnect(); } catch (e) {}
+            this._scrollObserver = null;
+        }
+        if (this._scrollSentinel && this._scrollSentinel.parentNode) {
+            try { this._scrollSentinel.parentNode.removeChild(this._scrollSentinel); } catch (e) {}
+            this._scrollSentinel = null;
+        }
+        this._scrollObserverActive = false;
+        this._notesDisplayLimit = this._notesPageSize;
+        this._lastFilteredIds = [];
 
         console.log("Shuoshuo plugin unloaded");
     }
@@ -4388,161 +4825,17 @@ ipcRenderer.on('lumina-close', () => {
         this.syncEnterKeyHint();
         this._rebuildQuerySections();
 
-        // 根据选中日期、标签或搜索关键词筛选
-        let filtered = this.shuoshuos;
-
-        // 本周筛选（本周记录视图）
-        if (this.currentMainView === 'week') {
-            const now = new Date();
-            const dayOfWeek = now.getDay(); // 0=周日, 1=周一, ..., 6=周六
-            const weekStart = new Date(now);
-            // 回退到本周一（周日则回退到上周一）
-            weekStart.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-            weekStart.setHours(0, 0, 0, 0);
-            const weekEnd = new Date(weekStart);
-            weekEnd.setDate(weekStart.getDate() + 7); // 下周一 00:00
-            filtered = filtered.filter(s => {
-                const noteDate = new Date(s.created);
-                return noteDate >= weekStart && noteDate < weekEnd;
-            });
-        }
-
-        // 日期筛选
-        if (this.selectedDate) {
-            filtered = filtered.filter(s => {
-                const noteDate = new Date(s.created);
-                return this.formatDateKey(noteDate) === this.selectedDate;
-            });
-        }
-
-        // 标签筛选
-        if (this.selectedTag) {
-            filtered = filtered.filter(s => {
-                if (!s.tags) return false;
-                return s.tags.some(tag => tag === this.selectedTag || tag.startsWith(this.selectedTag + '/'));
-            });
-        }
-
-        // 默认排除归档笔记（除非正在查看已归档）
-        if (this.filterQuery !== 'is-archived') {
-            filtered = filtered.filter(s => !s.archived);
-        }
-
-        // 检索式筛选
-        if (this.filterQuery) {
-            // 已归档检索式
-            if (this.filterQuery === 'is-archived') {
-                filtered = filtered.filter(s => s.archived === true);
-            } else
-            // 自定义检索式
-            if (this.filterQuery.startsWith('custom:')) {
-                const queryId = this.filterQuery.replace('custom:', '');
-                const query = this.customQueries.find(q => q.id === queryId);
-                if (query) {
-                    filtered = filtered.filter(s => this._matchCustomQuery(s, query));
-                }
-            } else {
-                // 内置检索式
-                filtered = filtered.filter(s => {
-                    const content = s.content || '';
-                    const tags = this.extractTags(content);
-                    if (this.filterQuery === 'no-tag') {
-                        return tags.length === 0;
-                    }
-                    if (this.filterQuery === 'has-image') {
-                        return content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg)\)/i.test(content);
-                    }
-                    if (this.filterQuery === 'has-link') {
-                        return /https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content);
-                    }
-                    if (this.filterQuery === 'has-comment') {
-                        return content.includes('[MEMO:') || /^关联自：/.test(content);
-                    }
-                    return true;
-                });
-            }
-        }
-
-        // 搜索关键词筛选（内容、标签、日期）
-        const searchInput = this.container.querySelector('#shuoshuo-search-input');
-        const searchText = searchInput ? searchInput.value.trim().toLowerCase() : '';
-        if (searchText) {
-            filtered = filtered.filter(s => {
-                const contentMatch = (s.content || '').toLowerCase().includes(searchText);
-                const tagMatch = s.tags && s.tags.some(tag => tag.toLowerCase().includes(searchText));
-                const dateMatch = this.formatDate(s.created).toLowerCase().includes(searchText);
-                return contentMatch || tagMatch || dateMatch;
-            });
-        }
-
-        // 排序：置顶的在前，然后按时间倒序
-        const sorted = [...filtered].sort((a, b) => {
-            if (a.pinned && !b.pinned) return -1;
-            if (!a.pinned && b.pinned) return 1;
-            return b.created - a.created;
-        });
-
-        if (sorted.length === 0) {
-            let emptyMsg;
-            if (searchText) {
-                emptyMsg = '没有找到匹配的说说';
-            } else if (this.currentMainView === 'week') {
-                emptyMsg = '本周还没有记录，快去写下第一条想法吧~';
-            } else {
-                emptyMsg = '还没有笔记，在上方输入框写下第一条想法吧~';
-            }
-            listEl.innerHTML = `
-                <div class="north-shuoshuo-note-card" style="text-align: center; color: #999; padding: 40px;">
-                    ${emptyMsg}
-                </div>
-            `;
-            return;
-        }
-
-        // 根据视图样式选择渲染方式
-        if (this.viewStyle === 'card') {
-            // 瀑布流布局：将笔记分配到三列
-            listEl.innerHTML = this.renderMasonryNotes(sorted);
-        } else {
-            // 平铺布局：按日期分组
-            const groups = this.groupNotesByDate(sorted);
-            let html = '';
-
-            // 本周记录视图显示统计头部
-            if (this.currentMainView === 'week') {
-                html += `
-                    <div class="north-shuoshuo-week-header-bar">
-                        <div class="north-shuoshuo-week-header-left">
-                            <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconCalendar"></use></svg>
-                            <span>本周 · 共 ${sorted.length} 条</span>
-                        </div>
-                        <div class="north-shuoshuo-week-header-center">
-                            <span class="north-shuoshuo-week-signature">${this.customSignature || '遇事不决，可问春风'}</span>
-                        </div>
-                        <div class="north-shuoshuo-week-header-right"></div>
-                    </div>
-                `;
-            }
-
-            for (const [dateKey, notes] of groups) {
-                const groupTitle = this.getDateGroupTitle(dateKey);
-                html += `<div class="north-shuoshuo-date-group">${groupTitle}</div>`;
-                html += notes.map(item => this.renderNoteCard(item)).join('');
-            }
-            listEl.innerHTML = html;
-        }
+        // 使用统一的筛选+分页+增量渲染
+        // 每次 full render 时重置分页
+        this._notesDisplayLimit = this._notesPageSize;
+        const sorted = this._getFilteredAndSortedNotes();
+        this._renderNoteListIncremental(sorted);
 
         // 更新统计
         const countEl = this.container.querySelector('#shuoshuo-count');
         if (countEl) {
             countEl.textContent = this.shuoshuos.length;
         }
-
-        // 绑定块引用点击事件
-        this.bindBlockRefEvents();
-
-        // 应用长笔记自动折叠
-        requestAnimationFrame(() => this.applyAutoCollapse());
 
         // 为 LifeLog 标签应用动态颜色
         this.applyLifeLogTagColors();
@@ -5016,10 +5309,14 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
 
+        this._saveScroll(listEl);
         listEl.innerHTML = html;
+        this._restoreScroll(listEl);
 
-        // 渲染类型列表
-        this.renderLifeLogTypes();
+        // 渲染类型列表（只在有完整布局时渲染）
+        if (listEl.closest?.('.north-shuoshuo-flomo-area')) {
+            this.renderLifeLogTypes();
+        }
 
         // 绑定块引用点击事件
         this.bindBlockRefEvents();
@@ -5256,7 +5553,9 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
 
+        this._saveScroll(listEl);
         listEl.innerHTML = html;
+        this._restoreScroll(listEl);
 
         // 绑定事件
         this.bindBlockRefEvents();
@@ -6038,8 +6337,8 @@ ipcRenderer.on('lumina-close', () => {
         `;
     }
 
-    // 渲染单个笔记卡片
-    renderNoteCard(item) {
+    // 渲染单个笔记卡片（支持搜索高亮传递）
+    renderNoteCard(item, options = {}) {
         const dateStr = this.formatDate(item.created);
         const pinnedIcon = item.pinned ? `<span class="north-shuoshuo-note-pinned">${ICONS.pin}</span>` : '';
         const memoRelations = this.renderMemoRelations(item.content);
@@ -6052,7 +6351,7 @@ ipcRenderer.on('lumina-close', () => {
                         <span class="north-shuoshuo-note-menu" data-id="${item.id}">${ICONS.moreH}</span>
                     </div>
                 </div>
-                ${this.renderNoteContent(item.content)}
+                ${this.renderNoteContent(item.content, options)}
                 ${memoRelations}
             </div>
         `;
@@ -6219,7 +6518,7 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 渲染瀑布流布局（三列）
-    renderMasonryNotes(sorted) {
+    renderMasonryNotes(sorted, options = {}) {
         // 创建三列
         const columns = [[], [], []];
         
@@ -6232,13 +6531,13 @@ ipcRenderer.on('lumina-close', () => {
         // 渲染三列
         return `
             <div class="north-shuoshuo-masonry-column" data-column="0">
-                ${columns[0].map(item => this.renderNoteCard(item)).join('')}
+                ${columns[0].map(item => this.renderNoteCard(item, options)).join('')}
             </div>
             <div class="north-shuoshuo-masonry-column" data-column="1">
-                ${columns[1].map(item => this.renderNoteCard(item)).join('')}
+                ${columns[1].map(item => this.renderNoteCard(item, options)).join('')}
             </div>
             <div class="north-shuoshuo-masonry-column" data-column="2">
-                ${columns[2].map(item => this.renderNoteCard(item)).join('')}
+                ${columns[2].map(item => this.renderNoteCard(item, options)).join('')}
             </div>
         `;
     }
@@ -6374,23 +6673,7 @@ ipcRenderer.on('lumina-close', () => {
             ${notesHtml}
         `;
 
-        // 绑定笔记卡片事件
-        listEl.querySelectorAll('.north-shuoshuo-note-card').forEach(card => {
-            card.addEventListener('click', (e) => {
-                if (e.target.closest('.north-shuoshuo-note-menu')) return;
-                const id = card.dataset.id;
-                this.showMemoDetail(id);
-            });
-        });
-
-        listEl.querySelectorAll('.north-shuoshuo-note-card .north-shuoshuo-note-menu').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const id = btn.dataset.id;
-                this.showNoteMenu(id, btn);
-            });
-        });
-
+        // 笔记卡片事件已由 bindEvents() 中的事件委托统一处理
         // 绑定换一批按钮
         const refreshBtn = listEl.querySelector('#shuoshuo-review-refresh');
         if (refreshBtn) {
@@ -6769,12 +7052,11 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // 类型筛选
-        if (tableFilterType) {
-            filtered = filtered.filter(s => {
-                const typeStr = this.extractType(s.content);
-                return typeStr === tableFilterType;
-            });
+        // 归档状态筛选
+        if (tableFilterType === 'archived') {
+            filtered = filtered.filter(s => s.archived === true);
+        } else if (tableFilterType === 'not-archived') {
+            filtered = filtered.filter(s => !s.archived);
         }
 
         // 搜索关键词筛选（表格视图专用搜索）
@@ -6798,9 +7080,8 @@ ipcRenderer.on('lumina-close', () => {
             return this.tableSort.order === 'asc' ? aVal - bVal : bVal - aVal;
         });
 
-        // 获取所有标签和类型用于筛选下拉
+        // 获取所有标签用于筛选下拉
         const allTags = this.extractAllTags();
-        const allTypes = [...new Set(this.shuoshuos.map(s => this.extractType(s.content)).filter(Boolean))].sort();
 
         // 生成筛选栏 HTML（紧凑型，用于顶部工具栏）
         const filterBarHtml = `
@@ -6816,6 +7097,14 @@ ipcRenderer.on('lumina-close', () => {
                     <select class="north-shuoshuo-table-filter-select" id="table-filter-tag">
                         <option value="">全部标签</option>
                         ${allTags.map(tag => `<option value="${tag}" ${tableFilterTag === tag ? 'selected' : ''}>${this.escapeHtml(tag)}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="north-shuoshuo-table-filter-group">
+                    <label class="north-shuoshuo-table-filter-label">归档</label>
+                    <select class="north-shuoshuo-table-filter-select" id="table-filter-type">
+                        <option value="">全部</option>
+                        <option value="archived" ${tableFilterType === 'archived' ? 'selected' : ''}>已归档</option>
+                        <option value="not-archived" ${tableFilterType === 'not-archived' ? 'selected' : ''}>未归档</option>
                     </select>
                 </div>
             </div>
@@ -6866,14 +7155,22 @@ ipcRenderer.on('lumina-close', () => {
 
         const rowsHtml = sorted.map((item) => {
             const contentPreview = renderTableContentPreview(item.content);
-            const typeStr = this.extractType(item.content);
-            const typeStyle = typeStr ? this.getTypeColorStyle(typeStr) : '';
             const tagsHtml = (item.tags || []).map(tag => {
                 const style = this.getTagColorStyle(tag);
                 return `<span class="north-shuoshuo-table-tag-pill" style="${style}">${this.escapeHtml(tag)}</span>`;
             }).join(' ');
             const createdStr = formatTableDate(item.created);
             const updatedStr = formatTableDate(item.updated);
+            const archivedHtml = item.archived
+                ? `<span class="north-shuoshuo-table-archive-badge archived">已归档</span>`
+                : `<span class="north-shuoshuo-table-archive-badge">未归档</span>`;
+            const archiveActionHtml = item.archived
+                ? `<button class="north-shuoshuo-table-action-btn north-shuoshuo-table-unarchive-btn" data-id="${item.id}" title="取消归档">
+                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px;"><path d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>
+                    </button>`
+                : `<button class="north-shuoshuo-table-action-btn north-shuoshuo-table-archive-btn" data-id="${item.id}" title="归档">
+                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px;"><path d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>
+                    </button>`;
             return `
                 <tr class="north-shuoshuo-table-row" data-id="${item.id}">
                     <td class="north-shuoshuo-table-cell north-shuoshuo-table-checkbox-cell">
@@ -6883,9 +7180,7 @@ ipcRenderer.on('lumina-close', () => {
                         <span class="north-shuoshuo-table-content-text">${contentPreview}</span>
                     </td>
                     <td class="north-shuoshuo-table-cell north-shuoshuo-table-tags-cell">${tagsHtml}</td>
-                    <td class="north-shuoshuo-table-cell north-shuoshuo-table-type-cell">
-                        ${typeStr ? `<span class="north-shuoshuo-table-type" style="${typeStyle}">${this.escapeHtml(typeStr)}</span>` : ''}
-                    </td>
+                    <td class="north-shuoshuo-table-cell north-shuoshuo-table-type-cell">${archivedHtml}</td>
                     <td class="north-shuoshuo-table-cell north-shuoshuo-table-time-cell">${createdStr}</td>
                     <td class="north-shuoshuo-table-cell north-shuoshuo-table-time-cell">${updatedStr}</td>
                     <td class="north-shuoshuo-table-cell north-shuoshuo-table-actions-cell">
@@ -6893,6 +7188,7 @@ ipcRenderer.on('lumina-close', () => {
                             <button class="north-shuoshuo-table-action-btn north-shuoshuo-table-view-btn" data-id="${item.id}" title="查看详情">
                                 <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px;"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
                             </button>
+                            ${archiveActionHtml}
                             <button class="north-shuoshuo-table-action-btn north-shuoshuo-table-delete-btn" data-id="${item.id}" title="删除">
                                 <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px;"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                             </button>
@@ -6924,6 +7220,10 @@ ipcRenderer.on('lumina-close', () => {
                         <span class="north-shuoshuo-table-toolbar-label">全选</span>
                     </div>
                     <span class="north-shuoshuo-table-toolbar-count" id="table-selected-count" style="display:none;"></span>
+                    <button class="north-shuoshuo-table-batch-archive" id="table-batch-archive" style="display:none;" title="归档选中项">
+                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5z" transform="translate(0, 0)"/></svg>
+                        <span>归档</span>
+                    </button>
                     <button class="north-shuoshuo-table-batch-delete" id="table-batch-delete" style="display:none;" title="删除选中项">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                         <span>删除</span>
@@ -6943,7 +7243,7 @@ ipcRenderer.on('lumina-close', () => {
                                 <th class="north-shuoshuo-table-header-cell north-shuoshuo-table-checkbox-cell"></th>
                                 <th class="north-shuoshuo-table-header-cell">内容</th>
                                 <th class="north-shuoshuo-table-header-cell">标签</th>
-                                <th class="north-shuoshuo-table-header-cell">类型</th>
+                                <th class="north-shuoshuo-table-header-cell">归档</th>
                                 <th class="north-shuoshuo-table-header-cell north-shuoshuo-table-sortable" data-sort="created">
                                     创建时间 ${sortArrow('created')}
                                 </th>
@@ -7019,19 +7319,21 @@ ipcRenderer.on('lumina-close', () => {
         // 绑定搜索框事件
         const searchInput = listEl.querySelector('#table-search-input');
         if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                this.tableSearchText = e.target.value;
-                // 使用防抖，延迟渲染
-                clearTimeout(this._searchTimeout);
-                this._searchTimeout = setTimeout(() => {
+            // 使用统一防抖方法（延迟300ms）
+            if (!this._debouncedTableSearch) {
+                this._debouncedTableSearch = this._debounce(() => {
                     this.renderTable();
                 }, 300);
+            }
+            searchInput.addEventListener('input', (e) => {
+                this.tableSearchText = e.target.value;
+                this._debouncedTableSearch();
             });
 
-            // 支持回车键搜索
+            // 支持回车键搜索（立即执行）
             searchInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
-                    clearTimeout(this._searchTimeout);
+                    this._debouncedTableSearch.cancel?.();
                     this.renderTable();
                 }
             });
@@ -7198,6 +7500,53 @@ ipcRenderer.on('lumina-close', () => {
                 if (id) this.showMemoDetail(id);
             });
         });
+
+        // 绑定批量归档事件
+        const batchArchiveBtn = listEl.querySelector('#table-batch-archive');
+        if (batchArchiveBtn) {
+            batchArchiveBtn.addEventListener('click', () => {
+                const checkedIds = [...listEl.querySelectorAll('.north-shuoshuo-table-checkbox:checked')]
+                    .map(cb => cb.dataset.id)
+                    .filter(id => id);
+                if (checkedIds.length === 0) return;
+                const archiveCount = checkedIds.filter(id => {
+                    const note = this.shuoshuos.find(s => String(s.id) === String(id));
+                    return note && !note.archived;
+                }).length;
+                if (archiveCount === 0) {
+                    showMessage('选中项均已归档');
+                    return;
+                }
+                this.confirmAboveMobileShell('📦 确认归档', `确定归档选中的 ${checkedIds.length} 条笔记吗？`, async () => {
+                    for (const id of checkedIds) {
+                        const note = this.shuoshuos.find(s => String(s.id) === String(id));
+                        if (note) note.archived = true;
+                    }
+                    await this.saveShuoshuos();
+                    this.renderTable();
+                    this.refreshMountedShuoshuoViews();
+                    showMessage(`已归档 ${checkedIds.length} 条笔记`);
+                });
+            });
+        }
+
+        // 绑定单条归档/取消归档事件
+        listEl.querySelectorAll('.north-shuoshuo-table-archive-btn, .north-shuoshuo-table-unarchive-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                if (!id) return;
+                const note = this.shuoshuos.find(s => String(s.id) === String(id));
+                if (!note) return;
+                const isArchiving = btn.classList.contains('north-shuoshuo-table-archive-btn');
+                note.archived = isArchiving;
+                this.saveShuoshuos().then(() => {
+                    this.renderTable();
+                    this.refreshMountedShuoshuoViews();
+                    showMessage(isArchiving ? '已归档' : '已取消归档');
+                });
+            });
+        });
         } catch (e) {
             // 渲染异常忽略
         } finally {
@@ -7210,9 +7559,13 @@ ipcRenderer.on('lumina-close', () => {
         if (!listEl) return;
         const checkedBoxes = listEl.querySelectorAll('.north-shuoshuo-table-checkbox:checked');
         const batchDeleteBtn = listEl.querySelector('#table-batch-delete');
+        const batchArchiveBtn = listEl.querySelector('#table-batch-archive');
         const countLabel = listEl.querySelector('#table-selected-count');
         if (batchDeleteBtn) {
             batchDeleteBtn.style.display = checkedBoxes.length > 0 ? 'flex' : 'none';
+        }
+        if (batchArchiveBtn) {
+            batchArchiveBtn.style.display = checkedBoxes.length > 0 ? 'flex' : 'none';
         }
         if (countLabel) {
             countLabel.textContent = checkedBoxes.length > 0 ? `已选 ${checkedBoxes.length} 项` : '';
@@ -8377,12 +8730,17 @@ ipcRenderer.on('lumina-close', () => {
         const container = this.container.querySelector('#bookshelfContainer');
         if (!container) return;
 
-        // 搜索
+        // 搜索（带防抖）
         const searchInput = container.querySelector('#bookshelfSearchInput');
         if (searchInput) {
+            if (!this._debouncedBookshelfSearch) {
+                this._debouncedBookshelfSearch = this._debounce(() => {
+                    this._refreshBookshelfList();
+                }, 300);
+            }
             searchInput.addEventListener('input', (e) => {
                 this.bookshelfSearch = e.target.value.trim();
-                this._refreshBookshelfList();
+                this._debouncedBookshelfSearch();
             });
         }
 
@@ -11263,21 +11621,24 @@ ipcRenderer.on('lumina-close', () => {
         const searchClear = this.container.querySelector('#shuoshuo-search-clear');
         const filterBtn = this.container.querySelector('#shuoshuo-filter-btn');
         if (searchInput) {
+            // 使用统一防抖方法
+            const debouncedSearch = this._debounce(() => {
+                if (this.currentMainView === 'table') {
+                    this.renderTable();
+                } else if (this.currentMainView === 'lifelog') {
+                    this.renderLifeLog();
+                } else {
+                    // 搜索时使用轻量增量渲染，不触发全量 renderNotes
+                    const sorted = this._getFilteredAndSortedNotes();
+                    this._renderNoteListIncremental(sorted);
+                }
+            }, 250);
             searchInput.addEventListener('input', () => {
                 // 显示/隐藏清除按钮
                 if (searchClear) {
                     searchClear.style.display = searchInput.value ? 'flex' : 'none';
                 }
-                clearTimeout(this._searchDebounce);
-                this._searchDebounce = setTimeout(() => {
-                    if (this.currentMainView === 'table') {
-                        this.renderTable();
-                    } else if (this.currentMainView === 'lifelog') {
-                        this.renderLifeLog();
-                    } else {
-                        this.renderNotes();
-                    }
-                }, 250);
+                debouncedSearch();
             });
         }
 
@@ -11285,13 +11646,13 @@ ipcRenderer.on('lumina-close', () => {
             searchClear.addEventListener('click', () => {
                 searchInput.value = '';
                 searchClear.style.display = 'none';
-                clearTimeout(this._searchDebounce);
                 if (this.currentMainView === 'table') {
                     this.renderTable();
                 } else if (this.currentMainView === 'lifelog') {
                     this.renderLifeLog();
                 } else {
-                    this.renderNotes();
+                    const sorted = this._getFilteredAndSortedNotes();
+                    this._renderNoteListIncremental(sorted);
                 }
             });
         }
@@ -14044,7 +14405,13 @@ ipcRenderer.on('lumina-close', () => {
         return `${dateKey} ${weekday}`;
     }
 
-    // 渲染笔记内容（支持九宫格图片布局?
+    // 获取当前搜索框文本
+    _getSearchText() {
+        const input = this.container?.querySelector('#shuoshuo-search-input');
+        return input ? input.value.trim() : '';
+    }
+
+    // 渲染笔记内容（支持九宫格图片布局? 支持搜索高亮）
     renderNoteContent(content, options = {}) {
         const { text, images } = this.extractContentAndImages(content);
         
@@ -14069,6 +14436,12 @@ ipcRenderer.on('lumina-close', () => {
         // 渲染图片九宫?
         if (images.length > 0) {
             html += this.renderImageGrid(images);
+        }
+        
+        // 应用搜索高亮
+        const searchText = options.searchText || this._getSearchText();
+        if (searchText) {
+            html = this._highlightSearchText(html, searchText);
         }
         
         return html;
@@ -14214,6 +14587,18 @@ ipcRenderer.on('lumina-close', () => {
         });
         
         return html;
+    }
+
+    // 在已渲染的 HTML 中安全地高亮搜索关键词（只处理文本节点，不破坏 HTML 标签）
+    _highlightSearchText(html, searchText) {
+        if (!searchText || !searchText.trim()) return html;
+        const trimmed = searchText.trim();
+        // 对搜索词做转义（正则特殊字符）
+        const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // 只匹配不在 HTML 标签内的文本（使用负向先行断言）
+        // 思路：匹配搜索词时，确保它不在 <...> 标签内
+        const regex = new RegExp(`(${escaped})(?![^<]*>)`, 'gi');
+        return html.replace(regex, '<mark class="north-shuoshuo-search-highlight">$1</mark>');
     }
 
     // 渲染 Markdown（完整块级解析器）

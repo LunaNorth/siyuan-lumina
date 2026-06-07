@@ -1712,8 +1712,8 @@
 .north-shuoshuo-notes-list.card-layout {
     display: flex;
     flex-direction: row;
-    gap: 16px;
-    padding: 20px 30px;
+    gap: 10px;
+    padding: 16px 20px;
     align-items: flex-start;
 }
 
@@ -1722,7 +1722,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
     min-width: 0;
 }
 
@@ -1834,7 +1834,7 @@
 
 .north-shuoshuo-note-date {
     font-size: 12px;
-    color: var(--b3-theme-on-surface-light);
+    color: var(--b3-theme-on-surface);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1884,58 +1884,19 @@
     -webkit-user-select: text;
 }
 
-/* Lumina: 紧凑模式 */
-.north-shuoshuo-compact .north-shuoshuo-input-area {
-    border-bottom: none !important;
-}
-
-.north-shuoshuo-compact .north-shuoshuo-date-group {
-    margin: 12px 0 !important;
-    padding: 0 4px !important;
-}
-
-.north-shuoshuo-compact .north-shuoshuo-note-card {
-    padding: 4px 14px 8px !important;
-    margin-bottom: 8px !important;
-    border-radius: 8px !important;
-    min-height: 0 !important;
-}
-
-.north-shuoshuo-compact .north-shuoshuo-note-header {
-    margin-bottom: 0px !important;
-    min-height: 0 !important;
-    line-height: 1.25 !important;
-}
-
-.north-shuoshuo-compact .north-shuoshuo-note-date,
-.north-shuoshuo-compact .north-shuoshuo-note-time {
-    line-height: 1.25 !important;
-}
-
-.north-shuoshuo-compact .north-shuoshuo-note-content {
-    margin: 0 !important;
-    line-height: 1.6 !important;
-}
-
-.north-shuoshuo-compact .north-shuoshuo-note-content p {
-    margin: 0 0 8px !important;
-    line-height: 1.6 !important;
-}
-
-.north-shuoshuo-compact .north-shuoshuo-note-content p:last-child {
-    margin-bottom: 0 !important;
-}
-
-/* Lumina: LifeLog 紧凑模式（独立于说说视图） */
+/* Lumina: 紧凑模式（说说 + LifeLog 共用） */
+.north-shuoshuo-compact .north-shuoshuo-input-area,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-input-area {
     border-bottom: none !important;
 }
 
+.north-shuoshuo-compact .north-shuoshuo-date-group,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-date-group {
     margin: 12px 0 !important;
     padding: 0 4px !important;
 }
 
+.north-shuoshuo-compact .north-shuoshuo-note-card,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-card {
     padding: 4px 14px 8px !important;
     margin-bottom: 8px !important;
@@ -1943,29 +1904,49 @@
     min-height: 0 !important;
 }
 
+.north-shuoshuo-compact .north-shuoshuo-note-header,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-header {
     margin-bottom: 0px !important;
     min-height: 0 !important;
     line-height: 1.25 !important;
 }
 
+.north-shuoshuo-compact .north-shuoshuo-note-date,
+.north-shuoshuo-compact .north-shuoshuo-note-time,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-date,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-time {
     line-height: 1.25 !important;
 }
 
+.north-shuoshuo-compact .north-shuoshuo-note-content,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-content {
     margin: 0 !important;
     line-height: 1.6 !important;
 }
 
+.north-shuoshuo-compact .north-shuoshuo-note-content p,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-content p {
     margin: 0 0 8px !important;
     line-height: 1.6 !important;
 }
 
+.north-shuoshuo-compact .north-shuoshuo-note-content p:last-child,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-content p:last-child {
     margin-bottom: 0 !important;
+}
+
+/* 搜索关键词高亮 */
+.north-shuoshuo-search-highlight {
+    background-color: #fff3a8;
+    color: #1a1a1a;
+    padding: 1px 2px;
+    border-radius: 2px;
+    font-weight: 500;
+}
+
+:root[data-theme-mode=dark] .north-shuoshuo-search-highlight {
+    background-color: #665d20;
+    color: #e8e8e8;
 }
 
 .north-shuoshuo-note-tag {
@@ -2099,29 +2080,6 @@
     font-family: var(--b3-font-family-code);
     font-size: 12px;
     color: var(--b3-theme-error);
-}
-
-.north-shuoshuo-note-content pre {
-    background-color: var(--b3-protyle-code-background);
-    padding: 10px;
-    border-radius: 6px;
-    overflow-x: auto;
-    margin: 8px 0;
-    font-size: 12px;
-}
-
-.north-shuoshuo-note-content pre code {
-    background: none;
-    padding: 0;
-    color: var(--b3-theme-on-background);
-}
-
-.north-shuoshuo-note-content blockquote {
-    border-left: 2px solid var(--b3-theme-primary);
-    padding-left: 10px;
-    margin: 8px 0;
-    color: var(--b3-theme-on-surface);
-    font-size: 13px;
 }
 
 .north-shuoshuo-note-content a {
@@ -2458,12 +2416,6 @@
 }
 
 /* 列表样式 - 自然圆点列表 */
-.north-shuoshuo-note-content ul {
-    margin: 0;
-    padding-left: 0;
-    list-style-type: none;
-}
-
 .north-shuoshuo-note-content li {
     margin: 0;
     line-height: 1.7;
@@ -2498,7 +2450,7 @@
     }
     
     .north-shuoshuo-masonry-column {
-        gap: 12px;
+        gap: 8px;
     }
 }
 
@@ -2678,13 +2630,6 @@
 }
 
 /* 子标签左侧横线（已移除） */
-
-.north-shuoshuo-tag-empty {
-    padding: 8px 12px;
-    color: var(--b3-theme-on-surface-light);
-    font-size: 13px;
-    text-align: center;
-}
 
 /* 设置视图样式 - Obsidian 风格两栏布局 */
 .north-shuoshuo-settings-area {
@@ -7559,7 +7504,7 @@
     color: var(--b3-theme-on-background);
     /* 日历弹窗复用朋友圈样式所需的变量 */
     --moments-modal-overlay: rgba(0, 0, 0, 0.6);
-    --moments-modal-bg: var(--b3-theme-surface);
+    --moments-modal-bg: var(--b3-theme-background);
     --moments-modal-header-border: var(--b3-border-color);
     --moments-close-color: var(--b3-theme-on-surface-light);
     --moments-close-hover-bg: var(--b3-list-hover);
@@ -10002,6 +9947,32 @@
     height: 14px;
 }
 
+/* 批量归档按钮 */
+.north-shuoshuo-table-batch-archive {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 32px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 6px;
+    background: var(--b3-theme-primary);
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.north-shuoshuo-table-batch-archive:hover {
+    opacity: 0.85;
+}
+
+/* 单条归档/取消归档按钮 */
+.north-shuoshuo-table-archive-btn,
+.north-shuoshuo-table-unarchive-btn {
+    color: var(--b3-theme-primary) !important;
+}
+
 /* 表格容器 */
 .north-shuoshuo-table-container {
     flex: 1;
@@ -10167,23 +10138,30 @@
     border: 1px solid;
 }
 
-/* 类型标签 */
+/* 归档状态 */
 .north-shuoshuo-table-type-cell {
     width: 80px;
     max-width: 80px;
+    /* text-align: center; */
+    padding-left: 0;
+    padding-right: 0;
 }
 
-.north-shuoshuo-table-type {
+.north-shuoshuo-table-archive-badge {
     display: inline-block;
-    padding: 2px 8px;
+    padding: 2px 6px;
     border-radius: 3px;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 11px;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-    border: 1px solid;
+    color: var(--b3-theme-on-surface);
+    background: var(--b3-theme-surface-lighter);
+    border: 1px solid var(--b3-border-color);
+}
+
+.north-shuoshuo-table-archive-badge.archived {
+    color: var(--b3-theme-success);
+    border-color: var(--b3-theme-success);
+    background: color-mix(in srgb, var(--b3-theme-success) 10%, transparent);
 }
 
 .north-shuoshuo-table-time-cell {
@@ -10763,6 +10741,8 @@
     .north-shuoshuo-table-type-cell {
         width: 70px;
         max-width: 70px;
+        padding-left: 0;
+        padding-right: 0;
     }
 
     /* 移动端隐藏类型、创建时间、更新时间列 */
