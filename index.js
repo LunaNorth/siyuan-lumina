@@ -12861,13 +12861,24 @@ ipcRenderer.on('lumina-close', () => {
                 const countEl = container.querySelector('#shuoshuo-count');
                 if (countEl) countEl.textContent = this.shuoshuos.length;
 
-                const firstGroup = listEl.querySelector('.north-shuoshuo-date-group');
-                if (firstGroup) {
-                    firstGroup.insertAdjacentHTML('afterend', cardHtml);
+                // 卡片布局：新卡片始终插入到第一列（第一行第一列位置）
+                if (listEl.classList.contains('card-layout')) {
+                    const firstColumn = listEl.querySelector('.north-shuoshuo-masonry-column');
+                    if (firstColumn) {
+                        firstColumn.insertAdjacentHTML('afterbegin', cardHtml);
+                    } else {
+                        listEl.insertAdjacentHTML('afterbegin', cardHtml);
+                    }
                 } else {
-                    const todayKey = this.formatDateKey(new Date(shuoshuo.created));
-                    const title = this.getDateGroupTitle(todayKey);
-                    listEl.insertAdjacentHTML('afterbegin', `<div class="north-shuoshuo-date-group">${title}</div>${cardHtml}`);
+                    // 平铺布局：在日期分组后插入
+                    const firstGroup = listEl.querySelector('.north-shuoshuo-date-group');
+                    if (firstGroup) {
+                        firstGroup.insertAdjacentHTML('afterend', cardHtml);
+                    } else {
+                        const todayKey = this.formatDateKey(new Date(shuoshuo.created));
+                        const title = this.getDateGroupTitle(todayKey);
+                        listEl.insertAdjacentHTML('afterbegin', `<div class="north-shuoshuo-date-group">${title}</div>${cardHtml}`);
+                    }
                 }
             }
             this.updateQueryCounts();
@@ -14933,6 +14944,10 @@ ipcRenderer.on('lumina-close', () => {
                 <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconCopy"></use></svg></span>
                 <span class="north-shuoshuo-menu-text">复制</span>
             </div>
+            <div class="north-shuoshuo-menu-item" data-action="share">
+                <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconSpreadOdd"></use></svg></span>
+                <span class="north-shuoshuo-menu-text">分享</span>
+            </div>
             <div class="north-shuoshuo-menu-item" data-action="comment">
                 <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconMark"></use></svg></span>
                 <span class="north-shuoshuo-menu-text">批注</span>
@@ -15016,6 +15031,9 @@ ipcRenderer.on('lumina-close', () => {
                         document.body.removeChild(ta);
                         showMessage('已复制到剪贴板');
                     }
+                    break;
+                case 'share':
+                    this.shareNoteAsImage(id);
                     break;
                 case 'comment':
                     this.commentOnNote(id);
@@ -15138,6 +15156,220 @@ ipcRenderer.on('lumina-close', () => {
                 }
             });
         }, 0);
+    }
+
+    // 分享说说 - 打开导出弹窗（自动适配三种主题）
+    shareNoteAsImage(id) {
+        const item = this.shuoshuos.find(s => s.id === id);
+        if (!item) return;
+
+        // 构建预览卡片 HTML
+        const contentHtml = this.renderNoteContent(item.content);
+        const timeLabel = item.created ? new Date(item.created).toLocaleString('zh-CN', {
+            month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        }) : '';
+
+        // 根据当前主题模式计算颜色变量
+        const themeMode = this.themeMode || 'original';
+        const morandiColor = this.morandiColor;
+        let cardBg, cardText, accentColor;
+
+        if (themeMode === 'original') {
+            cardBg = '#faf6f0';
+            cardText = '#2a2a2a';
+            accentColor = '#8b7355';
+        } else if (themeMode === 'siyuan') {
+            const computed = window.getComputedStyle(document.documentElement);
+            cardBg = computed.getPropertyValue('--b3-theme-surface').trim() || '#ffffff';
+            cardText = computed.getPropertyValue('--b3-theme-on-background').trim() || '#262626';
+            accentColor = computed.getPropertyValue('--b3-theme-primary').trim() || '#00B96B';
+        } else if (themeMode === 'morandi') {
+            const color = MORANDI_COLORS.find(c => c.key === morandiColor) || MORANDI_COLORS[0];
+            cardBg = color.bg;
+            cardText = '#262626';
+            accentColor = color.color;
+        }
+
+        // 创建弹窗
+        const overlay = document.createElement('div');
+        overlay.className = `north-shuoshuo-share-modal share-modal-theme-${themeMode}`;
+        overlay.style.setProperty('--share-card-bg', cardBg);
+        overlay.style.setProperty('--share-card-text', cardText);
+        overlay.style.setProperty('--share-card-accent', accentColor);
+        overlay.innerHTML = `
+            <div class="north-shuoshuo-share-overlay"></div>
+            <div class="north-shuoshuo-share-container north-shuoshuo-share-container-single">
+                <div class="north-shuoshuo-share-header">
+                    <span class="north-shuoshuo-share-title">
+                        <svg class="icon" style="width:16px;height:16px;vertical-align:-2px;margin-right:6px;"><use xlink:href="#iconSpreadOdd"></use></svg>
+                        导出卡片
+                    </span>
+                    <button class="north-shuoshuo-share-close">×</button>
+                </div>
+                <div class="north-shuoshuo-share-body">
+                    <div class="north-shuoshuo-share-preview-area north-shuoshuo-share-preview-area-single">
+                        <div class="north-shuoshuo-share-preview-card" id="share-preview-card">
+                            <div class="share-card-top-accent"></div>
+                            <div class="share-card-paper-texture"></div>
+                            <div class="share-card-corner share-card-corner-tl"></div>
+                            <div class="share-card-corner share-card-corner-br"></div>
+                            <div class="share-card-quote-mark share-card-quote-open">"</div>
+                            <div class="share-card-quote-mark share-card-quote-close">"</div>
+                            <div class="share-card-content">
+                                ${contentHtml}
+                            </div>
+                            <div class="share-card-divider">
+                                <div class="share-card-divider-line"></div>
+                                <div class="share-card-divider-dot"></div>
+                                <div class="share-card-divider-line"></div>
+                            </div>
+                            <div class="share-card-footer">
+                                <div class="share-card-meta">
+                                    <span class="share-card-time">${timeLabel}</span>
+                                    <span class="share-card-source">
+                                        由 <span class="share-card-brand">轻语 Lumina</span> 生成
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="north-shuoshuo-share-footer">
+                    <button class="north-shuoshuo-share-save-btn" id="share-save-btn">
+                        <svg class="icon" style="width:18px;height:18px;"><use xlink:href="#iconDownload"></use></svg>
+                        保存图片
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const previewCard = overlay.querySelector('#share-preview-card');
+        const saveBtn = overlay.querySelector('#share-save-btn');
+
+        // 关闭
+        const closeModal = () => overlay.remove();
+        overlay.querySelector('.north-shuoshuo-share-overlay').addEventListener('click', closeModal);
+        overlay.querySelector('.north-shuoshuo-share-close').addEventListener('click', closeModal);
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape' && document.body.contains(overlay)) {
+                closeModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        });
+
+        // 保存图片
+        saveBtn.addEventListener('click', async () => {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '生成中...';
+
+            try {
+                const imgs = previewCard.querySelectorAll('img');
+                if (imgs.length) {
+                    await Promise.race([
+                        Promise.all(Array.from(imgs).map(img => {
+                            if (img.complete) return Promise.resolve();
+                            return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+                        })),
+                        new Promise(r => setTimeout(r, 1500))
+                    ]);
+                }
+
+                // 读取卡片当前计算后的背景色作为导出背景色
+                const computedBg = getComputedStyle(previewCard).backgroundColor || '#ffffff';
+                const dataUrl = await this._exportElementToImage(previewCard, computedBg);
+                const a = document.createElement('a');
+                a.href = dataUrl;
+                a.download = `Lumina_分享_${new Date().toISOString().slice(0, 10)}.png`;
+                a.click();
+                showMessage('图片已保存');
+            } catch (e) {
+                console.error('导出失败:', e);
+                showMessage('导出图片失败');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<svg class="icon" style="width:18px;height:18px;"><use xlink:href="#iconDownload"></use></svg> 保存图片';
+            }
+        });
+    }
+
+    // 原生 DOM → PNG：将 DOM 元素渲染为图片数据 URL（零依赖，纯浏览器 API）
+    _exportElementToImage(element, bgColor) {
+        return new Promise((resolve, reject) => {
+            try {
+                // 计算元素尺寸
+                const rect = element.getBoundingClientRect();
+                const scale = 2;
+                const width = rect.width || element.scrollWidth || 340;
+                const height = rect.height || element.scrollHeight || 200;
+
+                // 克隆节点并将计算样式内联化（确保 foreignObject 正确渲染）
+                const clone = element.cloneNode(true);
+                this._inlineStyles(element, clone);
+
+                // 用 foreignObject 包装为 SVG
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('width', width);
+                svg.setAttribute('height', height);
+                svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+                svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+                const foreign = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                foreign.setAttribute('width', '100%');
+                foreign.setAttribute('height', '100%');
+                foreign.setAttribute('x', '0');
+                foreign.setAttribute('y', '0');
+
+                // 克隆的内容有内联样式，直接放入 foreignObject
+                foreign.appendChild(clone);
+                svg.appendChild(foreign);
+
+                // 序列化为 data URL
+                const serializer = new XMLSerializer();
+                const svgStr = serializer.serializeToString(svg);
+                const svgDataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)));
+
+                // 绘制到 canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = width * scale;
+                canvas.height = height * scale;
+                const ctx = canvas.getContext('2d');
+
+                const img = new Image();
+                img.onload = () => {
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/png'));
+                };
+                img.onerror = (err) => {
+                    reject(new Error('渲染图片失败'));
+                };
+                img.src = svgDataUrl;
+            } catch (e) {
+                reject(e);
+            }
+        });
+    }
+
+    // 递归将源元素的计算样式复制到目标克隆元素的内联样式中
+    _inlineStyles(source, target) {
+        if (!source || !target) return;
+        if (source.nodeType === Node.ELEMENT_NODE) {
+            const computed = getComputedStyle(source);
+            // 将计算样式写为内联样式
+            for (let i = 0; i < computed.length; i++) {
+                const prop = computed[i];
+                const value = computed.getPropertyValue(prop);
+                if (value && value !== 'none' && !prop.startsWith('-webkit-scrollbar')) {
+                    target.style.setProperty(prop, value, computed.getPropertyPriority(prop));
+                }
+            }
+        }
+        // 递归处理子节点
+        for (let i = 0; i < source.childNodes.length; i++) {
+            if (target.childNodes[i]) {
+                this._inlineStyles(source.childNodes[i], target.childNodes[i]);
+            }
+        }
     }
 
     // 显示图片预览

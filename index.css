@@ -1713,7 +1713,7 @@
     display: flex;
     flex-direction: row;
     gap: 10px;
-    padding: 16px 20px;
+    padding: 16px 30px;
     align-items: flex-start;
 }
 
@@ -1790,7 +1790,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 6px;
+    /* margin-bottom: 6px; */
     min-width: 0;
     overflow: hidden;
 }
@@ -2446,7 +2446,7 @@
 @media (max-width: 1200px) {
     .north-shuoshuo-notes-list.card-layout {
         gap: 12px;
-        padding: 16px;
+        padding: 16px 24px;
     }
     
     .north-shuoshuo-masonry-column {
@@ -14849,4 +14849,411 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
 
 .lifelog-stats-detail-table tbody tr:hover .lifelog-stats-detail-cell-type {
     background: color-mix(in srgb, var(--b3-theme-background-light) 50%, transparent);
+}
+
+/* ========== 分享导出弹窗 ========== */
+.north-shuoshuo-share-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.north-shuoshuo-share-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+}
+
+.north-shuoshuo-share-container {
+    position: relative;
+    background: var(--b3-theme-surface, #fff);
+    border-radius: 20px;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.25);
+    max-width: 820px;
+    width: 92vw;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: north-shuoshuo-share-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes north-shuoshuo-share-in {
+    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.north-shuoshuo-share-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color, #eaeaea) 45%, transparent);
+    flex-shrink: 0;
+}
+
+.north-shuoshuo-share-title {
+    font-size: 16px;
+    font-weight: 650;
+    color: var(--b3-theme-on-background, #1a1a1a);
+    display: flex;
+    align-items: center;
+    letter-spacing: 0.01em;
+}
+
+.north-shuoshuo-share-close {
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: transparent;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 20px;
+    color: var(--b3-theme-on-surface-light, #999);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.north-shuoshuo-share-close:hover {
+    background: color-mix(in srgb, var(--b3-theme-surface-lighter, #f0f0f0) 70%, transparent);
+    color: var(--b3-theme-on-background, #333);
+}
+
+/* 主体：左侧预览 + 右侧设置 */
+.north-shuoshuo-share-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ===== 左侧预览区 - 纸感卡片风格（适配主题） ===== */
+.north-shuoshuo-share-preview-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    background: var(--share-card-bg, #faf6f0);
+    overflow: auto;
+    min-width: 0;
+}
+
+.north-shuoshuo-share-preview-area-single {
+    background: color-mix(in srgb, var(--share-card-bg, #faf6f0) 60%, var(--share-card-accent, #8b7355) 4%);
+}
+
+/* 预览卡片容器（外部投影） */
+.north-shuoshuo-share-preview-card {
+    width: 360px;
+    max-width: 100%;
+    border-radius: 10px;
+    padding: 48px 42px 32px;
+    position: relative;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.75;
+    transition: background 0.25s ease, color 0.25s ease;
+    word-break: break-word;
+    background: var(--share-card-bg, #faf6f0);
+    color: var(--share-card-text, #2a2a2a);
+    box-shadow:
+        0 1px 1px rgba(0,0,0,0.02),
+        0 2px 4px rgba(0,0,0,0.02),
+        0 4px 8px rgba(0,0,0,0.03),
+        0 8px 16px rgba(0,0,0,0.03),
+        0 16px 32px rgba(0,0,0,0.02),
+        inset 0 1px 0 rgba(255,255,255,0.8);
+}
+
+/* 顶部装饰线条 */
+.share-card-top-accent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--share-card-accent, #8b7355) 25%, transparent) 20%,
+        color-mix(in srgb, var(--share-card-accent, #8b7355) 40%, transparent) 50%,
+        color-mix(in srgb, var(--share-card-accent, #8b7355) 25%, transparent) 80%,
+        transparent 100%
+    );
+    pointer-events: none;
+}
+
+.share-card-top-accent::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--share-card-accent, #8b7355) 30%, transparent), transparent);
+    border-radius: 1px;
+}
+
+/* 纸张纹理 */
+.share-card-paper-texture {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 28px,
+            color-mix(in srgb, var(--share-card-text, #2a2a2a) 3%, transparent) 28px,
+            color-mix(in srgb, var(--share-card-text, #2a2a2a) 3%, transparent) 29px
+        );
+    pointer-events: none;
+    border-radius: 20px;
+}
+
+/* 角落装饰 */
+.share-card-corner {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    opacity: 0.18;
+    pointer-events: none;
+}
+
+.share-card-corner-tl {
+    top: 18px;
+    left: 18px;
+    border-top: 1.5px solid var(--share-card-accent, #8b7355);
+    border-left: 1.5px solid var(--share-card-accent, #8b7355);
+    border-radius: 3px 0 0 0;
+}
+
+.share-card-corner-br {
+    bottom: 18px;
+    right: 18px;
+    border-bottom: 1.5px solid var(--share-card-accent, #8b7355);
+    border-right: 1.5px solid var(--share-card-accent, #8b7355);
+    border-radius: 0 0 3px 0;
+}
+
+/* 引号装饰 */
+.share-card-quote-mark {
+    position: absolute;
+    font-size: 90px;
+    color: color-mix(in srgb, var(--share-card-accent, #8b7355) 10%, transparent);
+    font-family: "Noto Serif SC", "Songti SC", Georgia, serif;
+    line-height: 1;
+    user-select: none;
+    font-weight: 700;
+    pointer-events: none;
+}
+
+.share-card-quote-open {
+    top: 20px;
+    left: 20px;
+}
+
+.share-card-quote-close {
+    bottom: 65px;
+    right: 20px;
+    transform: rotate(180deg);
+}
+
+/* 卡片内容区 */
+.share-card-content {
+    position: relative;
+    z-index: 1;
+}
+
+.share-card-content .north-shuoshuo-note-content {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+}
+
+/* 卡片中的图片 */
+.share-card-content .north-shuoshuo-image-grid {
+    margin-top: 12px;
+}
+
+.share-card-content .north-shuoshuo-image-grid img {
+    max-width: 100%;
+    border-radius: 10px;
+}
+
+.share-card-content .north-shuoshuo-image-grid.single img {
+    max-height: 220px;
+    object-fit: cover;
+    width: 100%;
+}
+
+/* 卡片中的标签 */
+.share-card-content .north-shuoshuo-tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    background: color-mix(in srgb, currentColor 8%, transparent) !important;
+    color: inherit !important;
+    opacity: 0.75;
+}
+
+/* 分割线区域 */
+.share-card-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 28px 0 18px;
+    padding: 0 5px;
+    position: relative;
+    z-index: 1;
+}
+
+.share-card-divider-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--share-card-accent, #8b7355) 25%, transparent), transparent);
+}
+
+.share-card-divider-dot {
+    width: 4px;
+    height: 4px;
+    background: color-mix(in srgb, var(--share-card-accent, #8b7355) 35%, transparent);
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* 底部区域 */
+.share-card-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 0 5px;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+}
+
+.share-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.share-card-time {
+    font-size: 12px;
+    color: color-mix(in srgb, var(--share-card-text, #2a2a2a) 55%, transparent);
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.share-card-source {
+    font-size: 11px;
+    color: color-mix(in srgb, var(--share-card-text, #2a2a2a) 45%, transparent);
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.share-card-brand {
+    color: color-mix(in srgb, var(--share-card-text, #2a2a2a) 65%, transparent);
+    font-weight: 500;
+}
+
+/* ===== 容器（无设置面板时的窄版） ===== */
+.north-shuoshuo-share-container-single {
+    max-width: 520px;
+}
+
+/* 底部 */
+.north-shuoshuo-share-footer {
+    padding: 14px 24px;
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color, #eaeaea) 45%, transparent);
+    display: flex;
+    justify-content: center;
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--b3-theme-surface, #fff) 98%, transparent);
+}
+
+.north-shuoshuo-share-save-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 36px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--share-card-accent, #8b7355);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--share-card-accent, #8b7355) 35%, transparent);
+    min-width: 150px;
+    justify-content: center;
+    letter-spacing: 0.02em;
+}
+
+.north-shuoshuo-share-save-btn:hover {
+    background: color-mix(in srgb, var(--share-card-accent, #8b7355) 85%, #000);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--share-card-accent, #8b7355) 35%, transparent);
+}
+
+.north-shuoshuo-share-save-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--share-card-accent, #8b7355) 25%, transparent);
+}
+
+.north-shuoshuo-share-save-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    background: color-mix(in srgb, var(--share-card-text, #2a2a2a) 50%, transparent);
+}
+
+/* 暗色模式适配 */
+body[theme-mode="dark"] .north-shuoshuo-share-overlay {
+    background: rgba(0, 0, 0, 0.6);
+}
+
+body[theme-mode="dark"] .north-shuoshuo-share-container {
+    background: var(--b3-theme-surface, #1e1e1e);
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+}
+
+body[theme-mode="dark"] .north-shuoshuo-share-preview-area-single {
+    background: color-mix(in srgb, var(--share-card-bg, #2a2520) 100%, #000 5%);
+}
+
+body[theme-mode="dark"] .north-shuoshuo-share-preview-card {
+    box-shadow:
+        0 1px 1px rgba(0,0,0,0.1),
+        0 2px 4px rgba(0,0,0,0.1),
+        0 4px 8px rgba(0,0,0,0.12),
+        0 8px 16px rgba(0,0,0,0.12),
+        0 16px 32px rgba(0,0,0,0.1);
+}
+
+body[theme-mode="dark"] .north-shuoshuo-share-footer {
+    background: color-mix(in srgb, var(--b3-theme-surface, #1e1e1e) 98%, transparent);
+}
+
+body[theme-mode="dark"] .north-shuoshuo-share-save-btn {
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--share-card-accent, #8b7355) 20%, transparent);
 }
