@@ -437,7 +437,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.dailyNoteIconColorWeekday = ''; // 工作日图标颜色
         this.dailyNoteIconColorWeekend = ''; // 周末图标颜色
         this.viewStyle = 'list'; // 'list' 平铺, 'card' 卡片
-        this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
+        this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [] };
         this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
@@ -475,6 +475,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogStatsCustomEnd = null; // LifeLog 统计视图自定义结束时间（毫秒）
         this.compactMode = false; // 紧凑模式（默认关闭）
         this.lifeLogCompactMode = false; // LifeLog 紧凑模式（默认关闭，独立于说说视图）
+        this.lifelogTypesDefaultExpanded = true; // LifeLog 类型折叠条默认是否展开
+        this._lifelogTypesExpanded = this.lifelogTypesDefaultExpanded; // LifeLog 类型折叠条是否展开
         this.galleryColumnCount = 3; // 拾光视图列数（默认3列）
         this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG }; // 图书视图字体大小配置
         this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG }; // 图书视图同步配置
@@ -3820,7 +3822,16 @@ ipcRenderer.on('lumina-close', () => {
                                         <span>全量同步（重新同步所有笔记，包括本地已删除的）</span>
                                     </label>
                                 </div>
-                                
+
+                                <!-- LifeLog 自动分类 -->
+                                <div class="north-shuoshuo-toggle-row" style="border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 30%, transparent); padding-top: 12px; margin-top: 12px;">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>自动识别 LifeLog 记录</h4>
+                                        <p>开启后，同步时自动识别内容首行为"类型：内容"格式（类型来自你已有的 LifeLog 记录）的记录，同步到每日笔记的 LifeLog 中，而非说说视图。</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.flomoConfig.flomoLifeLogAutoClassify ? 'on' : ''}" id="flomo-lifelog-classify-switch"></div>
+                                </div>
+
                                 <div class="north-shuoshuo-form-row" style="margin-bottom: 0;">
                                     <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" id="flomo-sync-btn">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: middle;">
@@ -4302,6 +4313,13 @@ ipcRenderer.on('lumina-close', () => {
                                         <p>开启后，LifeLog 视图中的笔记间距更紧凑，类似memos的布局</p>
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.lifeLogCompactMode ? 'on' : ''}" id="lifelog-settings-compact-mode-switch"></div>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>类型筛选默认展开</h4>
+                                        <p>开启后，LifeLog 视图中的类型筛选条默认展开，关闭则默认折叠。</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.lifelogTypesDefaultExpanded ? 'on' : ''}" id="lifelog-settings-types-expanded-switch"></div>
                                 </div>
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
@@ -5079,10 +5097,9 @@ ipcRenderer.on('lumina-close', () => {
         const sendBtn = this.container.querySelector('.north-shuoshuo-send-btn');
         if (sendBtn) sendBtn.style.marginLeft = 'auto';
 
-        // 显示输入框下方的类型选择条（点击选择输入类型）
+        // 显示输入框下方的类型选择条（点击选择输入类型，支持折叠展开）
         const inputTypes = this.container.querySelector('#lifelog-input-types');
         if (inputTypes) {
-            inputTypes.style.display = 'flex';
             const records = this.lifeLogRecords || [];
             const typeCount = {};
             records.forEach(r => {
@@ -5092,21 +5109,43 @@ ipcRenderer.on('lumina-close', () => {
             const types = Object.keys(typeCount).sort();
             const currentType = this._lifelogCurrentInputType || '';
             const self = this;
-            let typeHtml = types.map(type => {
-                const active = type === currentType ? ' active' : '';
-                return `<span class="north-shuoshuo-lifelog-input-type${active}" data-lifelog-input-type="${this.escapeHtml(type)}">${this.escapeHtml(type)}</span>`;
-            }).join('');
-            typeHtml = `<span class="north-shuoshuo-lifelog-input-type${!currentType ? ' active' : ''}" data-lifelog-input-type="">全部</span>` + typeHtml;
+            const expanded = this._lifelogTypesExpanded;
+
+            // 折叠状态：只显示"全部"按钮，展开状态显示"全部" + 所有类型
+            const allClass = !currentType ? ' active' : '';
+            let typeHtml = `<span class="north-shuoshuo-lifelog-input-type${allClass}" data-lifelog-input-type="" id="lifelog-type-toggle">全部</span>`;
+
+            if (expanded) {
+                typeHtml += types.map(type => {
+                    const active = type === currentType ? ' active' : '';
+                    return `<span class="north-shuoshuo-lifelog-input-type${active}" data-lifelog-input-type="${this.escapeHtml(type)}">${this.escapeHtml(type)}</span>`;
+                }).join('');
+            }
+
+            inputTypes.style.display = 'flex';
             inputTypes.innerHTML = typeHtml;
-            // 点击类型：设置输入类型并重绘
-            inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type').forEach(item => {
+
+            // "全部"按钮：点击切换展开/折叠
+            const toggleBtn = inputTypes.querySelector('#lifelog-type-toggle');
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', function(e) {
+                    // 如果当前已有选中的类型且处于展开状态，点击"全部"先清除类型筛选
+                    if (self._lifelogTypesExpanded && self._lifelogCurrentInputType) {
+                        self._lifelogCurrentInputType = '';
+                        self.renderLifeLog(false);
+                        return;
+                    }
+                    // 否则切换展开/折叠
+                    self._lifelogTypesExpanded = !self._lifelogTypesExpanded;
+                    self.renderLifeLog(false);
+                });
+            }
+            // 其他类型按钮：选择类型并自动折叠
+            inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type:not(#lifelog-type-toggle)').forEach(item => {
                 item.addEventListener('click', function() {
                     const type = this.dataset.lifelogInputType;
-                    if (self._lifelogCurrentInputType === type) {
-                        self._lifelogCurrentInputType = '';
-                    } else {
-                        self._lifelogCurrentInputType = type || '';
-                    }
+                    self._lifelogCurrentInputType = type || '';
+                    self._lifelogTypesExpanded = false; // 选择类型后自动折叠
                     self.renderLifeLog(false);
                 });
             });
@@ -5448,10 +5487,9 @@ ipcRenderer.on('lumina-close', () => {
         const sendBtn = this.container.querySelector('.north-shuoshuo-send-btn');
         if (sendBtn) sendBtn.style.marginLeft = 'auto';
 
-        // 显示输入框下方的类型选择条
+        // 显示输入框下方的类型选择条（支持折叠展开）
         const inputTypes = this.container.querySelector('#lifelog-input-types');
         if (inputTypes) {
-            inputTypes.style.display = 'flex';
             const records = this.lifeLogRecords || [];
             const typeCount = {};
             records.forEach(r => {
@@ -5461,20 +5499,38 @@ ipcRenderer.on('lumina-close', () => {
             const types = Object.keys(typeCount).sort();
             const currentType = this._lifelogCurrentInputType || '';
             const self = this;
-            let typeHtml = types.map(type => {
-                const active = type === currentType ? ' active' : '';
-                return `<span class="north-shuoshuo-lifelog-input-type${active}" data-lifelog-input-type="${this.escapeHtml(type)}">${this.escapeHtml(type)}</span>`;
-            }).join('');
-            typeHtml = `<span class="north-shuoshuo-lifelog-input-type${!currentType ? ' active' : ''}" data-lifelog-input-type="">全部</span>` + typeHtml;
+            const expanded = this._lifelogTypesExpanded;
+
+            const allClass = !currentType ? ' active' : '';
+            let typeHtml = `<span class="north-shuoshuo-lifelog-input-type${allClass}" data-lifelog-input-type="" id="lifelog-type-toggle">全部</span>`;
+
+            if (expanded) {
+                typeHtml += types.map(type => {
+                    const active = type === currentType ? ' active' : '';
+                    return `<span class="north-shuoshuo-lifelog-input-type${active}" data-lifelog-input-type="${this.escapeHtml(type)}">${this.escapeHtml(type)}</span>`;
+                }).join('');
+            }
+
+            inputTypes.style.display = 'flex';
             inputTypes.innerHTML = typeHtml;
-            inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type').forEach(item => {
+
+            const toggleBtn = inputTypes.querySelector('#lifelog-type-toggle');
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', function() {
+                    if (self._lifelogTypesExpanded && self._lifelogCurrentInputType) {
+                        self._lifelogCurrentInputType = '';
+                        self.renderLifeLogDockView();
+                        return;
+                    }
+                    self._lifelogTypesExpanded = !self._lifelogTypesExpanded;
+                    self.renderLifeLogDockView();
+                });
+            }
+            inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type:not(#lifelog-type-toggle)').forEach(item => {
                 item.addEventListener('click', function() {
                     const type = this.dataset.lifelogInputType;
-                    if (self._lifelogCurrentInputType === type) {
-                        self._lifelogCurrentInputType = '';
-                    } else {
-                        self._lifelogCurrentInputType = type || '';
-                    }
+                    self._lifelogCurrentInputType = type || '';
+                    self._lifelogTypesExpanded = false;
                     self.renderLifeLogDockView();
                 });
             });
@@ -5825,10 +5881,7 @@ ipcRenderer.on('lumina-close', () => {
         if (selectedType) {
             filtered = filtered.filter(r => r._lifeLogType === selectedType);
         }
-        if (!filtered.length) {
-            listEl.innerHTML = `<div class="north-shuoshuo-lifelog-stats-empty">该时段暂无 LifeLog 记录</div>`;
-            return;
-        }
+        const hasFilteredData = filtered.length > 0;
 
         // 按时间升序排列
         const sorted = [...filtered].sort((a, b) => a.created - b.created);
@@ -5996,6 +6049,7 @@ ipcRenderer.on('lumina-close', () => {
                     </div>
                 </div>
 
+                ${hasFilteredData ? `
                 <!-- ===== 统计卡片 第一行 ===== -->
                 <div class="lifelog-stats-grid">
                     <div class="lifelog-stats-stat-card">
@@ -6065,6 +6119,9 @@ ipcRenderer.on('lumina-close', () => {
                     </div>
                 </div>
                 ${this._renderLifeLogStatsDetailTable(sorted, formatDuration, escapeHtml)}
+                ` : `
+                <div class="north-shuoshuo-lifelog-stats-empty">该时段暂无 LifeLog 记录</div>
+                `}
             </div>
         `;
 
@@ -18217,6 +18274,19 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // LifeLog 类型筛选默认展开
+        const lifelogTypesExpandedSwitch = this.container.querySelector('#lifelog-settings-types-expanded-switch');
+        if (lifelogTypesExpandedSwitch) {
+            lifelogTypesExpandedSwitch.replaceWith(lifelogTypesExpandedSwitch.cloneNode(true));
+            const newLifelogTypesExpandedSwitch = this.container.querySelector('#lifelog-settings-types-expanded-switch');
+            newLifelogTypesExpandedSwitch.addEventListener('click', async () => {
+                newLifelogTypesExpandedSwitch.classList.toggle('on');
+                this.lifelogTypesDefaultExpanded = newLifelogTypesExpandedSwitch.classList.contains('on');
+                await this.saveConfig();
+                showMessage(this.lifelogTypesDefaultExpanded ? 'LifeLog 类型筛选已设为默认展开' : 'LifeLog 类型筛选已设为默认折叠');
+            });
+        }
+
         // 紧凑模式
         const compactModeSwitch = this.container.querySelector('#settings-compact-mode-switch');
         if (compactModeSwitch) {
@@ -18920,7 +18990,7 @@ ipcRenderer.on('lumina-close', () => {
 
         if (flomoLogoutBtn) {
             flomoLogoutBtn.onclick = async () => {
-                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '' };
+                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [] };
                 await this.saveConfig();
                 if (flomoUsername) flomoUsername.value = '';
                 if (flomoPassword) flomoPassword.value = '';
@@ -18955,6 +19025,16 @@ ipcRenderer.on('lumina-close', () => {
                 if (fullSyncCheckbox) fullSyncCheckbox.checked = false;
                 
                 this.updateFlomoUI();
+            };
+        }
+
+        // LifeLog 自动分类开关
+        const lifelogClassifySwitch = this.container.querySelector('#flomo-lifelog-classify-switch');
+        if (lifelogClassifySwitch) {
+            lifelogClassifySwitch.onclick = async () => {
+                this.flomoConfig.flomoLifeLogAutoClassify = !this.flomoConfig.flomoLifeLogAutoClassify;
+                lifelogClassifySwitch.classList.toggle('on', this.flomoConfig.flomoLifeLogAutoClassify);
+                await this.saveConfig();
             };
         }
 
@@ -20350,7 +20430,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.dailyNoteIconColorWeekday = data.dailyNoteIconColorWeekday || '';
                 this.dailyNoteIconColorWeekend = data.dailyNoteIconColorWeekend || '';
                 this.viewStyle = data.viewStyle === 'card' ? 'card' : 'list';
-                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', ...(data.flomoConfig || data.flomo || {}) };
+                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [], ...(data.flomoConfig || data.flomo || {}) };
                 this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
                 this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.memosConfig || data.memos || {}) };
                 this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...(data.reviewConfig || data.review || {}) };
@@ -20380,6 +20460,9 @@ ipcRenderer.on('lumina-close', () => {
                 this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
                 this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
                 this.lifeLogCompactMode = data.lifeLogCompactMode === true || data.lifeLogCompactMode === 'true' || data.lifeLogCompactMode === 1;
+                this.lifelogTypesDefaultExpanded = data.lifelogTypesDefaultExpanded !== undefined
+                  ? (data.lifelogTypesDefaultExpanded === true || data.lifelogTypesDefaultExpanded === 'true' || data.lifelogTypesDefaultExpanded === 1)
+                  : true;
                 this.galleryColumnCount = typeof data.galleryColumnCount === 'number' ? data.galleryColumnCount : 3;
                 this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
                 this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
@@ -20472,6 +20555,7 @@ ipcRenderer.on('lumina-close', () => {
                     showLifeLogRecords: this.showLifeLogRecords,
                     compactMode: this.compactMode,
                     lifeLogCompactMode: this.lifeLogCompactMode,
+                    lifelogTypesDefaultExpanded: this.lifelogTypesDefaultExpanded,
                     galleryColumnCount: this.galleryColumnCount,
                     bookshelfFontConfig: this.bookshelfFontConfig,
                     bookshelfSyncConfig: this.bookshelfSyncConfig,
@@ -21472,6 +21556,7 @@ ipcRenderer.on('lumina-close', () => {
     async saveFlomoMemosToShuoshuo(memos, isFullSync = false) {
         let addedCount = 0;
         let updatedCount = 0;
+        let lifeLogCount = 0;
         
         for (const memo of memos) {
             // 转换 HTML 为纯文本/Markdown
@@ -21542,6 +21627,65 @@ ipcRenderer.on('lumina-close', () => {
             });
             
             const tagStr = uniqueTags.length > 0 ? ' ' + uniqueTags.map(t => `#${t}`).join(' ') : '';
+
+            // ===== LifeLog 自动分类检测 =====
+            if (this.flomoConfig.flomoLifeLogAutoClassify) {
+              // 去重检查：非全量同步时跳过已同步的 LifeLog 记录
+              const syncedSlugs = Array.isArray(this.flomoConfig.flomoSyncedSlugs) ? this.flomoConfig.flomoSyncedSlugs : [];
+              if (!isFullSync && syncedSlugs.includes(memo.slug)) {
+                // 已同步过，跳过（不计入任何计数）
+                continue;
+              }
+
+              // 从思源笔记查询所有已有的 LifeLog 类型作为匹配关键词
+              let lifeLogTypes = [];
+              try {
+                const resp = await fetch('/api/query/sql', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ stmt: "SELECT DISTINCT a.value AS t FROM attributes a WHERE a.name = 'custom-lifelog-type' ORDER BY a.value" })
+                });
+                const result = await resp.json();
+                if (result.code === 0 && Array.isArray(result.data)) {
+                  lifeLogTypes = result.data.map(r => r.t).filter(Boolean);
+                }
+              } catch (e) {
+                // 查询失败则跳过自动分类
+              }
+
+              const firstLine = (contentTrimmed || '').split('\n')[0].trim();
+              let matchedType = null;
+
+              for (const type of lifeLogTypes) {
+                // 严格匹配开头：类型：内容（支持中文冒号和英文冒号）
+                const escapedType = type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`^${escapedType}[：:]\\s*(.*)`);
+                const m = firstLine.match(regex);
+
+                if (m) {
+                  matchedType = type;
+                  // 匹配到 LifeLog 类型
+                  const pureContent = m[1];
+                  const restContent = contentTrimmed.split('\n').slice(1).join('\n').trim();
+                  const finalContent = restContent ? pureContent + '\n' + restContent : pureContent;
+                  const memoTimestamp = new Date(memo.created_at).getTime();
+
+                  // 写入每日笔记（格式：13:39 类型：内容）
+                  await this.appendLifeLogToDailyNote(finalContent, type, memoTimestamp);
+                  lifeLogCount++;
+
+                  // 记录已同步的 slug
+                  if (!syncedSlugs.includes(memo.slug)) {
+                    syncedSlugs.push(memo.slug);
+                    this.flomoConfig.flomoSyncedSlugs = syncedSlugs;
+                  }
+                  break;
+                }
+              }
+
+              // 已作为 LifeLog 处理，跳过说说视图
+              if (matchedType) continue;
+            }
             
             // 创建说说对象
             const shuoshuo = {
@@ -21569,18 +21713,22 @@ ipcRenderer.on('lumina-close', () => {
         
         // 保存到存储
         await this.saveShuoshuos();
+        // 保存配置（持久化 LifeLog 同步记录）
+        await this.saveConfig();
         
         // 刷新说说视图
         this.renderNotes();
         this.renderTags();
         
         const syncTypeText = isFullSync ? '全量同步' : '同步';
-        if (addedCount > 0 && updatedCount > 0) {
-            showMessage(`${syncTypeText}完成：新增 ${addedCount} 条，更新 ${updatedCount} 条`);
-        } else if (addedCount > 0) {
-            showMessage(`成功添加 ${addedCount} 条笔记到说说视图`);
-        } else if (updatedCount > 0) {
-            showMessage(`成功更新 ${updatedCount} 条笔记`);
+
+        let msgParts = [];
+        if (lifeLogCount > 0) msgParts.push(`LifeLog ${lifeLogCount} 条`);
+        if (addedCount > 0) msgParts.push(`说说 ${addedCount} 条`);
+        if (updatedCount > 0) msgParts.push(`更新 ${updatedCount} 条`);
+
+        if (msgParts.length > 0) {
+            showMessage(`${syncTypeText}完成：${msgParts.join('，')}`);
         } else {
             showMessage(`${syncTypeText}完成：没有变化的笔记`);
         }
@@ -21646,9 +21794,11 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 保存 Flomo 笔记到每日笔记
-    // 保存 Flomo 笔记到每日笔记
     // isFullSync: 是否全量同步
     async saveFlomoMemosToDailyNote(memos, isFullSync = false) {
+        let lifeLogCount = 0;
+        let normalCount = 0;
+
         // 按日期分组
         const memosByDate = {};
         
@@ -21692,18 +21842,76 @@ ipcRenderer.on('lumina-close', () => {
                     });
                 }
                 
+                const contentTrimmed = memoContent.trim();
+                const memoTimestamp = new Date(memo.created_at).getTime();
+
+                // ===== LifeLog 自动分类检测 =====
+                if (this.flomoConfig.flomoLifeLogAutoClassify) {
+                  // 去重检查
+                  const syncedSlugs = Array.isArray(this.flomoConfig.flomoSyncedSlugs) ? this.flomoConfig.flomoSyncedSlugs : [];
+                  if (!isFullSync && syncedSlugs.includes(memo.slug)) {
+                    continue;
+                  }
+
+                  // 查询已有的 LifeLog 类型
+                  let lifeLogTypes = [];
+                  try {
+                    const resp = await fetch('/api/query/sql', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ stmt: "SELECT DISTINCT a.value AS t FROM attributes a WHERE a.name = 'custom-lifelog-type' ORDER BY a.value" })
+                    });
+                    const result = await resp.json();
+                    if (result.code === 0 && Array.isArray(result.data)) {
+                      lifeLogTypes = result.data.map(r => r.t).filter(Boolean);
+                    }
+                  } catch (e) {}
+
+                  const firstLine = contentTrimmed.split('\n')[0].trim();
+                  let matchedType = null;
+
+                  for (const type of lifeLogTypes) {
+                    const escapedType = type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`^${escapedType}[：:]\\s*(.*)`);
+                    const m = firstLine.match(regex);
+
+                    if (m) {
+                      matchedType = type;
+                      const pureContent = m[1];
+                      const restContent = contentTrimmed.split('\n').slice(1).join('\n').trim();
+                      const finalContent = restContent ? pureContent + '\n' + restContent : pureContent;
+
+                      await this.appendLifeLogToDailyNote(finalContent, type, memoTimestamp);
+                      lifeLogCount++;
+
+                      if (!syncedSlugs.includes(memo.slug)) {
+                        syncedSlugs.push(memo.slug);
+                        this.flomoConfig.flomoSyncedSlugs = syncedSlugs;
+                      }
+                      break;
+                    }
+                  }
+
+                  if (matchedType) continue;
+                }
+
                 // 提取 flomo 标签
                 const flomoTags = memo.tags || [];
                 const tagStr = flomoTags.length > 0 ? ' ' + flomoTags.map(t => `#${t}`).join(' ') : '';
                 
                 // 构建完整内容（标签 + 内容）
-                const fullContent = tagStr ? `${tagStr}\n${memoContent.trim()}` : memoContent.trim();
-                
-                // 使用 memo 的创建时间戳
-                const memoTimestamp = new Date(memo.created_at).getTime();
+                const fullContent = tagStr ? `${tagStr}\n${contentTrimmed}` : contentTrimmed;
                 
                 // 每条笔记单独保存到每日笔记（使用引用块格式）
                 await this.appendToDailyNote(fullContent, memoTimestamp);
+                normalCount++;
+
+                // 记录已同步的 slug
+                const syncedSlugs = Array.isArray(this.flomoConfig.flomoSyncedSlugs) ? this.flomoConfig.flomoSyncedSlugs : [];
+                if (!syncedSlugs.includes(memo.slug)) {
+                  syncedSlugs.push(memo.slug);
+                  this.flomoConfig.flomoSyncedSlugs = syncedSlugs;
+                }
             }
             
             // 获取每日笔记文档 ID 并转换图片
@@ -21713,6 +21921,19 @@ ipcRenderer.on('lumina-close', () => {
             if (docId) {
                 await this.convertNetImagesToLocal(docId);
             }
+        }
+
+        // 保存配置（持久化 LifeLog 同步记录）
+        await this.saveConfig();
+
+        const syncTypeText = isFullSync ? '全量同步' : '同步';
+        let msgParts = [];
+        if (lifeLogCount > 0) msgParts.push(`LifeLog ${lifeLogCount} 条`);
+        if (normalCount > 0) msgParts.push(`笔记 ${normalCount} 条`);
+        if (msgParts.length > 0) {
+            showMessage(`${syncTypeText}完成：${msgParts.join('，')}`);
+        } else {
+            showMessage(`${syncTypeText}完成：没有变化的笔记`);
         }
     }
 
