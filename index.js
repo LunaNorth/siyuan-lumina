@@ -4332,7 +4332,7 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
                                         <h4>时间计算模式</h4>
-                                        <p>结束模式（默认）：节点时间为结束时间，时长从上一条结束算到当前结束。开始模式：节点时间为开始时间，时长从当前开始算到下一条开始。跨天时自动按天拆分。</p>
+                                        <p>结束模式（默认）：节点时间为结束时间，时长从上一条结束算到当前结束。<br>开始模式：节点时间为开始时间，时长从当前开始算到下一条开始。跨天时自动按天拆分。</p>
                                     </div>
                                     <div class="lifelog-time-mode-selector" style="display:flex;gap:8px;flex-shrink:0;">
                                         <button class="north-shuoshuo-query-match-btn ${this.lifeLogTimeMode === 'end' ? 'active' : ''}" data-lifelog-time-mode="end" style="flex:0;white-space:nowrap;min-width:80px;">结束模式</button>
@@ -19958,6 +19958,7 @@ ipcRenderer.on('lumina-close', () => {
         let lastDate = '';
         let lastTime = '';
         let lastId = '';
+        const seenBlockIds = new Set(); // 用于跨分页去重
 
         try {
             while (scanned < maxScan) {
@@ -19997,14 +19998,19 @@ ipcRenderer.on('lumina-close', () => {
                 if (result.code !== 0 || !Array.isArray(result.data) || !result.data.length) break;
 
                 const rows = result.data;
+                // 始终用本页最后一行更新游标，确保分页持续向前推进
+                lastDate = rows[rows.length - 1].lifelog_date || '';
+                lastTime = rows[rows.length - 1].lifelog_time || '';
+                lastId = rows[rows.length - 1].id;
+
                 for (const row of rows) {
+                    // 按块 ID 去重：如果该块已被当前页面或之前页面处理过，跳过
+                    if (seenBlockIds.has(row.id)) continue;
+                    seenBlockIds.add(row.id);
                     records.push(this._parseLifeLogRow(row, true));
                 }
 
                 scanned += rows.length;
-                lastDate = rows[rows.length - 1].lifelog_date || '';
-                lastTime = rows[rows.length - 1].lifelog_time || '';
-                lastId = rows[rows.length - 1].id;
             }
         } catch (e) {
             // console.warn('[轻语] 查询 LifeLog 属性记录失败:', e.message);
