@@ -14814,7 +14814,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     /* font-weight: 600; */
     color: var(--b3-theme-on-background);
     font-variant-numeric: tabular-nums;
-    line-height: 1.3;
+    line-height: 2;
 }
 
 /* 百分比和条数在同一行 */
@@ -14823,22 +14823,32 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     gap: 2px;
     justify-content: center;
     align-items: center;
-    line-height: 1.3;
+    line-height: 2;
+}
+
+/* 统计视图 - 标签统计明细表的子行（独立于 LifeLog 统计视图） */
+.stats-tag-detail-val-sub {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+    align-items: center;
+    line-height: 3.3;
 }
 
 .lifelog-stats-detail-val-pct {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--b3-theme-primary);
 }
 
 .lifelog-stats-detail-val-count {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--b3-theme-on-surface-light);
 }
 
 .lifelog-stats-detail-cell-total-row .lifelog-stats-detail-val-duration,
 .lifelog-stats-detail-cell-total-row .lifelog-stats-detail-val-count,
-.lifelog-stats-detail-cell-total-row .lifelog-stats-detail-val-sub {
+.lifelog-stats-detail-cell-total-row .lifelog-stats-detail-val-sub,
+.lifelog-stats-detail-cell-total-row .stats-tag-detail-val-sub {
     color: var(--b3-theme-primary);
     font-weight: 500;
 }

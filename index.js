@@ -470,13 +470,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogRefreshInFlight = false; // LifeLog 刷新中的并发保护
         this._lifelogRefreshQueued = false; // LifeLog 刷新期间收到变更后的补刷标记
         this._lifelogStatsPeriod = 'year'; // LifeLog 统计视图的时间范围（all/year/month/week/today）
-        this._lifelogStatsFilterType = ''; // LifeLog 统计视图的类型筛选
+        this._lifelogStatsFilterType = []; // LifeLog 统计视图的类型筛选（多选）
         this._lifelogStatsCustomStart = null; // LifeLog 统计视图自定义起始时间（毫秒）
         this._lifelogStatsCustomEnd = null; // LifeLog 统计视图自定义结束时间（毫秒）
         this.compactMode = false; // 紧凑模式（默认关闭）
         this.lifeLogCompactMode = false; // LifeLog 紧凑模式（默认关闭，独立于说说视图）
         this.lifelogTypesDefaultExpanded = true; // LifeLog 类型折叠条默认是否展开
         this._lifelogTypesExpanded = this.lifelogTypesDefaultExpanded; // LifeLog 类型折叠条是否展开
+        this.lifeLogTimeMode = 'end'; // LifeLog 时间模式: 'end'=结束模式(默认) 'start'=开始模式
         this.galleryColumnCount = 3; // 拾光视图列数（默认3列）
         this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG }; // 图书视图字体大小配置
         this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG }; // 图书视图同步配置
@@ -4328,6 +4329,16 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.showLifelogSidebarDock ? 'on' : ''}" id="settings-show-lifelog-sidebar-dock-switch"></div>
                                 </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>时间计算模式</h4>
+                                        <p>结束模式（默认）：节点时间为结束时间，时长从上一条结束算到当前结束。开始模式：节点时间为开始时间，时长从当前开始算到下一条开始。跨天时自动按天拆分。</p>
+                                    </div>
+                                    <div class="lifelog-time-mode-selector" style="display:flex;gap:8px;flex-shrink:0;">
+                                        <button class="north-shuoshuo-query-match-btn ${this.lifeLogTimeMode === 'end' ? 'active' : ''}" data-lifelog-time-mode="end" style="flex:0;white-space:nowrap;min-width:80px;">结束模式</button>
+                                        <button class="north-shuoshuo-query-match-btn ${this.lifeLogTimeMode === 'start' ? 'active' : ''}" data-lifelog-time-mode="start" style="flex:0;white-space:nowrap;min-width:80px;">开始模式</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -5140,13 +5151,22 @@ ipcRenderer.on('lumina-close', () => {
                     self.renderLifeLog(false);
                 });
             }
-            // 其他类型按钮：选择类型并自动折叠
+            // 其他类型按钮：选择/取消选择类型（不切换折叠状态），选中后自动聚焦输入框
             inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type:not(#lifelog-type-toggle)').forEach(item => {
                 item.addEventListener('click', function() {
                     const type = this.dataset.lifelogInputType;
-                    self._lifelogCurrentInputType = type || '';
-                    self._lifelogTypesExpanded = false; // 选择类型后自动折叠
+                    // 再次点击已选中的类型则取消选中
+                    if (type === self._lifelogCurrentInputType) {
+                        self._lifelogCurrentInputType = '';
+                    } else {
+                        self._lifelogCurrentInputType = type || '';
+                    }
                     self.renderLifeLog(false);
+                    // 渲染后自动聚焦输入框
+                    setTimeout(() => {
+                        const input = self.container.querySelector('#shuoshuo-input');
+                        if (input) input.focus();
+                    }, 0);
                 });
             });
         }
@@ -5529,9 +5549,18 @@ ipcRenderer.on('lumina-close', () => {
             inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type:not(#lifelog-type-toggle)').forEach(item => {
                 item.addEventListener('click', function() {
                     const type = this.dataset.lifelogInputType;
-                    self._lifelogCurrentInputType = type || '';
-                    self._lifelogTypesExpanded = false;
+                    // 再次点击已选中的类型则取消选中
+                    if (type === self._lifelogCurrentInputType) {
+                        self._lifelogCurrentInputType = '';
+                    } else {
+                        self._lifelogCurrentInputType = type || '';
+                    }
                     self.renderLifeLogDockView();
+                    // 渲染后自动聚焦输入框
+                    setTimeout(() => {
+                        const input = self.container.querySelector('#shuoshuo-input');
+                        if (input) input.focus();
+                    }, 0);
                 });
             });
         }
@@ -5826,7 +5855,7 @@ ipcRenderer.on('lumina-close', () => {
 
         // 当前选中的时间范围 & 类型筛选
         const period = this._lifelogStatsPeriod || 'year';
-        const selectedType = this._lifelogStatsFilterType || '';
+        const selectedTypes = this._lifelogStatsFilterType || [];
         const now = new Date();
         const year = now.getFullYear();
 
@@ -5878,8 +5907,8 @@ ipcRenderer.on('lumina-close', () => {
             filtered = records.filter(r => r.created >= periodStartMs && r.created <= periodEnd);
         }
         // 类型筛选
-        if (selectedType) {
-            filtered = filtered.filter(r => r._lifeLogType === selectedType);
+        if (selectedTypes.length > 0) {
+            filtered = filtered.filter(r => selectedTypes.includes(r._lifeLogType));
         }
         const hasFilteredData = filtered.length > 0;
 
@@ -5896,9 +5925,14 @@ ipcRenderer.on('lumina-close', () => {
             }
             typeDurations[type].count++;
             if (i > 0) {
-                const durationMs = record.created - sorted[i - 1].created;
+                // sorted[i-1] 是前一条记录（较旧），sorted[i] 是当前记录（较新）
+                // 结束模式：时长归当前记录（较新的）；开始模式：时长归上一条记录（较旧的）
+                const durationMs = this._calculateDurationBetweenRecords(sorted[i - 1], sorted[i], this.lifeLogTimeMode);
                 if (durationMs > 0 && durationMs < 86400000 * 3) {
-                    typeDurations[type].totalMs += durationMs;
+                    const targetType = this.lifeLogTimeMode === 'start'
+                        ? (sorted[i - 1]._lifeLogType || '未分类')
+                        : type;
+                    typeDurations[targetType].totalMs += durationMs;
                 }
             }
         }
@@ -5943,7 +5977,7 @@ ipcRenderer.on('lumina-close', () => {
 
         // 类型筛选标签
         let typeTagsHtml = allTypes.map(type => {
-            const active = type === selectedType ? ' active' : '';
+            const active = selectedTypes.includes(type) ? ' active' : '';
             return `<span class="lifelog-stats-tag${active}" data-stats-type="${escapeHtml(type)}">${escapeHtml(type)}</span>`;
         }).join('');
 
@@ -6044,7 +6078,7 @@ ipcRenderer.on('lumina-close', () => {
                     </div>
                     <div class="lifelog-stats-type-filter">
                         <span class="lifelog-stats-filter-label">类型</span>
-                        <span class="lifelog-stats-tag${!selectedType ? ' active' : ''}" data-stats-type="">全部</span>
+                        <span class="lifelog-stats-tag${selectedTypes.length === 0 ? ' active' : ''}" data-stats-type="">全部</span>
                         ${typeTagsHtml}
                     </div>
                 </div>
@@ -6139,12 +6173,22 @@ ipcRenderer.on('lumina-close', () => {
             });
         });
 
-        // 绑定类型筛选事件
+        // 绑定类型筛选事件（多选）
         listEl.querySelectorAll('.lifelog-stats-tag').forEach(tag => {
             tag.addEventListener('click', function() {
                 const type = this.dataset.statsType;
-                if (self._lifelogStatsFilterType === type) return;
-                self._lifelogStatsFilterType = type;
+                if (!type) {
+                    // 点击"全部"：清除所有筛选
+                    self._lifelogStatsFilterType = [];
+                } else {
+                    // toggle 选中的类型
+                    const current = self._lifelogStatsFilterType || [];
+                    if (current.includes(type)) {
+                        self._lifelogStatsFilterType = current.filter(t => t !== type);
+                    } else {
+                        self._lifelogStatsFilterType = [...current, type];
+                    }
+                }
                 self.renderLifeLogStats();
             });
         });
@@ -6215,16 +6259,66 @@ ipcRenderer.on('lumina-close', () => {
         const sorted = [...filtered].sort((a, b) => a.created - b.created);
         let total = 0;
         for (let i = 1; i < sorted.length; i++) {
-            const d = sorted[i].created - sorted[i - 1].created;
+            // sorted[i-1] 是前一条记录（较旧），sorted[i] 是当前记录（较新）
+            const d = this._calculateDurationBetweenRecords(sorted[i - 1], sorted[i], this.lifeLogTimeMode);
             if (d > 0 && d < 86400000 * 3) total += d;
         }
         return total;
     }
 
+    // 计算两条 LifeLog 记录之间的实际耗时（考虑跨天拆分）
+    // 规则：如果上一条是昨天，拆分：记录时间→昨天23:59:59 + 今天0点→当前记录时间
+    //       如果上一条不是昨天（隔天或更早）：
+    //         结束模式（end）：按当天0点开始计算 → 当前记录 - 当天0点
+    //         开始模式（start）：按当天午夜结束计算 → 当天23:59:59 - 上一条记录
+    //       如果是同一天，直接相减
+    _calculateDurationBetweenRecords(prevRecord, currentRecord, mode = 'end') {
+        const prevDate = new Date(prevRecord.created);
+        const currDate = new Date(currentRecord.created);
+
+        // 同一天：直接相减
+        if (prevDate.getFullYear() === currDate.getFullYear() &&
+            prevDate.getMonth() === currDate.getMonth() &&
+            prevDate.getDate() === currDate.getDate()) {
+            return currentRecord.created - prevRecord.created;
+        }
+
+        // 计算前一条记录所在日的 23:59:59.999
+        const prevDayEnd = new Date(prevDate);
+        prevDayEnd.setHours(23, 59, 59, 999);
+
+        // 计算当前记录所在日的 00:00:00.000
+        const currDayStart = new Date(currDate);
+        currDayStart.setHours(0, 0, 0, 0);
+
+        // 判断上一条是否是昨天
+        const dayAfterPrev = new Date(prevDate);
+        dayAfterPrev.setDate(dayAfterPrev.getDate() + 1);
+        dayAfterPrev.setHours(0, 0, 0, 0);
+
+        if (dayAfterPrev.getTime() === currDayStart.getTime()) {
+            // 上一条是昨天：拆分计算（两种模式相同）
+            return (prevDayEnd.getTime() - prevRecord.created) + (currentRecord.created - currDayStart.getTime());
+        } else if (mode === 'start') {
+            // 开始模式：隔天或更早，按当天午夜结束计算
+            return prevDayEnd.getTime() - prevRecord.created;
+        } else {
+            // 结束模式（默认）：隔天或更早，按当天0点开始计算
+            return currentRecord.created - currDayStart.getTime();
+        }
+    }
+
     // 预计算 LifeLog 列表中的持续时间（排序为倒序，后一项为前一项的前一条记录）
     _precalculateLifeLogDurations(sorted) {
         for (let i = 0; i < sorted.length - 1; i++) {
-            sorted[i]._durationMs = sorted[i].created - sorted[i + 1].created;
+            // sorted[i] 是较新的记录，sorted[i+1] 是较旧的记录（前一条）
+            // 结束模式：时长归较新记录（sorted[i]）；开始模式：时长归较旧记录（sorted[i+1]）
+            const duration = this._calculateDurationBetweenRecords(sorted[i + 1], sorted[i], this.lifeLogTimeMode);
+            if (this.lifeLogTimeMode === 'start') {
+                sorted[i + 1]._durationMs = duration;
+            } else {
+                sorted[i]._durationMs = duration;
+            }
         }
     }
 
@@ -6242,16 +6336,16 @@ ipcRenderer.on('lumina-close', () => {
 
         // 按全局顺序计算每条记录的耗时并归到对应月份的类型下
         for (let i = 1; i < sorted.length; i++) {
-            const r = sorted[i];
-            const type = r._lifeLogType || '未分类';
-            const d = new Date(r.created);
-            const monthIdx = d.getMonth(); // 0-11
-            const gap = r.created - sorted[i - 1].created;
+            // 结束模式：时长归 sorted[i]（当前/较新记录）；开始模式：时长归 sorted[i-1]（上一条/较旧记录）
+            const targetRecord = this.lifeLogTimeMode === 'start' ? sorted[i - 1] : sorted[i];
+            const targetType = targetRecord._lifeLogType || '未分类';
+            const targetMonthIdx = new Date(targetRecord.created).getMonth(); // 0-11
+            // sorted[i-1] 是前一条记录（较旧），sorted[i] 是当前记录（较新）
+            const gap = this._calculateDurationBetweenRecords(sorted[i - 1], sorted[i], this.lifeLogTimeMode);
             if (gap > 0 && gap < 86400000 * 3) {
-                if (!monthMap[monthIdx][type]) monthMap[monthIdx][type] = { count: 0, ms: 0 };
-                monthMap[monthIdx][type].ms += gap;
+                if (!monthMap[targetMonthIdx][targetType]) monthMap[targetMonthIdx][targetType] = { count: 0, ms: 0 };
+                monthMap[targetMonthIdx][targetType].ms += gap;
             }
-            allTypesSet.add(type);
         }
 
         // 统计每条记录（计数）
@@ -6287,7 +6381,7 @@ ipcRenderer.on('lumina-close', () => {
         // 生成单格内容：时长在上，百分比+条数在下同行
         const cellContent = (ms, count) => {
             if (!ms && !count) return '<span class="lifelog-stats-detail-cell-empty">-</span>';
-            const pct = grandMs > 0 ? (ms / grandMs * 100).toFixed(2) : '0.00';
+            const pct = grandMs > 0 ? (ms / grandMs * 100).toFixed(1) : '0.0';
             return `<div class="lifelog-stats-detail-val-duration">${formatDuration(ms)}</div>
                 <div class="lifelog-stats-detail-val-sub">
                     <span class="lifelog-stats-detail-val-pct">${pct}%</span>
@@ -10341,7 +10435,7 @@ ipcRenderer.on('lumina-close', () => {
         const cellContent = (count) => {
             if (!count) return '<span class="lifelog-stats-detail-cell-empty">-</span>';
             const pct = grandTotal > 0 ? (count / grandTotal * 100).toFixed(1) : '0.0';
-            return `<div class="lifelog-stats-detail-val-sub">
+            return `<div class="stats-tag-detail-val-sub">
                         <span class="lifelog-stats-detail-val-pct">${pct}%</span>
                         <span class="lifelog-stats-detail-val-count">${count}条</span>
                     </div>`;
@@ -10389,7 +10483,7 @@ ipcRenderer.on('lumina-close', () => {
                             <tr>
                                 <td class="lifelog-stats-detail-cell-type lifelog-stats-detail-cell-total-row">总计</td>
                                 <td class="lifelog-stats-detail-cell-total lifelog-stats-detail-cell-total-row">
-                                    <div class="lifelog-stats-detail-val-sub">
+                                    <div class="stats-tag-detail-val-sub">
                                         <span class="lifelog-stats-detail-val-count">${grandTotal}条</span>
                                     </div>
                                 </td>
@@ -10400,7 +10494,7 @@ ipcRenderer.on('lumina-close', () => {
                                     }
                                     if (monthTotal > 0) {
                                         return `<td class="lifelog-stats-detail-cell-day lifelog-stats-detail-cell-total-row">
-                                            <div class="lifelog-stats-detail-val-sub">
+                                            <div class="stats-tag-detail-val-sub">
                                                 <span class="lifelog-stats-detail-val-count">${monthTotal}条</span>
                                             </div>
                                         </td>`;
@@ -18287,6 +18381,37 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // LifeLog 时间计算模式
+        const timeModeBtns = this.container.querySelectorAll('[data-lifelog-time-mode]');
+        timeModeBtns.forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const mode = btn.dataset.lifelogTimeMode;
+                if (mode === this.lifeLogTimeMode) return;
+                // 更新按钮激活状态
+                timeModeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.lifeLogTimeMode = mode;
+                await this.saveConfig();
+                // 刷新 LifeLog 视图
+                if (this.currentMainView === 'lifelog' || this.currentMainView === 'lifelog-stats') {
+                    this.loadLifeLogData(true).then(() => {
+                        if (this.currentMainView === 'lifelog-stats') {
+                            this.renderLifeLogStats();
+                        } else {
+                            this.renderLifeLog();
+                        }
+                    });
+                }
+                const dockContainers = this.getMountedLifeLogContainers();
+                dockContainers.forEach(c => {
+                    if (c.closest?.('.north-shuoshuo-lifelog-dock-view')) {
+                        this.renderLifeLogDockView();
+                    }
+                });
+                showMessage(mode === 'end' ? 'LifeLog 已切换为结束模式' : 'LifeLog 已切换为开始模式');
+            });
+        });
+
         // 紧凑模式
         const compactModeSwitch = this.container.querySelector('#settings-compact-mode-switch');
         if (compactModeSwitch) {
@@ -20463,6 +20588,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.lifelogTypesDefaultExpanded = data.lifelogTypesDefaultExpanded !== undefined
                   ? (data.lifelogTypesDefaultExpanded === true || data.lifelogTypesDefaultExpanded === 'true' || data.lifelogTypesDefaultExpanded === 1)
                   : true;
+                this.lifeLogTimeMode = (data.lifeLogTimeMode === 'end' || data.lifeLogTimeMode === 'start') ? data.lifeLogTimeMode : 'end';
                 this.galleryColumnCount = typeof data.galleryColumnCount === 'number' ? data.galleryColumnCount : 3;
                 this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
                 this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
@@ -20556,6 +20682,7 @@ ipcRenderer.on('lumina-close', () => {
                     compactMode: this.compactMode,
                     lifeLogCompactMode: this.lifeLogCompactMode,
                     lifelogTypesDefaultExpanded: this.lifelogTypesDefaultExpanded,
+                    lifeLogTimeMode: this.lifeLogTimeMode,
                     galleryColumnCount: this.galleryColumnCount,
                     bookshelfFontConfig: this.bookshelfFontConfig,
                     bookshelfSyncConfig: this.bookshelfSyncConfig,
