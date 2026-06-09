@@ -439,7 +439,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.viewStyle = 'list'; // 'list' 平铺, 'card' 卡片
         this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [] };
         this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
-        this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
+        this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncScope: 'public' };
         this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
         this.reviewHistory = {}; // {noteId: timestamp} 记录每条笔记上次回顾时间
         this.selectedDate = null;
@@ -4047,7 +4047,45 @@ ipcRenderer.on('lumina-close', () => {
                                     <label class="north-shuoshuo-form-label">上次同步时间</label>
                                     <div class="north-shuoshuo-readonly-field" id="memos-last-sync">从未同步</div>
                                 </div>
-                                
+
+                                <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
+                                    <label class="north-shuoshuo-form-label">同步范围</label>
+                                    <div class="north-shuoshuo-radio-group horizontal" id="memos-scope-group">
+                                        <label class="north-shuoshuo-radio-item memos-scope" data-value="private">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">仅私有</div>
+                                                <div class="north-shuoshuo-radio-desc">只同步自己的私有笔记</div>
+                                            </div>
+                                            <input type="radio" name="memos-scope" value="private">
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item memos-scope" data-value="private_public">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">私有 + 公开</div>
+                                                <div class="north-shuoshuo-radio-desc">私有笔记和公开笔记</div>
+                                            </div>
+                                            <input type="radio" name="memos-scope" value="private_public">
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item memos-scope" data-value="protected">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">私有 + 工作区</div>
+                                                <div class="north-shuoshuo-radio-desc">私有 + 工作区可见</div>
+                                            </div>
+                                            <input type="radio" name="memos-scope" value="protected">
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                        <label class="north-shuoshuo-radio-item memos-scope" data-value="public">
+                                            <div class="north-shuoshuo-radio-info">
+                                                <div class="north-shuoshuo-radio-name">包含公开（全部）</div>
+                                                <div class="north-shuoshuo-radio-desc">私有 + 工作区 + 公开</div>
+                                            </div>
+                                            <input type="radio" name="memos-scope" value="public" checked>
+                                            <span class="north-shuoshuo-radio-check"></span>
+                                        </label>
+                                    </div>
+                                </div>
+
                                 <div class="north-shuoshuo-form-row" style="margin-bottom: 10px;">
                                     <label class="north-shuoshuo-checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: #555;">
                                         <input type="checkbox" id="memos-full-sync" style="width: 16px; height: 16px; cursor: pointer;">
@@ -19491,7 +19529,7 @@ ipcRenderer.on('lumina-close', () => {
 
         if (clearBtn) {
             clearBtn.onclick = async () => {
-                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
+                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncScope: 'public' };
                 await this.saveConfig();
                 if (hostInput) hostInput.value = '';
                 if (tokenInput) tokenInput.value = '';
@@ -19510,6 +19548,12 @@ ipcRenderer.on('lumina-close', () => {
                 const targetDocIdInput = this.container.querySelector('#memos-target-doc-id');
                 if (targetDocIdInput) {
                     this.memosConfig.syncDocId = targetDocIdInput.value.trim();
+                }
+                
+                // 保存同步范围
+                const scopeRadio = this.container.querySelector('input[name="memos-scope"]:checked');
+                if (scopeRadio) {
+                    this.memosConfig.syncScope = scopeRadio.value;
                 }
                 
                 await this.saveConfig();
@@ -19564,6 +19608,30 @@ ipcRenderer.on('lumina-close', () => {
 
         // 加载笔记本列表
         this.loadMemosNotebooks();
+
+        // Memos 同步范围单选框
+        const memosScopeItems = this.container.querySelectorAll('.memos-scope');
+        memosScopeItems.forEach(item => {
+            item.addEventListener('click', () => {
+                memosScopeItems.forEach(r => r.classList.remove('selected'));
+                item.classList.add('selected');
+                const radio = item.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+            });
+        });
+        
+        // 初始化同步范围选中状态
+        const savedScope = this.memosConfig.syncScope || 'public';
+        const scopeRadios = this.container.querySelectorAll('input[name="memos-scope"]');
+        scopeRadios.forEach(radio => {
+            if (radio.value === savedScope) {
+                radio.checked = true;
+                radio.closest('.memos-scope')?.classList.add('selected');
+            } else {
+                radio.checked = false;
+                radio.closest('.memos-scope')?.classList.remove('selected');
+            }
+        });
     }
 
     // 更新 Memos UI 状态
@@ -19659,6 +19727,19 @@ ipcRenderer.on('lumina-close', () => {
         if (memosDocRow) {
             memosDocRow.style.display = savedSyncTarget === 'singledoc' ? 'block' : 'none';
         }
+
+        // 恢复同步范围选择状态
+        const savedScope = this.memosConfig.syncScope || 'public';
+        const scopeRadios = this.container.querySelectorAll('input[name="memos-scope"]');
+        scopeRadios.forEach(radio => {
+            if (radio.value === savedScope) {
+                radio.checked = true;
+                radio.closest('.memos-scope')?.classList.add('selected');
+            } else {
+                radio.checked = false;
+                radio.closest('.memos-scope')?.classList.remove('selected');
+            }
+        });
 
         // 恢复保存的目标文档 ID
         const targetDocIdInput = this.container.querySelector('#memos-target-doc-id');
@@ -20563,7 +20644,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.viewStyle = data.viewStyle === 'card' ? 'card' : 'list';
                 this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [], ...(data.flomoConfig || data.flomo || {}) };
                 this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
-                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.memosConfig || data.memos || {}) };
+                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncScope: 'public', ...(data.memosConfig || data.memos || {}) };
                 this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...(data.reviewConfig || data.review || {}) };
                 // 优先保留已有的 tagIcons（防止意外覆盖），只有在 data.tagIcons 有值时才更新
                 if (data.tagIcons && Object.keys(data.tagIcons).length > 0) {
@@ -22760,7 +22841,21 @@ ipcRenderer.on('lumina-close', () => {
         const allMemos = [];
         const pageSize = 100;
         let offset = 0;
+        
+        // 增量同步时跳过旧数据；全量同步使用非常早的时间以获取全部
         const lastSyncTime = isFullSync ? '1970-01-01 00:00:00' : (this.memosConfig.lastSyncTime || '1970-01-01 00:00:00');
+        const lastSyncDate = new Date(lastSyncTime);
+        
+        // 根据同步范围构建可见性判定函数
+        const scope = this.memosConfig.syncScope || 'public';
+        const isVisible = (memo) => {
+            const v = (memo.visibility || 'PRIVATE').toUpperCase();
+            if (scope === 'private') return v === 'PRIVATE';
+            if (scope === 'private_public') return v === 'PRIVATE' || v === 'PUBLIC';
+            if (scope === 'protected') return v === 'PRIVATE' || v === 'PROTECTED';
+            if (scope === 'public') return true; // 全部包含
+            return true; // scope === 'all' 不过滤
+        };
         
         while (true) {
             const data = await this.memosRequest(`/api/v1/memo?offset=${offset}&limit=${pageSize}`, {
@@ -22769,12 +22864,21 @@ ipcRenderer.on('lumina-close', () => {
             
             if (!Array.isArray(data) || data.length === 0) break;
             
+            // V1 API 按时间倒序返回（最新的在前），增量同步时遇到全部旧数据即可提前停止
+            let allOlder = true;
             for (const memo of data) {
+                // 先按同步范围过滤可见性
+                if (!isVisible(memo)) continue;
+                
                 const updatedTs = memo.updatedTs ? new Date(memo.updatedTs * 1000) : new Date(0);
-                if (isFullSync || updatedTs >= new Date(lastSyncTime)) {
+                if (isFullSync || updatedTs >= lastSyncDate) {
                     allMemos.push(memo);
+                    if (updatedTs >= lastSyncDate) allOlder = false;
                 }
             }
+            
+            // 如果当前页所有记录都早于 lastSyncTime，后续页只会更早，可以停止
+            if (!isFullSync && allOlder) break;
             
             if (data.length < pageSize) break;
             offset += pageSize;
@@ -22783,21 +22887,44 @@ ipcRenderer.on('lumina-close', () => {
         return allMemos;
     }
 
-    // V2 获取 Memos
+    // V2 获取 Memos（参考 Flomo 增量同步策略）
+    // - 增量同步：客户端过滤 + 早停
+    // - 全量同步：获取所有记录（通过 UI 中的"全量同步"复选框触发）
+    // - 同步范围 filter：visibility 字段支持 CEL 表达式
     async memosGetV2Memos(isFullSync) {
         const allMemos = [];
         const pageSize = 100;
         let pageToken = '';
+        
+        // 增量同步时跳过旧数据；全量同步使用很早的时间以获取全部
         const lastSyncTime = isFullSync ? '1970-01-01 00:00:00' : (this.memosConfig.lastSyncTime || '1970-01-01 00:00:00');
+        const lastSyncDate = new Date(lastSyncTime);
+        
+        // 根据同步范围构建 visibility filter（V2 API 原生支持 CEL filter）
+        const scope = this.memosConfig.syncScope || 'public';
+        let visibilityFilter = '';
+        if (scope === 'private') {
+            visibilityFilter = 'visibility == "PRIVATE"';
+        } else if (scope === 'private_public') {
+            visibilityFilter = 'visibility in ["PRIVATE", "PUBLIC"]';
+        } else if (scope === 'protected') {
+            visibilityFilter = 'visibility in ["PRIVATE", "PROTECTED"]';
+        } else if (scope === 'public') {
+            visibilityFilter = 'visibility in ["PRIVATE", "PROTECTED", "PUBLIC"]';
+        }
+        // scope === 'all' → 不过滤
         
         while (true) {
             let url = `/api/v1/memos?pageSize=${pageSize}`;
+            if (visibilityFilter) url += `&filter=${encodeURIComponent(visibilityFilter)}`;
             if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
             
             const data = await this.memosRequest(url, { method: 'GET' });
             
             if (!data || !Array.isArray(data.memos) || data.memos.length === 0) break;
             
+            // V2 API 按 updateTime 倒序返回，增量同步时遇到全部旧数据即可提前停止
+            let allOlder = true;
             for (const memo of data.memos) {
                 let updateTime;
                 try {
@@ -22805,10 +22932,14 @@ ipcRenderer.on('lumina-close', () => {
                 } catch (e) {
                     updateTime = new Date(0);
                 }
-                if (isFullSync || updateTime >= new Date(lastSyncTime)) {
+                if (isFullSync || updateTime >= lastSyncDate) {
                     allMemos.push(memo);
+                    if (updateTime >= lastSyncDate) allOlder = false;
                 }
             }
+            
+            // 如果当前页所有记录都早于 lastSyncTime，后续页只会更早，停止遍历
+            if (!isFullSync && allOlder) break;
             
             if (!data.nextPageToken) break;
             pageToken = data.nextPageToken;
