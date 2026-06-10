@@ -15694,6 +15694,7 @@ ipcRenderer.on('lumina-close', () => {
 
         copyBtn.addEventListener('click', async () => {
             try {
+                // 优先直接复制原始图片数据（所有格式都走 fast path）
                 const resp = await fetch(imgSrc);
                 const blob = await resp.blob();
                 const mime = blob.type || 'image/png';
@@ -15705,10 +15706,34 @@ ipcRenderer.on('lumina-close', () => {
                     copyBtn.classList.remove('copied');
                 }, 2000);
             } catch (err) {
-                copyBtn.innerHTML = `${copyIcon} 复制失败`;
-                setTimeout(() => {
-                    copyBtn.innerHTML = originalCopyHTML;
-                }, 2000);
+                // 直接复制失败，降级为 Canvas 转 PNG（仅首次失败时执行，后续成功会缓存）
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const copyImg = new Image();
+                    copyImg.crossOrigin = 'anonymous';
+                    await new Promise((resolve, reject) => {
+                        copyImg.onload = resolve;
+                        copyImg.onerror = reject;
+                        copyImg.src = imgSrc;
+                    });
+                    canvas.width = copyImg.naturalWidth;
+                    canvas.height = copyImg.naturalHeight;
+                    ctx.drawImage(copyImg, 0, 0);
+                    const pngBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                    await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+                    copyBtn.innerHTML = `${checkIcon} 已复制`;
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalCopyHTML;
+                        copyBtn.classList.remove('copied');
+                    }, 2000);
+                } catch (err2) {
+                    copyBtn.innerHTML = `${copyIcon} 复制失败`;
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalCopyHTML;
+                    }, 2000);
+                }
             }
         });
     }
