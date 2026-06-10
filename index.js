@@ -15561,35 +15561,156 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
-    // 显示图片预览
+    // 显示图片预览（滚轮缩放 + 拖拽平移 + 复制）
     showImagePreview(imgSrc) {
         const overlay = document.createElement('div');
         overlay.className = 'north-shuoshuo-image-preview-modal';
         overlay.innerHTML = `
             <div class="north-shuoshuo-image-preview-overlay"></div>
+            <div class="north-shuoshuo-image-preview-toolbar">
+                <button class="north-shuoshuo-image-preview-copy">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    复制图片
+                </button>
+                <div class="north-shuoshuo-image-preview-close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </div>
+            </div>
             <div class="north-shuoshuo-image-preview-container">
                 <img src="${imgSrc}" alt="图片预览" class="north-shuoshuo-image-preview-img">
-                <div class="north-shuoshuo-image-preview-close">×</div>
             </div>
+            <div class="north-shuoshuo-image-preview-hint">滚轮缩放 | 拖拽移动 | 双击重置</div>
         `;
         document.body.appendChild(overlay);
 
-        // 点击关闭
-        const closeModal = () => overlay.remove();
-        overlay.querySelector('.north-shuoshuo-image-preview-overlay').addEventListener('click', closeModal);
-        overlay.querySelector('.north-shuoshuo-image-preview-close').addEventListener('click', closeModal);
-        
-        // 点击图片本身也关闭
-        overlay.querySelector('.north-shuoshuo-image-preview-img').addEventListener('click', closeModal);
+        const img = overlay.querySelector('.north-shuoshuo-image-preview-img');
+        const container = overlay.querySelector('.north-shuoshuo-image-preview-container');
+        const hint = overlay.querySelector('.north-shuoshuo-image-preview-hint');
+        const copyBtn = overlay.querySelector('.north-shuoshuo-image-preview-copy');
 
-        // ESC键关闭
-        const escHandler = (e) => {
-            if (e.key === 'Escape') {
-                closeModal();
-                document.removeEventListener('keydown', escHandler);
+        // ---- 缩放 & 拖拽状态 ----
+        let scale = 1;
+        let fitScale = 1;
+        let translateX = 0;
+        let translateY = 0;
+        let isDragging = false;
+        let dragStartX = 0, dragStartY = 0;
+        let startTX = 0, startTY = 0;
+
+        const applyTransform = () => {
+            img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        };
+
+        const showHint = (text, duration = 2000) => {
+            hint.textContent = text;
+            hint.classList.add('show');
+            clearTimeout(hint._timer);
+            hint._timer = setTimeout(() => hint.classList.remove('show'), duration);
+        };
+
+        // ---- 图片加载后计算适配视口的初始缩放比例 ----
+        const onImgReady = () => {
+            const vw = window.innerWidth * 0.9;
+            const vh = window.innerHeight * 0.9;
+            const sx = vw / img.naturalWidth;
+            const sy = vh / img.naturalHeight;
+            fitScale = Math.min(sx, sy, 1);
+            scale = fitScale;
+            applyTransform();
+        };
+
+        if (img.complete && img.naturalWidth > 0) {
+            onImgReady();
+        } else {
+            img.onload = onImgReady;
+        }
+
+        // ---- 滚轮缩放（以屏幕中心为轴） ----
+        container.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            scale = Math.max(fitScale * 0.3, Math.min(scale + delta * scale, 15));
+            applyTransform();
+            showHint(`缩放: ${Math.round(scale / fitScale * 100)}%`, 1500);
+        }, { passive: false });
+
+        // ---- 鼠标拖拽平移 ----
+        img.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 || scale <= fitScale * 1.05) return;
+            isDragging = true;
+            img.classList.add('dragging');
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            startTX = translateX;
+            startTY = translateY;
+        });
+
+        const onMouseMove = (e) => {
+            if (!isDragging) return;
+            translateX = startTX + (e.clientX - dragStartX);
+            translateY = startTY + (e.clientY - dragStartY);
+            applyTransform();
+        };
+
+        const onMouseUp = () => {
+            if (isDragging) {
+                isDragging = false;
+                img.classList.remove('dragging');
             }
         };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+
+        // ---- 双击重置 ----
+        img.addEventListener('dblclick', () => {
+            scale = fitScale;
+            translateX = 0;
+            translateY = 0;
+            applyTransform();
+            showHint('已重置', 1500);
+        });
+
+        // ---- 关闭 ----
+        const closeModal = () => {
+            overlay.remove();
+            document.removeEventListener('keydown', escHandler);
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        overlay.querySelector('.north-shuoshuo-image-preview-overlay').addEventListener('click', closeModal);
+        overlay.querySelector('.north-shuoshuo-image-preview-close').addEventListener('click', closeModal);
+
+        const escHandler = (e) => {
+            if (e.key === 'Escape') closeModal();
+        };
         document.addEventListener('keydown', escHandler);
+
+        // ---- 复制图片到剪贴板 ----
+        const copyIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
+        const checkIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+        const originalCopyHTML = copyBtn.innerHTML;
+
+        copyBtn.addEventListener('click', async () => {
+            try {
+                const resp = await fetch(imgSrc);
+                const blob = await resp.blob();
+                const mime = blob.type || 'image/png';
+                await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
+                copyBtn.innerHTML = `${checkIcon} 已复制`;
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalCopyHTML;
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                copyBtn.innerHTML = `${copyIcon} 复制失败`;
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalCopyHTML;
+                }, 2000);
+            }
+        });
     }
 
     // 编辑 LifeLog（弹窗编辑思源块内容）

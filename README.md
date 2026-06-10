@@ -1,5 +1,7 @@
 
-问题反馈：[轻语 & 问题反馈](https://ld246.com/article/1777266791604) | [使用介绍](https://ld246.com/article/1778921929846) | [感谢您的支持](https://testingcf.jsdelivr.net/gh/LunaNorth/north-img/images/20260519195219305.png)
+问题反馈：[轻语 & 问题反馈](https://ld246.com/article/1777266791604) | [使用介绍](https://ld246.com/article/1778921929846) 
+
+感谢支持：[感谢您的支持](https://testingcf.jsdelivr.net/gh/LunaNorth/north-img/images/20260519195219305.png)
 <div style="font-family: var(--b3-font-family); color: var(--b3-theme-on-background); line-height: 1.5;">
 
   <!-- 核心记录 -->
@@ -127,6 +129,12 @@
 </div>
 
 ## 更新日志
+
+### v1.6.1
+- 【新增】图片预览支持滚轮缩放（以屏幕中心为轴），长图放大后可拖拽平移查看细节
+- 【新增】图片预览双击重置为适配大小
+- 【新增】图片预览新增「复制图片」按钮，支持复制图片到剪贴板粘贴到其他地方
+- 【优化】图片预览顶部工具栏改为毛玻璃质感，交互动效更流畅
 
 ### v1.6.0
 - 【优化】Memos 同步改为增量同步，默认只同步上次同步时间之后更新的记录，减少重复拉取

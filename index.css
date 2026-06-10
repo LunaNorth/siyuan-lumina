@@ -2154,7 +2154,7 @@
     will-change: transform;
 }
 
-/* 图片预览弹窗 */
+/* ========== 图片预览弹窗（滚轮缩放 + 拖拽 + 复制） ========== */
 .north-shuoshuo-image-preview-modal {
     position: fixed;
     top: 0;
@@ -2162,9 +2162,7 @@
     width: 100%;
     height: 100%;
     z-index: 999999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow: hidden;
 }
 
 .north-shuoshuo-image-preview-overlay {
@@ -2174,43 +2172,140 @@
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.85);
-    cursor: zoom-out;
 }
 
 .north-shuoshuo-image-preview-container {
-    position: relative;
-    max-width: 90vw;
-    max-height: 90vh;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
     z-index: 1;
 }
 
 .north-shuoshuo-image-preview-img {
-    max-width: 100%;
-    max-height: 90vh;
-    object-fit: contain;
     border-radius: 4px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    cursor: zoom-out;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-drag: none;
+    transform-origin: center center;
 }
 
-.north-shuoshuo-image-preview-close {
-    position: absolute;
-    top: -40px;
+.north-shuoshuo-image-preview-img.dragging {
+    cursor: grabbing;
+}
+
+/* ===== 顶部工具栏 ===== */
+.north-shuoshuo-image-preview-toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
     right: 0;
-    width: 32px;
-    height: 32px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 20px;
+    gap: 10px;
+    z-index: 2;
+    background: linear-gradient(180deg, rgba(0,0,0,0.45) 0%, transparent 100%);
+    pointer-events: none;
+}
+
+.north-shuoshuo-image-preview-toolbar > * {
+    pointer-events: auto;
+}
+
+/* 关闭按钮 */
+.north-shuoshuo-image-preview-close {
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
     color: #fff;
     cursor: pointer;
-    opacity: 0.8;
-    transition: opacity 0.2s;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 50%;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: all 0.2s ease;
     user-select: none;
+    flex-shrink: 0;
 }
 
 .north-shuoshuo-image-preview-close:hover {
+    background: rgba(255,255,255,0.25);
+    border-color: rgba(255,255,255,0.3);
+    transform: scale(1.1);
+}
+
+.north-shuoshuo-image-preview-close:active {
+    transform: scale(0.95);
+}
+
+/* 复制图片按钮 */
+.north-shuoshuo-image-preview-copy {
+    height: 34px;
+    padding: 0 14px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #fff;
+    cursor: pointer;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 17px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: all 0.2s ease;
+    user-select: none;
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.north-shuoshuo-image-preview-copy:hover {
+    background: rgba(255,255,255,0.25);
+    border-color: rgba(255,255,255,0.3);
+}
+
+.north-shuoshuo-image-preview-copy:active {
+    transform: scale(0.95);
+}
+
+.north-shuoshuo-image-preview-copy.copied {
+    background: rgba(7, 193, 96, 0.45);
+    border-color: rgba(7, 193, 96, 0.35);
+}
+
+/* 底部操作提示 */
+.north-shuoshuo-image-preview-hint {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    z-index: 2;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 6px 14px;
+    border-radius: 12px;
+    pointer-events: none;
+    user-select: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    white-space: nowrap;
+}
+
+.north-shuoshuo-image-preview-hint.show {
     opacity: 1;
 }
 
