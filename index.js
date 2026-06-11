@@ -935,11 +935,11 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             });
         }
 
-        // 标签筛选
+        // 标签筛选（使用实时提取的标签，确保思源中标签变更后仍能正确匹配）
         if (this.selectedTag) {
             filtered = filtered.filter(s => {
-                if (!s.tags) return false;
-                return s.tags.some(tag => tag === this.selectedTag || tag.startsWith(this.selectedTag + '/'));
+                const tags = this._getEffectiveTags(s);
+                return tags.some(tag => tag === this.selectedTag || tag.startsWith(this.selectedTag + '/'));
             });
         }
 
@@ -977,7 +977,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         if (searchText) {
             filtered = filtered.filter(s => {
                 const contentMatch = (s.content || '').toLowerCase().includes(searchText);
-                const tagMatch = s.tags && s.tags.some(tag => tag.toLowerCase().includes(searchText));
+                const tagMatch = this._getEffectiveTags(s).some(tag => tag.toLowerCase().includes(searchText));
                 const dateMatch = this.formatDate(s.created).toLowerCase().includes(searchText);
                 return contentMatch || tagMatch || dateMatch;
             });
@@ -1205,7 +1205,11 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                         this.render(wrapper);
                     },
                     show: () => {
-                        this.loadShuoshuos();
+                        this._invalidateSiyuanBoundCache();
+                        this.loadShuoshuos().then(() => {
+                            // 刷新所有说说视图容器（包括侧边栏 Dock）
+                            this.refreshMountedShuoshuoViews();
+                        });
                     },
                     destroy: () => {}
                 });
@@ -1281,6 +1285,21 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 this.openShuoshuoTab();
             }, 500);
         }
+
+        // 监听窗口可见性变化，从后台恢复时清除 LifeLog 缓存确保显示最新数据
+        this._lifelogVisibilityHandler = () => {
+            if (document.visibilityState === 'visible') {
+                this._lifelogCache = null;
+                this._lifelogCacheTime = 0;
+            }
+        };
+        document.addEventListener('visibilitychange', this._lifelogVisibilityHandler);
+        // Electron 窗口聚焦时也清除缓存
+        this._lifelogFocusHandler = () => {
+            this._lifelogCache = null;
+            this._lifelogCacheTime = 0;
+        };
+        window.addEventListener('focus', this._lifelogFocusHandler);
     }
 
     ensureMobileTopBarEntry() {
@@ -1550,6 +1569,17 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         }
         this._lifelogRefreshInFlight = false;
         this._lifelogRefreshQueued = false;
+
+        // 清理 LifeLog 可见性/聚焦事件监听
+        if (this._lifelogVisibilityHandler) {
+            try { document.removeEventListener('visibilitychange', this._lifelogVisibilityHandler); } catch (e) {}
+            this._lifelogVisibilityHandler = null;
+        }
+        if (this._lifelogFocusHandler) {
+            try { window.removeEventListener('focus', this._lifelogFocusHandler); } catch (e) {}
+            this._lifelogFocusHandler = null;
+        }
+
         if (this._syncAttrTimer) {
             for (const key of Object.keys(this._syncAttrTimer)) {
                 clearTimeout(this._syncAttrTimer[key]);
@@ -5305,8 +5335,8 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // 类型筛选
-        const selectedType = this._lifelogSelectedType || '';
+        // 类型筛选（优先使用侧边栏类型列表的_lifelogSelectedType，其次使用输入类型标签的_lifelogCurrentInputType）
+        const selectedType = this._lifelogSelectedType || this._lifelogCurrentInputType || '';
         if (selectedType) {
             records = records.filter(r => r._lifeLogType === selectedType);
         }
@@ -5630,8 +5660,8 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // 类型筛选
-        const selectedType = this._lifelogSelectedType || '';
+        // 类型筛选（Dock 视图无侧边栏类型列表，使用_lifelogCurrentInputType作为筛选条件）
+        const selectedType = this._lifelogSelectedType || this._lifelogCurrentInputType || '';
         if (selectedType) {
             records = records.filter(r => r._lifeLogType === selectedType);
         }
@@ -7228,16 +7258,16 @@ ipcRenderer.on('lumina-close', () => {
         // 标签筛选
         if (this.selectedTag) {
             filtered = filtered.filter(s => {
-                if (!s.tags) return false;
-                return s.tags.some(tag => tag === this.selectedTag || tag.startsWith(this.selectedTag + '/'));
+                const tags = this._getEffectiveTags(s);
+                return tags.some(tag => tag === this.selectedTag || tag.startsWith(this.selectedTag + '/'));
             });
         }
 
         // 表格内置标签筛选
         if (tableFilterTag) {
             filtered = filtered.filter(s => {
-                if (!s.tags) return false;
-                return s.tags.some(tag => tag === tableFilterTag || tag.startsWith(tableFilterTag + '/'));
+                const tags = this._getEffectiveTags(s);
+                return tags.some(tag => tag === tableFilterTag || tag.startsWith(tableFilterTag + '/'));
             });
         }
 
@@ -7253,7 +7283,7 @@ ipcRenderer.on('lumina-close', () => {
         if (tableSearchText) {
             filtered = filtered.filter(s => {
                 const contentMatch = (s.content || '').toLowerCase().includes(tableSearchText);
-                const tagMatch = s.tags && s.tags.some(tag => tag.toLowerCase().includes(tableSearchText));
+                const tagMatch = this._getEffectiveTags(s).some(tag => tag.toLowerCase().includes(tableSearchText));
                 const dateMatch = this.formatDate(s.created).toLowerCase().includes(tableSearchText);
                 return contentMatch || tagMatch || dateMatch;
             });
@@ -7344,7 +7374,8 @@ ipcRenderer.on('lumina-close', () => {
 
         const rowsHtml = sorted.map((item) => {
             const contentPreview = renderTableContentPreview(item.content);
-            const tagsHtml = (item.tags || []).map(tag => {
+            const tags = this._getEffectiveTags(item);
+            const tagsHtml = tags.map(tag => {
                 const style = this.getTagColorStyle(tag);
                 return `<span class="north-shuoshuo-table-tag-pill" style="${style}">${this.escapeHtml(tag)}</span>`;
             }).join(' ');
@@ -9080,7 +9111,7 @@ ipcRenderer.on('lumina-close', () => {
                 // 移除内容中的标签（#标签名格式），避免重复显示
                 displayText = displayText.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim();
                 displayText = displayText.replace(/\n{3,}/g, '\n\n').trim();
-                const tags = s.tags || [];
+                const tags = this._getEffectiveTags(s);
                 tags.forEach(t => allTags.add(t));
                 images.forEach(img => {
                     items.push({
@@ -9099,7 +9130,10 @@ ipcRenderer.on('lumina-close', () => {
         const sortedTags = [...allTags].sort((a, b) => a.localeCompare(b, 'zh'));
         const selectedTag = this.gallerySelectedTag;
         const filteredItems = selectedTag
-            ? items.filter(item => item.tags && item.tags.some(t => t === selectedTag || t.startsWith(selectedTag + '/')))
+            ? items.filter(item => {
+                const tags = this._getEffectiveTags(item);
+                return tags.some(t => t === selectedTag || t.startsWith(selectedTag + '/'));
+            })
             : items;
 
         if (items.length === 0) {
@@ -11680,6 +11714,15 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
         return [...new Set(tags)]; // 去重
+    }
+
+    // 获取说说的有效标签列表：优先从内容中实时提取（确保标签变更后能正确匹配），
+    // 再补充缓存中的标签（兼容属性标签与内容标签不一致的情况）
+    _getEffectiveTags(item) {
+        const fromContent = this.extractTags(item.content || '');
+        const fromCache = item.tags || [];
+        // 合并去重
+        return [...new Set([...fromContent, ...fromCache])];
     }
 
     // 提取类型（已禁用 - LifeLog 类型只在 LifeLog 视图中通过 SQL 属性查询）
@@ -17739,10 +17782,10 @@ ipcRenderer.on('lumina-close', () => {
     // 防抖刷新 LifeLog 视图（利用 transaction、ws-main 和广播事件实现实时更新）
     _scheduleLifeLogRefresh(reason = 'lifelog-change', options = {}) {
         const opts = (options && typeof options === 'object') ? options : {};
-        if (opts.force !== true && this.getMountedLifeLogContainers().length === 0) return false;
-
+        // 始终先清空缓存，确保后台变更后数据不会被缓存挡住
         this._lifelogCache = null;
         this._lifelogCacheTime = 0;
+        if (opts.force !== true && this.getMountedLifeLogContainers().length === 0) return false;
 
         const rawDelay = Number(opts.delayMs);
         const delayMs = Number.isFinite(rawDelay) ? Math.max(0, rawDelay) : 600;
@@ -17780,6 +17823,38 @@ ipcRenderer.on('lumina-close', () => {
 
     _debouncedRefreshLifeLog(reason = 'lifelog-change') {
         return this._scheduleLifeLogRefresh(reason);
+    }
+
+    // 动态显示/隐藏 LifeLog 侧边栏 Dock（根据设置即时生效，无需重启）
+    _toggleLifeLogDockVisibility(visible) {
+        try {
+            // 通过标题查找 LifeLog dock 按钮（思源侧边栏 dock 按钮）
+            const dockBtns = document.querySelectorAll('#dockRight button, #dockLeft button, .dock__item');
+            let targetBtn = null;
+            for (const btn of dockBtns) {
+                if (btn.getAttribute('title') === 'LifeLog' || btn.textContent?.trim() === 'LifeLog') {
+                    targetBtn = btn;
+                    break;
+                }
+            }
+            if (!targetBtn) return;
+
+            if (visible) {
+                targetBtn.style.removeProperty('display');
+            } else {
+                // 隐藏前如果该 dock 面板已打开，先关闭它
+                const dockPanel = document.querySelector('.north-shuoshuo-lifelog-dock-view');
+                if (dockPanel) {
+                    // 尝试触发 dock destroy 回调
+                    if (this.currentMainView === 'lifelog') {
+                        this.currentMainView = this._lifelogSavedMainView || 'notes';
+                    }
+                }
+                targetBtn.style.display = 'none';
+            }
+        } catch (e) {
+            console.warn('[轻语] 切换 LifeLog 侧边栏 Dock 状态失败:', e);
+        }
     }
 
     // 防抖刷新绑定的块（避免频繁请求）
@@ -17994,8 +18069,8 @@ ipcRenderer.on('lumina-close', () => {
             if (inputArea) inputArea.style.display = 'none';
             const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
             if (sidebar) sidebar.style.display = 'flex';
-            // 异步加载 LifeLog 数据并渲染
-            this.loadLifeLogData().then(() => {
+            // 异步加载 LifeLog 数据并渲染（强制刷新，避免从后台恢复时显示缓存旧数据）
+            this.loadLifeLogData(true).then(() => {
                 if (this.currentMainView === 'lifelog') {
                     this.renderLifeLog();
                 }
@@ -18008,8 +18083,8 @@ ipcRenderer.on('lumina-close', () => {
             if (inputArea) inputArea.style.display = 'none';
             const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
             if (sidebar) sidebar.style.display = 'none';
-            // 异步加载 LifeLog 数据并渲染统计
-            this.loadLifeLogData().then(() => {
+            // 异步加载 LifeLog 数据并渲染统计（强制刷新）
+            this.loadLifeLogData(true).then(() => {
                 if (this.currentMainView === 'lifelog-stats') {
                     this.renderLifeLogStats();
                 }
@@ -18511,7 +18586,15 @@ ipcRenderer.on('lumina-close', () => {
                 this.showLifeLogSidebar = isOn;
                 await this.saveConfig();
                 this.refreshMountedShuoshuoViews();
-                showMessage(isOn ? '已开启 LifeLog 视图' : '已关闭 LifeLog 视图，请刷新界面生效');
+                // 动态显示/隐藏 LifeLog 导航按钮
+                const sidebar = this.container?.querySelector?.('.north-shuoshuo-sidebar');
+                if (sidebar) {
+                    const lifelogBtns = sidebar.querySelectorAll('[data-view="lifelog"], [data-view="lifelog-stats"]');
+                    lifelogBtns.forEach(btn => {
+                        btn.style.display = isOn ? '' : 'none';
+                    });
+                }
+                showMessage(isOn ? '已开启 LifeLog 视图' : '已关闭 LifeLog 视图');
             });
         }
 
@@ -18524,7 +18607,9 @@ ipcRenderer.on('lumina-close', () => {
                 newLifelogSidebarDockSwitch.classList.toggle('on');
                 this.showLifelogSidebarDock = newLifelogSidebarDockSwitch.classList.contains('on');
                 await this.saveConfig();
-                showMessage(this.showLifelogSidebarDock ? '已开启 LifeLog 侧边栏，请刷新界面生效' : '已关闭 LifeLog 侧边栏，请刷新界面生效');
+                // 动态显示/隐藏 LifeLog 侧边栏 Dock
+                this._toggleLifeLogDockVisibility(this.showLifelogSidebarDock);
+                showMessage(this.showLifelogSidebarDock ? '已开启 LifeLog 侧边栏' : '已关闭 LifeLog 侧边栏');
             });
         }
 
@@ -21312,7 +21397,30 @@ ipcRenderer.on('lumina-close', () => {
 
         this.renderTags();
         this.renderNotes();
-        showMessage(`标签已重命名为 "${newName}"`);
+
+        // 同步更新思源文档中所有相关块的标签
+        const affected = this.shuoshuos.filter(n => n.boundBlockId && n.tags && (n.tags.includes(newName) || n.tags.some(t => t.startsWith(newName + '/'))));
+        if (affected.length > 0) {
+            showMessage(`正在同步 ${affected.length} 个块到思源文档...`);
+            let success = 0;
+            let fail = 0;
+            for (const note of affected) {
+                try {
+                    // 直接更新思源块内容（使用已重命名后的 content）
+                    const ok = await this.syncShuoshuoToSiyuan(note);
+                    if (ok) success++; else fail++;
+                } catch (e) {
+                    fail++;
+                }
+                // 每批暂停一下，避免阻塞思源
+                if (success % 5 === 0 && success > 0) {
+                    await new Promise(r => setTimeout(r, 100));
+                }
+            }
+            showMessage(`标签重命名完成，已同步 ${success} 个块${fail > 0 ? `，${fail} 个失败` : ''}`);
+        } else {
+            showMessage(`标签已重命名为 "${newName}"`);
+        }
     }
 
     // 仅删除标签
@@ -21345,11 +21453,38 @@ ipcRenderer.on('lumina-close', () => {
         await this.saveConfig();
         this.renderTags();
         this.renderNotes();
-        showMessage('标签已删除');
+
+        // 同步更新思源文档中受影响的块
+        const affected = this.shuoshuos.filter(n => n.boundBlockId);
+        if (affected.length > 0) {
+            showMessage(`正在同步 ${affected.length} 个块到思源文档...`);
+            let success = 0;
+            let fail = 0;
+            for (const note of affected) {
+                try {
+                    const ok = await this.syncShuoshuoToSiyuan(note);
+                    if (ok) success++; else fail++;
+                } catch (e) {
+                    fail++;
+                }
+                if (success % 5 === 0 && success > 0) {
+                    await new Promise(r => setTimeout(r, 100));
+                }
+            }
+            showMessage(`标签删除完成，已同步 ${success} 个块${fail > 0 ? `，${fail} 个失败` : ''}`);
+        } else {
+            showMessage('标签已删除');
+        }
     }
 
     // 删除标签和关联笔记
     async deleteTagAndNotes(tagName) {
+        // 先收集要删除的块 ID，再过滤
+        const toDelete = this.shuoshuos.filter(note => {
+            const tags = note.tags || this.extractTags(note.content);
+            return tags.some(t => t === tagName || t.startsWith(tagName + '/'));
+        });
+
         // 过滤掉包含该标签的笔记
         this.shuoshuos = this.shuoshuos.filter(note => {
             const tags = note.tags || this.extractTags(note.content);
@@ -21371,7 +21506,28 @@ ipcRenderer.on('lumina-close', () => {
         await this.saveConfig();
         this.renderTags();
         this.renderNotes();
-        showMessage('标签和关联笔记已删除');
+
+        // 删除思源文档中对应的块
+        const boundToDelete = toDelete.filter(n => n.boundBlockId);
+        if (boundToDelete.length > 0) {
+            showMessage(`正在删除 ${boundToDelete.length} 个思源块...`);
+            let success = 0;
+            let fail = 0;
+            for (const note of boundToDelete) {
+                try {
+                    const ok = await this.deleteSiyuanBlock(note.boundBlockId);
+                    if (ok) success++; else fail++;
+                } catch (e) {
+                    fail++;
+                }
+                if (success % 5 === 0 && success > 0) {
+                    await new Promise(r => setTimeout(r, 100));
+                }
+            }
+            showMessage(`标签和关联笔记已删除，已删除 ${success} 个思源块${fail > 0 ? `，${fail} 个失败` : ''}`);
+        } else {
+            showMessage('标签和关联笔记已删除');
+        }
     }
 
     escapeRegExp(string) {
@@ -21482,16 +21638,21 @@ ipcRenderer.on('lumina-close', () => {
         
         // 2. 按内容范围筛选
         if (contentScope === 'no_tags') {
-            filtered = filtered.filter(s => !s.tags || s.tags.length === 0);
+            filtered = filtered.filter(s => {
+                const tags = this._getEffectiveTags(s);
+                return tags.length === 0;
+            });
         } else if (contentScope === 'include_tags' && contentScopeTags.length > 0) {
             filtered = filtered.filter(s => {
-                if (!s.tags || s.tags.length === 0) return false;
-                return contentScopeTags.some(tag => s.tags.includes(tag));
+                const tags = this._getEffectiveTags(s);
+                if (tags.length === 0) return false;
+                return contentScopeTags.some(tag => tags.includes(tag));
             });
         } else if (contentScope === 'exclude_tags' && contentScopeTags.length > 0) {
             filtered = filtered.filter(s => {
-                if (!s.tags || s.tags.length === 0) return true;
-                return !contentScopeTags.some(tag => s.tags.includes(tag));
+                const tags = this._getEffectiveTags(s);
+                if (tags.length === 0) return true;
+                return !contentScopeTags.some(tag => tags.includes(tag));
             });
         }
 
