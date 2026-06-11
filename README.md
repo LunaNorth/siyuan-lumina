@@ -1,7 +1,56 @@
 
-问题反馈：[轻语 & 问题反馈](https://ld246.com/article/1777266791604) | [使用介绍](https://ld246.com/article/1778921929846) 
+<div style="display: flex; gap: 33px; align-items: center; justify-content: flex-start; margin: .5em 0; flex-wrap: wrap;">
+  <!-- 按钮1：绿色 - 感谢您的支持 -->
+  <a href="https://testingcf.jsdelivr.net/gh/LunaNorth/north-img/images/20260519195219305.png" 
+      target="_blank" rel="noopener noreferrer"
+      style="display: inline-flex; 
+              align-items: center; 
+              padding: 10px 20px; 
+              background: #19be6b; 
+              color: white; 
+              border-radius: 6px; 
+              text-decoration: none;
+              transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+              transform: translateY(0);
+              box-shadow: 0 4px 6px rgba(25,190,107,0.1);
+              border: 1px solid rgba(25,190,107,0.2);">
+      ❤️ 感谢您的支持
+  </a>
+  <!-- 按钮2：蓝色 - 使用介绍 -->
+  <a href="https://ld246.com/article/1778921929846" 
+      target="_blank" rel="noopener noreferrer"
+      style="display: inline-flex; 
+              align-items: center; 
+              padding: 10px 20px; 
+              background: #2d8cf0; 
+              color: white; 
+              border-radius: 6px; 
+              text-decoration: none;
+              transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+              transform: translateY(0);
+              box-shadow: 0 4px 6px rgba(45,140,240,0.1);
+              border: 1px solid rgba(45,140,240,0.2);">
+      📖 使用介绍
+  </a>
+  <!-- 按钮3：橙色 - 轻语 & 问题反馈 -->
+  <a href="https://ld246.com/article/1777266791604" 
+      target="_blank" rel="noopener noreferrer"
+      style="display: inline-flex; 
+              align-items: center; 
+              padding: 10px 20px; 
+              background: #ff9900; 
+              color: white; 
+              border-radius: 6px; 
+              text-decoration: none;
+              transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+              transform: translateY(0);
+              box-shadow: 0 4px 6px rgba(255,153,0,0.1);
+              border: 1px solid rgba(255,153,0,0.2);">
+      💬 轻语 & 问题反馈
+  </a>
+</div>
 
-感谢支持：[感谢您的支持](https://testingcf.jsdelivr.net/gh/LunaNorth/north-img/images/20260519195219305.png)
+
 <div style="font-family: var(--b3-font-family); color: var(--b3-theme-on-background); line-height: 1.5;">
 
   <!-- 核心记录 -->
@@ -129,6 +178,11 @@
 </div>
 
 ## 更新日志
+
+### v1.6.4
+- 【修复】移动端说说视图卡片日期不显示为存储日期的问题
+- 【修复】移动端说说视图图片只显示链接不显示图片的问题
+- 【优化】移动端打开轻语时移除重复的数据加载调用，避免双次加载导致的竞态问题
 
 ### v1.6.3
 - 【修复】LifeLog 类型选择无响应：点击类型标签后界面无变化的问题

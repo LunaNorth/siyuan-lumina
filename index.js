@@ -1610,9 +1610,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     openShuoshuoTab() {
         if (this.isMobile) {
             this.openMobileShuoshuoDock();
-            setTimeout(() => {
-                this.loadShuoshuos();
-            }, 500);
+            // 移动端 render() 内部已调用 loadShuoshuos().then(renderNotes)
+            // 不再需要此处额外触发，避免双次加载导致的竞态问题
             return;
         }
         openTab({
@@ -1625,6 +1624,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             }
         });
         // 打开说说标签时，异步加载思源最新数据
+        // 注意：桌面端 openTab 的 init() 回调中也会调用 render() → loadShuoshuos
+        // 此处额外触发确保数据更新，但 _withSaveLock 会处理并发
         setTimeout(() => {
             this.loadShuoshuos();
         }, 500);
@@ -14690,18 +14691,43 @@ ipcRenderer.on('lumina-close', () => {
         return html;
     }
 
-    // 提取内容和图?
+    // 解析图片 URL：将相对路径转换为可访问的 API URL
+    _resolveImageUrl(url) {
+        if (!url) return url;
+        // 已经是绝对 URL 或 data URI，直接返回
+        if (/^(https?:|data:|blob:)/i.test(url)) return url;
+        // 已经是 API 路径，直接返回
+        if (url.startsWith('/api/')) return url;
+        // 相对路径 assets/xxx → /api/asset/getFile?path=/assets/xxx
+        // 处理 assets/、/assets/、./assets/ 等多种格式
+        const cleanPath = url.replace(/^\.\//, '').replace(/^\/?(assets\/.+)/, '/$1');
+        if (cleanPath.startsWith('/assets/')) {
+            return '/api/asset/getFile?path=' + encodeURIComponent(cleanPath);
+        }
+        return url;
+    }
+
+    // 提取内容和图片（同时处理 Markdown 图片和 HTML img 标签）
     extractContentAndImages(content) {
         const images = [];
         let text = content;
         
         // 提取 Markdown 图片
         text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-            images.push({ alt, url });
+            images.push({ alt, url: this._resolveImageUrl(url) });
             return '';
         });
         
-        // 清理多余的空?
+        // 提取 HTML <img> 标签（思源内部格式可能使用此方式）
+        text = text.replace(/<img[^>]*src=["']([^"']+)["'][^>]*\/?>/gi, (match, src) => {
+            // 提取 alt 属性
+            const altMatch = match.match(/alt=["']([^"']*)["']/i);
+            const alt = altMatch ? altMatch[1] : '';
+            images.push({ alt, url: this._resolveImageUrl(src) });
+            return '';
+        });
+        
+        // 清理多余的空行
         text = text.replace(/\n{3,}/g, '\n\n').trim();
         
         return { text, images };
@@ -14741,13 +14767,21 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     formatContent(content) {
-        // 先处?Markdown 图片（在转义 HTML 之前，因?URL 可能包含特殊字符?
+        // 先处理 Markdown 图片和 HTML img 标签（在转义 HTML 之前，因为 URL 可能包含特殊字符）
         let html = content;
         
-        // 提取并临时替换图片标?
+        // 提取并临时替换图片标记
         const images = [];
         html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-            images.push({ alt, url });
+            images.push({ alt, url: this._resolveImageUrl(url) });
+            return `{{IMAGE${images.length - 1}}}`;
+        });
+        
+        // 提取 HTML <img> 标签
+        html = html.replace(/<img[^>]*src=["']([^"']+)["'][^>]*\/?>/gi, (match, src) => {
+            const altMatch = match.match(/alt=["']([^"']*)["']/i);
+            const alt = altMatch ? altMatch[1] : '';
+            images.push({ alt, url: this._resolveImageUrl(src) });
             return `{{IMAGE${images.length - 1}}}`;
         });
         
@@ -16406,7 +16440,7 @@ ipcRenderer.on('lumina-close', () => {
                 const limit = Math.min(this._siyuanPageSize, this._siyuanMaxScan - scanned);
                 const whereCursor = lastId ? `AND b.id > '${lastId.replace(/'/g, "''")}'` : '';
                 const rows = await this._sqlQuery(`
-                    SELECT b.id, b.content, b.updated
+                    SELECT b.id, b.content, b.updated, b.created
                     FROM attributes a
                     INNER JOIN blocks b ON b.id = a.block_id
                     WHERE a.name = 'custom-lumina-content' AND a.value != ''
@@ -16487,10 +16521,23 @@ ipcRenderer.on('lumina-close', () => {
                     const types = luminaType ? luminaType.split(/\s+/).filter(Boolean) : [];
 
                     // 解析日期时间
+                    // 优先级：custom-lumina-date 属性 > b.created (SQL) > Date.now()
                     let created = Date.now();
                     if (luminaDate) {
                         const parsed = new Date(luminaDate.replace(/-/g, '/'));
                         if (!isNaN(parsed.getTime())) created = parsed.getTime();
+                    }
+                    // 如果 custom-lumina-date 为空或无效，尝试从 b.created 解析
+                    if (!luminaDate || isNaN(new Date(luminaDate.replace(/-/g, '/')).getTime())) {
+                        if (row.created) {
+                            const createdStr = String(row.created);
+                            if (/^\d{14}$/.test(createdStr)) {
+                                const y = createdStr.slice(0,4), M = createdStr.slice(4,6), d = createdStr.slice(6,8);
+                                const h = createdStr.slice(8,10), m = createdStr.slice(10,12), s = createdStr.slice(12,14);
+                                const parsed = new Date(`${y}-${M}-${d}T${h}:${m}:${s}`);
+                                if (!isNaN(parsed.getTime())) created = parsed.getTime();
+                            }
+                        }
                     }
 
                     // 根据 row.updated 计算 updated 时间
@@ -20224,6 +20271,8 @@ ipcRenderer.on('lumina-close', () => {
                             const siyuan = boundMap.get(local.boundBlockId);
                             merged.push({
                                 ...siyuan,
+                                // 优先保留本地创建时间（避免 custom-lumina-date 属性缺失导致日期回退到当前时间）
+                                created: local.created || siyuan.created,
                                 pinned: local.pinned || false,
                                 archived: local.archived || false,
                                 id: local.id // 保留本地ID维持引用
