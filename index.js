@@ -113,6 +113,32 @@ const TYPE_COLORS = [
 const WRITEATHON_API_BASE = "https://api.writeathon.cn";
 
 const DEFAULT_NOTEBOOK_ID = "";
+const LUMINA_ATTR_PREFIX = 'custom-lumina-';
+const LUMINA_ATTR_NAMES = [
+    'custom-lumina-content',
+    'custom-lumina-date',
+    'custom-lumina-tag',
+    'custom-lumina-type'
+];
+const LIFELOG_ATTR_PREFIX = 'custom-lifelog-';
+const LIFELOG_ATTR_NAMES = [
+    'custom-lifelog-created',
+    'custom-lifelog-date',
+    'custom-lifelog-time',
+    'custom-lifelog-type',
+    'custom-lifelog-updated'
+];
+const LIFELOG_CONTENT_ACTIONS = new Set(['update', 'insert', 'delete', 'move', 'append', 'prepend']);
+const LIFELOG_ATTR_COMMANDS = new Set(['setattrs', 'setblockattrs', 'setblockattr', 'setattr']);
+const LIFELOG_REFRESH_COMMANDS = new Set([
+    'transactions',
+    'saved',
+    'updated',
+    'updateblock',
+    ...LIFELOG_CONTENT_ACTIONS,
+    ...LIFELOG_ATTR_COMMANDS
+]);
+const SIYUAN_BLOCK_CHANGE_COMMANDS = new Set(['saved', 'setblockattrs', 'updated']);
 
 // SVG 图标
 const ICONS = {
@@ -467,8 +493,13 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogSavedMainView = null; // 进入 LifeLog dock 前保存的主视图
         this._lifelogDisplayLimit = 200; // LifeLog 分页：每页显示条数
         this._lifelogRefreshTimer = null; // LifeLog 实时刷新防抖定时器
+        this._lifelogRefreshFollowupTimer = null; // LifeLog 属性写入后的补刷定时器
         this._lifelogRefreshInFlight = false; // LifeLog 刷新中的并发保护
         this._lifelogRefreshQueued = false; // LifeLog 刷新期间收到变更后的补刷标记
+        this._shuoshuoAttrRefreshTimer = null; // custom-lumina-* 属性写入后的说说刷新定时器
+        this._shuoshuoAttrRefreshFollowupTimer = null; // custom-lumina-* 属性索引延迟补刷定时器
+        this._shuoshuoAttrRefreshInFlight = false; // 说说属性刷新中的并发保护
+        this._shuoshuoAttrRefreshQueued = false; // 说说属性刷新期间收到变更后的补刷标记
         this._lifelogStatsPeriod = 'year'; // LifeLog 统计视图的时间范围（all/year/month/week/today）
         this._lifelogStatsFilterType = []; // LifeLog 统计视图的类型筛选（多选）
         this._lifelogStatsCustomStart = null; // LifeLog 统计视图自定义起始时间（毫秒）
@@ -516,6 +547,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.bookshelfSearch = '';
         this.bookshelfGroupByYear = true;
         this.bookshelfCurrentView = 'list';
+        this.tagBlocklist = []; // 标签屏蔽列表
         this.loadShuoshuos();
         this.loadConfig();
         // 异步加载朋友圈数据，确保切换时更丝滑
@@ -639,7 +671,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             try {
                 const doOperations = this._collectTransactionOperations(e?.detail);
                 if (!doOperations || !Array.isArray(doOperations) || doOperations.length === 0) {
-                    this._scheduleLifeLogRefresh('transaction', { delayMs: 1000 });
+                    if (this._isLuminaAttrPayload(e?.detail)) {
+                        this._scheduleShuoshuoAttrRefresh('transaction:lumina-attrs');
+                    }
+                    if (this._isLifeLogAttrPayload(e?.detail)) {
+                        this._scheduleLifeLogAttrRefresh('transaction:lifelog-attrs');
+                    } else {
+                        this._scheduleLifeLogRefresh('transaction', { delayMs: 1000 });
+                    }
                     return;
                 }
 
@@ -650,17 +689,25 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 // 收集从事件中直接获取到的 kramdown 内容（key: blockId, value: kramdown）
                 const eventKramdowns = {};
                 let shouldRefreshLifeLog = false;
+                let sawLifeLogAttrChange = false;
+                let sawLuminaAttrChange = false;
                 
                 for (const op of doOperations) {
+                    // 处理多种操作类型：update、insert、delete、move、属性写入等
+                    const action = this._normalizeLifeLogCmd(op.action || op.cmd);
+                    if (this._isLuminaAttrPayload(op)) {
+                        sawLuminaAttrChange = true;
+                    }
+                    const isLifeLogAttrChange = this._isLifeLogAttrCommand(action) || this._isLifeLogAttrPayload(op);
+                    if (!LIFELOG_CONTENT_ACTIONS.has(action) && !isLifeLogAttrChange) continue;
+                    shouldRefreshLifeLog = true;
+                    if (isLifeLogAttrChange) {
+                        sawLifeLogAttrChange = true;
+                    }
                     if (!op.id) continue;
                     
-                    // 处理多种操作类型：update、insert、delete、move等
-                    const syncActions = ['update', 'insert', 'delete', 'move', 'append', 'prepend'];
-                    if (!syncActions.includes(op.action)) continue;
-                    shouldRefreshLifeLog = true;
-                    
                     // 如果操作是 updateBlock 且包含 data（kramdown 内容），保存下来
-                    if (op.action === 'update' && op.data && typeof op.data === 'string') {
+                    if (action === 'update' && op.data && typeof op.data === 'string') {
                         eventKramdowns[op.id] = op.data;
                     }
                     
@@ -674,7 +721,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     // 检查 parentId 是否是绑定的块
                     if (op.parentId && this._isBoundBlockId(op.parentId)) {
                         // 从子操作的 data 中提取 kramdown 存入父块
-                        if (op.action === 'update' && op.data && typeof op.data === 'string') {
+                        if (action === 'update' && op.data && typeof op.data === 'string') {
                             eventKramdowns[op.parentId] = op.data;
                         }
                         blocksToSync.add(op.parentId);
@@ -702,7 +749,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 }
 
                 if (shouldRefreshLifeLog) {
-                    this._scheduleLifeLogRefresh('transaction');
+                    if (sawLifeLogAttrChange) {
+                        this._scheduleLifeLogAttrRefresh('transaction:lifelog-attrs');
+                    } else {
+                        this._scheduleLifeLogRefresh('transaction');
+                    }
+                }
+                if (sawLuminaAttrChange) {
+                    this._scheduleShuoshuoAttrRefresh('transaction:lumina-attrs');
                 }
 
             } catch (e) {}
@@ -720,13 +774,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             try {
                 const data = (event?.detail?.cmd !== undefined) ? event.detail : event;
                 if (!data?.cmd) return;
-                if (data.cmd === 'saved' || data.cmd === 'setblockattrs' || data.cmd === 'updated') {
-                    this._handleBlockChange(data);
-                }
-                if (this._isLifeLogRefreshWsMessage(data)) {
-                    // LifeLog 视图刷新独立于 autoSync，只要有保存事件就检查
-                    this._scheduleLifeLogRefresh(`ws-main:${data.cmd}`, { delayMs: 1000 });
-                }
+                this._handleBlockChange(data);
+                this._scheduleLifeLogRefreshForMessage(`ws-main:${data.cmd}`, data);
             } catch (e) {}
         };
         this.eventBus.on('ws-main', this._wsHandler);
@@ -1567,8 +1616,22 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             clearTimeout(this._lifelogRefreshTimer);
             this._lifelogRefreshTimer = null;
         }
+        if (this._lifelogRefreshFollowupTimer) {
+            clearTimeout(this._lifelogRefreshFollowupTimer);
+            this._lifelogRefreshFollowupTimer = null;
+        }
+        if (this._shuoshuoAttrRefreshTimer) {
+            clearTimeout(this._shuoshuoAttrRefreshTimer);
+            this._shuoshuoAttrRefreshTimer = null;
+        }
+        if (this._shuoshuoAttrRefreshFollowupTimer) {
+            clearTimeout(this._shuoshuoAttrRefreshFollowupTimer);
+            this._shuoshuoAttrRefreshFollowupTimer = null;
+        }
         this._lifelogRefreshInFlight = false;
         this._lifelogRefreshQueued = false;
+        this._shuoshuoAttrRefreshInFlight = false;
+        this._shuoshuoAttrRefreshQueued = false;
 
         // 清理 LifeLog 可见性/聚焦事件监听
         if (this._lifelogVisibilityHandler) {
@@ -3563,6 +3626,21 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="north-shuoshuo-section-card">
                                 <div class="north-shuoshuo-section-header">
                                     <div>
+                                        <div class="north-shuoshuo-section-title">标签屏蔽列表</div>
+                                        <div class="north-shuoshuo-section-desc">设置哪些 #文本 不被识别为标签（每行一个，不需要输入 # 符号）</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <textarea id="settings-tag-blocklist" class="north-shuoshuo-input-field" rows="4" style="resize: vertical; width: 100%; font-family: monospace; font-size: 13px;" placeholder="例如：腾讯会议">${this.tagBlocklist.join('\n')}</textarea>
+                                    <div class="north-shuoshuo-form-hint">
+                                        <span>💡</span> 每行输入一个要屏蔽的标签文本，例如输入"会议"后，"#会议"将不会被识别为标签
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
                                         <div class="north-shuoshuo-section-title">daily note 路径模板</div>
                                         <div class="north-shuoshuo-section-desc">自定义日记的存放路径，留空则使用思源笔记中笔记本的日记模板也就是这里(笔记本设置 —> 新建日记那里)。同时也可使用日期格式模板变量。</div>
                                     </div>
@@ -4640,6 +4718,35 @@ ipcRenderer.on('lumina-close', () => {
         return mobileActive || 'notes';
     }
 
+    _withContainerContext(container, view, fn) {
+        const target = container instanceof HTMLElement ? container : this.container;
+        if (!(target instanceof HTMLElement) || !document.body.contains(target)) return;
+        const previousContainer = this.container;
+        const previousView = this.currentMainView;
+        try {
+            this.container = target;
+            if (view) this.currentMainView = view;
+            return fn();
+        } finally {
+            this.container = previousContainer;
+            this.currentMainView = previousView;
+        }
+    }
+
+    _renderLifeLogInContainer(container, resetLimit = true) {
+        return this._withContainerContext(container, 'lifelog', () => {
+            if (this.container?.closest?.('.north-shuoshuo-lifelog-dock-view')) {
+                this.renderLifeLogDockView();
+            } else {
+                this.renderLifeLog(resetLimit);
+            }
+        });
+    }
+
+    _renderLifeLogStatsInContainer(container) {
+        return this._withContainerContext(container, 'lifelog-stats', () => this.renderLifeLogStats());
+    }
+
     refreshCurrentViewForContainer(container) {
         if (!(container instanceof HTMLElement) || !document.body.contains(container)) return;
         const previousContainer = this.container;
@@ -4721,31 +4828,60 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     _isLifeLogRefreshWsMessage(data) {
-        const cmd = String(data?.cmd || data?.detail?.cmd || '').trim().toLowerCase();
+        const cmd = this._normalizeLifeLogCmd(data?.cmd || data?.detail?.cmd);
         if (!cmd) return false;
         if (cmd === 'savedoc') {
             const saveType = String(data?.data?.type || data?.detail?.data?.type || data?.type || '').trim().toLowerCase();
             return !saveType || saveType === 'tx';
         }
-        return [
-            'transactions',
-            'saved',
-            'setblockattrs',
-            'updated',
-            'update',
-            'insert',
-            'delete',
-            'move',
-            'append',
-            'prepend',
-            'updateblock'
-        ].includes(cmd);
+        return LIFELOG_REFRESH_COMMANDS.has(cmd);
+    }
+
+    _normalizeLifeLogCmd(cmd) {
+        return String(cmd || '').trim().toLowerCase();
+    }
+
+    _isLifeLogAttrCommand(cmd) {
+        return LIFELOG_ATTR_COMMANDS.has(this._normalizeLifeLogCmd(cmd));
+    }
+
+    _isLuminaAttrCommand(cmd) {
+        return LIFELOG_ATTR_COMMANDS.has(this._normalizeLifeLogCmd(cmd));
+    }
+
+    _isLuminaAttrName(attrName) {
+        const name = String(attrName || '');
+        return LUMINA_ATTR_NAMES.includes(name) || name.startsWith(LUMINA_ATTR_PREFIX);
+    }
+
+    _isLuminaAttrPayload(data) {
+        try {
+            return JSON.stringify(data || {}).includes(LUMINA_ATTR_PREFIX);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    _isLifeLogAttrName(attrName) {
+        const name = String(attrName || '');
+        return name === 'custom-lifelog' || name.startsWith(LIFELOG_ATTR_PREFIX);
+    }
+
+    _isLifeLogAttrPayload(data) {
+        try {
+            return JSON.stringify(data || {}).includes(LIFELOG_ATTR_PREFIX);
+        } catch (e) {
+            return false;
+        }
     }
 
     _isEditorMutationForLifeLog(mutation) {
         if (this.getMountedLifeLogContainers().length === 0) return false;
         const target = mutation?.target;
         if (!target) return false;
+        if (mutation?.type === 'attributes') {
+            if (this._isLifeLogAttrName(mutation.attributeName)) return true;
+        }
         const element = target.nodeType === 1 ? target : target.parentElement;
         if (!element || typeof element.closest !== 'function') return false;
         if (element.closest('.north-shuoshuo-container, .north-shuoshuo-dock-view, .north-shuoshuo-mobile-shell, .north-shuoshuo-drawer-overlay')) return false;
@@ -5114,6 +5250,7 @@ ipcRenderer.on('lumina-close', () => {
 
     // 渲染 LifeLog 视图（说说视图样式，类型替换标签，无检索式输入框）
     renderLifeLog(resetLimit = true) {
+        const ownerContainer = this.container;
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
         // 应用紧凑模式（LifeLog 独立 compact 配置，不影响说说视图；并清除说说视图的紧凑样式残留）
@@ -5212,12 +5349,12 @@ ipcRenderer.on('lumina-close', () => {
                     // 如果当前已有选中的类型且处于展开状态，点击"全部"先清除类型筛选
                     if (self._lifelogTypesExpanded && self._lifelogCurrentInputType) {
                         self._lifelogCurrentInputType = '';
-                        self.renderLifeLog(false);
+                        self._renderLifeLogInContainer(ownerContainer, false);
                         return;
                     }
                     // 否则切换展开/折叠
                     self._lifelogTypesExpanded = !self._lifelogTypesExpanded;
-                    self.renderLifeLog(false);
+                    self._renderLifeLogInContainer(ownerContainer, false);
                 });
             }
             // 其他类型按钮：选择/取消选择类型（不切换折叠状态），选中后自动聚焦输入框
@@ -5230,10 +5367,10 @@ ipcRenderer.on('lumina-close', () => {
                     } else {
                         self._lifelogCurrentInputType = type || '';
                     }
-                    self.renderLifeLog(false);
+                    self._renderLifeLogInContainer(ownerContainer, false);
                     // 渲染后自动聚焦输入框
                     setTimeout(() => {
-                        const input = self.container.querySelector('#shuoshuo-input');
+                        const input = ownerContainer.querySelector('#shuoshuo-input');
                         if (input) input.focus();
                     }, 0);
                 });
@@ -5294,7 +5431,7 @@ ipcRenderer.on('lumina-close', () => {
                     if (subview !== 'review') {
                         self._lifelogReviewStarted = false;
                     }
-                    self.renderLifeLog();
+                    self._renderLifeLogInContainer(ownerContainer);
                 });
             });
         }
@@ -5459,7 +5596,7 @@ ipcRenderer.on('lumina-close', () => {
                 this._lifelogCache = null;
                 this._lifelogCacheTime = 0;
                 await this.loadLifeLogData(true);
-                this.renderLifeLog();
+                this._renderLifeLogInContainer(ownerContainer);
             });
         }
 
@@ -5468,7 +5605,7 @@ ipcRenderer.on('lumina-close', () => {
         if (reviewStartBtn) {
             reviewStartBtn.addEventListener('click', () => {
                 this._lifelogReviewStarted = true;
-                this.renderLifeLog();
+                this._renderLifeLogInContainer(ownerContainer);
             });
         }
 
@@ -5476,7 +5613,7 @@ ipcRenderer.on('lumina-close', () => {
         if (reviewRefreshBtn) {
             reviewRefreshBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.renderLifeLog();
+                this._renderLifeLogInContainer(ownerContainer);
             });
         }
 
@@ -5484,7 +5621,7 @@ ipcRenderer.on('lumina-close', () => {
         if (reviewBackBtn) {
             reviewBackBtn.addEventListener('click', () => {
                 this._lifelogReviewStarted = false;
-                this.renderLifeLog();
+                this._renderLifeLogInContainer(ownerContainer);
             });
         }
 
@@ -5493,7 +5630,7 @@ ipcRenderer.on('lumina-close', () => {
         if (loadMoreBtn) {
             loadMoreBtn.addEventListener('click', () => {
                 this._lifelogDisplayLimit += 200;
-                this.renderLifeLog(false);
+                this._renderLifeLogInContainer(ownerContainer, false);
             });
         }
     }
@@ -5528,6 +5665,7 @@ ipcRenderer.on('lumina-close', () => {
 
     // 渲染 LifeLog 侧边栏 Dock 简化视图（仅输入区 + 内容列表，不显示侧边栏/统计/菜单等）
     renderLifeLogDockView() {
+        const ownerContainer = this.container;
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
         // 应用紧凑模式（LifeLog 独立 compact 配置，不影响说说视图；并清除说说视图的紧凑样式残留）
@@ -5608,11 +5746,11 @@ ipcRenderer.on('lumina-close', () => {
                 toggleBtn.addEventListener('click', function() {
                     if (self._lifelogTypesExpanded && self._lifelogCurrentInputType) {
                         self._lifelogCurrentInputType = '';
-                        self.renderLifeLogDockView();
+                        self._renderLifeLogInContainer(ownerContainer, false);
                         return;
                     }
                     self._lifelogTypesExpanded = !self._lifelogTypesExpanded;
-                    self.renderLifeLogDockView();
+                    self._renderLifeLogInContainer(ownerContainer, false);
                 });
             }
             inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type:not(#lifelog-type-toggle)').forEach(item => {
@@ -5624,10 +5762,10 @@ ipcRenderer.on('lumina-close', () => {
                     } else {
                         self._lifelogCurrentInputType = type || '';
                     }
-                    self.renderLifeLogDockView();
+                    self._renderLifeLogInContainer(ownerContainer, false);
                     // 渲染后自动聚焦输入框
                     setTimeout(() => {
-                        const input = self.container.querySelector('#shuoshuo-input');
+                        const input = ownerContainer.querySelector('#shuoshuo-input');
                         if (input) input.focus();
                     }, 0);
                 });
@@ -5722,7 +5860,7 @@ ipcRenderer.on('lumina-close', () => {
                 this._lifelogCache = null;
                 this._lifelogCacheTime = 0;
                 await this.loadLifeLogData(true);
-                this.renderLifeLogDockView();
+                this._renderLifeLogInContainer(ownerContainer);
             });
         }
 
@@ -5731,7 +5869,7 @@ ipcRenderer.on('lumina-close', () => {
         if (loadMoreBtn) {
             loadMoreBtn.addEventListener('click', () => {
                 this._lifelogDisplayLimit = (this._lifelogDisplayLimit || 200) + 200;
-                this.renderLifeLogDockView();
+                this._renderLifeLogInContainer(ownerContainer, false);
             });
         }
     }
@@ -5846,6 +5984,7 @@ ipcRenderer.on('lumina-close', () => {
 
     // 渲染 LifeLog 类型筛选列表
     renderLifeLogTypes() {
+        const ownerContainer = this.container;
         const typeList = this.container.querySelector('.north-shuoshuo-lifelog-types-list');
         if (!typeList) return;
 
@@ -5876,18 +6015,31 @@ ipcRenderer.on('lumina-close', () => {
         typeList.querySelectorAll('.north-shuoshuo-lifelog-type-item').forEach(item => {
             item.addEventListener('click', function() {
                 const type = this.dataset.lifelogType;
+                const isStatsOwner = self.getContainerMainView(ownerContainer) === 'lifelog-stats';
                 if (self._lifelogSelectedType === type) {
                     self._lifelogSelectedType = '';
+                    if (!isStatsOwner && self._lifelogCurrentInputType === type) {
+                        self._lifelogCurrentInputType = '';
+                    }
                 } else {
                     self._lifelogSelectedType = type;
+                    if (!isStatsOwner) {
+                        self._lifelogCurrentInputType = type;
+                    }
                 }
-                self.renderLifeLog();
+                if (isStatsOwner) {
+                    self._lifelogStatsFilterType = self._lifelogSelectedType ? [self._lifelogSelectedType] : [];
+                    self._renderLifeLogStatsInContainer(ownerContainer);
+                } else {
+                    self._renderLifeLogInContainer(ownerContainer);
+                }
             });
         });
     }
 
     // 渲染 LifeLog 统计视图
     renderLifeLogStats() {
+        const ownerContainer = this.container;
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
 
@@ -6238,7 +6390,7 @@ ipcRenderer.on('lumina-close', () => {
                 self._lifelogStatsPeriod = p;
                 self._lifelogStatsCustomStart = null;
                 self._lifelogStatsCustomEnd = null;
-                self.renderLifeLogStats();
+                self._renderLifeLogStatsInContainer(ownerContainer);
             });
         });
 
@@ -6258,7 +6410,7 @@ ipcRenderer.on('lumina-close', () => {
                         self._lifelogStatsFilterType = [...current, type];
                     }
                 }
-                self.renderLifeLogStats();
+                self._renderLifeLogStatsInContainer(ownerContainer);
             });
         });
 
@@ -6278,7 +6430,7 @@ ipcRenderer.on('lumina-close', () => {
                 if (isNaN(startMs) || isNaN(endMs)) return;
                 self._lifelogStatsCustomStart = startMs;
                 self._lifelogStatsCustomEnd = endMs;
-                self.renderLifeLogStats();
+                self._renderLifeLogStatsInContainer(ownerContainer);
             });
         }
         if (resetBtn) {
@@ -6286,7 +6438,7 @@ ipcRenderer.on('lumina-close', () => {
                 self._lifelogStatsCustomStart = null;
                 self._lifelogStatsCustomEnd = null;
                 self._lifelogStatsPeriod = 'year';
-                self.renderLifeLogStats();
+                self._renderLifeLogStatsInContainer(ownerContainer);
             });
         }
     }
@@ -11627,15 +11779,18 @@ ipcRenderer.on('lumina-close', () => {
 
     }
 
-    sendMessage(container) {
-        const target = container || this.container;
+    async sendMessage(container) {
+        const rawTarget = container || this.container;
+        const target = rawTarget?.closest?.('.north-shuoshuo-container') || rawTarget;
+        if (!target?.querySelector) return;
         const input = target.querySelector('#shuoshuo-input');
         if (!input) return;
 
         const text = input.value.trim();
         if (!text) return;
 
-        this.addShuoshuo(text);
+        const saved = await this.addShuoshuo(text, target);
+        if (saved === false) return;
 
         input.value = '';
         input.style.height = 'auto';
@@ -11645,30 +11800,33 @@ ipcRenderer.on('lumina-close', () => {
         if (inputBox) inputBox.classList.remove('focused');
     }
 
-    async addShuoshuo(content) {
+    async addShuoshuo(content, sourceContainer = null) {
+        const targetContainer = sourceContainer?.closest?.('.north-shuoshuo-container') || sourceContainer || this.container;
         // 将粘贴的 lumina MEMO 链接转换为内部引用格式
         content = content.replace(/lumina:\/\/memo\/([a-zA-Z0-9]+)/g, '[MEMO:$1]');
         
         // 如果在 LifeLog 视图且选择了类型，直接写入思源每日笔记，不存入本地说说数据
-        if (this.currentMainView === 'lifelog' || this.container?.closest?.('.north-shuoshuo-lifelog-dock-view')) {
-            const lifeLogType = this._lifelogCurrentInputType || '';
+        const isLifeLogInput = targetContainer?.closest?.('.north-shuoshuo-lifelog-dock-view') || this.getContainerMainView(targetContainer) === 'lifelog';
+        if (isLifeLogInput) {
+            const lifeLogType = this._lifelogCurrentInputType || this._lifelogSelectedType || '';
             if (!lifeLogType) {
                 showMessage("请先选择类型");
-                return;
+                return false;
             }
             if (!this.notebookId) {
                 showMessage("请先配置笔记本");
-                return;
+                return false;
             }
             const inserted = await this.appendLifeLogToDailyNote(content, lifeLogType, Date.now());
             if (!inserted) {
                 showMessage("记录失败");
-                return;
+                return false;
             }
             // 发送后清除选中的类型
             this._lifelogCurrentInputType = '';
+            this._renderLifeLogInContainer(targetContainer, false);
             showMessage("已记录");
-            return;
+            return true;
         }
         
         const tags = this.extractTags(content);
@@ -11697,6 +11855,7 @@ ipcRenderer.on('lumina-close', () => {
 
         this._lightweightRefreshAfterAdd(shuoshuo);
         showMessage("已记录");
+        return true;
     }
 
     // 提取标签（格式：#标签，只有开头有#，结尾没有#）
@@ -11711,6 +11870,10 @@ ipcRenderer.on('lumina-close', () => {
             const tag = match[1].trim();
             // 过滤掉空字符串
             if (tag) {
+                // 检查是否在屏蔽列表中
+                if (this.tagBlocklist && this.tagBlocklist.includes(tag)) {
+                    continue;
+                }
                 tags.push(tag);
             }
         }
@@ -13899,11 +14062,12 @@ ipcRenderer.on('lumina-close', () => {
                 .trim();
 
             // 预计算不含标签的内容版本（用于引用块格式将标签显示在标题行）
+            // 修改：现在保留标签在内容中，所以直接使用 pureContent
             let contentWithoutTags = pureContent;
-            tags.forEach(tag => {
-                contentWithoutTags = contentWithoutTags.replace(new RegExp(`#${tag}\\s*`, 'g'), '');
-            });
-            contentWithoutTags = contentWithoutTags.replace(/\s*#\s*$/g, '').trim();
+            // tags.forEach(tag => {
+            //     contentWithoutTags = contentWithoutTags.replace(new RegExp(`#${tag}\\s*`, 'g'), '');
+            // });
+            // contentWithoutTags = contentWithoutTags.replace(/\s*#\s*$/g, '').trim();
 
             // 将内容按行分割
             const lines = pureContent.split('\n').map(line => line.trim());
@@ -14024,6 +14188,8 @@ ipcRenderer.on('lumina-close', () => {
     async appendLifeLogToDailyNote(content, lifeLogType, timestamp) {
         if (!this.notebookId) return null;
         try {
+            const typeStr = this._normalizeLifeLogTypeValue(lifeLogType);
+            if (!typeStr) return null;
             const date = new Date(timestamp);
             const hours = date.getHours().toString().padStart(2, '0');
             const minutes = date.getMinutes().toString().padStart(2, '0');
@@ -14037,7 +14203,10 @@ ipcRenderer.on('lumina-close', () => {
             }
 
             // 格式：14:01 类型：内容（属性由其他插件写入，本插件只写入纯文本格式）
-            const diaryContent = `${timeStr} ${lifeLogType}：${content}`;
+            const bodyContent = String(content || '').trim();
+            const officialParsed = this._parseOfficialLifeLogText(bodyContent, typeStr);
+            const diaryBody = officialParsed ? officialParsed.content : bodyContent;
+            const diaryContent = `${timeStr} ${typeStr}：${diaryBody}`;
 
             // 追加到每日笔记
             const response = await fetch('/api/block/appendBlock', {
@@ -14698,11 +14867,11 @@ ipcRenderer.on('lumina-close', () => {
         if (/^(https?:|data:|blob:)/i.test(url)) return url;
         // 已经是 API 路径，直接返回
         if (url.startsWith('/api/')) return url;
-        // 相对路径 assets/xxx → /api/asset/getFile?path=/assets/xxx
+        // 相对路径 assets/xxx → /assets/xxx
         // 处理 assets/、/assets/、./assets/ 等多种格式
         const cleanPath = url.replace(/^\.\//, '').replace(/^\/?(assets\/.+)/, '/$1');
         if (cleanPath.startsWith('/assets/')) {
-            return '/api/asset/getFile?path=' + encodeURIComponent(cleanPath);
+            return cleanPath;
         }
         return url;
     }
@@ -14845,7 +15014,15 @@ ipcRenderer.on('lumina-close', () => {
         html = this.renderMarkdown(html);
 
         // #标签?转换为标签样式（支持多级标签 #??孙）
-        html = html.replace(/#([\w\/\u4e00-\u9fa5-]+)(?![\w\/\u4e00-\u9fa5-])(?!#)/g, '<span class="north-shuoshuo-tag">#$1</span>');
+        html = html.replace(/#([\w\/\u4e00-\u9fa5-]+)(?![\w\/\u4e00-\u9fa5-])(?!#)/g, (match, tagName) => {
+            // \u68c0\u67e5\u662f\u5426\u5728\u5c4f\u853d\u5217\u8868\u4e2d
+            if (this.tagBlocklist && this.tagBlocklist.includes(tagName)) {
+                // \u5728\u5c4f\u853d\u5217\u8868\u4e2d\uff0c\u4fdd\u6301\u4e3a\u666e\u901a\u6587\u672c
+                return match;
+            }
+            // \u4e0d\u5728\u5c4f\u853d\u5217\u8868\u4e2d\uff0c\u8f6c\u6362\u4e3a\u6807\u7b7e\u6837\u5f0f
+            return `<span class="north-shuoshuo-tag">${match}</span>`;
+        });
         
         // 还原图片标签（这里保留单张图片的处理，用于兼容纯图片内容?
         images.forEach((img, index) => {
@@ -17664,9 +17841,18 @@ ipcRenderer.on('lumina-close', () => {
             this._protyleObserver = new MutationObserver((mutations) => {
                 // console.log('[轻语] MutationObserver 触发，变化数:', mutations.length);
                 let shouldRefreshLifeLog = false;
+                let sawLifeLogAttrMutation = false;
+                let sawLuminaAttrMutation = false;
                 for (const mutation of mutations) {
-                    if (!shouldRefreshLifeLog && this._isEditorMutationForLifeLog(mutation)) {
+                    const isLifeLogEditorMutation = this._isEditorMutationForLifeLog(mutation);
+                    if (!shouldRefreshLifeLog && isLifeLogEditorMutation) {
                         shouldRefreshLifeLog = true;
+                    }
+                    if (!sawLifeLogAttrMutation && mutation?.type === 'attributes') {
+                        sawLifeLogAttrMutation = this._isLifeLogAttrName(mutation.attributeName);
+                    }
+                    if (!sawLuminaAttrMutation && mutation?.type === 'attributes') {
+                        sawLuminaAttrMutation = this._isLuminaAttrName(mutation.attributeName);
                     }
                     // 尝试获取直接包含 data-node-id 的元素
                     let blockEl = mutation.target?.closest?.('[data-node-id]');
@@ -17734,14 +17920,22 @@ ipcRenderer.on('lumina-close', () => {
                     }
                 }
                 if (shouldRefreshLifeLog) {
-                    this._scheduleLifeLogRefresh('editor-mutation', { delayMs: 1000 });
+                    if (sawLifeLogAttrMutation) {
+                        this._scheduleLifeLogAttrRefresh('editor-mutation:lifelog-attrs');
+                    } else {
+                        this._scheduleLifeLogRefresh('editor-mutation', { delayMs: 1000 });
+                    }
+                }
+                if (sawLuminaAttrMutation) {
+                    this._scheduleShuoshuoAttrRefresh('editor-mutation:lumina-attrs');
                 }
             });
             this._protyleObserver.observe(targetNode, {
                 characterData: true,
                 childList: true,
                 subtree: true,
-                attributes: false
+                attributes: true,
+                attributeFilter: [...LUMINA_ATTR_NAMES, ...LIFELOG_ATTR_NAMES]
             });
             // console.log('[轻语] MutationObserver 已启动，监听节点:', targetNode.className || targetNode.id);
         } catch (e) {
@@ -17768,10 +17962,7 @@ ipcRenderer.on('lumina-close', () => {
                 try {
                     const msg = JSON.parse(event.data);
                     this._handleBlockChange(msg);
-                    if (this._isLifeLogRefreshWsMessage(msg)) {
-                        // LifeLog 刷新独立于 autoSync
-                        this._scheduleLifeLogRefresh(`broadcast:${msg?.cmd || 'message'}`, { delayMs: 1000 });
-                    }
+                    this._scheduleLifeLogRefreshForMessage(`broadcast:${msg?.cmd || 'message'}`, msg);
                 } catch (e) {}
             };
             this._wsBroadcast.onclose = () => {
@@ -17811,12 +18002,17 @@ ipcRenderer.on('lumina-close', () => {
 
     _handleBlockChange(data) {
         if (!this.autoSync) return;
-        const cmd = data.cmd || '';
+        const cmd = this._normalizeLifeLogCmd(data?.cmd);
         const blockId = data.id || null;
-        const isBlockChange = cmd === 'saved' || cmd === 'setblockattrs' || cmd === 'updated';
-        if (!isBlockChange) return;
+        if (!SIYUAN_BLOCK_CHANGE_COMMANDS.has(cmd)) return;
         // 思源侧数据变动，失效绑定块缓存（确保 refreshBoundBlocks 读到最新）
         this._invalidateSiyuanBoundCache();
+        const isLuminaAttrChange = this._isLuminaAttrPayload(data);
+        const isAttrCommand = this._isLuminaAttrCommand(cmd);
+        if (isLuminaAttrChange || (isAttrCommand && (!blockId || !this._isBoundBlockId(blockId)))) {
+            this._scheduleShuoshuoAttrRefresh(`block-change:${cmd}`);
+            return;
+        }
         if (blockId) {
             if (this._isBoundBlockId(blockId)) {
                 this._debouncedRefreshBound(blockId);
@@ -17826,7 +18022,113 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    _scheduleShuoshuoAttrRefresh(reason = 'shuoshuo-attr-change', options = {}) {
+        const opts = (options && typeof options === 'object') ? options : {};
+        const primaryDelay = Number(opts.delayMs);
+        const followupDelay = Number(opts.followupDelayMs);
+        const scheduled = this._scheduleShuoshuoRefresh(reason, {
+            ...opts,
+            delayMs: Number.isFinite(primaryDelay) ? primaryDelay : 1200
+        });
+        if (!scheduled) {
+            if (this._shuoshuoAttrRefreshFollowupTimer) {
+                clearTimeout(this._shuoshuoAttrRefreshFollowupTimer);
+                this._shuoshuoAttrRefreshFollowupTimer = null;
+            }
+            return false;
+        }
+
+        if (this._shuoshuoAttrRefreshFollowupTimer) {
+            clearTimeout(this._shuoshuoAttrRefreshFollowupTimer);
+        }
+        this._shuoshuoAttrRefreshFollowupTimer = setTimeout(() => {
+            this._shuoshuoAttrRefreshFollowupTimer = null;
+            this._scheduleShuoshuoRefresh(`${reason}:followup`, { ...opts, delayMs: 0 });
+        }, Number.isFinite(followupDelay) ? Math.max(0, followupDelay) : 3200);
+        return true;
+    }
+
+    _scheduleShuoshuoRefresh(reason = 'shuoshuo-change', options = {}) {
+        const opts = (options && typeof options === 'object') ? options : {};
+        if (opts.force !== true && !this.autoSync) return false;
+
+        const containers = this.getMountedLuminaContainers();
+        if (opts.force !== true && containers.length === 0 && !this.container) return false;
+
+        this._invalidateSiyuanBoundCache();
+        const rawDelay = Number(opts.delayMs);
+        const delayMs = Number.isFinite(rawDelay) ? Math.max(0, rawDelay) : 800;
+        if (this._shuoshuoAttrRefreshTimer) {
+            clearTimeout(this._shuoshuoAttrRefreshTimer);
+        }
+        this._shuoshuoAttrRefreshTimer = setTimeout(() => {
+            this._shuoshuoAttrRefreshTimer = null;
+            this._runScheduledShuoshuoRefresh(reason, opts);
+        }, delayMs);
+        return true;
+    }
+
+    async _runScheduledShuoshuoRefresh(reason = 'shuoshuo-change', options = {}) {
+        const opts = (options && typeof options === 'object') ? options : {};
+        if (this._shuoshuoAttrRefreshInFlight) {
+            this._shuoshuoAttrRefreshQueued = true;
+            return false;
+        }
+
+        this._shuoshuoAttrRefreshInFlight = true;
+        try {
+            await this._invalidateSiyuanBoundCache();
+            await this.loadShuoshuos({ includeSiyuanBound: true });
+            await this.saveShuoshuos();
+            this.refreshMountedShuoshuoViews();
+            return true;
+        } catch (e) {
+            console.warn('[轻语] 说说自动刷新失败:', e?.message || e);
+            return false;
+        } finally {
+            this._shuoshuoAttrRefreshInFlight = false;
+            if (this._shuoshuoAttrRefreshQueued) {
+                this._shuoshuoAttrRefreshQueued = false;
+                this._scheduleShuoshuoRefresh(`queued:${reason}`, { ...opts, delayMs: 180 });
+            }
+        }
+    }
+
     // 防抖刷新 LifeLog 视图（利用 transaction、ws-main 和广播事件实现实时更新）
+    _scheduleLifeLogRefreshForMessage(reason, data) {
+        if (!this._isLifeLogRefreshWsMessage(data)) return false;
+        if (this._isLifeLogAttrCommand(data?.cmd || data?.detail?.cmd) || this._isLifeLogAttrPayload(data)) {
+            return this._scheduleLifeLogAttrRefresh(reason);
+        }
+        return this._scheduleLifeLogRefresh(reason, { delayMs: 1000 });
+    }
+
+    _scheduleLifeLogAttrRefresh(reason = 'lifelog-attr-change', options = {}) {
+        const opts = (options && typeof options === 'object') ? options : {};
+        const primaryDelay = Number(opts.delayMs);
+        const followupDelay = Number(opts.followupDelayMs);
+        const scheduled = this._scheduleLifeLogRefresh(reason, {
+            ...opts,
+            delayMs: Number.isFinite(primaryDelay) ? primaryDelay : 1200
+        });
+        if (!scheduled) {
+            if (this._lifelogRefreshFollowupTimer) {
+                clearTimeout(this._lifelogRefreshFollowupTimer);
+                this._lifelogRefreshFollowupTimer = null;
+            }
+            return false;
+        }
+
+        if (this._lifelogRefreshFollowupTimer) {
+            clearTimeout(this._lifelogRefreshFollowupTimer);
+        }
+        this._lifelogRefreshFollowupTimer = setTimeout(() => {
+            this._lifelogRefreshFollowupTimer = null;
+            this._scheduleLifeLogRefresh(`${reason}:followup`, { ...opts, delayMs: 0 });
+        }, Number.isFinite(followupDelay) ? Math.max(0, followupDelay) : 3200);
+        return true;
+    }
+
     _scheduleLifeLogRefresh(reason = 'lifelog-change', options = {}) {
         const opts = (options && typeof options === 'object') ? options : {};
         // 始终先清空缓存，确保后台变更后数据不会被缓存挡住
@@ -18479,6 +18781,17 @@ ipcRenderer.on('lumina-close', () => {
             const newAutoSyncSwitch = this.container.querySelector('#settings-auto-sync-switch');
             newAutoSyncSwitch.addEventListener('click', () => {
                 newAutoSyncSwitch.classList.toggle('on');
+            });
+        }
+
+        // 标签屏蔽列表：保存
+        const tagBlocklistTextarea = this.container.querySelector('#settings-tag-blocklist');
+        if (tagBlocklistTextarea) {
+            tagBlocklistTextarea.addEventListener('change', async (e) => {
+                const text = e.target.value.trim();
+                this.tagBlocklist = text ? text.split('\n').map(line => line.trim()).filter(Boolean) : [];
+                await this.saveConfig();
+                showMessage('标签屏蔽列表已保存');
             });
         }
 
@@ -20227,7 +20540,32 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
-    async loadShuoshuos() {
+    _normalizeShuoshuoContentForCompare(content) {
+        return String(content || '')
+            .replace(/#[\w\/\u4e00-\u9fa5-]+#/g, ' ')
+            .replace(/#[\w\/\u4e00-\u9fa5-]+(?=\s|\n|$|[，。！？；：""''（）【】])/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    _hasEquivalentLocalShuoshuo(siyuan, candidates) {
+        const targetContent = this._normalizeShuoshuoContentForCompare(siyuan?.content || '');
+        if (!targetContent) return false;
+        const targetTime = Number(siyuan?.created || 0);
+        return (candidates || []).some(local => {
+            if (!local || local.boundBlockId || local._isLifeLog) return false;
+            const localContent = this._normalizeShuoshuoContentForCompare(local.content || '');
+            if (localContent !== targetContent) return false;
+            const localTime = Number(local.created || 0);
+            if (Number.isFinite(targetTime) && targetTime > 0 && Number.isFinite(localTime) && localTime > 0) {
+                return Math.abs(targetTime - localTime) <= 5 * 60 * 1000;
+            }
+            return true;
+        });
+    }
+
+    async loadShuoshuos(options = {}) {
+        const opts = (options && typeof options === 'object') ? options : {};
         return this._withSaveLock('shuoshuos', async () => {
             try {
                 // 1. 先从本地加载未绑定的说说
@@ -20243,9 +20581,12 @@ ipcRenderer.on('lumina-close', () => {
                 //    思源SQL是最新的数据，确保思源改了说说视图也能看到
                 //    仅在每日笔记模式下执行双向同步，指定文档模式下只单向同步
                 let boundFromSiyuan = [];
-                if (this.syncMode === 'dailynote') {
+                let loadedBoundFromSiyuan = false;
+                const shouldLoadBoundFromSiyuan = this.syncMode === 'dailynote' || opts.includeSiyuanBound === true;
+                if (shouldLoadBoundFromSiyuan) {
                     try {
                         boundFromSiyuan = await this.loadShuoshuosFromSiyuan();
+                        loadedBoundFromSiyuan = this._lastLoadShuoshuosFromSiyuanOk === true;
                     } catch (e) {
                         // 出错时恢复之前的状态
                         this.shuoshuos = previousShuoshuos;
@@ -20253,7 +20594,7 @@ ipcRenderer.on('lumina-close', () => {
                     }
                 }
 
-                if (this._lastLoadShuoshuosFromSiyuanOk) {
+                if (loadedBoundFromSiyuan) {
                     // 合并策略：
                     // - 已绑定的说说以思源SQL数据为准（覆盖本地缓存）
                     // - 未绑定的说说保留本地数据
@@ -20287,8 +20628,9 @@ ipcRenderer.on('lumina-close', () => {
 
                     // 添加思源中有但本地没有的新绑定块
                     for (const siyuan of boundFromSiyuan) {
-                        if (!processedBoundIds.has(siyuan.boundBlockId)) {
+                        if (!processedBoundIds.has(siyuan.boundBlockId) && !this._hasEquivalentLocalShuoshuo(siyuan, merged)) {
                             merged.push(siyuan);
+                            processedBoundIds.add(siyuan.boundBlockId);
                         }
                     }
 
@@ -20413,13 +20755,13 @@ ipcRenderer.on('lumina-close', () => {
     // 解析 LifeLog 查询行数据为统一记录格式
     _parseLifeLogRow(row, hasAttr) {
         let contentStr = (row.content || '').trim();
-        const typeStr = row.lifelog_type || '';
         // 移除内容中可能存在的时间前缀（如 10:16 ）
         contentStr = contentStr.replace(/^\d{1,2}:\d{2}(:\d{2})?\s*/, '').trim();
-        // 如果内容以"类型："开头，移除类型前缀获取纯内容
-        if (typeStr) {
-            const typePrefixRegex = new RegExp(`^${typeStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[：:]\\s*`);
-            contentStr = contentStr.replace(typePrefixRegex, '').trim();
+        const rawTypeStr = (row.lifelog_type || '').trim();
+        const officialParsed = this._parseOfficialLifeLogText(contentStr, rawTypeStr);
+        const typeStr = officialParsed?.type || this._normalizeLifeLogTypeValue(rawTypeStr);
+        if (officialParsed) {
+            contentStr = officialParsed.content;
         }
         // 解析日期时间为时间戳（方式1有 lifelog_date/time，方式2用 created_raw）
         let created;
@@ -20446,6 +20788,32 @@ ipcRenderer.on('lumina-close', () => {
             _lifeLogType: typeStr,
             _hasLifeLogAttr: hasAttr
         };
+    }
+
+    _parseOfficialLifeLogText(contentStr, fallbackType = '') {
+        const rawContent = String(contentStr || '').trim();
+        if (!rawContent) return null;
+        const fallback = this._normalizeLifeLogTypeValue(fallbackType);
+
+        if (fallback) {
+            const escapedType = fallback.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const matched = rawContent.match(new RegExp(`^${escapedType}[：:]\\s*(.*)$`, 's'));
+            if (matched) return { type: fallback, content: (matched[1] || '').trim() };
+        }
+
+        const generic = rawContent.match(/^([^：:\n]{1,80})[：:]\s*(.*)$/s);
+        if (!generic) return null;
+        return {
+            type: this._normalizeLifeLogTypeValue(generic[1]),
+            content: (generic[2] || '').trim()
+        };
+    }
+
+    _normalizeLifeLogTypeValue(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        const colonIndex = raw.search(/[：:]/);
+        return (colonIndex >= 0 ? raw.slice(0, colonIndex) : raw).trim();
     }
 
     // 加载 LifeLog 数据（带 30 秒缓存，避免重复查询）
@@ -20964,6 +21332,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.customSignature = data.customSignature || '遇事不决，可问春风';
                 this.reviewHistory = data.reviewHistory || {};
                 this.customQueries = Array.isArray(data.customQueries) ? data.customQueries : [];
+                this.tagBlocklist = Array.isArray(data.tagBlocklist) ? data.tagBlocklist : [];
             } catch (e) {
                 console.warn("加载配置失败", e);
             }
@@ -21057,7 +21426,8 @@ ipcRenderer.on('lumina-close', () => {
                     autoCollapseLines: this.autoCollapseLines,
                     customSignature: this.customSignature,
                     reviewHistory: this.reviewHistory,
-                    customQueries: this.customQueries
+                    customQueries: this.customQueries,
+                    tagBlocklist: this.tagBlocklist
                 };
 
                 // 空数据保护：如果所有关键配置都为空但存储中有数据，不要覆盖
@@ -22217,7 +22587,9 @@ ipcRenderer.on('lumina-close', () => {
                 });
                 const result = await resp.json();
                 if (result.code === 0 && Array.isArray(result.data)) {
-                  lifeLogTypes = result.data.map(r => r.t).filter(Boolean);
+                  lifeLogTypes = [...new Set(result.data
+                    .map(r => this._normalizeLifeLogTypeValue(r.t))
+                    .filter(Boolean))];
                 }
               } catch (e) {
                 // 查询失败则跳过自动分类
@@ -22433,7 +22805,9 @@ ipcRenderer.on('lumina-close', () => {
                     });
                     const result = await resp.json();
                     if (result.code === 0 && Array.isArray(result.data)) {
-                      lifeLogTypes = result.data.map(r => r.t).filter(Boolean);
+                      lifeLogTypes = [...new Set(result.data
+                        .map(r => this._normalizeLifeLogTypeValue(r.t))
+                        .filter(Boolean))];
                     }
                   } catch (e) {}
 
