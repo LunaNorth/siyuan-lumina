@@ -541,7 +541,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // ===== 增量渲染缓存（用于检测变化）=====
         this._lastFilteredIds = [];         // 上次过滤结果的 ID 列表
         this.moments = []; // 朋友圈数据
-        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, showMomentsSidebar: true };
+        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, showMomentsSidebar: true, password: '' };
+        this.momentsUnlocked = false; // 朋友圈密码锁：当前会话是否已解锁
         this.books = []; // 图书书架数据
         this.bookshelfFilters = { type: 'all', sync: 'synced', status: 'read+reading', sort: 'time' };
         this.bookshelfSearch = '';
@@ -4429,6 +4430,19 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.momentsConfig?.showMomentsSidebar !== false ? 'on' : ''}" id="settings-show-moments-switch"></div>
                                 </div>
+                                <div class="north-shuoshuo-form-row" style="margin-top:12px; padding-top:12px; border-top:1px solid color-mix(in srgb, var(--b3-border-color) 20%, transparent);">
+                                    <label class="north-shuoshuo-form-label">访问密码</label>
+                                    <div class="north-shuoshuo-password-wrap">
+                                        <input type="password" class="north-shuoshuo-input-field" id="moments-password-input" placeholder="设置密码后，进入朋友圈需输入密码" value="${this.momentsConfig?.password || ''}">
+                                        <span class="north-shuoshuo-password-eye" id="momentsPasswordEye">
+                                            <svg class="eye-icon" width="18" height="18"><use xlink:href="#iconEye"></use></svg>
+                                            <svg class="eye-off-icon" width="18" height="18" style="display:none;"><use xlink:href="#iconEyeoff"></use></svg>
+                                        </span>
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint">
+                                        <span>🔒</span> 设置后每次访问朋友圈需输入密码，留空则不设密码
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -8167,25 +8181,6 @@ ipcRenderer.on('lumina-close', () => {
                         <div class="lumina-moments-publish-images" id="momentsPublishImages">
                             <div class="lumina-moments-publish-add" id="momentsPublishAdd"></div>
                         </div>
-                        <div class="lumina-moments-publish-section" id="momentsPublishFileSection">
-                            <div class="lumina-moments-publish-toggle" id="momentsPublishFileToggle">
-                                <div style="width:20px;height:20px;border:1.5px solid #576B95;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#576B95;font-weight:bold;">📎</div>
-                                <span>添加文件</span>
-                            </div>
-                            <div class="lumina-moments-publish-file-preview" id="momentsPublishFilePreview">
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <div style="width:40px;height:40px;background-color:#fff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;">📄</div>
-                                    <div style="flex:1;min-width:0;">
-                                        <div id="momentsPublishFileName" style="font-size:14px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-                                        <div id="momentsPublishFileSize" style="font-size:12px;color:#999;margin-top:2px;"></div>
-                                    </div>
-                                    <div id="momentsPublishFileDelete" style="width:18px;height:18px;background-color:#FA5151;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;">
-                                        <div style="position:absolute;width:10px;height:1.5px;background-color:#fff;transform:rotate(45deg);"></div>
-                                        <div style="position:absolute;width:10px;height:1.5px;background-color:#fff;transform:rotate(-45deg);"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                         <div class="lumina-moments-publish-section">
                             <div class="lumina-moments-publish-toggle" id="momentsPublishLinkToggle">
                                 <div class="lumina-moments-publish-link-icon">🔗</div>
@@ -8198,7 +8193,6 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
                     </div>
                     <input type="file" id="momentsPublishImageInput" class="lumina-moments-file-input" accept="image/*" multiple>
-                    <input type="file" id="momentsPublishFileInput" class="lumina-moments-file-input">
                 </div>
 
                 <!-- 编辑页面 -->
@@ -8213,25 +8207,6 @@ ipcRenderer.on('lumina-close', () => {
                         <div class="lumina-moments-edit-images" id="momentsEditImages">
                             <div class="lumina-moments-edit-add" id="momentsEditAdd"></div>
                         </div>
-                        <div class="lumina-moments-edit-section" id="momentsEditFileSection">
-                            <div class="lumina-moments-edit-toggle" id="momentsEditFileToggle">
-                                <div style="width:20px;height:20px;border:1.5px solid #576B95;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#576B95;font-weight:bold;">📎</div>
-                                <span>添加文件</span>
-                            </div>
-                            <div class="lumina-moments-edit-file-preview" id="momentsEditFilePreview">
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <div style="width:40px;height:40px;background-color:#fff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;">📄</div>
-                                    <div style="flex:1;min-width:0;">
-                                        <div id="momentsEditFileName" style="font-size:14px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-                                        <div id="momentsEditFileSize" style="font-size:12px;color:#999;margin-top:2px;"></div>
-                                    </div>
-                                    <div id="momentsEditFileDelete" style="width:18px;height:18px;background-color:#FA5151;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;">
-                                        <div style="position:absolute;width:10px;height:1.5px;background-color:#fff;transform:rotate(45deg);"></div>
-                                        <div style="position:absolute;width:10px;height:1.5px;background-color:#fff;transform:rotate(-45deg);"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                         <div class="lumina-moments-edit-section">
                             <div class="lumina-moments-edit-toggle" id="momentsEditLinkToggle">
                                 <div class="lumina-moments-publish-link-icon">🔗</div>
@@ -8244,7 +8219,6 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
                     </div>
                     <input type="file" id="momentsEditImageInput" class="lumina-moments-file-input" accept="image/*" multiple>
-                    <input type="file" id="momentsEditFileInput" class="lumina-moments-file-input">
                 </div>
 
                 <!-- 日历弹窗 -->
@@ -8266,6 +8240,65 @@ ipcRenderer.on('lumina-close', () => {
         `;
 
         this._bindMomentsEvents(avatar, nickname, listEl);
+
+        // ---- 密码锁处理 ----
+        const momentsPassword = this.momentsConfig?.password || '';
+        if (momentsPassword && !this.momentsUnlocked) {
+            // 移除可能残留的旧覆盖层
+            const oldOverlay = listEl.querySelector('.lumina-moments-lock-overlay');
+            if (oldOverlay) oldOverlay.remove();
+
+            const overlay = document.createElement('div');
+            overlay.className = 'lumina-moments-lock-overlay active';
+            overlay.innerHTML = `
+                <div class="lumina-moments-lock-box">
+                    <div class="lumina-moments-lock-icon">
+                        <svg width="48" height="48"><use xlink:href="#iconLock"></use></svg>
+                    </div>
+                    <div class="lumina-moments-lock-title">朋友圈已加密</div>
+                    <div class="lumina-moments-lock-desc">请输入密码后查看</div>
+                    <input type="password" class="lumina-moments-lock-input" id="momentsLockInput" placeholder="请输入密码" autofocus>
+                    <div class="lumina-moments-lock-error" id="momentsLockError"></div>
+                    <button class="lumina-moments-lock-btn" id="momentsLockBtn">解锁</button>
+                    <div class="lumina-moments-lock-back" id="momentsLockBack">← 返回说说</div>
+                </div>
+            `;
+            listEl.appendChild(overlay);
+            // 锁定时禁止滚动
+            listEl.style.overflow = 'hidden';
+
+            const input = overlay.querySelector('#momentsLockInput');
+            const btn = overlay.querySelector('#momentsLockBtn');
+            const error = overlay.querySelector('#momentsLockError');
+            const backBtn = overlay.querySelector('#momentsLockBack');
+
+            const restoreScroll = () => { listEl.style.overflow = ''; };
+            const doUnlock = () => {
+                const pwd = input ? input.value : '';
+                if (pwd === momentsPassword) {
+                    this.momentsUnlocked = true;
+                    overlay.remove();
+                    restoreScroll();
+                } else {
+                    error.textContent = '密码错误，请重试';
+                    if (input) { input.value = ''; input.focus(); }
+                    setTimeout(() => { error.textContent = ''; }, 2000);
+                }
+            };
+
+            btn.addEventListener('click', doUnlock);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') doUnlock();
+            });
+            backBtn.addEventListener('click', () => {
+                restoreScroll();
+                overlay.remove();
+                // 切换到说说视图
+                const notesBtn = this.container.querySelector('.north-shuoshuo-nav-item[data-view="notes"]');
+                if (notesBtn) notesBtn.click();
+            });
+            setTimeout(() => { if (input) input.focus(); }, 100);
+        }
     }
 
     _renderMomentItem(m, avatar, nickname) {
@@ -8282,16 +8315,11 @@ ipcRenderer.on('lumina-close', () => {
             const imgsHtml = m.images.map(src => `<img class="lumina-moments-grid-img" src="${src}" alt="photo" loading="lazy">`).join('');
             mediaHtml += `<div class="lumina-moments-media"><div class="lumina-moments-image-grid ${gridClass}">${imgsHtml}</div></div>`;
         }
-        if (m.file) {
-            mediaHtml += `<div class="lumina-moments-link-card">
-                <div style="width:40px;height:40px;background-color:#e0e0e0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-right:8px;flex-shrink:0;">📄</div>
-                <div style="flex:1;min-width:0;"><div class="lumina-moments-link-title">${m.file.name}</div><div style="font-size:11px;color:#999;margin-top:2px;">${m.file.size}</div></div>
-            </div>`;
-        }
         if (m.link && m.link.title) {
-            mediaHtml += `<div class="lumina-moments-link-card">
-                <img class="lumina-moments-link-thumb" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' fill='%23ecf0f1'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%237f8c8d' font-size='10'%3E📄%3C/text%3E%3C/svg%3E" alt="thumb">
-                <div class="lumina-moments-link-info"><div class="lumina-moments-link-title">${m.link.title}</div></div>
+            const linkUrl = m.link.url || '#';
+            mediaHtml += `<div class="lumina-moments-link-card" data-link-url="${linkUrl}" style="cursor:pointer;">
+                <img class="lumina-moments-link-thumb" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' fill='%23ecf0f1'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%237f8c8d' font-size='10'%3E🔗%3C/text%3E%3C/svg%3E" alt="thumb">
+                <div class="lumina-moments-link-info"><div class="lumina-moments-link-title">${m.link.title}</div><div style="font-size:11px;color:#999;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${linkUrl}</div></div>
             </div>`;
         }
 
@@ -8335,23 +8363,22 @@ ipcRenderer.on('lumina-close', () => {
             }, { passive: true });
         }
 
-        // 图片双击查看
-        let viewer = container.querySelector('.lumina-moments-image-viewer');
-        if (!viewer) {
-            viewer = document.createElement('div');
-            viewer.className = 'lumina-moments-image-viewer';
-            const viewerImg = document.createElement('img');
-            viewerImg.alt = 'preview';
-            viewer.appendChild(viewerImg);
-            container.appendChild(viewer);
-            viewer.addEventListener('click', () => viewer.classList.remove('active'));
-        }
+        // 图片点击查看（与说说视图一致：支持缩放、拖拽移动、复制、双击重置）
         container.addEventListener('click', (e) => {
             const img = e.target.closest('.lumina-moments-grid-img');
             if (img) {
-                const viewerImg = viewer.querySelector('img');
-                viewerImg.src = img.src;
-                viewer.classList.add('active');
+                e.stopPropagation();
+                this.showImagePreview(img.src);
+                return;
+            }
+            // 链接卡片点击打开
+            const linkCard = e.target.closest('.lumina-moments-link-card[data-link-url]');
+            if (linkCard) {
+                const linkUrl = linkCard.dataset.linkUrl;
+                if (linkUrl && linkUrl !== '#') {
+                    window.open(linkUrl, '_blank');
+                }
+                return;
             }
         });
 
@@ -8560,15 +8587,10 @@ ipcRenderer.on('lumina-close', () => {
         const publishImages = container.querySelector('#momentsPublishImages');
         const publishAddBtn = container.querySelector('#momentsPublishAdd');
         const publishImageInput = container.querySelector('#momentsPublishImageInput');
-        const publishFileInput = container.querySelector('#momentsPublishFileInput');
-        const publishFileToggle = container.querySelector('#momentsPublishFileToggle');
-        const publishFilePreview = container.querySelector('#momentsPublishFilePreview');
-        const publishFileDelete = container.querySelector('#momentsPublishFileDelete');
         const publishLinkToggle = container.querySelector('#momentsPublishLinkToggle');
         const publishLinkForm = container.querySelector('#momentsPublishLinkForm');
 
         let pubImages = [];
-        let pubFile = null;
 
         const mainPage = container.querySelector('#momentsMainPage');
         if (cameraBtn && publishPage) {
@@ -8578,9 +8600,7 @@ ipcRenderer.on('lumina-close', () => {
                 publishPage.classList.add('active');
                 publishText.value = '';
                 pubImages = [];
-                pubFile = null;
                 publishLinkForm.classList.remove('active');
-                publishFilePreview.classList.remove('active');
                 this._renderPublishImages(pubImages, publishImages);
                 publishText.focus();
             });
@@ -8593,25 +8613,6 @@ ipcRenderer.on('lumina-close', () => {
         }
         if (publishLinkToggle && publishLinkForm) {
             publishLinkToggle.addEventListener('click', () => publishLinkForm.classList.toggle('active'));
-        }
-        if (publishFileToggle && publishFileInput) {
-            publishFileToggle.addEventListener('click', () => publishFileInput.click());
-            publishFileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    pubFile = file;
-                    container.querySelector('#momentsPublishFileName').textContent = file.name;
-                    container.querySelector('#momentsPublishFileSize').textContent = this._formatFileSize(file.size);
-                    publishFilePreview.classList.add('active');
-                }
-                publishFileInput.value = '';
-            });
-        }
-        if (publishFileDelete) {
-            publishFileDelete.addEventListener('click', () => {
-                pubFile = null;
-                publishFilePreview.classList.remove('active');
-            });
         }
         if (publishAddBtn && publishImageInput) {
             publishAddBtn.addEventListener('click', () => publishImageInput.click());
@@ -8632,7 +8633,7 @@ ipcRenderer.on('lumina-close', () => {
             publishSubmit.addEventListener('click', async () => {
                 const text = publishText.value.trim();
                 const linkTitle = container.querySelector('#momentsPublishLinkTitle')?.value.trim() || '';
-                if (!text && pubImages.length === 0 && !linkTitle && !pubFile) return;
+                if (!text && pubImages.length === 0 && !linkTitle) return;
                 const uploadedImages = [];
                 for (const img of pubImages) {
                     if (typeof img === 'string' && img.startsWith('data:')) {
@@ -8650,7 +8651,7 @@ ipcRenderer.on('lumina-close', () => {
                     id: mid,
                     text: text || '',
                     images: [...uploadedImages],
-                    file: pubFile ? { name: pubFile.name, size: this._formatFileSize(pubFile.size) } : null,
+                    file: null,
                     link: linkTitle ? { title: linkTitle, url: container.querySelector('#momentsPublishLinkUrl')?.value.trim() || '' } : null,
                     likes: [],
                     comments: [],
@@ -8673,16 +8674,11 @@ ipcRenderer.on('lumina-close', () => {
         const editImages = container.querySelector('#momentsEditImages');
         const editAddBtn = container.querySelector('#momentsEditAdd');
         const editImageInput = container.querySelector('#momentsEditImageInput');
-        const editFileInput = container.querySelector('#momentsEditFileInput');
-        const editFileToggle = container.querySelector('#momentsEditFileToggle');
-        const editFilePreview = container.querySelector('#momentsEditFilePreview');
-        const editFileDelete = container.querySelector('#momentsEditFileDelete');
         const editLinkToggle = container.querySelector('#momentsEditLinkToggle');
         const editLinkForm = container.querySelector('#momentsEditLinkForm');
 
         let editMid = null;
         let editImgs = [];
-        let editFile = null;
         let editHasLink = false;
 
         if (editBack && editPage) {
@@ -8691,33 +8687,11 @@ ipcRenderer.on('lumina-close', () => {
                 if (mainPage) mainPage.style.visibility = '';
                 editMid = null;
                 editImgs = [];
-                editFile = null;
                 editHasLink = false;
             });
         }
         if (editLinkToggle && editLinkForm) {
             editLinkToggle.addEventListener('click', () => editLinkForm.classList.toggle('active'));
-        }
-        if (editFileToggle && editFileInput) {
-            editFileToggle.addEventListener('click', () => editFileInput.click());
-            editFileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    editFile = file;
-                    container.querySelector('#momentsEditFileName').textContent = file.name;
-                    container.querySelector('#momentsEditFileSize').textContent = this._formatFileSize(file.size);
-                    editFilePreview.classList.add('active');
-                    editHasLink = false;
-                    editLinkForm.classList.remove('active');
-                }
-                editFileInput.value = '';
-            });
-        }
-        if (editFileDelete) {
-            editFileDelete.addEventListener('click', () => {
-                editFile = null;
-                editFilePreview.classList.remove('active');
-            });
         }
         if (editAddBtn && editImageInput) {
             editAddBtn.addEventListener('click', () => editImageInput.click());
@@ -8751,17 +8725,11 @@ ipcRenderer.on('lumina-close', () => {
                     }
                 }
                 m.images = uploadedEditImages;
-                if (editFile) {
-                    m.file = { name: editFile.name, size: this._formatFileSize(editFile.size) };
-                    m.link = null;
-                } else {
-                    m.file = null;
-                }
+                m.file = null;
                 const editLinkTitleVal = container.querySelector('#momentsEditLinkTitle')?.value.trim() || '';
                 if (editLinkTitleVal && editHasLink) {
                     m.link = { title: editLinkTitleVal, url: container.querySelector('#momentsEditLinkUrl')?.value.trim() || '' };
-                    m.file = null;
-                } else if (!editLinkTitleVal) {
+                } else {
                     m.link = null;
                 }
                 m.updated = Date.now();
@@ -8769,7 +8737,6 @@ ipcRenderer.on('lumina-close', () => {
                 editPage.classList.remove('active');
                 editMid = null;
                 editImgs = [];
-                editFile = null;
                 editHasLink = false;
                 this._doRenderMoments();
             });
@@ -8783,23 +8750,14 @@ ipcRenderer.on('lumina-close', () => {
             editText.value = m.text || '';
             editImgs = m.images ? [...m.images] : [];
             this._renderEditImages(editImgs, editImages);
-            editFile = null;
             editHasLink = false;
-            if (m.file) {
-                editFile = m.file;
-                container.querySelector('#momentsEditFileName').textContent = m.file.name;
-                container.querySelector('#momentsEditFileSize').textContent = m.file.size;
-                editFilePreview.classList.add('active');
-                editLinkForm.classList.remove('active');
-            } else if (m.link && m.link.title) {
+            if (m.link && m.link.title) {
                 editHasLink = true;
                 container.querySelector('#momentsEditLinkTitle').value = m.link.title;
                 container.querySelector('#momentsEditLinkUrl').value = m.link.url || '';
                 editLinkForm.classList.add('active');
-                editFilePreview.classList.remove('active');
             } else {
                 editLinkForm.classList.remove('active');
-                editFilePreview.classList.remove('active');
             }
             if (mainPage) mainPage.style.visibility = 'hidden';
             editPage.classList.add('active');
@@ -18388,6 +18346,16 @@ ipcRenderer.on('lumina-close', () => {
 
         this.currentMainView = view;
 
+        // 切换视图时清理朋友圈锁覆盖层
+        const notesList = this.container.querySelector('#shuoshuo-notes-list');
+        if (notesList) {
+            const lockOverlay = notesList.querySelector('.lumina-moments-lock-overlay');
+            if (lockOverlay) {
+                lockOverlay.remove();
+                notesList.style.overflow = '';
+            }
+        }
+
         // 重要：切换到说说相关视图时，先从思源SQL加载最新绑定块数据
         // 确保思源中修改的内容能在说说视图中立即反映
         const needsRefresh = ['notes', 'week', 'table', 'stats', 'review', 'random'];
@@ -18763,6 +18731,21 @@ ipcRenderer.on('lumina-close', () => {
                 // 刷新所有视图
                 this.refreshMountedShuoshuoViews();
                 showMessage(isOn ? '已开启朋友圈侧边栏，请刷新界面生效' : '已关闭朋友圈侧边栏，请刷新界面生效');
+            });
+        }
+
+        // 朋友圈密码眼切换
+        const passwordEye = this.container.querySelector('#momentsPasswordEye');
+        if (passwordEye) {
+            passwordEye.addEventListener('click', () => {
+                const input = this.container.querySelector('#moments-password-input');
+                if (!input) return;
+                const eyeIcon = passwordEye.querySelector('.eye-icon');
+                const eyeOffIcon = passwordEye.querySelector('.eye-off-icon');
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                if (eyeIcon) eyeIcon.style.display = isPassword ? 'none' : '';
+                if (eyeOffIcon) eyeOffIcon.style.display = isPassword ? '' : 'none';
             });
         }
 
@@ -19510,12 +19493,16 @@ ipcRenderer.on('lumina-close', () => {
                 const momentsNotebookId = this.container.querySelector('#moments-notebook-select')?.value || '';
                 const momentsSyncMode = this.container.querySelector('#moments-sync-mode-select')?.value || 'dailynote';
                 const momentsSyncDocId = this.container.querySelector('#moments-sync-doc-id')?.value?.trim() || '';
+                const momentsPassword = this.container.querySelector('#moments-password-input')?.value?.trim() || '';
                 if (!this.momentsConfig) this.momentsConfig = {};
                 this.momentsConfig.nickname = momentsNickname;
                 this.momentsConfig.signature = momentsSignature;
                 this.momentsConfig.syncNotebookId = momentsNotebookId;
                 this.momentsConfig.syncMode = momentsSyncMode;
                 this.momentsConfig.syncDocId = momentsSyncDocId;
+                this.momentsConfig.password = momentsPassword;
+                // 密码变更时重置锁定状态
+                this.momentsUnlocked = false;
                 await this.saveMoments();
 
                 const bookshelfNotebookId = this.container.querySelector('#bookshelf-notebook-select')?.value || '';
@@ -20870,7 +20857,8 @@ ipcRenderer.on('lumina-close', () => {
                     syncNotebookId: '',
                     syncMode: 'dailynote',
                     syncDocId: '',
-                    showMomentsSidebar: true
+                    showMomentsSidebar: true,
+                    password: ''
                 };
             } catch (e) {
                 // 加载失败时不要粗暴清空
@@ -20878,7 +20866,7 @@ ipcRenderer.on('lumina-close', () => {
                     this.moments = [];
                 }
                 if (!this.momentsConfig) {
-                    this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '' };
+                    this.momentsConfig = { nickname: '月亮', signature: '言念君子 温其如玉', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', password: '' };
                 }
             }
             // 合并字体大小默认值
