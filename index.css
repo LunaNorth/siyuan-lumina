@@ -2186,6 +2186,7 @@
     justify-content: center;
     overflow: hidden;
     z-index: 1;
+    cursor: pointer;
 }
 
 .north-shuoshuo-image-preview-img {
@@ -11135,6 +11136,10 @@
     margin-top: 40px;
 }
 
+.lumina-moments-nav-actions.has-lock {
+    margin-top: 70px;
+}
+
 .lumina-moments-calendar-btn {
     width: 24px;
     height: 24px;
@@ -11175,6 +11180,32 @@
     right: 2px;
     height: 1.5px;
     background-color: var(--moments-nav-icon);
+}
+
+/* 导航栏锁按钮 — 与日历按钮样式保持一致 */
+.lumina-moments-lock-btn-nav {
+    width: 24px;
+    height: 24px;
+    position: relative;
+    cursor: pointer;
+}
+
+.lumina-moments-lock-nav-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 24px;
+    height: 24px;
+    color: var(--moments-nav-icon);
+}
+
+.lumina-moments-lock-nav-icon use {
+    fill: currentColor;
+}
+
+.lumina-moments-nav.scrolled .lumina-moments-lock-nav-icon {
+    color: var(--moments-nav-icon-scrolled);
 }
 
 .lumina-moments-nav.scrolled .lumina-moments-calendar-icon,
@@ -13770,8 +13801,11 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         max-width: none;
     }
 
-    /* 移动端朋友圈：隐藏统计（日历）按�?*/
+    /* 移动端朋友圈：隐藏统计（日历）按钮和锁按钮 */
     .lumina-moments-calendar-btn {
+        display: none;
+    }
+    .lumina-moments-lock-btn-nav {
         display: none;
     }
 
