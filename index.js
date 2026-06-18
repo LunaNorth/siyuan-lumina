@@ -5,6 +5,8 @@ const CONFIG_STORAGE_NAME = "shuoshuo-config";
 const MOMENTS_STORAGE_NAME = "lumina-moments-data";
 const MOMENTS_CONFIG_NAME = "lumina-moments-config";
 const BOOKS_STORAGE_NAME = "lumina-bookshelf-data";
+const WEREAD_API_KEY_STORAGE = "lumina-weread-apikey";
+const WEREAD_GATEWAY_URL = "https://i.weread.qq.com/api/agent/gateway";
 const TAB_TYPE = "shuoshuo-tab";
 
 // 莫兰迪配色方案
@@ -544,10 +546,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, showMomentsSidebar: true, password: '' };
         this.momentsUnlocked = false; // 朋友圈密码锁：当前会话是否已解锁
         this.books = []; // 图书书架数据
-        this.bookshelfFilters = { type: 'all', sync: 'synced', status: 'read+reading', sort: 'time' };
+        this.bookshelfFilters = { type: 'book', sync: 'synced', status: 'read', sort: 'time' };
         this.bookshelfSearch = '';
         this.bookshelfGroupByYear = true;
         this.bookshelfCurrentView = 'list';
+        this.wereadApiKey = '';
+        this.wereadLastSyncTime = null;
         this.tagBlocklist = []; // 标签屏蔽列表
         this.loadShuoshuos();
         this.loadConfig();
@@ -4549,10 +4553,7 @@ ipcRenderer.on('lumina-close', () => {
                                             <span class="north-shuoshuo-select-arrow">▼</span>
                                         </div>
                                         <button class="north-shuoshuo-btn-icon" id="bookshelf-refresh-notebooks" title="刷新列表">
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M23 4v6h-6M1 20v-6h6"/>
-                                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                                            </svg>
+                                            <svg class="icon" style="width:18px;height:18px;"><use xlink:href="#iconRefresh"></use></svg>
                                         </button>
                                     </div>
                                     <div class="north-shuoshuo-form-hint">
@@ -4592,6 +4593,46 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- 微信读书 API Key 配置 -->
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header">
+                                    <div>
+                                        <div class="north-shuoshuo-section-title">微信读书 API 连接</div>
+                                        <div class="north-shuoshuo-section-desc">配置 API Key 后可直接同步书架、笔记与阅读统计</div>
+                                    </div>
+                                    <span class="north-shuoshuo-badge ${this.wereadApiKey ? 'north-shuoshuo-badge-success' : ''}" id="weread-sync-status">${this.wereadApiKey ? '已连接' : '未连接'}</span>
+                                </div>
+                                <div class="north-shuoshuo-form-row">
+                                    <label class="north-shuoshuo-form-label">API Key</label>
+                                    <div class="north-shuoshuo-input-group" style="width:100%;">
+                                        <div style="display:flex;gap:6px;width:100%;align-items:center;">
+                                            <input type="password" id="weread-api-key-input" class="north-shuoshuo-input-field" placeholder="wrk-xxxxxxxx" value="${this.wereadApiKey || ''}" style="flex:1;font-family:monospace;letter-spacing:0.5px;" autocomplete="off">
+                                            <button class="north-shuoshuo-btn-icon" id="weread-toggle-key-visibility" type="button" title="显示/隐藏">
+                                                <svg class="icon" style="width:18px;height:18px;"><use xlink:href="#iconEye"></use></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="north-shuoshuo-form-hint">
+                                        <span>💡</span> 访问 <a href="https://weread.qq.com/r/weread-skills" target="_blank" rel="noopener noreferrer" style="color:var(--b3-theme-primary);text-decoration:underline;">微信读书官方页面</a> 扫码获取 API Key
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-form-row" style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    <button class="north-shuoshuo-btn-primary" id="weread-test-btn" style="padding:6px 16px;font-size:13px;">
+                                        测试连接
+                                    </button>
+                                    <button class="north-shuoshuo-btn-primary" id="weread-sync-btn" style="padding:6px 16px;font-size:13px;">
+                                        同步书架
+                                    </button>
+                                </div>
+                                <div id="weread-last-sync-row" class="north-shuoshuo-form-row" style="${this.wereadLastSyncTime ? 'display:flex' : 'display:none'};align-items:center;gap:6px;margin-top:4px;">
+                                    <span style="font-size:12px;color:var(--b3-theme-on-surface-light);">上次同步：<span id="weread-last-sync-time">${this.wereadLastSyncTime || ''}</span></span>
+                                </div>
+                                <div id="weread-test-result" class="north-shuoshuo-form-row" style="display:none;margin-top:2px;">
+                                    <span id="weread-test-result-text" style="font-size:12px;"></span>
+                                </div>
+                            </div>
+
                             <div class="north-shuoshuo-toggle-row">
                                 <div class="north-shuoshuo-toggle-info">
                                     <h4>显示图书视图</h4>
@@ -9048,32 +9089,27 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="lumina-bookshelf-header-inner">
                         <div class="lumina-bookshelf-toolbar-left">
                             <div class="lumina-bookshelf-search">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <circle cx="11" cy="11" r="8"></circle>
-                                    <path d="m21 21-4.35-4.35"></path>
-                                </svg>
+                                <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconSearch"></use></svg>
                                 <input type="text" id="bookshelfSearchInput" placeholder="搜索书名|作者">
                             </div>
                             <div class="lumina-bookshelf-filter-group">
                                 <button class="lumina-bookshelf-filter-btn" id="bookshelfBtnType" data-dropdown="type">
-                                    <span id="bookshelfLabelType">全部类型</span>
+                                    <span id="bookshelfLabelType">图书</span>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
                                 </button>
                                 <div class="lumina-bookshelf-dropdown" id="bookshelfDropdownType">
-                                    <div class="lumina-bookshelf-dropdown-item selected" data-value="all">全部类型<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
-                                    <div class="lumina-bookshelf-dropdown-item" data-value="book">图书<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item" data-value="all">全部类型<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item selected" data-value="book">图书<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
                                     <div class="lumina-bookshelf-dropdown-item" data-value="article">文章<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
                                 </div>
                                 <button class="lumina-bookshelf-filter-btn" id="bookshelfBtnStatus" data-dropdown="status">
-                                    <span id="bookshelfLabelStatus">在读+已读</span>
+                                    <span id="bookshelfLabelStatus">已读</span>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
                                 </button>
                                 <div class="lumina-bookshelf-dropdown" id="bookshelfDropdownStatus">
                                     <div class="lumina-bookshelf-dropdown-item" data-value="all">全部状态<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
                                     <div class="lumina-bookshelf-dropdown-divider"></div>
-                                    <div class="lumina-bookshelf-dropdown-item selected" data-value="read+reading">在读+已读<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
-                                    <div class="lumina-bookshelf-dropdown-item" data-value="reading">在读<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
-                                    <div class="lumina-bookshelf-dropdown-item" data-value="read">已读<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
+                                    <div class="lumina-bookshelf-dropdown-item selected" data-value="read">已读<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
                                     <div class="lumina-bookshelf-dropdown-item" data-value="unread">未读<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>
                                 </div>
                                 <button class="lumina-bookshelf-filter-btn" id="bookshelfBtnSort" data-dropdown="sort">
@@ -9093,8 +9129,12 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                         </div>
                         <div class="lumina-bookshelf-toolbar-right">
+                            <button class="lumina-bookshelf-action-btn" id="bookshelfWereadSyncBtn" title="从微信读书同步书架" ${this.wereadApiKey ? '' : 'disabled'}>
+                                <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconCloud"></use></svg>
+                                同步
+                            </button>
                             <button class="lumina-bookshelf-action-btn" id="bookshelfImportBtn" title="导入微信读书笔记">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                <svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconDownload"></use></svg>
                                 导入
                             </button>
                             <input type="file" id="bookshelfImportInput" accept=".json" style="display:none;">
@@ -9205,18 +9245,14 @@ ipcRenderer.on('lumina-close', () => {
 
     _getFilteredBooks() {
         const search = this.bookshelfSearch || '';
-        const filters = this.bookshelfFilters || { type: 'all', status: 'read+reading', sort: 'time' };
+        const filters = this.bookshelfFilters || { type: 'book', status: 'read', sort: 'time' };
         let result = this.books.filter(b => {
             if (search) {
                 const q = search.toLowerCase();
                 if (!b.title.toLowerCase().includes(q) && !b.author.toLowerCase().includes(q)) return false;
             }
             if (filters.type !== 'all' && b.type !== filters.type) return false;
-            if (filters.status !== 'all') {
-                if (filters.status === 'read+reading') {
-                    if (b.readStatus !== 'read' && b.readStatus !== 'reading') return false;
-                } else if (b.readStatus !== filters.status) return false;
-            }
+            if (filters.status !== 'all' && b.readStatus !== filters.status) return false;
             return true;
         });
         result.sort((a, b) => {
@@ -9416,6 +9452,30 @@ ipcRenderer.on('lumina-close', () => {
                 if (!file) return;
                 await this._importBooksFromJson(file);
                 importInput.value = '';
+            });
+        }
+
+        // 微信读书 API 同步按钮
+        const wereadSyncBtn = container.querySelector('#bookshelfWereadSyncBtn');
+        if (wereadSyncBtn) {
+            wereadSyncBtn.addEventListener('click', async () => {
+                if (!this.wereadApiKey) {
+                    showMessage('⚠️ 请先在「设置 → 图书视图设置」中配置微信读书 API Key');
+                    return;
+                }
+                wereadSyncBtn.disabled = true;
+                wereadSyncBtn.classList.add('spin');
+                wereadSyncBtn.innerHTML = `<svg class="icon" style="width:14px;height:14px;animation:lumina-spin 1s linear infinite;"><use xlink:href="#iconCloud"></use></svg> 同步中...`;
+                await this._syncWereadBookshelf();
+                wereadSyncBtn.disabled = false;
+                wereadSyncBtn.classList.remove('spin');
+                wereadSyncBtn.innerHTML = `<svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconCloud"></use></svg> 同步`;
+                // 更新最后同步时间
+                if (this.wereadApiKey) {
+                    const now = new Date();
+                    this.wereadLastSyncTime = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                    await this.saveConfig();
+                }
             });
         }
     }
@@ -10117,6 +10177,264 @@ ipcRenderer.on('lumina-close', () => {
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    // ============ 微信读书 API 方法 ============
+
+    // 通用调用微信读书 Agent API 网关
+    async _callWereadGateway(apiName, params = {}) {
+        if (!this.wereadApiKey) {
+            throw new Error('请先配置微信读书 API Key');
+        }
+        if (!this.wereadApiKey.startsWith('wrk-')) {
+            throw new Error('API Key 格式不正确，应以 wrk- 开头');
+        }
+        const body = JSON.stringify({
+            api_name: apiName,
+            skill_version: '1.0.3',
+            ...params
+        });
+        const response = await fetch(WEREAD_GATEWAY_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.wereadApiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: body
+        });
+        if (!response.ok) {
+            let errText = '';
+            try {
+                const errData = await response.json();
+                errText = errData.errmsg || errData.message || JSON.stringify(errData);
+            } catch {
+                errText = await response.text().catch(() => '') || response.statusText;
+            }
+            throw new Error(`HTTP ${response.status}: ${errText.slice(0, 200)}`);
+        }
+        let data;
+        try {
+            data = await response.json();
+        } catch (e) {
+            const text = await response.text().catch(() => '');
+            throw new Error(`HTTP ${response.status}: 响应不是合法 JSON — ${text.slice(0, 200)}`);
+        }
+        if (data.errcode !== undefined && data.errcode !== 0) {
+            const errMsg = data.errmsg || data.message || data.msg || '未知错误';
+            console.warn(`[轻语] 微信读书 API 错误 [${apiName}]: errcode=${data.errcode}, errmsg=${errMsg}`, data);
+            throw new Error(`微信读书 API 错误 (${data.errcode}): ${errMsg}`);
+        }
+        return data;
+    }
+
+    // 测试 API Key 连接是否有效
+    async _testWereadConnection() {
+        try {
+            const data = await this._callWereadGateway('/shelf/sync', { count: 1 });
+            return data && data.errcode === 0;
+        } catch (e) {
+            console.error('[轻语] 微信读书连接测试失败:', e);
+            return false;
+        }
+    }
+
+    // 完整同步：书架 + 笔记 + 阅读统计
+    async _syncWereadBookshelf() {
+        try {
+            showMessage('正在同步书架数据...');
+
+            // 1. 获取书架（合并 books / albums / mp 三项）
+            const shelfData = await this._callWereadGateway('/shelf/sync', { count: 200 });
+            const apiBooks = [
+                ...(shelfData.books || []),
+                ...(shelfData.albums || []),
+                ...(shelfData.mp ? [shelfData.mp] : [])
+            ];
+
+            if (apiBooks.length === 0) {
+                showMessage('书架为空，没有找到书籍');
+                return;
+            }
+
+            showMessage(`书架同步成功，共 ${apiBooks.length} 本书，正在获取笔记详情...`);
+
+            // 3. 遍历书架中的每本书，解析并合并数据（直接为每本书获取笔记）
+            const parsedBooks = [];
+            let processedCount = 0;
+            const totalBooks = apiBooks.filter(b => b.bookId).length;
+            let totalHighlights = 0;
+            let totalIdeas = 0;
+
+            for (const book of apiBooks) {
+                if (!book.bookId) continue;
+                processedCount++;
+
+                // 进度提示，每 3 本或最后一本提示一次
+                if (processedCount % 3 === 0 || processedCount === totalBooks) {
+                    showMessage(`正在同步：${processedCount}/${totalBooks}`);
+                }
+
+                try {
+                    // 下载封面
+                    let localCover = null;
+                    if (book.cover) {
+                        localCover = await this._downloadCoverImage(book.cover, book.bookId);
+                    }
+
+                    // 初始化笔记数组
+                    const notes = [];
+                    let highlights = 0;
+                    let ideas = 0;
+                    // 收集所有笔记的时间戳（原始秒级时间戳），用于推算年份和最近阅读时间
+                    const noteTimestamps = [];
+
+                    // 4. 获取该书的划线
+                    try {
+                        const bookmarkData = await this._callWereadGateway('/book/bookmarklist', {
+                            bookId: book.bookId
+                        });
+                        const marks = bookmarkData.updated || [];
+                        marks.forEach(bm => {
+                            highlights++;
+                            const ts = bm.createTime;
+                            if (ts) noteTimestamps.push(ts);
+                            notes.push({
+                                type: 'highlight',
+                                time: ts ? this._formatWereadTimestamp(ts) : '',
+                                quote: bm.markText || '',
+                                thought: '',
+                                tags: [`#resources/书籍/${book.title}`],
+                                title: bm.chapterTitle || ''
+                            });
+                        });
+                    } catch (e) {
+                        console.warn(`[轻语] 获取《${book.title}》划线失败:`, e.message);
+                    }
+
+                    // 5. 获取想法/书评（此接口参数名要求小写 bookid）
+                    try {
+                        const reviewData = await this._callWereadGateway('/review/list/mine', {
+                            bookid: book.bookId
+                        });
+                        if (reviewData.reviews && Array.isArray(reviewData.reviews)) {
+                            reviewData.reviews.forEach(r => {
+                                const rd = r.review || r;
+                                if (!rd) return;
+                                ideas++;
+                                const ts = rd.createTime || r.createTime;
+                                if (ts) noteTimestamps.push(ts);
+                                notes.push({
+                                    type: 'idea',
+                                    time: ts ? this._formatWereadTimestamp(ts) : '',
+                                    quote: rd.abstract || rd.markText || '',
+                                    thought: rd.content || rd.thought || '',
+                                    tags: [`#resources/书籍/${book.title}`],
+                                    title: rd.chapterName || rd.chapterTitle || ''
+                                });
+                            });
+                        }
+                    } catch (e) {
+                        console.warn(`[轻语] 获取《${book.title}》想法失败:`, e.message);
+                    }
+
+                    totalHighlights += highlights;
+                    totalIdeas += ideas;
+
+                    // 6. 根据笔记推算年份和最近阅读时间
+                    let year;
+                    let readTime;
+                    if (noteTimestamps.length > 0) {
+                        // 排序：最早的时间决定年份，最新时间决定最近阅读时间
+                        noteTimestamps.sort((a, b) => a - b);
+                        year = new Date(noteTimestamps[0] * 1000).getFullYear();
+                        readTime = this._formatWereadTimestamp(noteTimestamps[noteTimestamps.length - 1]);
+                    } else {
+                        // 没有笔记时，退回到书架数据
+                        year = book.finishTime
+                            ? new Date(book.finishTime * 1000).getFullYear()
+                            : (book.createTime ? new Date(book.createTime * 1000).getFullYear() : new Date().getFullYear());
+                        readTime = book.finishTime
+                            ? this._formatWereadTimestamp(book.finishTime)
+                            : (book.createTime ? this._formatWereadTimestamp(book.createTime) : null);
+                    }
+
+                    // 7. 根据是否有笔记判断阅读状态
+                    const status = (highlights > 0 || ideas > 0) ? 'read' : 'unread';
+
+                    // 生成封面样式
+                    const coverClass = this._getCoverClassForBook(book.title);
+
+                    parsedBooks.push({
+                        id: book.bookId,
+                        title: book.title,
+                        author: book.author || '未知作者',
+                        coverClass: coverClass,
+                        coverImage: localCover,
+                        type: 'book',
+                        syncStatus: 'synced',
+                        readStatus: status,
+                        year: year,
+                        readTime: readTime,
+                        highlights: highlights,
+                        ideas: ideas,
+                        notes: notes
+                    });
+                } catch (e) {
+                    console.error(`[轻语] 解析书籍《${book.title}》失败:`, e);
+                }
+
+                // 短暂延时避免请求过快
+                await new Promise(r => setTimeout(r, 100));
+            }
+
+            // 5. 合并到现有书架（按 bookId 去重/覆盖）
+            let mergeCount = 0;
+            for (const newBook of parsedBooks) {
+                const idx = this.books.findIndex(b => b.id === newBook.id);
+                if (idx >= 0) {
+                    // 保留旧书的笔记和封面（如果新数据没有笔记但旧书有）
+                    if (newBook.notes.length === 0 && this.books[idx].notes.length > 0) {
+                        newBook.notes = this.books[idx].notes;
+                        newBook.highlights = this.books[idx].highlights;
+                        newBook.ideas = this.books[idx].ideas;
+                    }
+                    // 保留旧书的封面（如果新下载失败）
+                    if (!newBook.coverImage && this.books[idx].coverImage) {
+                        newBook.coverImage = this.books[idx].coverImage;
+                    }
+                    this.books[idx] = newBook;
+                    mergeCount++;
+                } else {
+                    this.books.push(newBook);
+                }
+            }
+
+            await this.saveBooks();
+            showMessage(`✅ 同步完成！共同步 ${parsedBooks.length} 本书，含 ${totalHighlights} 条划线、${totalIdeas} 条想法（新增 ${parsedBooks.length - mergeCount}，更新 ${mergeCount}）`);
+
+            // 刷新图书视图
+            this._refreshBookshelfList();
+        } catch (e) {
+            console.error('[轻语] 微信读书同步失败:', e);
+            showMessage('❌ 同步失败：' + (e.message || '未知错误'));
+        }
+    }
+
+    // 格式化微信读书时间戳（秒级）
+    _formatWereadTimestamp(timestamp) {
+        try {
+            const d = typeof timestamp === 'number'
+                ? new Date(timestamp * 1000)
+                : new Date(timestamp);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const h = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            return `${y}-${m}-${day} ${h}:${min}`;
+        } catch (e) {
+            return '';
+        }
     }
 
 
@@ -17534,7 +17852,6 @@ ipcRenderer.on('lumina-close', () => {
         const existing = await this._listAssetsFiles();
         const missing = referenced.filter(f => !existing.has(f));
         if (missing.length === 0) {
-            console.log('[轻语] 所有引用图片均存在于 assets/ 中');
             return;
         }
 
@@ -17550,7 +17867,6 @@ ipcRenderer.on('lumina-close', () => {
 
     // 回填备份：将 assets/ 中引用的图片备份到插件备份目录
     async _backfillAssetBackups() {
-        console.log('[轻语] 开始回填图片备份...');
         const referenced = this._collectReferencedAssetFiles();
         if (referenced.length === 0) {
             console.log('[轻语] 没有引用图片，跳过回填');
@@ -17576,7 +17892,6 @@ ipcRenderer.on('lumina-close', () => {
 
         const toBackup = referenced.filter(f => !alreadyBacked.has(f));
         if (toBackup.length === 0) {
-            console.log('[轻语] 所有引用图片均已备份');
             return;
         }
 
@@ -19917,6 +20232,9 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // ==================== 微信读书 API Key 设置事件绑定 ====================
+        this._bindWereadSettingsEvents();
+
         const exportShuoshuoJsonBtn = this.container.querySelector('#settings-export-shuoshuo-json');
         const exportShuoshuoMdBtn = this.container.querySelector('#settings-export-shuoshuo-md');
         const exportMomentsJsonBtn = this.container.querySelector('#settings-export-moments-json');
@@ -20327,6 +20645,132 @@ ipcRenderer.on('lumina-close', () => {
 
         // ==================== Memos 同步事件绑定 ====================
         this.bindMemosEvents();
+    }
+
+    // ==================== 微信读书 API Key 设置事件绑定 ====================
+    _bindWereadSettingsEvents() {
+        const apiKeyInput = this.container.querySelector('#weread-api-key-input');
+        const toggleBtn = this.container.querySelector('#weread-toggle-key-visibility');
+        const testBtn = this.container.querySelector('#weread-test-btn');
+        const syncBtn = this.container.querySelector('#weread-sync-btn');
+        const testResult = this.container.querySelector('#weread-test-result');
+        const testResultText = this.container.querySelector('#weread-test-result-text');
+        const syncStatus = this.container.querySelector('#weread-sync-status');
+        const lastSyncRow = this.container.querySelector('#weread-last-sync-row');
+        const lastSyncTime = this.container.querySelector('#weread-last-sync-time');
+
+        // API Key 输入变化时自动保存
+        if (apiKeyInput) {
+            // 防抖保存
+            let saveTimer;
+            apiKeyInput.addEventListener('input', () => {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(async () => {
+                    this.wereadApiKey = apiKeyInput.value.trim();
+                    await this.saveConfig();
+                    // 更新连接状态
+                    if (syncStatus) {
+                        syncStatus.textContent = this.wereadApiKey ? '已连接' : '未连接';
+                        syncStatus.className = 'north-shuoshuo-badge' + (this.wereadApiKey ? ' north-shuoshuo-badge-success' : '');
+                    }
+                }, 500);
+            });
+        }
+
+        // 切换 API Key 可见性
+        if (toggleBtn && apiKeyInput) {
+            toggleBtn.addEventListener('click', () => {
+                const isPassword = apiKeyInput.type === 'password';
+                apiKeyInput.type = isPassword ? 'text' : 'password';
+                toggleBtn.title = isPassword ? '隐藏' : '显示';
+                toggleBtn.innerHTML = isPassword
+                    ? `<svg class="icon" style="width:18px;height:18px;"><use xlink:href="#iconEyeoff"></use></svg>`
+                    : `<svg class="icon" style="width:18px;height:18px;"><use xlink:href="#iconEye"></use></svg>`;
+            });
+        }
+
+        // 测试连接按钮
+        if (testBtn) {
+            testBtn.addEventListener('click', async () => {
+                const key = apiKeyInput?.value?.trim();
+                if (!key) {
+                    if (testResult) {
+                        testResult.style.display = 'flex';
+                        if (testResultText) {
+                            testResultText.textContent = '⚠️ 请先输入 API Key';
+                            testResultText.style.color = 'var(--b3-theme-warning)';
+                        }
+                    }
+                    return;
+                }
+                this.wereadApiKey = key;
+                testBtn.disabled = true;
+                testBtn.textContent = '测试中...';
+                if (testResult) testResult.style.display = 'none';
+
+                // 直接调用 API 获取真实错误信息
+                let ok = false;
+                let errorMsg = '';
+                try {
+                    await this._callWereadGateway('/shelf/sync', { count: 1 });
+                    ok = true;
+                } catch (e) {
+                    errorMsg = e.message || '请求失败';
+                    console.warn('[轻语] 微信读书连接测试失败:', e);
+                }
+
+                testBtn.disabled = false;
+                testBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="vertical-align:middle;margin-right:4px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 测试连接`;
+
+                if (testResult) {
+                    testResult.style.display = 'flex';
+                    if (testResultText) {
+                        if (ok) {
+                            testResultText.textContent = '✅ 连接成功！API Key 有效';
+                            testResultText.style.color = 'var(--b3-theme-primary)';
+                        } else {
+                            testResultText.textContent = '❌ ' + errorMsg;
+                            testResultText.style.color = '#e74c3c';
+                        }
+                    }
+                }
+
+                if (ok && syncStatus) {
+                    syncStatus.textContent = '已连接';
+                    syncStatus.className = 'north-shuoshuo-badge north-shuoshuo-badge-success';
+                }
+                await this.saveConfig();
+            });
+        }
+
+        // 同步书架按钮
+        if (syncBtn) {
+            syncBtn.addEventListener('click', async () => {
+                const key = apiKeyInput?.value?.trim();
+                if (!key) {
+                    showMessage('⚠️ 请先配置并测试 API Key');
+                    return;
+                }
+                this.wereadApiKey = key;
+                syncBtn.disabled = true;
+                syncBtn.innerHTML = `<svg class="icon" style="width:14px;height:14px;vertical-align:middle;margin-right:4px;animation:lumina-spin 1s linear infinite;"><use xlink:href="#iconCloud"></use></svg> 同步中...`;
+
+                await this._syncWereadBookshelf();
+
+                syncBtn.disabled = false;
+                syncBtn.innerHTML = `<svg class="icon" style="width:14px;height:14px;vertical-align:middle;margin-right:4px;"><use xlink:href="#iconCloud"></use></svg> 同步书架`;
+
+                // 更新上次同步时间
+                if (lastSyncRow) lastSyncRow.style.display = 'flex';
+                if (lastSyncTime) {
+                    const now = new Date();
+                    const timeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                    lastSyncTime.textContent = timeStr;
+                    this.wereadLastSyncTime = timeStr;
+                }
+                await this.saveConfig();
+            });
+        }
     }
 
     // 绑定回顾设置事件
@@ -21990,6 +22434,8 @@ ipcRenderer.on('lumina-close', () => {
                 this.galleryColumnCount = typeof data.galleryColumnCount === 'number' ? data.galleryColumnCount : 3;
                 this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
                 this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
+                this.wereadApiKey = data.wereadApiKey || '';
+                this.wereadLastSyncTime = data.wereadLastSyncTime || null;
                 this.queryVisibility = { 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, 'is-archived': false, ...(data.queryVisibility || {}) };
                 this.autoCollapseLines = typeof data.autoCollapseLines === 'number' ? data.autoCollapseLines : DEFAULT_AUTO_COLLAPSE_LINES;
                 this.customSignature = data.customSignature || '遇事不决，可问春风';
@@ -22085,6 +22531,8 @@ ipcRenderer.on('lumina-close', () => {
                     galleryColumnCount: this.galleryColumnCount,
                     bookshelfFontConfig: this.bookshelfFontConfig,
                     bookshelfSyncConfig: this.bookshelfSyncConfig,
+                    wereadApiKey: this.wereadApiKey,
+                    wereadLastSyncTime: this.wereadLastSyncTime,
                     queryVisibility: this.queryVisibility,
                     autoCollapseLines: this.autoCollapseLines,
                     customSignature: this.customSignature,

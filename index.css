@@ -7936,7 +7936,7 @@
 }
 
 .north-shuoshuo-memo-detail-modal .north-shuoshuo-modal-header {
-    background: var(--b3-theme-surface);
+    background: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     padding: 16px 24px;
     display: flex;
@@ -8006,10 +8006,10 @@
 .north-shuoshuo-masonry .north-shuoshuo-note-card {
     break-inside: avoid;
     margin-bottom: 16px;
-    background: var(--b3-theme-surface);
+    background: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
     border-radius: 12px;
     padding: 16px;
-    border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 70%, transparent);
     transition: border-color 0.2s;
     cursor: pointer;
 }
@@ -12588,6 +12588,59 @@
 .lumina-bookshelf-action-btn svg { width: 13px; height: 13px; }
 .lumina-bookshelf-action-btn.spin svg { animation: lumina-spin 1s linear infinite; }
 @keyframes lumina-spin { to { transform: rotate(360deg); } }
+
+/* 微信读书 API 连接设置样式 */
+.lumina-bookshelf-action-btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+#weread-api-key-input {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace !important;
+    letter-spacing: 0.5px;
+}
+#weread-api-key-input::placeholder {
+    font-family: var(--b3-font-family) !important;
+    letter-spacing: normal;
+}
+.north-shuoshuo-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 16px;
+    font-size: 13px;
+    border: 1px solid var(--b3-theme-primary);
+    background: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+.north-shuoshuo-btn-primary:hover {
+    opacity: 0.85;
+}
+.north-shuoshuo-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+#weread-test-result {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--b3-theme-surface-lighter);
+}
+#weread-last-sync-row {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+/* 微信读书官方链接 hover 效果 */
+.north-shuoshuo-form-hint a:hover {
+    opacity: 0.8;
+}
 
 .lumina-bookshelf-options-dropdown { right: 0; left: auto; min-width: 150px; }
 
