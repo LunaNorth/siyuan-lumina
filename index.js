@@ -7854,6 +7854,13 @@ ipcRenderer.on('lumina-close', () => {
                             showMessage('该笔记已被删除');
                             return;
                         }
+                        // 清理插件目录中的图片
+                        const { images } = this.extractContentAndImages(noteNow.content || '');
+                        for (const img of images) {
+                            if (img.url && (img.url.startsWith('/assets/') || img.url.startsWith('assets/'))) {
+                                await this.deletePluginImage(img.url);
+                            }
+                        }
                         this.shuoshuos = this.shuoshuos.filter(s => String(s.id) !== String(id));
                         await this.saveShuoshuos();
                         if (noteNow.boundBlockId) {
@@ -8160,7 +8167,7 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
                     </div>
                     <div class="lumina-moments-cover" id="momentsCoverSection">
-                        ${cover ? `<img class="lumina-moments-cover-img" src="${cover}" alt="cover">` : `<svg class="lumina-moments-cover-img" viewBox="0 0 375 320" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="momentsCoverGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#1a2980"/><stop offset="50%" style="stop-color:#26d0ce"/><stop offset="100%" style="stop-color:#1a2980"/></linearGradient><pattern id="momentsPattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100%" height="100%" fill="url(#momentsCoverGrad)"/><rect width="100%" height="100%" fill="url(#momentsPattern)"/><circle cx="300" cy="80" r="60" fill="rgba(255,255,255,0.05)"/><circle cx="80" cy="200" r="40" fill="rgba(255,255,255,0.03)"/></svg>`}
+                        ${cover ? `<img class="lumina-moments-cover-img" src="${this._resolveImageUrl(cover)}" alt="cover">` : `<svg class="lumina-moments-cover-img" viewBox="0 0 375 320" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="momentsCoverGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#1a2980"/><stop offset="50%" style="stop-color:#26d0ce"/><stop offset="100%" style="stop-color:#1a2980"/></linearGradient><pattern id="momentsPattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100%" height="100%" fill="url(#momentsCoverGrad)"/><rect width="100%" height="100%" fill="url(#momentsPattern)"/><circle cx="300" cy="80" r="60" fill="rgba(255,255,255,0.05)"/><circle cx="80" cy="200" r="40" fill="rgba(255,255,255,0.03)"/></svg>`}
                         <div class="lumina-moments-cover-user">
                             <span class="lumina-moments-cover-name">${nickname}</span>
                             <img class="lumina-moments-cover-avatar" id="momentsCoverAvatar" src="${avatar}" alt="avatar">
@@ -8196,6 +8203,20 @@ ipcRenderer.on('lumina-close', () => {
                                 <input type="text" class="lumina-moments-publish-link-input" id="momentsPublishLinkUrl" placeholder="链接地址 (https://...)">
                             </div>
                         </div>
+                        <div class="lumina-moments-publish-section">
+                            <div class="lumina-moments-publish-extra-row">
+                                <input type="date" class="lumina-moments-publish-date-input" id="momentsPublishDate">
+                                <div class="lumina-moments-publish-emoji-btn" id="momentsPublishWeatherBtn">
+                                    <span class="lumina-moments-publish-emoji-btn-text" id="momentsPublishWeatherText">天气</span>
+                                    <span class="lumina-moments-publish-emoji-btn-arrow">▼</span>
+                                </div>
+                                <div class="lumina-moments-publish-emoji-btn" id="momentsPublishMoodBtn">
+                                    <span class="lumina-moments-publish-emoji-btn-text" id="momentsPublishMoodText">心情</span>
+                                    <span class="lumina-moments-publish-emoji-btn-arrow">▼</span>
+                                </div>
+                                <input type="text" class="lumina-moments-publish-location-input" id="momentsPublishLocation" placeholder="地点...">
+                            </div>
+                        </div>
                     </div>
                     <input type="file" id="momentsPublishImageInput" class="lumina-moments-file-input" accept="image/*" multiple>
                 </div>
@@ -8220,6 +8241,20 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="lumina-moments-edit-link-form" id="momentsEditLinkForm">
                                 <input type="text" class="lumina-moments-edit-link-input" id="momentsEditLinkTitle" placeholder="链接标题">
                                 <input type="text" class="lumina-moments-edit-link-input" id="momentsEditLinkUrl" placeholder="链接地址 (https://...)">
+                            </div>
+                        </div>
+                        <div class="lumina-moments-edit-section">
+                            <div class="lumina-moments-publish-extra-row">
+                                <input type="date" class="lumina-moments-publish-date-input" id="momentsEditDate">
+                                <div class="lumina-moments-publish-emoji-btn" id="momentsEditWeatherBtn">
+                                    <span class="lumina-moments-publish-emoji-btn-text" id="momentsEditWeatherText">天气</span>
+                                    <span class="lumina-moments-publish-emoji-btn-arrow">▼</span>
+                                </div>
+                                <div class="lumina-moments-publish-emoji-btn" id="momentsEditMoodBtn">
+                                    <span class="lumina-moments-publish-emoji-btn-text" id="momentsEditMoodText">心情</span>
+                                    <span class="lumina-moments-publish-emoji-btn-arrow">▼</span>
+                                </div>
+                                <input type="text" class="lumina-moments-publish-location-input" id="momentsEditLocation" placeholder="地点...">
                             </div>
                         </div>
                     </div>
@@ -8317,7 +8352,7 @@ ipcRenderer.on('lumina-close', () => {
             else if (m.images.length === 4) gridClass = 'four';
             else if (m.images.length >= 5 && m.images.length <= 6) gridClass = 'six';
             else if (m.images.length >= 7) gridClass = 'nine';
-            const imgsHtml = m.images.map(src => `<img class="lumina-moments-grid-img" src="${src}" alt="photo" loading="lazy">`).join('');
+            const imgsHtml = m.images.map(src => `<img class="lumina-moments-grid-img" src="${this._resolveImageUrl(src)}" alt="photo" loading="lazy">`).join('');
             mediaHtml += `<div class="lumina-moments-media"><div class="lumina-moments-image-grid ${gridClass}">${imgsHtml}</div></div>`;
         }
         if (m.link && m.link.title) {
@@ -8326,6 +8361,32 @@ ipcRenderer.on('lumina-close', () => {
                 <img class="lumina-moments-link-thumb" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' fill='%23ecf0f1'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%237f8c8d' font-size='10'%3E🔗%3C/text%3E%3C/svg%3E" alt="thumb">
                 <div class="lumina-moments-link-info"><div class="lumina-moments-link-title">${m.link.title}</div><div style="font-size:11px;color:#999;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${linkUrl}</div></div>
             </div>`;
+        }
+
+        // 天气、心情、地点标签（显示在 meta 栏）
+        const renderTagContent = (val) => {
+            if (!val) return '';
+            if (val.startsWith('icon:')) {
+                const parts = val.substring(5).split(':');
+                const type = parts[0];
+                if (type === 'customEmoji') {
+                    const emojiPath = decodeURIComponent(parts[1] || '');
+                    return `<img src="/emojis/${encodeURIComponent(emojiPath)}" style="width:18px;height:18px;border-radius:4px;">`;
+                }
+                const content = decodeURIComponent(parts[0]);
+                const color = parts[1] || '#2ecc71';
+                const url = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(color)}&content=${encodeURIComponent(content)}`;
+                return `<img src="${url}" style="width:18px;height:18px;border-radius:4px;">`;
+            }
+            return val;
+        };
+        let metaTagsHtml = '';
+        const tagParts = [];
+        if (m.weather) tagParts.push(`<span class="lumina-moments-meta-tag">${renderTagContent(m.weather)}</span>`);
+        if (m.mood) tagParts.push(`<span class="lumina-moments-meta-tag">${renderTagContent(m.mood)}</span>`);
+        if (m.location) tagParts.push(`<span class="lumina-moments-meta-tag-location"><svg class="icon" style="width:14px;height:14px;vertical-align:middle;margin-right:2px;flex-shrink:0;"><use xlink:href="#iconLanguage"></use></svg>${m.location}</span>`);
+        if (tagParts.length > 0) {
+            metaTagsHtml = `<span class="lumina-moments-meta-tags">${tagParts.join('')}</span>`;
         }
 
         const dateKey = this.formatDateKey(new Date(m.created));
@@ -8338,6 +8399,7 @@ ipcRenderer.on('lumina-close', () => {
                     ${mediaHtml}
                     <div class="lumina-moments-item-meta">
                         <span class="lumina-moments-item-date">${dateStr}</span>
+                        ${metaTagsHtml}
                         <div class="lumina-moments-item-actions">
                             <div class="lumina-moments-more-btn" data-mid="${m.id}"></div>
                             <div class="lumina-moments-action-popup" data-mid="${m.id}">
@@ -8413,7 +8475,7 @@ ipcRenderer.on('lumina-close', () => {
                     else if (oldImg) coverSection.replaceChild(img, oldImg);
                     else coverSection.insertBefore(img, coverSection.firstChild);
                     const fileName = this._generateImageFileName(base64Data);
-                    const assetUrl = await this.uploadBase64ToAssets(base64Data, fileName);
+                    const assetUrl = await this.uploadToPluginDir(base64Data, fileName);
                     if (assetUrl) {
                         this.momentsConfig.cover = assetUrl;
                     } else {
@@ -8448,6 +8510,16 @@ ipcRenderer.on('lumina-close', () => {
                 // 关闭弹出菜单
                 container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
                 this.confirmAboveMobileShell('⚠️ 确认删除', '确定要删除这条朋友圈吗？此操作不可恢复。', async () => {
+                    const target = this.moments.find(x => x.id === mid);
+                    // 清理插件目录中的图片
+                    if (target) {
+                        const allImgs = [...(target.images || [])];
+                        for (const img of allImgs) {
+                            if (typeof img === 'string' && (img.startsWith('assets/') || img.startsWith('/assets/'))) {
+                                await this.deletePluginImage(img);
+                            }
+                        }
+                    }
                     this.moments = this.moments.filter(x => x.id !== mid);
                     await this.saveMoments();
                     this._doRenderMoments();
@@ -8606,6 +8678,91 @@ ipcRenderer.on('lumina-close', () => {
 
         let pubImages = [];
 
+        // Helper: 解析 icon: 格式，返回 { content, color } 或 null
+        const parseIconValue = (val) => {
+            if (!val) return null;
+            if (val.startsWith('icon:')) {
+                const parts = val.substring(5).split(':');
+                return { content: decodeURIComponent(parts[0] || ''), color: parts[1] || '#2ecc71' };
+            }
+            return null;
+        };
+
+        // Helper: 更新天气/心情按钮显示（文本模式，无独立图标）
+        const updateBtnDisplay = (btn, value) => {
+            if (!btn) return;
+            btn.dataset.selected = value || '';
+            const textSpan = btn.querySelector('.lumina-moments-publish-emoji-btn-text');
+            if (!textSpan) return;
+            if (!value) {
+                textSpan.textContent = btn.id.includes('Weather') ? '天气' : '心情';
+                return;
+            }
+            const defaultLabel = btn.id.includes('Weather') ? '天气' : '心情';
+            const parsed = parseIconValue(value);
+            if (parsed) {
+                if (parsed.content === 'customEmoji') {
+                    // custom emoji 图片
+                    const emojiPath = decodeURIComponent(parsed.color);
+                    textSpan.innerHTML = `<img src="/emojis/${encodeURIComponent(emojiPath)}" style="width:16px;height:16px;border-radius:3px;vertical-align:middle;margin-right:2px;"> ${defaultLabel}`;
+                } else {
+                    // icon:content:color 格式 — 用 getDynamicIcon 渲染
+                    const url = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(parsed.color)}&content=${encodeURIComponent(parsed.content)}`;
+                    textSpan.innerHTML = `<img src="${url}" style="width:16px;height:16px;border-radius:3px;vertical-align:middle;margin-right:2px;"> ${defaultLabel}`;
+                }
+            } else {
+                // 纯 emoji 字符（旧数据兼容）
+                textSpan.innerHTML = `${value} ${defaultLabel}`;
+            }
+        };
+
+        // Helper: get weather/mood value from button dataset
+        const getBtnValue = (btnId) => {
+            const btn = container.querySelector(`#${btnId}`);
+            return btn ? (btn.dataset.selected || '') : '';
+        };
+
+        // Helper: set button value
+        const setBtnValue = (btnId, value) => {
+            updateBtnDisplay(container.querySelector(`#${btnId}`), value);
+        };
+
+        // 绑定天气/心情按钮 -> 打开标签风格的图标选择器
+        const bindWeatherMoodBtn = (btnId, fieldName) => {
+            const btn = container.querySelector(`#${btnId}`);
+            if (!btn) return;
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const currentVal = btn.dataset.selected || '';
+                // 对 icon: 格式，提取 content:color 传给选择器
+                let iconArg = '';
+                if (currentVal.startsWith('icon:')) {
+                    iconArg = currentVal;
+                }
+                this.showIconPicker(fieldName, iconArg, (result) => {
+                    updateBtnDisplay(btn, result);
+                });
+            });
+        };
+        bindWeatherMoodBtn('momentsPublishWeatherBtn', '天气');
+        bindWeatherMoodBtn('momentsPublishMoodBtn', '心情');
+        bindWeatherMoodBtn('momentsEditWeatherBtn', '天气');
+        bindWeatherMoodBtn('momentsEditMoodBtn', '心情');
+
+        // Format date to YYYY-MM-DD for input
+        const formatDateForInput = (timestamp) => {
+            const d = new Date(timestamp);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        };
+
+        // 将 "YYYY-MM-DD" 日期字符串转为时间戳（使用当地时区中午避免边界问题）
+        const dateStrToTimestamp = (dateStr) => {
+            if (!dateStr) return null;
+            const parts = dateStr.split('-');
+            if (parts.length !== 3) return null;
+            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0).getTime();
+        };
+
         const mainPage = container.querySelector('#momentsMainPage');
         if (cameraBtn && publishPage) {
             cameraBtn.addEventListener('click', () => {
@@ -8616,6 +8773,17 @@ ipcRenderer.on('lumina-close', () => {
                 pubImages = [];
                 publishLinkForm.classList.remove('active');
                 this._renderPublishImages(pubImages, publishImages);
+                // 重置新字段
+                const dateInput = container.querySelector('#momentsPublishDate');
+                if (dateInput) dateInput.value = formatDateForInput(Date.now());
+                setBtnValue('momentsPublishWeatherBtn', '');
+                setBtnValue('momentsPublishMoodBtn', '');
+                const locationInput = container.querySelector('#momentsPublishLocation');
+                if (locationInput) locationInput.value = '';
+                const linkTitleInput = container.querySelector('#momentsPublishLinkTitle');
+                const linkUrlInput = container.querySelector('#momentsPublishLinkUrl');
+                if (linkTitleInput) linkTitleInput.value = '';
+                if (linkUrlInput) linkUrlInput.value = '';
                 publishText.focus();
             });
         }
@@ -8652,7 +8820,7 @@ ipcRenderer.on('lumina-close', () => {
                 for (const img of pubImages) {
                     if (typeof img === 'string' && img.startsWith('data:')) {
                         const fileName = this._generateImageFileName(img);
-                        const url = await this.uploadBase64ToAssets(img, fileName);
+                        const url = await this.uploadToPluginDir(img, fileName);
                         uploadedImages.push(url || img);
                     } else {
                         uploadedImages.push(img);
@@ -8661,18 +8829,32 @@ ipcRenderer.on('lumina-close', () => {
                 pubImages.length = 0;
                 pubImages.push(...uploadedImages);
                 const mid = this.getMomentNextId();
+                const dateVal = container.querySelector('#momentsPublishDate')?.value || formatDateForInput(Date.now());
+                const weatherVal = getBtnValue('momentsPublishWeatherBtn');
+                const moodVal = getBtnValue('momentsPublishMoodBtn');
+                const locationVal = container.querySelector('#momentsPublishLocation')?.value.trim() || '';
                 const newMoment = {
                     id: mid,
                     text: text || '',
                     images: [...uploadedImages],
                     file: null,
+                    date: dateVal,
+                    weather: weatherVal,
+                    mood: moodVal,
+                    location: locationVal,
                     link: linkTitle ? { title: linkTitle, url: container.querySelector('#momentsPublishLinkUrl')?.value.trim() || '' } : null,
                     likes: [],
                     comments: [],
-                    created: Date.now(),
+                    created: dateStrToTimestamp(dateVal) || Date.now(),
                     updated: Date.now()
                 };
-                this.moments.unshift(newMoment);
+                // 按 created 降序插入正确位置
+                const insertIdx = this.moments.findIndex(m => (m.created || 0) < newMoment.created);
+                if (insertIdx === -1) {
+                    this.moments.push(newMoment);
+                } else {
+                    this.moments.splice(insertIdx, 0, newMoment);
+                }
                 this.saveMoments();
                 publishPage.classList.remove('active');
                 this._doRenderMoments();
@@ -8732,7 +8914,7 @@ ipcRenderer.on('lumina-close', () => {
                 for (const img of editImgs) {
                     if (typeof img === 'string' && img.startsWith('data:')) {
                         const fileName = this._generateImageFileName(img);
-                        const url = await this.uploadBase64ToAssets(img, fileName);
+                        const url = await this.uploadToPluginDir(img, fileName);
                         uploadedEditImages.push(url || img);
                     } else {
                         uploadedEditImages.push(img);
@@ -8746,6 +8928,20 @@ ipcRenderer.on('lumina-close', () => {
                 } else {
                     m.link = null;
                 }
+                const editDateVal = container.querySelector('#momentsEditDate')?.value || '';
+                if (editDateVal) {
+                    m.date = editDateVal;
+                    const newTs = dateStrToTimestamp(editDateVal);
+                    if (newTs) m.created = newTs;
+                    // 按 created 降序重新排序
+                    this.moments.sort((a, b) => (b.created || 0) - (a.created || 0));
+                }
+                const editWeatherVal = getBtnValue('momentsEditWeatherBtn');
+                m.weather = editWeatherVal || '';
+                const editMoodVal = getBtnValue('momentsEditMoodBtn');
+                m.mood = editMoodVal || '';
+                const editLocationVal = container.querySelector('#momentsEditLocation')?.value.trim() || '';
+                m.location = editLocationVal;
                 m.updated = Date.now();
                 this.saveMoments();
                 editPage.classList.remove('active');
@@ -8773,6 +8969,13 @@ ipcRenderer.on('lumina-close', () => {
             } else {
                 editLinkForm.classList.remove('active');
             }
+            // 回填日期、天气、心情、地点
+            const editDateInput = container.querySelector('#momentsEditDate');
+            if (editDateInput) editDateInput.value = m.date || formatDateForInput(m.created || Date.now());
+            setBtnValue('momentsEditWeatherBtn', m.weather || '');
+            setBtnValue('momentsEditMoodBtn', m.mood || '');
+            const editLocationInput = container.querySelector('#momentsEditLocation');
+            if (editLocationInput) editLocationInput.value = m.location || '';
             if (mainPage) mainPage.style.visibility = 'hidden';
             editPage.classList.add('active');
             if (scrollContainer) scrollContainer.scrollTop = 0;
@@ -17137,6 +17340,279 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    // 上传图片到 assets/ 并备份到插件备份目录（避免被思源"未引用资源"清理）
+    async uploadToPluginDir(base64Data, fileName) {
+        try {
+            // Step 1: 上传到 data/assets/
+            const base64Response = await fetch(base64Data);
+            const blob = await base64Response.blob();
+            const file = new File([blob], fileName, { type: blob.type });
+
+            const uploadForm = new FormData();
+            uploadForm.append('assetsDirPath', '/assets/');
+            uploadForm.append('file[]', file);
+
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = {};
+            if (token) headers['Authorization'] = `Token ${token}`;
+
+            const uploadResp = await fetch('/api/asset/upload', {
+                method: 'POST',
+                body: uploadForm,
+                headers
+            });
+            const uploadResult = await uploadResp.json();
+            if (uploadResult.code !== 0 || !uploadResult.data || !uploadResult.data.succMap) {
+                console.error('上传到 assets 失败:', uploadResult);
+                // 降级：直接用 putFile 写入 assets/
+                const fallbackForm = new FormData();
+                fallbackForm.append('path', `data/assets/${fileName}`);
+                fallbackForm.append('file', file);
+                fallbackForm.append('isDir', 'false');
+                fallbackForm.append('modTime', Date.now().toString());
+                const fallbackResp = await fetch('/api/file/putFile', {
+                    method: 'POST', body: fallbackForm, headers
+                });
+                const fallbackResult = await fallbackResp.json();
+                if (fallbackResult.code !== 0) return null;
+            }
+
+            // Step 2: 备份到插件备份目录
+            await this.backupAsset(fileName, blob).catch(e => console.warn('备份图片失败:', fileName, e));
+
+            return `assets/${fileName}`;
+        } catch (e) {
+            console.error('上传图片失败:', e);
+            return null;
+        }
+    }
+
+    // 备份 assets/ 中的文件到插件备份目录
+    async backupAsset(fileName, blob) {
+        const backupForm = new FormData();
+        backupForm.append('path', `data/storage/petal/siyuan-lumina/images/${fileName}`);
+        backupForm.append('file', blob || new Blob());
+        backupForm.append('isDir', 'false');
+        backupForm.append('modTime', Date.now().toString());
+        const token = window.siyuan?.config?.api?.token || '';
+        const headers = {};
+        if (token) headers['Authorization'] = `Token ${token}`;
+        await fetch('/api/file/putFile', { method: 'POST', body: backupForm, headers });
+    }
+
+    // 从 assets/ 删除图片（保留备份作为安全网）
+    async deletePluginImage(filePath) {
+        // 支持 assets/xxx 和 /assets/xxx 两种格式
+        const clean = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+        if (!clean.startsWith('assets/')) return;
+        try {
+            const formData = new FormData();
+            formData.append('path', `data/${clean}`);
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = {};
+            if (token) headers['Authorization'] = `Token ${token}`;
+            await fetch('/api/file/removeFile', { method: 'POST', body: formData, headers });
+        } catch (e) {
+            console.error('删除图片失败:', e);
+        }
+    }
+
+    // 将图片 URL 转为可显示的路径
+    resolveImageUrl(url) {
+        if (!url) return url;
+        if (/^(https?:|data:|blob:)/i.test(url)) return url;
+        if (url.startsWith('/api/') || url.startsWith('http')) return url;
+        // 旧路径兼容：assets/xxx → /assets/xxx
+        if (url.startsWith('assets/') || url.startsWith('/assets/')) {
+            return url.startsWith('/') ? url : `/${url}`;
+        }
+        return url;
+    }
+
+    // 从所有数据中收集被引用的 assets 文件名
+    _collectReferencedAssetFiles() {
+        const filenames = new Set();
+        // 说说中的 Markdown 图片引用
+        for (const s of this.shuoshuos || []) {
+            const { images } = this.extractContentAndImages(s.content || '');
+            for (const img of images) {
+                if (img.url) {
+                    const match = img.url.match(/\/?assets\/(.+)/);
+                    if (match) filenames.add(match[1]);
+                }
+            }
+        }
+        // 朋友圈中的图片
+        for (const m of this.moments || []) {
+            if (m.images) {
+                for (const img of m.images) {
+                    const match = img.match(/\/?assets\/(.+)/);
+                    if (match) filenames.add(match[1]);
+                }
+            }
+        }
+        // 配置中的封面和头像
+        if (this.momentsConfig) {
+            for (const key of ['cover', 'avatar']) {
+                const val = this.momentsConfig[key];
+                if (val) {
+                    const match = val.match(/\/?assets\/(.+)/);
+                    if (match) filenames.add(match[1]);
+                }
+            }
+        }
+        // 说说设置中的头像
+        for (const key of ['userAvatarUrl', 'assistantAvatarUrl']) {
+            const val = this[key];
+            if (val) {
+                const match = val.match(/\/?assets\/(.+)/);
+                if (match) filenames.add(match[1]);
+            }
+        }
+        return [...filenames];
+    }
+
+    // 列出 assets/ 目录中的文件
+    async _listAssetsFiles() {
+        try {
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = {};
+            if (token) headers['Authorization'] = `Token ${token}`;
+            const resp = await fetch('/api/file/readDir', {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: '/data/assets/' })
+            });
+            const result = await resp.json();
+            if (result.code === 0 && Array.isArray(result.data)) {
+                return new Set(result.data.filter(e => !e.isDir).map(e => e.name));
+            }
+            return new Set();
+        } catch {
+            return new Set();
+        }
+    }
+
+    // 从备份目录恢复单个文件到 assets/
+    async _restoreAssetFromBackup(fileName) {
+        try {
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = {};
+            if (token) headers['Authorization'] = `Token ${token}`;
+
+            const fileResp = await fetch('/api/file/getFile', {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: `data/storage/petal/siyuan-lumina/images/${fileName}` })
+            });
+            if (!fileResp.ok) return false;
+            const contentType = fileResp.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) return false;
+
+            const blob = await fileResp.blob();
+            const restoreForm = new FormData();
+            restoreForm.append('path', `data/assets/${fileName}`);
+            restoreForm.append('file', blob);
+            restoreForm.append('isDir', 'false');
+            restoreForm.append('modTime', Date.now().toString());
+
+            const restoreResp = await fetch('/api/file/putFile', {
+                method: 'POST', body: restoreForm, headers
+            });
+            const result = await restoreResp.json();
+            return result.code === 0;
+        } catch {
+            return false;
+        }
+    }
+
+    // 验证并恢复缺失的图片
+    async _verifyAndRestoreAssets() {
+        const referenced = this._collectReferencedAssetFiles();
+        if (referenced.length === 0) return;
+
+        const existing = await this._listAssetsFiles();
+        const missing = referenced.filter(f => !existing.has(f));
+        if (missing.length === 0) {
+            console.log('[轻语] 所有引用图片均存在于 assets/ 中');
+            return;
+        }
+
+        console.log(`[轻语] 发现 ${missing.length} 张图片缺失，尝试从备份恢复...`);
+        let restored = 0;
+        for (const f of missing) {
+            if (await this._restoreAssetFromBackup(f)) restored++;
+        }
+        if (restored > 0) {
+            console.log(`[轻语] 成功从备份恢复 ${restored}/${missing.length} 张图片`);
+        }
+    }
+
+    // 回填备份：将 assets/ 中引用的图片备份到插件备份目录
+    async _backfillAssetBackups() {
+        console.log('[轻语] 开始回填图片备份...');
+        const referenced = this._collectReferencedAssetFiles();
+        if (referenced.length === 0) {
+            console.log('[轻语] 没有引用图片，跳过回填');
+            return;
+        }
+
+        // 检查备份目录中已有哪些文件
+        let alreadyBacked = new Set();
+        try {
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = {};
+            if (token) headers['Authorization'] = `Token ${token}`;
+            const resp = await fetch('/api/file/readDir', {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: '/data/storage/petal/siyuan-lumina/images/' })
+            });
+            const result = await resp.json();
+            if (result.code === 0 && Array.isArray(result.data)) {
+                alreadyBacked = new Set(result.data.filter(e => !e.isDir).map(e => e.name));
+            }
+        } catch {}
+
+        const toBackup = referenced.filter(f => !alreadyBacked.has(f));
+        if (toBackup.length === 0) {
+            console.log('[轻语] 所有引用图片均已备份');
+            return;
+        }
+
+        let copied = 0;
+        for (const f of toBackup) {
+            try {
+                const token = window.siyuan?.config?.api?.token || '';
+                const headers = {};
+                if (token) headers['Authorization'] = `Token ${token}`;
+
+                const fileResp = await fetch('/api/file/getFile', {
+                    method: 'POST',
+                    headers: { ...headers, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: `data/assets/${f}` })
+                });
+                if (!fileResp.ok) continue;
+                const contentType = fileResp.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) continue;
+
+                const blob = await fileResp.blob();
+                const backupForm = new FormData();
+                backupForm.append('path', `data/storage/petal/siyuan-lumina/images/${f}`);
+                backupForm.append('file', blob);
+                backupForm.append('isDir', 'false');
+                backupForm.append('modTime', Date.now().toString());
+
+                const backupResp = await fetch('/api/file/putFile', {
+                    method: 'POST', body: backupForm, headers
+                });
+                const result = await backupResp.json();
+                if (result.code === 0) copied++;
+            } catch {}
+        }
+        console.log(`[轻语] 备份回填完成: ${copied}/${toBackup.length}`);
+    }
+
     _generateImageFileName(base64Data) {
         const mimeMatch = base64Data.match(/data:([^;]+);/);
         const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
@@ -17169,7 +17645,7 @@ ipcRenderer.on('lumina-close', () => {
                 for (const img of m.images) {
                     if (typeof img === 'string' && img.startsWith('data:')) {
                         const fileName = this._generateImageFileName(img);
-                        const url = await this.uploadBase64ToAssets(img, fileName);
+                        const url = await this.uploadToPluginDir(img, fileName);
                         if (url) {
                             newImages.push(url);
                             changed = true;
@@ -17188,7 +17664,7 @@ ipcRenderer.on('lumina-close', () => {
         }
         if (this.momentsConfig && this.momentsConfig.cover && typeof this.momentsConfig.cover === 'string' && this.momentsConfig.cover.startsWith('data:')) {
             const fileName = this._generateImageFileName(this.momentsConfig.cover);
-            const url = await this.uploadBase64ToAssets(this.momentsConfig.cover, fileName);
+            const url = await this.uploadToPluginDir(this.momentsConfig.cover, fileName);
             if (url) {
                 this.momentsConfig.cover = url;
                 hasChanges = true;
@@ -17249,7 +17725,7 @@ ipcRenderer.on('lumina-close', () => {
                         String(now.getSeconds()).padStart(2, '0');
                     const randomStr = Math.random().toString(36).substring(2, 8);
                     const fileName = `image-${timeStr}-${randomStr}${ext}`;
-                    const assetUrl = await this.uploadBase64ToAssets(imgUrl, fileName);
+                    const assetUrl = await this.uploadToPluginDir(imgUrl, fileName);
                     if (assetUrl) {
                         updatedImages.push(assetUrl);
                         hasUpdate = true;
@@ -21070,9 +21546,11 @@ ipcRenderer.on('lumina-close', () => {
             if (!this.momentsConfig.fontSize) {
                 this.momentsConfig.fontSize = { mode: 'default', customSize: 14.5 };
             }
-            // 后台迁移已存在的 base64 图片到 assets 目录
+            // 后台迁移已有 base64 图片到 assets/，并备份 + 验证所有引用图片
             setTimeout(() => {
                 this._migrateMomentsImages();
+                this._backfillAssetBackups();
+                this._verifyAndRestoreAssets();
             }, 3000);
         });
     }
@@ -22685,7 +23163,7 @@ ipcRenderer.on('lumina-close', () => {
         
         for (const memo of memos) {
             // 转换 HTML 为纯文本/Markdown
-            let content = memo.content
+            let content = (memo.content || '')
                 .replace(/<br\s*\/?>/gi, '\n')
                 .replace(/<p>(.*?)<\/p>/gi, '$1\n\n')
                 .replace(/<b>(.*?)<\/b>/gi, '**$1**')
@@ -22944,7 +23422,7 @@ ipcRenderer.on('lumina-close', () => {
             
             for (const memo of dayMemos) {
                 // 转换 HTML 为 Markdown（简化处理）
-                let memoContent = memo.content
+                let memoContent = (memo.content || '')
                     .replace(/<br\s*\/?>/gi, '\n')
                     .replace(/<p>(.*?)<\/p>/gi, '$1\n\n')
                     .replace(/<b>(.*?)<\/b>/gi, '**$1**')
@@ -23101,7 +23579,7 @@ ipcRenderer.on('lumina-close', () => {
             
             for (const memo of dayMemos) {
                 // 转换 HTML 为 Markdown
-                let memoContent = memo.content
+                let memoContent = (memo.content || '')
                     .replace(/<br\s*\/?>/gi, '\n')
                     .replace(/<p>(.*?)<\/p>/gi, '$1\n\n')
                     .replace(/<b>(.*?)<\/b>/gi, '**$1**')

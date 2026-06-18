@@ -11460,11 +11460,51 @@
     align-items: center;
     justify-content: space-between;
     margin-top: 8px;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .lumina-moments-item-date {
     font-size: 12px;
     color: var(--moments-date-color);
+    flex-shrink: 0;
+}
+
+.lumina-moments-meta-tags {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.lumina-moments-meta-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    font-size: 14px;
+    border-radius: 5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    background: var(--moments-hover-bg);
+}
+
+.lumina-moments-meta-tag-location {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    color: var(--moments-text-secondary);
+    background: var(--moments-hover-bg);
+    padding: 1px 7px;
+    border-radius: 10px;
+    line-height: 1.5;
+    white-space: nowrap;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .lumina-moments-item-actions {
@@ -11472,6 +11512,7 @@
     align-items: center;
     gap: 12px;
     position: relative;
+    flex-shrink: 0;
 }
 
 .lumina-moments-more-btn {
@@ -12172,6 +12213,86 @@
 .lumina-moments-edit-link-input::placeholder {
     color: var(--moments-publish-placeholder);
 }
+
+/* ===== 朋友圈发表/编辑：日期、天气、心情、地点 ===== */
+.lumina-moments-publish-extra-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: nowrap;
+}
+
+.lumina-moments-publish-date-input {
+    flex: none;
+    width: 130px;
+    height: 30px;
+    border: 0.5px solid var(--moments-publish-nav-border);
+    border-radius: 6px;
+    padding: 0 8px;
+    font-size: 13px;
+    color: var(--moments-publish-text);
+    background: var(--moments-link-card-bg);
+    outline: none;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.lumina-moments-publish-location-input {
+    flex: none;
+    width: 100px;
+    height: 30px;
+    border: 0.5px solid var(--moments-publish-nav-border);
+    border-radius: 6px;
+    padding: 0 8px;
+    font-size: 13px;
+    color: var(--moments-publish-text);
+    background: var(--moments-link-card-bg);
+    outline: none;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.lumina-moments-publish-location-input::placeholder {
+    color: var(--moments-publish-placeholder);
+}
+
+/* ===== 天气/心情按钮 (点击弹窗选择) ===== */
+.lumina-moments-publish-emoji-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 10px;
+    height: 30px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--moments-text-secondary);
+    background: var(--moments-link-card-bg);
+    border: 0.5px solid var(--moments-publish-nav-border);
+    transition: all 0.15s;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.lumina-moments-publish-emoji-btn:hover {
+    background: var(--moments-hover-bg);
+    border-color: var(--moments-cell-level-4);
+}
+
+.lumina-moments-publish-emoji-btn-text {
+    font-size: 12px;
+    line-height: 1;
+    color: var(--moments-text-secondary);
+}
+
+.lumina-moments-publish-emoji-btn-arrow {
+    font-size: 8px;
+    color: var(--moments-text-tertiary);
+    line-height: 1;
+}
+
+
 
 /* ===== 密码输入框眼切换 ===== */
 .north-shuoshuo-password-wrap {
