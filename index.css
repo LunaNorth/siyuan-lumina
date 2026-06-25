@@ -895,6 +895,19 @@
     overflow: hidden;
 }
 
+/* 侧边栏整体滚动模式：去掉标签区的独立滚动，让整个侧边栏一起滚动 */
+.north-shuoshuo-sidebar-full-scroll .north-shuoshuo-tags-section {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+}
+
+.north-shuoshuo-sidebar-full-scroll .north-shuoshuo-tags-list {
+    overflow: visible;
+    flex: 0 0 auto;
+    min-height: auto;
+}
+
 .north-shuoshuo-tags-section .north-shuoshuo-section-title {
     font-size: 13px;
     color: var(--b3-theme-primary);
@@ -5120,7 +5133,7 @@
     width: 100%;
     aspect-ratio: 1;
     border-radius: 3px;
-    background: var(--b3-theme-surface-lighter);
+    background: color-mix(in srgb, var(--b3-theme-surface-lighter) 40%, transparent);
     cursor: pointer;
     transition: transform 0.15s;
 }
@@ -5131,7 +5144,7 @@
 }
 
 .north-shuoshuo-contribution-cell.level-empty {
-    background: var(--b3-theme-surface-lighter);
+    background: color-mix(in srgb, var(--b3-theme-surface-lighter) 40%, transparent);
     opacity: 0.5;
     cursor: default;
 }
@@ -5604,7 +5617,7 @@
 .north-shuoshuo-daily-bar-bg {
     width: 72%;
     height: 140px;
-    background: var(--b3-theme-surface-lighter);
+    background: color-mix(in srgb, var(--b3-theme-surface-lighter) 40%, transparent);
     border-radius: 4px;
     position: relative;
     overflow: hidden;
@@ -5769,7 +5782,7 @@
     width: 100%;
     max-width: 65px;
     height: 160px;
-    background: var(--b3-theme-surface-lighter);
+    background: color-mix(in srgb, var(--b3-theme-surface-lighter) 40%, transparent);
     border-radius: 4px;
     position: relative;
     overflow: hidden;
@@ -5818,7 +5831,7 @@
 .north-shuoshuo-word-bar-bg {
     flex: 1;
     height: 24px;
-    background: var(--b3-theme-surface-lighter);
+    background: color-mix(in srgb, var(--b3-theme-surface-lighter) 40%, transparent);
     border-radius: 12px;
     overflow: hidden;
 }

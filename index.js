@@ -508,6 +508,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogStatsCustomEnd = null; // LifeLog 统计视图自定义结束时间（毫秒）
         this.compactMode = false; // 紧凑模式（默认关闭）
         this.lifeLogCompactMode = false; // LifeLog 紧凑模式（默认关闭，独立于说说视图）
+        this.sidebarFullScroll = false; // 侧边栏整体滚动模式（默认关闭，仅标签区独立滚动）
         this.lifelogTypesDefaultExpanded = true; // LifeLog 类型折叠条默认是否展开
         this._lifelogTypesExpanded = this.lifelogTypesDefaultExpanded; // LifeLog 类型折叠条是否展开
         this.lifeLogTimeMode = 'end'; // LifeLog 时间模式: 'end'=结束模式(默认) 'start'=开始模式
@@ -3436,6 +3437,13 @@ ipcRenderer.on('lumina-close', () => {
                                         <p>开启后，说说视图中的笔记间距更紧凑，类似memos的布局</p>
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.compactMode ? 'on' : ''}" id="settings-compact-mode-switch"></div>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>左侧面板整体滚动</h4>
+                                        <p>开启后，左侧面板（统计/热力图/检索式/标签）作为一个整体上下滚动，而非仅标签区独立滚动</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.sidebarFullScroll ? 'on' : ''}" id="settings-sidebar-full-scroll-switch"></div>
                                 </div>
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
@@ -6585,17 +6593,20 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 预计算 LifeLog 列表中的持续时间（排序为倒序，后一项为前一项的前一条记录）
+    // 返回 Map<record_id, durationMs>，不再直接修改记录对象，避免污染共享数据
     _precalculateLifeLogDurations(sorted) {
+        const durationMap = new Map();
         for (let i = 0; i < sorted.length - 1; i++) {
             // sorted[i] 是较新的记录，sorted[i+1] 是较旧的记录（前一条）
             // 结束模式：时长归较新记录（sorted[i]）；开始模式：时长归较旧记录（sorted[i+1]）
             const duration = this._calculateDurationBetweenRecords(sorted[i + 1], sorted[i], this.lifeLogTimeMode);
             if (this.lifeLogTimeMode === 'start') {
-                sorted[i + 1]._durationMs = duration;
+                durationMap.set(sorted[i + 1].id, duration);
             } else {
-                sorted[i]._durationMs = duration;
+                durationMap.set(sorted[i].id, duration);
             }
         }
+        return durationMap;
     }
 
     // 渲染 LifeLog 统计明细表（按类型 × 日期分布）
@@ -8163,8 +8174,9 @@ ipcRenderer.on('lumina-close', () => {
         const avatar = this.userAvatarUrl || `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='70' height='70'%3E%3Crect width='70' height='70' fill='%234CAF50'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='28' font-family='Arial'%3E我%3C/text%3E%3C/svg%3E`;
         const cover = cfg.cover || null;
 
-        // 构建朋友圈列表HTML
-        let momentsHtml = this.moments.map(m => this._renderMomentItem(m, avatar, nickname)).join('');
+        // 构建朋友圈列表HTML（按发布时间倒序排列，最新在最前）
+        const sortedMoments = [...this.moments].sort((a, b) => (b.created || 0) - (a.created || 0));
+        let momentsHtml = sortedMoments.map(m => this._renderMomentItem(m, avatar, nickname)).join('');
         if (!momentsHtml) {
             momentsHtml = `<div style="padding:40px;text-align:center;color:#999;font-size:14px;">暂无朋友圈，点击右上角相机发表吧~</div>`;
         }
@@ -8886,7 +8898,7 @@ ipcRenderer.on('lumina-close', () => {
                     link: linkTitle ? { title: linkTitle, url: container.querySelector('#momentsPublishLinkUrl')?.value.trim() || '' } : null,
                     likes: [],
                     comments: [],
-                    created: dateStrToTimestamp(dateVal) || Date.now(),
+                    created: Date.now(),
                     updated: Date.now()
                 };
                 // 按 created 降序插入正确位置
@@ -8898,6 +8910,7 @@ ipcRenderer.on('lumina-close', () => {
                 }
                 this.saveMoments();
                 publishPage.classList.remove('active');
+                if (mainPage) mainPage.style.visibility = '';
                 this._doRenderMoments();
                 if (scrollContainer) scrollContainer.scrollTop = 0;
             });
@@ -8972,8 +8985,13 @@ ipcRenderer.on('lumina-close', () => {
                 const editDateVal = container.querySelector('#momentsEditDate')?.value || '';
                 if (editDateVal) {
                     m.date = editDateVal;
-                    const newTs = dateStrToTimestamp(editDateVal);
-                    if (newTs) m.created = newTs;
+                    const parts = editDateVal.split('-');
+                    if (parts.length === 3) {
+                        const oldDate = new Date(m.created || Date.now());
+                        const newDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]),
+                            oldDate.getHours(), oldDate.getMinutes(), oldDate.getSeconds(), oldDate.getMilliseconds());
+                        m.created = newDate.getTime();
+                    }
                     // 按 created 降序重新排序
                     this.moments.sort((a, b) => (b.created || 0) - (a.created || 0));
                 }
@@ -8986,6 +9004,7 @@ ipcRenderer.on('lumina-close', () => {
                 m.updated = Date.now();
                 this.saveMoments();
                 editPage.classList.remove('active');
+                if (mainPage) mainPage.style.visibility = '';
                 editMid = null;
                 editImgs = [];
                 editHasLink = false;
@@ -13675,6 +13694,9 @@ ipcRenderer.on('lumina-close', () => {
         } else if (dayCountEl) {
             dayCountEl.textContent = '0';
         }
+
+        // 根据配置应用侧边栏滚动模式
+        this.applySidebarFullScroll();
     }
 
     // 更新检索式数量
@@ -16666,6 +16688,11 @@ ipcRenderer.on('lumina-close', () => {
             this.handleMentionInput(textarea);
         });
 
+        // 粘贴图片（与主输入框一致）
+        textarea.addEventListener('paste', (e) => {
+            this.handlePasteImage(e, textarea);
+        });
+
         // Enter / Ctrl+Enter
         textarea.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
@@ -17503,25 +17530,35 @@ ipcRenderer.on('lumina-close', () => {
                 headers
             });
             const uploadResult = await uploadResp.json();
-            if (uploadResult.code !== 0 || !uploadResult.data || !uploadResult.data.succMap) {
-                console.error('上传到 assets 失败:', uploadResult);
-                // 降级：直接用 putFile 写入 assets/
-                const fallbackForm = new FormData();
-                fallbackForm.append('path', `data/assets/${fileName}`);
-                fallbackForm.append('file', file);
-                fallbackForm.append('isDir', 'false');
-                fallbackForm.append('modTime', Date.now().toString());
-                const fallbackResp = await fetch('/api/file/putFile', {
-                    method: 'POST', body: fallbackForm, headers
-                });
-                const fallbackResult = await fallbackResp.json();
-                if (fallbackResult.code !== 0) return null;
+            if (uploadResult.code === 0 && uploadResult.data && uploadResult.data.succMap) {
+                const succMap = uploadResult.data.succMap;
+                const actualPath = succMap[fileName];
+                if (actualPath) {
+                    // succMap 返回的路径类似 /assets/actual-filename.png，去掉开头的 /
+                    const assetPath = actualPath.startsWith('/') ? actualPath.substring(1) : actualPath;
+                    // Step 2: 备份到插件备份目录
+                    await this.backupAsset(assetPath.replace('assets/', ''), blob).catch(e => console.warn('备份图片失败:', assetPath, e));
+                    return assetPath;
+                }
             }
 
-            // Step 2: 备份到插件备份目录
-            await this.backupAsset(fileName, blob).catch(e => console.warn('备份图片失败:', fileName, e));
-
-            return `assets/${fileName}`;
+            // 降级：直接用 putFile 写入 assets/
+            console.warn('上传到 assets 失败，使用 putFile 降级:', uploadResult);
+            const fallbackForm = new FormData();
+            fallbackForm.append('path', `data/assets/${fileName}`);
+            fallbackForm.append('file', file);
+            fallbackForm.append('isDir', 'false');
+            fallbackForm.append('modTime', Date.now().toString());
+            const fallbackResp = await fetch('/api/file/putFile', {
+                method: 'POST', body: fallbackForm, headers
+            });
+            const fallbackResult = await fallbackResp.json();
+            if (fallbackResult.code === 0) {
+                // Step 2: 备份到插件备份目录
+                await this.backupAsset(fileName, blob).catch(e => console.warn('备份图片失败:', fileName, e));
+                return `assets/${fileName}`;
+            }
+            return null;
         } catch (e) {
             console.error('上传图片失败:', e);
             return null;
@@ -19090,10 +19127,10 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
 
-        // 移动端：顶部 Header 和搜索栏只在说说视图显示
+        // 移动端：顶部 Header 和搜索栏只在说说/LifeLog 视图显示
         const mobileHeader = this.container.querySelector('.north-shuoshuo-mobile-header');
         const mobileSearchBar = this.container.querySelector('.north-shuoshuo-mobile-search-bar');
-        const isShuoshuoView = ['notes', 'week', 'review', 'random'].includes(view);
+        const isShuoshuoView = ['notes', 'week', 'review', 'random', 'lifelog'].includes(view);
         if (mobileHeader) mobileHeader.style.display = (this.isMobile && isShuoshuoView) ? '' : 'none';
         if (mobileSearchBar) mobileSearchBar.classList.remove('show');
 
@@ -19194,9 +19231,22 @@ ipcRenderer.on('lumina-close', () => {
             if (flomoArea) flomoArea.style.display = 'flex';
             if (settingsArea) settingsArea.style.display = 'none';
             const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
-            if (inputArea) inputArea.style.display = 'none';
             const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
-            if (sidebar) sidebar.style.display = 'flex';
+            if (this.isMobile) {
+                // 移动端：与说说视图保持一致体验，显示 Header/搜索/加号，侧边栏走抽屉模式
+                if (inputArea) {
+                    inputArea.style.display = '';
+                    inputArea.classList.remove('mobile-visible');
+                }
+                // 侧边栏不做 display: none，由 CSS 抽屉机制控制（transform 平移）
+                const headerTitle = this.container.querySelector('.mobile-header-title');
+                if (headerTitle) headerTitle.textContent = 'LifeLog';
+                const mobileSearchInput = this.container.querySelector('#shuoshuo-mobile-search-input');
+                if (mobileSearchInput) mobileSearchInput.placeholder = '搜索 LifeLog...';
+            } else {
+                if (inputArea) inputArea.style.display = '';
+                if (sidebar) sidebar.style.display = 'flex';
+            }
             // 异步加载 LifeLog 数据并渲染（强制刷新，避免从后台恢复时显示缓存旧数据）
             this.loadLifeLogData(true).then(() => {
                 if (this.currentMainView === 'lifelog') {
@@ -19287,6 +19337,12 @@ ipcRenderer.on('lumina-close', () => {
         if (searchBar) searchBar.style.display = '';
         const searchInput = this.container.querySelector('#shuoshuo-search-input');
         if (searchInput) searchInput.placeholder = '搜索说说...';
+
+        // 恢复移动端 Header 标题和搜索占位符
+        const headerTitle = this.container.querySelector('.mobile-header-title');
+        if (headerTitle) headerTitle.textContent = '轻语';
+        const mobileSearchInput = this.container.querySelector('#shuoshuo-mobile-search-input');
+        if (mobileSearchInput) mobileSearchInput.placeholder = '搜索说说...';
 
         // 恢复菜单列表（重新生成原始内容）
         const menuList = this.container.querySelector('.north-shuoshuo-menu-list');
@@ -19848,6 +19904,20 @@ ipcRenderer.on('lumina-close', () => {
                 // 刷新所有视图
                 this.refreshMountedShuoshuoViews();
                 showMessage(this.compactMode ? '已开启紧凑模式' : '已关闭紧凑模式');
+            });
+        }
+
+        // 侧边栏整体滚动开关
+        const sidebarFullScrollSwitch = this.container.querySelector('#settings-sidebar-full-scroll-switch');
+        if (sidebarFullScrollSwitch) {
+            sidebarFullScrollSwitch.replaceWith(sidebarFullScrollSwitch.cloneNode(true));
+            const newSidebarFullScrollSwitch = this.container.querySelector('#settings-sidebar-full-scroll-switch');
+            newSidebarFullScrollSwitch.addEventListener('click', async () => {
+                newSidebarFullScrollSwitch.classList.toggle('on');
+                this.sidebarFullScroll = newSidebarFullScrollSwitch.classList.contains('on');
+                await this.saveConfig();
+                this.applySidebarFullScroll();
+                showMessage(this.sidebarFullScroll ? '已开启左侧面板整体滚动' : '已关闭左侧面板整体滚动');
             });
         }
 
@@ -22250,6 +22320,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
                 this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
                 this.lifeLogCompactMode = data.lifeLogCompactMode === true || data.lifeLogCompactMode === 'true' || data.lifeLogCompactMode === 1;
+                this.sidebarFullScroll = data.sidebarFullScroll === true || data.sidebarFullScroll === 'true' || data.sidebarFullScroll === 1;
                 this.lifelogTypesDefaultExpanded = data.lifelogTypesDefaultExpanded !== undefined
                   ? (data.lifelogTypesDefaultExpanded === true || data.lifelogTypesDefaultExpanded === 'true' || data.lifelogTypesDefaultExpanded === 1)
                   : true;
@@ -22349,6 +22420,7 @@ ipcRenderer.on('lumina-close', () => {
                     showLifeLogRecords: this.showLifeLogRecords,
                     compactMode: this.compactMode,
                     lifeLogCompactMode: this.lifeLogCompactMode,
+                    sidebarFullScroll: this.sidebarFullScroll,
                     lifelogTypesDefaultExpanded: this.lifelogTypesDefaultExpanded,
                     lifeLogTimeMode: this.lifeLogTimeMode,
                     galleryColumnCount: this.galleryColumnCount,
@@ -22418,6 +22490,17 @@ ipcRenderer.on('lumina-close', () => {
         containers.forEach(container => {
             if (container) {
                 container.classList.toggle('north-shuoshuo-compact', this.compactMode);
+            }
+        });
+    }
+
+    applySidebarFullScroll() {
+        const containers = this.getMountedLuminaContainers();
+        if (!containers.length && this.container) containers.push(this.container);
+        containers.forEach(container => {
+            const sidebar = container.querySelector('.north-shuoshuo-flomo-sidebar');
+            if (sidebar) {
+                sidebar.classList.toggle('north-shuoshuo-sidebar-full-scroll', this.sidebarFullScroll);
             }
         });
     }
