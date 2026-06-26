@@ -12318,7 +12318,7 @@ ipcRenderer.on('lumina-close', () => {
         content = content.replace(/lumina:\/\/memo\/([a-zA-Z0-9]+)/g, '[MEMO:$1]');
         
         // 如果在 LifeLog 视图且选择了类型，直接写入思源每日笔记，不存入本地说说数据
-        const isLifeLogInput = targetContainer?.closest?.('.north-shuoshuo-lifelog-dock-view') || this.getContainerMainView(targetContainer) === 'lifelog';
+        const isLifeLogInput = targetContainer?.closest?.('.north-shuoshuo-lifelog-dock-view') || this.getContainerMainView(targetContainer) === 'lifelog' || this.currentMainView === 'lifelog';
         if (isLifeLogInput) {
             const lifeLogType = this._lifelogCurrentInputType || this._lifelogSelectedType || '';
             if (!lifeLogType) {
@@ -13499,53 +13499,52 @@ ipcRenderer.on('lumina-close', () => {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.accept = 'image/*';
+        fileInput.multiple = true;
         fileInput.style.display = 'none';
         document.body.appendChild(fileInput);
         
         fileInput.onchange = async () => {
-            const file = fileInput.files[0];
-            if (!file) {
-                document.body.removeChild(fileInput);
-                return;
-            }
-            
-            if (!file.type.startsWith('image/')) {
-                showMessage("请选择图片文件");
+            const files = fileInput.files;
+            if (!files || files.length === 0) {
                 document.body.removeChild(fileInput);
                 return;
             }
             
             try {
-                showMessage("正在上传...");
-                const formData = new FormData();
-                formData.append('assetsDirPath', '/assets/');
-                formData.append('file[]', file);
-                
-                const token = window.siyuan?.config?.api?.token || '';
-                const headers = {};
-                if (token) {
-                    headers['Authorization'] = `Token ${token}`;
-                }
-                const response = await fetch('/api/asset/upload', {
-                    method: 'POST',
-                    body: formData,
-                    headers
-                });
-                const result = await response.json();
-                if (result.code === 0) {
-                    const succMap = result.data.succMap;
-                    const originalName = file.name;
-                    const newPath = succMap[originalName];
-                    if (newPath) {
-                        // 插入 Markdown 图片语法（去除开头的 /?
-                        const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
-                        this.insertText(input, `![图片](${imgPath})`, '');
-                        input.focus();
-                        showMessage("图片插入成功");
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (!file.type.startsWith('image/')) continue;
+                    
+                    showMessage(`正在上传 (${i + 1}/${files.length})...`);
+                    const formData = new FormData();
+                    formData.append('assetsDirPath', '/assets/');
+                    formData.append('file[]', file);
+                    
+                    const token = window.siyuan?.config?.api?.token || '';
+                    const headers = {};
+                    if (token) {
+                        headers['Authorization'] = `Token ${token}`;
                     }
-                } else {
-                    showMessage('上传失败：' + (result.msg || '未知错误'));
+                    const response = await fetch('/api/asset/upload', {
+                        method: 'POST',
+                        body: formData,
+                        headers
+                    });
+                    const result = await response.json();
+                    if (result.code === 0) {
+                        const succMap = result.data.succMap;
+                        const originalName = file.name;
+                        const newPath = succMap[originalName];
+                        if (newPath) {
+                            const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                            this.insertText(input, `![图片](${imgPath})\n`, '');
+                        }
+                    } else {
+                        showMessage(`上传失败：${file.name} ` + (result.msg || '未知错误'));
+                    }
                 }
+                input.focus();
+                showMessage("图片上传完成");
             } catch (e) {
                 console.error(e);
                 showMessage('上传失败：' + e.message);
@@ -19163,12 +19162,14 @@ ipcRenderer.on('lumina-close', () => {
         }
 
         // 更新左侧边栏选中状态
-        this.container.querySelectorAll('.north-shuoshuo-sidebar .north-shuoshuo-nav-item').forEach(item => {
+        // 使用 .north-shuoshuo-container 作为根节点进行查询，因为 this.container 可能是 flomo-area（侧边栏不在其内）
+        const sidebarRoot = this.container.closest('.north-shuoshuo-container') || this.container;
+        sidebarRoot.querySelectorAll('.north-shuoshuo-sidebar .north-shuoshuo-nav-item').forEach(item => {
             item.classList.remove('active');
         });
         const sidebarView = (view === 'review' || view === 'random' || view === 'week') ? 'notes' : view;
         // LifeLog 视图有独立的导航按钮，不需要映射
-        const targetNav = navItem || this.container.querySelector(`.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="${sidebarView}"]`);
+        const targetNav = navItem || sidebarRoot.querySelector(`.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="${sidebarView}"]`);
         if (targetNav) {
             targetNav.classList.add('active');
         }

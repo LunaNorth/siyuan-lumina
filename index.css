@@ -11888,7 +11888,7 @@
     min-width: 12px;
     aspect-ratio: 1;
     border-radius: 3px;
-    background-color: var(--moments-cell-bg);
+    background-color: color-mix(in srgb, var(--b3-theme-surface-lighter) 40%, transparent);
     transition: all 0.15s;
     cursor: pointer;
 }
@@ -11899,7 +11899,7 @@
 }
 
 .lumina-moments-calendar-cell.level-empty {
-    background-color: var(--moments-cell-bg);
+    background-color: color-mix(in srgb, var(--b3-theme-surface-lighter) 40%, transparent);
     opacity: 0.5;
 }
 
