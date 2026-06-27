@@ -8271,7 +8271,7 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                         </div>
                     </div>
-                    <input type="file" id="momentsPublishImageInput" class="lumina-moments-file-input" accept="image/*" multiple>
+                    <input type="file" id="momentsPublishImageInput" class="lumina-moments-file-input" accept="image/*,video/*" multiple>
                 </div>
 
                 <!-- 编辑页面 -->
@@ -8311,7 +8311,7 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                         </div>
                     </div>
-                    <input type="file" id="momentsEditImageInput" class="lumina-moments-file-input" accept="image/*" multiple>
+                    <input type="file" id="momentsEditImageInput" class="lumina-moments-file-input" accept="image/*,video/*" multiple>
                 </div>
 
                 <!-- 日历弹窗 -->
@@ -8405,8 +8405,13 @@ ipcRenderer.on('lumina-close', () => {
             else if (m.images.length === 4) gridClass = 'four';
             else if (m.images.length >= 5 && m.images.length <= 6) gridClass = 'six';
             else if (m.images.length >= 7) gridClass = 'nine';
-            const imgsHtml = m.images.map(src => `<img class="lumina-moments-grid-img" src="${this._resolveImageUrl(src)}" alt="photo" loading="lazy">`).join('');
-            mediaHtml += `<div class="lumina-moments-media"><div class="lumina-moments-image-grid ${gridClass}">${imgsHtml}</div></div>`;
+            const mediaHtmlArr = m.images.map(src => {
+                if (this._isVideoUrl(src)) {
+                    return `<div class="lumina-moments-video-wrapper"><video class="lumina-moments-grid-video" src="${this._resolveImageUrl(src)}" preload="metadata" playsinline></video><div class="lumina-moments-video-play-icon"></div></div>`;
+                }
+                return `<img class="lumina-moments-grid-img" src="${this._resolveImageUrl(src)}" alt="photo" loading="lazy">`;
+            });
+            mediaHtml += `<div class="lumina-moments-media"><div class="lumina-moments-image-grid ${gridClass}">${mediaHtmlArr.join('')}</div></div>`;
         }
         if (m.link && m.link.title) {
             const linkUrl = m.link.url || '#';
@@ -8489,6 +8494,13 @@ ipcRenderer.on('lumina-close', () => {
             if (img) {
                 e.stopPropagation();
                 this.showImagePreview(img.src);
+                return;
+            }
+            // 视频点击放大预览
+            const video = e.target.closest('.lumina-moments-grid-video');
+            if (video) {
+                e.stopPropagation();
+                this.showVideoPreview(video.src);
                 return;
             }
             // 链接卡片点击打开
@@ -8864,6 +8876,28 @@ ipcRenderer.on('lumina-close', () => {
                 publishImageInput.value = '';
             });
         }
+        // 朋友圈发表支持 Ctrl+V 粘贴图片/视频
+        if (publishText) {
+            publishText.addEventListener('paste', (e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.type.startsWith('image/') || item.type.startsWith('video/')) {
+                        e.preventDefault();
+                        const file = item.getAsFile();
+                        if (!file) continue;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            pubImages.push(ev.target.result);
+                            this._renderPublishImages(pubImages, publishImages);
+                        };
+                        reader.readAsDataURL(file);
+                        break;
+                    }
+                }
+            });
+        }
         if (publishSubmit) {
             publishSubmit.addEventListener('click', async () => {
                 const text = publishText.value.trim();
@@ -8958,6 +8992,28 @@ ipcRenderer.on('lumina-close', () => {
                 editImageInput.value = '';
             });
         }
+        // 朋友圈编辑支持 Ctrl+V 粘贴图片/视频
+        if (editText) {
+            editText.addEventListener('paste', (e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.type.startsWith('image/') || item.type.startsWith('video/')) {
+                        e.preventDefault();
+                        const file = item.getAsFile();
+                        if (!file) continue;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            editImgs.push(ev.target.result);
+                            this._renderEditImages(editImgs, editImages);
+                        };
+                        reader.readAsDataURL(file);
+                        break;
+                    }
+                }
+            });
+        }
         if (editSave) {
             editSave.addEventListener('click', async () => {
                 if (!editMid) return;
@@ -9050,9 +9106,24 @@ ipcRenderer.on('lumina-close', () => {
         images.forEach((src, index) => {
             const wrapper = document.createElement('div');
             wrapper.className = 'lumina-moments-publish-img-wrapper';
-            const img = document.createElement('img');
-            img.className = 'lumina-moments-publish-img-item';
-            img.src = src;
+            if (this._isVideoUrl(src)) {
+                const video = document.createElement('video');
+                video.className = 'lumina-moments-publish-img-item';
+                video.src = src;
+                video.muted = true;
+                video.preload = 'metadata';
+                const playIcon = document.createElement('div');
+                playIcon.className = 'lumina-moments-publish-video-play';
+                video.addEventListener('mouseenter', () => { video.play().catch(() => {}); });
+                video.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
+                wrapper.appendChild(video);
+                wrapper.appendChild(playIcon);
+            } else {
+                const img = document.createElement('img');
+                img.className = 'lumina-moments-publish-img-item';
+                img.src = src;
+                wrapper.appendChild(img);
+            }
             const del = document.createElement('div');
             del.className = 'lumina-moments-publish-img-del';
             del.addEventListener('click', (e) => {
@@ -9060,7 +9131,6 @@ ipcRenderer.on('lumina-close', () => {
                 images.splice(index, 1);
                 this._renderPublishImages(images, containerEl);
             });
-            wrapper.appendChild(img);
             wrapper.appendChild(del);
             containerEl.appendChild(wrapper);
         });
@@ -9074,9 +9144,24 @@ ipcRenderer.on('lumina-close', () => {
         images.forEach((src, index) => {
             const wrapper = document.createElement('div');
             wrapper.className = 'lumina-moments-edit-img-wrapper';
-            const img = document.createElement('img');
-            img.className = 'lumina-moments-edit-img-item';
-            img.src = src;
+            if (this._isVideoUrl(src)) {
+                const video = document.createElement('video');
+                video.className = 'lumina-moments-edit-img-item';
+                video.src = src;
+                video.muted = true;
+                video.preload = 'metadata';
+                const playIcon = document.createElement('div');
+                playIcon.className = 'lumina-moments-edit-video-play';
+                video.addEventListener('mouseenter', () => { video.play().catch(() => {}); });
+                video.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
+                wrapper.appendChild(video);
+                wrapper.appendChild(playIcon);
+            } else {
+                const img = document.createElement('img');
+                img.className = 'lumina-moments-edit-img-item';
+                img.src = src;
+                wrapper.appendChild(img);
+            }
             const del = document.createElement('div');
             del.className = 'lumina-moments-edit-img-del';
             del.addEventListener('click', (e) => {
@@ -9084,7 +9169,6 @@ ipcRenderer.on('lumina-close', () => {
                 images.splice(index, 1);
                 this._renderEditImages(images, containerEl);
             });
-            wrapper.appendChild(img);
             wrapper.appendChild(del);
             containerEl.appendChild(wrapper);
         });
@@ -16512,6 +16596,90 @@ ipcRenderer.on('lumina-close', () => {
         });
     }
 
+    // 视频预览（与图片预览风格一致）
+    showVideoPreview(videoSrc) {
+        const overlay = document.createElement('div');
+        overlay.className = 'north-shuoshuo-image-preview-modal';
+        overlay.innerHTML = `
+            <div class="north-shuoshuo-image-preview-overlay"></div>
+            <div class="north-shuoshuo-image-preview-toolbar">
+                <button class="north-shuoshuo-image-preview-copy">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    复制视频
+                </button>
+                <div class="north-shuoshuo-image-preview-close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </div>
+            </div>
+            <div class="north-shuoshuo-image-preview-container north-shuoshuo-video-preview-container">
+                <video src="${videoSrc}" class="north-shuoshuo-video-preview-video" controls autoplay playsinline></video>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const video = overlay.querySelector('.north-shuoshuo-video-preview-video');
+        const container = overlay.querySelector('.north-shuoshuo-image-preview-container');
+        const closeBtn = overlay.querySelector('.north-shuoshuo-image-preview-close');
+        const copyBtn = overlay.querySelector('.north-shuoshuo-image-preview-copy');
+
+        const copyIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
+        const checkIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+        const originalCopyHTML = copyBtn.innerHTML;
+
+        copyBtn.addEventListener('click', async () => {
+            try {
+                const resp = await fetch(videoSrc);
+                const blob = await resp.blob();
+                const mime = blob.type || 'video/mp4';
+                await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
+                copyBtn.innerHTML = `${checkIcon} 已复制`;
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalCopyHTML;
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                try {
+                    // 降级：尝试以 base64 方式复制
+                    const resp2 = await fetch(videoSrc);
+                    const blob2 = await resp2.blob();
+                    const item = new ClipboardItem({ 'video/mp4': blob2 });
+                    await navigator.clipboard.write([item]);
+                    copyBtn.innerHTML = `${checkIcon} 已复制`;
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalCopyHTML;
+                        copyBtn.classList.remove('copied');
+                    }, 2000);
+                } catch (err2) {
+                    copyBtn.innerHTML = `${copyIcon} 复制失败`;
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalCopyHTML;
+                    }, 2000);
+                }
+            }
+        });
+
+        // 关闭
+        const closeModal = () => {
+            video.pause();
+            video.src = '';
+            overlay.remove();
+            document.removeEventListener('keydown', escHandler);
+        };
+
+        overlay.querySelector('.north-shuoshuo-image-preview-overlay').addEventListener('click', closeModal);
+        closeBtn.addEventListener('click', closeModal);
+        container.addEventListener('click', (e) => {
+            if (e.target === container) closeModal();
+        });
+
+        const escHandler = (e) => {
+            if (e.key === 'Escape') closeModal();
+        };
+        document.addEventListener('keydown', escHandler);
+    }
+
     // 编辑 LifeLog（弹窗编辑思源块内容）
     async editLifeLog(id) {
         const item = this.lifeLogRecords?.find(s => s.id === id) || this.shuoshuos.find(s => s.id === id);
@@ -17796,9 +17964,18 @@ ipcRenderer.on('lumina-close', () => {
             'image/png': '.png',
             'image/gif': '.gif',
             'image/webp': '.webp',
-            'image/bmp': '.bmp'
+            'image/bmp': '.bmp',
+            'video/mp4': '.mp4',
+            'video/webm': '.webm',
+            'video/ogg': '.ogv',
+            'video/quicktime': '.mov',
+            'video/x-msvideo': '.avi',
+            'video/x-matroska': '.mkv',
+            'video/mpeg': '.mpeg'
         };
         const ext = extMap[mimeType] || '.png';
+        const isVideo = mimeType.startsWith('video/');
+        const prefix = isVideo ? 'video-' : 'image-';
         const now = new Date();
         const timeStr = now.getFullYear().toString() +
             String(now.getMonth() + 1).padStart(2, '0') +
@@ -17807,7 +17984,15 @@ ipcRenderer.on('lumina-close', () => {
             String(now.getMinutes()).padStart(2, '0') +
             String(now.getSeconds()).padStart(2, '0');
         const randomStr = Math.random().toString(36).substring(2, 8);
-        return `image-${timeStr}-${randomStr}${ext}`;
+        return `${prefix}${timeStr}-${randomStr}${ext}`;
+    }
+
+    // 判断 URL 是否为视频文件
+    _isVideoUrl(url) {
+        if (!url) return false;
+        const videoExts = ['.mp4', '.webm', '.ogv', '.mov', '.avi', '.mkv', '.mpeg', '.mpg', '.m4v', '.flv', '.wmv'];
+        const urlLower = url.toLowerCase();
+        return videoExts.some(ext => urlLower.endsWith(ext)) || urlLower.startsWith('data:video/');
     }
 
     async _migrateMomentsImages() {
@@ -17887,9 +18072,18 @@ ipcRenderer.on('lumina-close', () => {
                         'image/png': '.png',
                         'image/gif': '.gif',
                         'image/webp': '.webp',
-                        'image/bmp': '.bmp'
+                        'image/bmp': '.bmp',
+                        'video/mp4': '.mp4',
+                        'video/webm': '.webm',
+                        'video/ogg': '.ogv',
+                        'video/quicktime': '.mov',
+                        'video/x-msvideo': '.avi',
+                        'video/x-matroska': '.mkv',
+                        'video/mpeg': '.mpeg'
                     };
                     const ext = extMap[mimeType] || '.png';
+                    const isVideo = mimeType.startsWith('video/');
+                    const prefix = isVideo ? 'video-' : 'image-';
                     const now = new Date();
                     const timeStr = now.getFullYear().toString() +
                         String(now.getMonth() + 1).padStart(2, '0') +
@@ -17898,7 +18092,7 @@ ipcRenderer.on('lumina-close', () => {
                         String(now.getMinutes()).padStart(2, '0') +
                         String(now.getSeconds()).padStart(2, '0');
                     const randomStr = Math.random().toString(36).substring(2, 8);
-                    const fileName = `image-${timeStr}-${randomStr}${ext}`;
+                    const fileName = `${prefix}${timeStr}-${randomStr}${ext}`;
                     const assetUrl = await this.uploadToPluginDir(imgUrl, fileName);
                     if (assetUrl) {
                         updatedImages.push(assetUrl);
@@ -17918,7 +18112,12 @@ ipcRenderer.on('lumina-close', () => {
         }
 
         if (imageUrls.length > 0) {
-            content += '\n\n' + imageUrls.map(url => `![图片](${url})`).join('\n');
+            content += '\n\n' + imageUrls.map(url => {
+                if (this._isVideoUrl(url)) {
+                    return `📹 [视频](${url})`;
+                }
+                return `![图片](${url})`;
+            }).join('\n');
         }
         if (m.file) {
             content += `\n\n📎 文件: ${m.file.name}`;
