@@ -2337,6 +2337,78 @@
     opacity: 1;
 }
 
+/* ===== 朋友圈媒体预览导航箭头 ===== */
+.north-shuoshuo-media-prev,
+.north-shuoshuo-media-next {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    cursor: pointer;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 50%;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: all 0.2s ease;
+    user-select: none;
+    opacity: 0.9;
+}
+
+.north-shuoshuo-media-prev { left: 20px; }
+.north-shuoshuo-media-next { right: 20px; }
+
+.north-shuoshuo-media-prev:hover,
+.north-shuoshuo-media-next:hover {
+    background: rgba(255,255,255,0.25);
+    border-color: rgba(255,255,255,0.3);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.north-shuoshuo-media-prev:active,
+.north-shuoshuo-media-next:active {
+    transform: translateY(-50%) scale(0.95);
+}
+
+.north-shuoshuo-media-prev.disabled,
+.north-shuoshuo-media-next.disabled {
+    opacity: 0.2;
+    cursor: default;
+    pointer-events: none;
+}
+
+.north-shuoshuo-media-prev svg,
+.north-shuoshuo-media-next svg {
+    width: 22px;
+    height: 22px;
+}
+
+/* 位置指示器 */
+.north-shuoshuo-media-counter {
+    position: fixed;
+    bottom: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    color: rgba(255,255,255,0.8);
+    font-size: 13px;
+    font-weight: 500;
+    background: rgba(0,0,0,0.45);
+    padding: 5px 14px;
+    border-radius: 14px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    user-select: none;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+}
+
 .north-shuoshuo-note-content hr {
     border: none;
     border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);

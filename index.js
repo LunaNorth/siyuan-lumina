@@ -8488,11 +8488,21 @@ ipcRenderer.on('lumina-close', () => {
             }, { passive: true });
         }
 
-        // 图片点击查看（与说说视图一致：支持缩放、拖拽移动、复制、双击重置）
+        // 图片/视频点击查看（支持多图多视频切换导航）
         container.addEventListener('click', (e) => {
             const img = e.target.closest('.lumina-moments-grid-img');
             if (img) {
                 e.stopPropagation();
+                const momentItem = img.closest('.lumina-moments-item');
+                if (momentItem) {
+                    const mid = momentItem.dataset.mid;
+                    const m = this.moments.find(x => x.id === mid);
+                    if (m && m.images && m.images.length > 1) {
+                        const mediaList = m.images.map(s => ({ src: s, isVideo: this._isVideoUrl(s) }));
+                        const idx = mediaList.findIndex(media => img.src.endsWith(this._resolveImageUrl(media.src)));
+                        if (idx >= 0) { this.showMomentsMediaPreview(mediaList, idx); return; }
+                    }
+                }
                 this.showImagePreview(img.src);
                 return;
             }
@@ -8500,6 +8510,16 @@ ipcRenderer.on('lumina-close', () => {
             const video = e.target.closest('.lumina-moments-grid-video');
             if (video) {
                 e.stopPropagation();
+                const momentItem = video.closest('.lumina-moments-item');
+                if (momentItem) {
+                    const mid = momentItem.dataset.mid;
+                    const m = this.moments.find(x => x.id === mid);
+                    if (m && m.images && m.images.length > 1) {
+                        const mediaList = m.images.map(s => ({ src: s, isVideo: this._isVideoUrl(s) }));
+                        const idx = mediaList.findIndex(media => video.src.endsWith(this._resolveImageUrl(media.src)));
+                        if (idx >= 0) { this.showMomentsMediaPreview(mediaList, idx); return; }
+                    }
+                }
                 this.showVideoPreview(video.src);
                 return;
             }
@@ -11894,13 +11914,27 @@ ipcRenderer.on('lumina-close', () => {
             });
 
             listEl.addEventListener('click', (e) => {
-                // 处理图片点击 - 打开图片预览
+                // 处理图片点击 - 支持多图切换导航
                 const imgEl = e.target.closest('.north-shuoshuo-note-card img');
                 if (imgEl) {
                     e.stopPropagation();
                     e.preventDefault();
                     const imgSrc = imgEl.getAttribute('src');
                     if (imgSrc) {
+                        // 尝试获取同条笔记的多张图片
+                        const noteCard = imgEl.closest('.north-shuoshuo-note-card');
+                        if (noteCard) {
+                            const noteId = noteCard.dataset.id;
+                            const note = this.shuoshuos.find(s => String(s.id) === noteId);
+                            if (note && note.content) {
+                                const { images } = this.extractContentAndImages(note.content);
+                                if (images.length > 1) {
+                                    const mediaList = images.map(img => ({ src: img.url, isVideo: this._isVideoUrl(img.url) }));
+                                    const idx = mediaList.findIndex(media => imgSrc.endsWith(media.src));
+                                    if (idx >= 0) { this.showMomentsMediaPreview(mediaList, idx); return; }
+                                }
+                            }
+                        }
                         this.showImagePreview(imgSrc);
                     }
                     return;
@@ -13310,6 +13344,31 @@ ipcRenderer.on('lumina-close', () => {
         `;
         
         document.body.appendChild(overlay);
+
+        // 详情弹窗中图片点击 - 支持多图切换导航
+        overlay.addEventListener('click', (e) => {
+            const imgEl = e.target.closest('.north-shuoshuo-note-card img');
+            if (imgEl) {
+                e.stopPropagation();
+                const imgSrc = imgEl.getAttribute('src');
+                if (imgSrc) {
+                    const card = imgEl.closest('.north-shuoshuo-note-card[data-id]');
+                    if (card) {
+                        const noteId = card.dataset.id;
+                        const note = this.shuoshuos.find(s => s.id === noteId);
+                        if (note && note.content) {
+                            const { images } = this.extractContentAndImages(note.content);
+                            if (images.length > 1) {
+                                const mediaList = images.map(img => ({ src: img.url, isVideo: this._isVideoUrl(img.url) }));
+                                const idx = mediaList.findIndex(media => imgSrc.endsWith(media.src));
+                                if (idx >= 0) { this.showMomentsMediaPreview(mediaList, idx); return; }
+                            }
+                        }
+                    }
+                    this.showImagePreview(imgSrc);
+                }
+            }
+        });
 
         // 绑定块引用点击事件
         const contentEl = overlay.querySelector('.north-shuoshuo-memo-detail-content');
@@ -16678,6 +16737,301 @@ ipcRenderer.on('lumina-close', () => {
             if (e.key === 'Escape') closeModal();
         };
         document.addEventListener('keydown', escHandler);
+    }
+
+    // 朋友圈媒体预览（支持多图/多视频左右切换导航）
+    showMomentsMediaPreview(mediaList, currentIndex) {
+        const total = mediaList.length;
+        let idx = currentIndex;
+
+        // ---- 全局状态（图片缩放拖拽用） ----
+        let scale = 1, fitScale = 1;
+        let translateX = 0, translateY = 0;
+        let isDragging = false;
+        let dragStartX = 0, dragStartY = 0;
+        let startTX = 0, startTY = 0;
+        let currentVideo = null;
+        let currentWheelHandler = null;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'north-shuoshuo-image-preview-modal';
+
+        const navHtml = total > 1 ? `
+            <div class="north-shuoshuo-media-prev" data-action="prev">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+            </div>
+            <div class="north-shuoshuo-media-next" data-action="next">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
+            </div>
+            <div class="north-shuoshuo-media-counter">${idx + 1} / ${total}</div>
+        ` : '';
+
+        overlay.innerHTML = `
+            <div class="north-shuoshuo-image-preview-overlay"></div>
+            <div class="north-shuoshuo-image-preview-toolbar">
+                <button class="north-shuoshuo-image-preview-copy">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    复制
+                </button>
+                <div class="north-shuoshuo-image-preview-close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </div>
+            </div>
+            ${navHtml}
+            <div class="north-shuoshuo-image-preview-container"></div>
+            <div class="north-shuoshuo-image-preview-hint">滚轮缩放 | 拖拽移动 | 双击重置</div>
+        `;
+        document.body.appendChild(overlay);
+
+        const container = overlay.querySelector('.north-shuoshuo-image-preview-container');
+        const hint = overlay.querySelector('.north-shuoshuo-image-preview-hint');
+        const copyBtn = overlay.querySelector('.north-shuoshuo-image-preview-copy');
+        const prevBtn = overlay.querySelector('.north-shuoshuo-media-prev');
+        const nextBtn = overlay.querySelector('.north-shuoshuo-media-next');
+        const counter = overlay.querySelector('.north-shuoshuo-media-counter');
+        const copyIconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
+        const checkIconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+        const applyTransform = () => {
+            const img = container.querySelector('.north-shuoshuo-image-preview-img');
+            if (img) img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        };
+
+        const resetImageState = () => {
+            scale = 1; fitScale = 1;
+            translateX = 0; translateY = 0;
+            isDragging = false;
+        };
+
+        const showHint = (text, duration = 2000) => {
+            hint.textContent = text;
+            hint.classList.add('show');
+            clearTimeout(hint._timer);
+            hint._timer = setTimeout(() => hint.classList.remove('show'), duration);
+        };
+
+        const renderMedia = (index) => {
+            const media = mediaList[index];
+            container.innerHTML = '';
+            if (currentVideo) { currentVideo.pause(); currentVideo = null; }
+            // 清理之前的滚轮监听
+            if (currentWheelHandler) {
+                container.removeEventListener('wheel', currentWheelHandler);
+                currentWheelHandler = null;
+            }
+            resetImageState();
+
+            if (counter) counter.textContent = `${index + 1} / ${total}`;
+            if (prevBtn) prevBtn.classList.toggle('disabled', index === 0);
+            if (nextBtn) nextBtn.classList.toggle('disabled', index === total - 1);
+
+            hint.style.display = media.isVideo ? 'none' : '';
+            copyBtn.innerHTML = `${copyIconSVG} 复制${media.isVideo ? '视频' : '图片'}`;
+            copyBtn.classList.remove('copied');
+
+            if (media.isVideo) {
+                container.className = 'north-shuoshuo-image-preview-container north-shuoshuo-video-preview-container';
+                const video = document.createElement('video');
+                video.className = 'north-shuoshuo-video-preview-video';
+                video.src = this._resolveImageUrl(media.src);
+                video.controls = true;
+                video.autoplay = true;
+                video.playsInline = true;
+                container.appendChild(video);
+                currentVideo = video;
+            } else {
+                container.className = 'north-shuoshuo-image-preview-container';
+                const img = document.createElement('img');
+                img.className = 'north-shuoshuo-image-preview-img';
+                img.src = this._resolveImageUrl(media.src);
+                img.alt = '图片预览';
+                img.draggable = false;
+                container.appendChild(img);
+
+                // 计算适应视口的初始缩放
+                const onImgReady = () => {
+                    const vw = window.innerWidth * 0.9;
+                    const vh = window.innerHeight * 0.9;
+                    const sx = vw / img.naturalWidth;
+                    const sy = vh / img.naturalHeight;
+                    fitScale = Math.min(sx, sy, 1);
+                    scale = fitScale;
+                    applyTransform();
+                };
+                if (img.complete && img.naturalWidth > 0) onImgReady();
+                else img.onload = onImgReady;
+
+                // 滚轮缩放
+                container.addEventListener('wheel', onWheel, { passive: false });
+                currentWheelHandler = onWheel;
+            }
+        };
+
+        // ---- 滚轮缩放 ----
+        const onWheel = (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            scale = Math.max(fitScale * 0.3, Math.min(scale + delta * scale, 15));
+            applyTransform();
+            showHint(`缩放: ${Math.round(scale / fitScale * 100)}%`, 1500);
+        };
+
+        // ---- 鼠标拖拽平移 ----
+        const onImgMouseDown = (e) => {
+            if (e.button !== 0) return;
+            const img = container.querySelector('.north-shuoshuo-image-preview-img');
+            if (!img || scale <= fitScale * 1.05) return;
+            isDragging = true;
+            img.classList.add('dragging');
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            startTX = translateX;
+            startTY = translateY;
+        };
+
+        const onMouseMove = (e) => {
+            if (!isDragging) return;
+            translateX = startTX + (e.clientX - dragStartX);
+            translateY = startTY + (e.clientY - dragStartY);
+            applyTransform();
+        };
+
+        const onMouseUp = () => {
+            if (isDragging) {
+                isDragging = false;
+                const img = container.querySelector('.north-shuoshuo-image-preview-img');
+                if (img) img.classList.remove('dragging');
+            }
+        };
+
+        // ---- 双击重置 ----
+        const onDblClick = () => {
+            scale = fitScale;
+            translateX = 0; translateY = 0;
+            applyTransform();
+            showHint('已重置', 1500);
+        };
+
+        // ---- 切换导航 ----
+        const goTo = (newIdx) => {
+            if (newIdx < 0 || newIdx >= total) return;
+            idx = newIdx;
+            // 移除旧的事件监听（滚轮/拖拽/双击）
+            const img = container.querySelector('.north-shuoshuo-image-preview-img');
+            if (img) {
+                img.removeEventListener('mousedown', onImgMouseDown);
+                img.removeEventListener('dblclick', onDblClick);
+            }
+            renderMedia(idx);
+            // 重新绑定事件
+            const newImg = container.querySelector('.north-shuoshuo-image-preview-img');
+            if (newImg) {
+                newImg.addEventListener('mousedown', onImgMouseDown);
+                newImg.addEventListener('dblclick', onDblClick);
+            }
+        };
+
+        // 导航按钮点击
+        overlay.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            e.stopPropagation();
+            if (btn.dataset.action === 'prev') goTo(idx - 1);
+            else if (btn.dataset.action === 'next') goTo(idx + 1);
+        });
+
+        // 键盘导航
+        const keyHandler = (e) => {
+            if (e.key === 'Escape') closeModal();
+            if (e.key === 'ArrowLeft') goTo(idx - 1);
+            if (e.key === 'ArrowRight') goTo(idx + 1);
+        };
+        document.addEventListener('keydown', keyHandler);
+
+        // ---- 复制 ----
+        const originalCopyHTML = copyBtn.innerHTML;
+        copyBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const media = mediaList[idx];
+            const resolvedSrc = this._resolveImageUrl(media.src);
+            try {
+                const resp = await fetch(resolvedSrc);
+                const blob = await resp.blob();
+                const mime = media.isVideo ? (blob.type || 'video/mp4') : (blob.type || 'image/png');
+                await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
+                copyBtn.innerHTML = `${checkIconSVG} 已复制`;
+                copyBtn.classList.add('copied');
+                setTimeout(() => { copyBtn.innerHTML = originalCopyHTML; copyBtn.classList.remove('copied'); }, 2000);
+            } catch (err) {
+                // 图片降级使用 Canvas
+                if (!media.isVideo) {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        const copyImg = new Image();
+                        copyImg.crossOrigin = 'anonymous';
+                        await new Promise((resolve, reject) => {
+                            copyImg.onload = resolve;
+                            copyImg.onerror = reject;
+                            copyImg.src = resolvedSrc;
+                        });
+                        canvas.width = copyImg.naturalWidth;
+                        canvas.height = copyImg.naturalHeight;
+                        ctx.drawImage(copyImg, 0, 0);
+                        const pngBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+                        copyBtn.innerHTML = `${checkIconSVG} 已复制`;
+                        copyBtn.classList.add('copied');
+                        setTimeout(() => { copyBtn.innerHTML = originalCopyHTML; copyBtn.classList.remove('copied'); }, 2000);
+                    } catch (err2) {
+                        copyBtn.innerHTML = `${copyIconSVG} 复制失败`;
+                        setTimeout(() => { copyBtn.innerHTML = originalCopyHTML; }, 2000);
+                    }
+                } else {
+                    copyBtn.innerHTML = `${copyIconSVG} 复制失败`;
+                    setTimeout(() => { copyBtn.innerHTML = originalCopyHTML; }, 2000);
+                }
+            }
+        });
+
+        // ---- 关闭 ----
+        const closeModal = () => {
+            if (currentVideo) { currentVideo.pause(); currentVideo.src = ''; currentVideo = null; }
+            if (currentWheelHandler) {
+                container.removeEventListener('wheel', currentWheelHandler);
+                currentWheelHandler = null;
+            }
+            overlay.remove();
+            document.removeEventListener('keydown', keyHandler);
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            const img = container.querySelector('.north-shuoshuo-image-preview-img');
+            if (img) {
+                img.removeEventListener('mousedown', onImgMouseDown);
+                img.removeEventListener('dblclick', onDblClick);
+            }
+        };
+
+        overlay.querySelector('.north-shuoshuo-image-preview-overlay').addEventListener('click', closeModal);
+        overlay.querySelector('.north-shuoshuo-image-preview-close').addEventListener('click', closeModal);
+        container.addEventListener('click', (e) => {
+            if (e.target === container || e.target.closest('.north-shuoshuo-video-preview-container')) {
+                // 视频容器上的点击不关闭（由视频控件接管）
+                if (e.target === container && !container.classList.contains('north-shuoshuo-video-preview-container')) {
+                    closeModal();
+                }
+            }
+        });
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+
+        // 初始渲染
+        renderMedia(idx);
+        const initImg = container.querySelector('.north-shuoshuo-image-preview-img');
+        if (initImg) {
+            initImg.addEventListener('mousedown', onImgMouseDown);
+            initImg.addEventListener('dblclick', onDblClick);
+        }
     }
 
     // 编辑 LifeLog（弹窗编辑思源块内容）
