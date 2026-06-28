@@ -2209,6 +2209,7 @@
     user-select: none;
     -webkit-user-drag: none;
     transform-origin: center center;
+    touch-action: none;
 }
 
 .north-shuoshuo-image-preview-img.dragging {
