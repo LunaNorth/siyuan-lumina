@@ -544,7 +544,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // ===== 增量渲染缓存（用于检测变化）=====
         this._lastFilteredIds = [];         // 上次过滤结果的 ID 列表
         this.moments = []; // 朋友圈数据
-        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, showMomentsSidebar: true, password: '' };
+        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, coverPosition: 50, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, showMomentsSidebar: true, password: '' };
         this.momentsUnlocked = false; // 朋友圈密码锁：当前会话是否已解锁
         this.books = []; // 图书书架数据
         this.bookshelfFilters = { type: 'book', sync: 'synced', status: 'read', sort: 'time' };
@@ -8219,8 +8219,8 @@ ipcRenderer.on('lumina-close', () => {
                             ` : ''}
                         </div>
                     </div>
-                    <div class="lumina-moments-cover" id="momentsCoverSection">
-                        ${cover ? `<img class="lumina-moments-cover-img" src="${this._resolveImageUrl(cover)}" alt="cover">` : `<svg class="lumina-moments-cover-img" viewBox="0 0 375 320" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="momentsCoverGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#1a2980"/><stop offset="50%" style="stop-color:#26d0ce"/><stop offset="100%" style="stop-color:#1a2980"/></linearGradient><pattern id="momentsPattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100%" height="100%" fill="url(#momentsCoverGrad)"/><rect width="100%" height="100%" fill="url(#momentsPattern)"/><circle cx="300" cy="80" r="60" fill="rgba(255,255,255,0.05)"/><circle cx="80" cy="200" r="40" fill="rgba(255,255,255,0.03)"/></svg>`}
+                    <div class="lumina-moments-cover${cover ? ' has-cover-img' : ''}" id="momentsCoverSection">
+                        ${cover ? `<img class="lumina-moments-cover-img" src="${this._resolveImageUrl(cover)}" alt="cover" style="object-position: 50% ${cfg.coverPosition || 50}%;">` : `<svg class="lumina-moments-cover-img" viewBox="0 0 375 320" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="momentsCoverGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#1a2980"/><stop offset="50%" style="stop-color:#26d0ce"/><stop offset="100%" style="stop-color:#1a2980"/></linearGradient><pattern id="momentsPattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100%" height="100%" fill="url(#momentsCoverGrad)"/><rect width="100%" height="100%" fill="url(#momentsPattern)"/><circle cx="300" cy="80" r="60" fill="rgba(255,255,255,0.05)"/><circle cx="80" cy="200" r="40" fill="rgba(255,255,255,0.03)"/></svg>`}
                         <div class="lumina-moments-cover-user">
                             <span class="lumina-moments-cover-name">${nickname}</span>
                             <img class="lumina-moments-cover-avatar" id="momentsCoverAvatar" src="${avatar}" alt="avatar">
@@ -8538,6 +8538,13 @@ ipcRenderer.on('lumina-close', () => {
         const coverSection = container.querySelector('#momentsCoverSection');
         const coverInput = container.querySelector('#momentsCoverInput');
         const coverAvatar = container.querySelector('#momentsCoverAvatar');
+        // 初始化已有封面图片的拖动功能
+        if (coverSection) {
+            const existingCoverImg = coverSection.querySelector('img.lumina-moments-cover-img[src]');
+            if (existingCoverImg) {
+                this._initCoverDrag(existingCoverImg, coverSection);
+            }
+        }
         if (coverSection && coverInput) {
             coverSection.addEventListener('click', (e) => {
                 if (e.target === coverAvatar || e.target.closest('#momentsCoverAvatar')) return;
@@ -8554,11 +8561,18 @@ ipcRenderer.on('lumina-close', () => {
                     const img = document.createElement('img');
                     img.src = base64Data;
                     img.className = 'lumina-moments-cover-img';
+                    // 设置保存的位置或默认居中
+                    const savedPosition = this.momentsConfig.coverPosition || 50;
+                    img.style.objectPosition = `50% ${savedPosition}%`;
                     const oldSvg = coverSection.querySelector('svg.lumina-moments-cover-img');
                     const oldImg = coverSection.querySelector('img.lumina-moments-cover-img');
                     if (oldSvg) coverSection.replaceChild(img, oldSvg);
                     else if (oldImg) coverSection.replaceChild(img, oldImg);
                     else coverSection.insertBefore(img, coverSection.firstChild);
+                    // 添加 has-cover-img 类
+                    coverSection.classList.add('has-cover-img');
+                    // 初始化拖动功能
+                    this._initCoverDrag(img, coverSection);
                     const fileName = this._generateImageFileName(base64Data);
                     const assetUrl = await this.uploadToPluginDir(base64Data, fileName);
                     if (assetUrl) {
@@ -9117,6 +9131,79 @@ ipcRenderer.on('lumina-close', () => {
             if (scrollContainer) scrollContainer.scrollTop = 0;
             container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
         };
+    }
+
+    _initCoverDrag(imgEl, coverSection) {
+        if (!imgEl || imgEl.dataset.dragInitialized === 'true') return;
+
+        let isDragging = false;
+        let startY = 0;
+        let startPosition = 50;
+        let hasMoved = false;
+
+        const getPosition = () => {
+            const match = imgEl.style.objectPosition?.match(/50%\s*([\d.]+)%/);
+            return match ? parseFloat(match[1]) : (this.momentsConfig.coverPosition || 50);
+        };
+
+        const onDragStart = (e) => {
+            // 鼠标事件仅响应右键（button === 2），触摸事件不受限制
+            if (e.button !== undefined && e.button !== 2) return;
+            isDragging = true;
+            hasMoved = false;
+            startY = e.clientY || (e.touches && e.touches[0].clientY);
+            startPosition = getPosition();
+            imgEl.classList.add('dragging');
+            e.preventDefault();
+        };
+
+        const onDragMove = (e) => {
+            if (!isDragging) return;
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            if (clientY === undefined) return;
+            const deltaY = clientY - startY;
+            if (Math.abs(deltaY) > 3) hasMoved = true;
+            const coverHeight = coverSection.offsetHeight || 320;
+            const deltaPercent = (deltaY / coverHeight) * -100;
+            const newPosition = Math.max(0, Math.min(100, startPosition + deltaPercent));
+            imgEl.style.objectPosition = `50% ${newPosition}%`;
+            e.preventDefault();
+        };
+
+        const onDragEnd = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            imgEl.classList.remove('dragging');
+            if (hasMoved) {
+                const finalPos = getPosition();
+                this.momentsConfig.coverPosition = Math.round(finalPos * 10) / 10;
+                this.saveMoments();
+            }
+        };
+
+        // 鼠标事件（仅右键触发拖动）
+        imgEl.addEventListener('mousedown', onDragStart);
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('mouseup', onDragEnd);
+
+        // 拦截右键菜单，避免拖动时弹出菜单
+        imgEl.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // 触摸事件（移动端）
+        imgEl.addEventListener('touchstart', onDragStart, { passive: false });
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('touchend', onDragEnd);
+
+        imgEl.dataset.dragInitialized = 'true';
+
+        // 监听图片加载完成，确保 object-position 生效
+        if (imgEl.complete) {
+            imgEl.style.objectPosition = `50% ${this.momentsConfig.coverPosition || 50}%`;
+        } else {
+            imgEl.addEventListener('load', () => {
+                imgEl.style.objectPosition = `50% ${this.momentsConfig.coverPosition || 50}%`;
+            });
+        }
     }
 
     _renderPublishImages(images, containerEl) {

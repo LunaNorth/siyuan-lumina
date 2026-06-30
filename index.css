@@ -11387,6 +11387,20 @@
     pointer-events: none;
 }
 
+/* 当有封面图片时，允许交互实现拖动调整位置 */
+.lumina-moments-cover-img[src] {
+    pointer-events: auto;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.lumina-moments-cover-img.dragging {
+    cursor: grabbing;
+}
+
+
+
 .lumina-moments-cover-user {
     position: absolute;
     bottom: -20px;

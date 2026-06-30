@@ -1,19 +1,22 @@
 
-<div style="display: flex; gap: 33px; align-items: center; justify-content: flex-start; margin: .5em 0; flex-wrap: wrap;">
+
+<div style="display: flex; gap: 10px; align-items: center; justify-content: flex-start; margin: .5em 0; flex-wrap: wrap;">
   <!-- 按钮1：绿色 - 感谢您的支持 -->
   <a href="https://testingcf.jsdelivr.net/gh/LunaNorth/north-img/images/20260519195219305.png" 
       target="_blank" rel="noopener noreferrer"
       style="display: inline-flex; 
               align-items: center; 
-              padding: 10px 20px; 
-              background: #19be6b; 
+              gap: 5px;
+              padding: 6px 14px; 
+              background: linear-gradient(135deg, #19be6b 0%, #47d789 100%);
               color: white; 
-              border-radius: 6px; 
+              border-radius: 8px; 
               text-decoration: none;
-              transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-              transform: translateY(0);
-              box-shadow: 0 4px 6px rgba(25,190,107,0.1);
-              border: 1px solid rgba(25,190,107,0.2);">
+              font-size: 13px;
+              font-weight: 500;
+              transition: all 0.25s ease;
+              box-shadow: 0 2px 8px rgba(25,190,107,0.25);
+              border: none;">
       ❤️ 感谢您的支持
   </a>
   <!-- 按钮2：蓝色 - 使用介绍 -->
@@ -21,15 +24,17 @@
       target="_blank" rel="noopener noreferrer"
       style="display: inline-flex; 
               align-items: center; 
-              padding: 10px 20px; 
-              background: #2d8cf0; 
+              gap: 5px;
+              padding: 6px 14px; 
+              background: linear-gradient(135deg, #2d8cf0 0%, #5cadff 100%);
               color: white; 
-              border-radius: 6px; 
+              border-radius: 8px; 
               text-decoration: none;
-              transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-              transform: translateY(0);
-              box-shadow: 0 4px 6px rgba(45,140,240,0.1);
-              border: 1px solid rgba(45,140,240,0.2);">
+              font-size: 13px;
+              font-weight: 500;
+              transition: all 0.25s ease;
+              box-shadow: 0 2px 8px rgba(45,140,240,0.25);
+              border: none;">
       📖 使用介绍
   </a>
   <!-- 按钮3：橙色 - 轻语 & 问题反馈 -->
@@ -37,15 +42,17 @@
       target="_blank" rel="noopener noreferrer"
       style="display: inline-flex; 
               align-items: center; 
-              padding: 10px 20px; 
-              background: #ff9900; 
+              gap: 5px;
+              padding: 6px 14px; 
+              background: linear-gradient(135deg, #ff9900 0%, #ffb84d 100%);
               color: white; 
-              border-radius: 6px; 
+              border-radius: 8px; 
               text-decoration: none;
-              transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-              transform: translateY(0);
-              box-shadow: 0 4px 6px rgba(255,153,0,0.1);
-              border: 1px solid rgba(255,153,0,0.2);">
+              font-size: 13px;
+              font-weight: 500;
+              transition: all 0.25s ease;
+              box-shadow: 0 2px 8px rgba(255,153,0,0.25);
+              border: none;">
       💬 轻语 & 问题反馈
   </a>
 </div>
@@ -178,6 +185,9 @@
 </div>
 
 ## 更新日志
+
+### v1.7.6
+- 【新增】朋友圈封面图片支持右键拖动调整位置，上传后按右键不松上下拖动即可调整图片显示区域，位置自动保存
 
 ### v1.7.5
 - 【优化】图片预览全面优化：PC 端和移动端图片加载后自动填满屏幕宽度，像系统相册查看器一样舒适
