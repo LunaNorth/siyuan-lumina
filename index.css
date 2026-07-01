@@ -1023,7 +1023,7 @@
 .north-shuoshuo-tag-name {
     flex: 1;
     font-size: 14px;
-    color: var(--b3-theme-on-background);
+    color: var(--b3-theme-on-surface);
     line-height: 1.3;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2166,6 +2166,135 @@
     object-fit: cover;
     transition: transform 0.3s ease;
     will-change: transform;
+}
+
+/* 说说视图 - 网格中的视频（与图片混合排列，像朋友圈一样） */
+.north-shuoshuo-grid-video {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    display: block;
+    border-radius: 2px;
+    background: #000;
+    cursor: pointer;
+}
+
+.north-shuoshuo-video-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.north-shuoshuo-video-play-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 2;
+    transition: background 0.2s;
+}
+
+.north-shuoshuo-image-item:hover .north-shuoshuo-video-play-icon {
+    background: rgba(0,0,0,0.7);
+}
+
+.north-shuoshuo-video-play-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 55%;
+    transform: translate(-50%, -50%);
+    border-left: 14px solid #fff;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+}
+
+.north-shuoshuo-image-grid.single .north-shuoshuo-grid-video {
+    aspect-ratio: auto;
+    max-height: 320px;
+}
+
+.north-shuoshuo-image-item-video {
+    position: relative;
+    overflow: hidden;
+    background: #000;
+}
+
+/* 说说视图文件附件列表（deepseek 药丸风格） */
+.north-shuoshuo-file-list {
+    /* margin: 8px 0; */
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.north-shuoshuo-file-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px 6px 8px;
+    box-sizing: border-box;
+    cursor: pointer;
+    border-radius: 9px;
+    outline: none;
+    flex-shrink: 0;
+    width: auto;
+    max-width: 100%;
+    min-height: 40px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 70%, transparent);
+    background-color: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
+    transition: border-color 0.3s;
+    position: relative;
+}
+.north-shuoshuo-file-item:hover {
+    border-color: var(--b3-theme-primary-light, #a5d6a7);
+}
+.north-shuoshuo-file-badge {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #fff;
+    padding: 3px 6px;
+    border-radius: 6px;
+    line-height: 1.4;
+    min-width: 32px;
+    text-align: center;
+}
+.north-shuoshuo-file-name {
+    flex: 0 1 auto;
+    font-size: 13px;
+    color: var(--b3-theme-on-background, #333);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+    line-height: 1.4;
+}
+
+/* 暗色模式适配 */
+body.dark .north-shuoshuo-file-item,
+.fn__dark .north-shuoshuo-file-item {
+    background-color: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+}
+body.dark .north-shuoshuo-file-item:hover,
+.fn__dark .north-shuoshuo-file-item:hover {
+    border-color: var(--b3-theme-primary-light, #66bb6a);
+}
+body.dark .north-shuoshuo-file-ext,
+.fn__dark .north-shuoshuo-file-ext {
+    background: var(--b3-theme-surface, #2a2a2a);
+}
+body.dark .north-shuoshuo-image-item-video,
+.fn__dark .north-shuoshuo-image-item-video {
+    background: #1a1a1a;
 }
 
 /* ========== 图片预览弹窗（滚轮缩放 + 拖拽 + 复制） ========== */
@@ -6007,9 +6136,14 @@
 
 /* Emoji 图标 */
 .north-shuoshuo-tag-emoji {
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1;
     user-select: none;
+    color: var(--b3-theme-on-background);
+}
+
+.north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-emoji {
+    color: var(--b3-theme-primary);
 }
 
 /* 默认 # 图标 */
@@ -6076,6 +6210,12 @@
     width: 48px;
     height: 48px;
     border-radius: 8px;
+}
+
+.north-shuoshuo-icon-preview-emoji {
+    font-size: 36px;
+    line-height: 48px;
+    display: none;
 }
 
 /* 标签�?*/
@@ -11511,11 +11651,11 @@
 }
 
 .lumina-moments-image-grid.single { grid-template-columns: 1fr; max-width: 300px; }
-.lumina-moments-image-grid.double { grid-template-columns: repeat(2, 1fr); max-width: 380px; }
-.lumina-moments-image-grid.triple { grid-template-columns: repeat(3, 1fr); max-width: 380px; }
-.lumina-moments-image-grid.four { grid-template-columns: repeat(2, 1fr); max-width: 380px; }
-.lumina-moments-image-grid.six { grid-template-columns: repeat(3, 1fr); max-width: 380px; }
-.lumina-moments-image-grid.nine { grid-template-columns: repeat(3, 1fr); max-width: 380px; }
+.lumina-moments-image-grid.double { grid-template-columns: repeat(2, 1fr); max-width: 300px; }
+.lumina-moments-image-grid.triple { grid-template-columns: repeat(3, 1fr); max-width: 300px; }
+.lumina-moments-image-grid.four { grid-template-columns: repeat(2, 1fr); max-width: 300px; }
+.lumina-moments-image-grid.six { grid-template-columns: repeat(3, 1fr); max-width: 300px; }
+.lumina-moments-image-grid.nine { grid-template-columns: repeat(3, 1fr); max-width: 300px; }
 
 .lumina-moments-grid-img {
     width: 100%;
@@ -11615,57 +11755,56 @@
     -webkit-box-orient: vertical;
 }
 
-/* 元信�?*/
+/* 元信息行 - 朋友圈风格 */
 .lumina-moments-item-meta {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-top: 8px;
+    margin-top: 10px;
     gap: 8px;
-    flex-wrap: wrap;
-}
-
-.lumina-moments-item-date {
-    font-size: 12px;
-    color: var(--moments-date-color);
-    flex-shrink: 0;
+    flex-wrap: nowrap;
 }
 
 .lumina-moments-meta-tags {
     display: flex;
     align-items: center;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 0;
     flex: 1;
     min-width: 0;
     overflow: hidden;
 }
 
-.lumina-moments-meta-tag {
+.lumina-moments-meta-item {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    font-size: 14px;
-    border-radius: 5px;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--moments-text-secondary);
     white-space: nowrap;
     flex-shrink: 0;
-    background: var(--moments-hover-bg);
+    line-height: 1.5;
 }
 
-.lumina-moments-meta-tag-location {
-    display: inline-flex;
-    align-items: center;
-    font-size: 11px;
+/* · 分隔符 */
+.lumina-moments-meta-item + .lumina-moments-meta-item::before {
+    content: '·';
+    margin: 0 7px;
+    color: var(--moments-text-tertiary);
+    opacity: 0.4;
+    font-weight: bold;
+}
+
+.lumina-moments-meta-icon {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    vertical-align: middle;
+}
+
+.lumina-moments-meta-label {
+    font-size: 12px;
     color: var(--moments-text-secondary);
-    background: var(--moments-hover-bg);
-    padding: 1px 7px;
-    border-radius: 10px;
-    line-height: 1.5;
-    white-space: nowrap;
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .lumina-moments-item-actions {
@@ -11678,9 +11817,10 @@
 
 .lumina-moments-more-btn {
     width: 28px;
-    height: 20px;
+    height: 24px;
     background-color: transparent;
-    border-radius: 4px;
+    border: none;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -11698,17 +11838,16 @@
     background-color: var(--moments-interaction-bg);
 }
 
-.lumina-moments-more-btn::before,
-.lumina-moments-more-btn::after {
-    content: '';
-    width: 3px;
-    height: 3px;
-    background-color: var(--moments-close-color);
-    border-radius: 50%;
+.lumina-moments-more-btn::before {
+    content: '⋯';
+    font-size: 14px;
+    line-height: 1;
+    color: var(--moments-close-color);
+    letter-spacing: 1px;
 }
 
-.lumina-moments-more-btn::before {
-    margin-right: 3px;
+.lumina-moments-more-btn::after {
+    display: none;
 }
 
 .lumina-moments-item-highlight {
@@ -12199,34 +12338,66 @@
     color: var(--moments-publish-placeholder);
 }
 
+/* 发布/编辑网格布局（1/2/3/4/6/9宫格） */
 .lumina-moments-publish-images,
 .lumina-moments-edit-images {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    display: block;
     margin-top: 16px;
 }
 
-.lumina-moments-publish-img-item,
-.lumina-moments-edit-img-item {
-    width: 80px;
-    height: 80px;
-    border-radius: 4px;
-    object-fit: cover;
+.lumina-moments-publish-grid,
+.lumina-moments-edit-grid {
+    display: grid;
+    gap: 4px;
 }
+.lumina-moments-publish-grid.single { grid-template-columns: 80px; }
+.lumina-moments-publish-grid.double { grid-template-columns: repeat(2, 80px); }
+.lumina-moments-publish-grid.triple { grid-template-columns: repeat(3, 80px); }
+.lumina-moments-publish-grid.four { grid-template-columns: repeat(2, 80px); }
+.lumina-moments-publish-grid.multi { grid-template-columns: repeat(3, 80px); }
 
-.lumina-moments-publish-img-wrapper,
-.lumina-moments-edit-img-wrapper {
+.lumina-moments-edit-grid.single { grid-template-columns: 80px; }
+.lumina-moments-edit-grid.double { grid-template-columns: repeat(2, 80px); }
+.lumina-moments-edit-grid.triple { grid-template-columns: repeat(3, 80px); }
+.lumina-moments-edit-grid.four { grid-template-columns: repeat(2, 80px); }
+.lumina-moments-edit-grid.multi { grid-template-columns: repeat(3, 80px); }
+
+.lumina-moments-publish-grid-item,
+.lumina-moments-edit-grid-item {
     position: relative;
     width: 80px;
     height: 80px;
+    cursor: grab;
+    overflow: hidden;
+    border-radius: 4px;
 }
 
+.lumina-moments-publish-grid-media,
+.lumina-moments-edit-grid-media {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 4px;
+    background-color: var(--moments-border, #e0e0e0);
+}
+
+/* 拖动重排 */
+.lumina-moments-dragging {
+    opacity: 0.4;
+}
+.lumina-moments-drag-over {
+    outline: 2px dashed var(--b3-theme-primary, #4285f4) !important;
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* 删除按钮 */
 .lumina-moments-publish-img-del,
 .lumina-moments-edit-img-del {
     position: absolute;
-    top: -6px;
-    right: -6px;
+    top: 3px;
+    right: 3px;
     width: 18px;
     height: 18px;
     background-color: #FA5151;
@@ -12237,7 +12408,6 @@
     cursor: pointer;
     z-index: 10;
 }
-
 .lumina-moments-publish-img-del::before,
 .lumina-moments-publish-img-del::after,
 .lumina-moments-edit-img-del::before,
@@ -12248,19 +12418,14 @@
     height: 1.5px;
     background-color: #fff;
 }
-
 .lumina-moments-publish-img-del::before,
-.lumina-moments-edit-img-del::before {
-    transform: rotate(45deg);
-}
-
+.lumina-moments-edit-img-del::before { transform: rotate(45deg); }
 .lumina-moments-publish-img-del::after,
-.lumina-moments-edit-img-del::after {
-    transform: rotate(-45deg);
-}
+.lumina-moments-edit-img-del::after { transform: rotate(-45deg); }
 
-.lumina-moments-publish-add,
-.lumina-moments-edit-add {
+/* 添加按钮（网格项） */
+.lumina-moments-publish-grid-add,
+.lumina-moments-edit-grid-add {
     width: 80px;
     height: 80px;
     border: 1px dashed var(--moments-publish-add-border);
@@ -12269,42 +12434,22 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    /* background-color: #FAFAFA; */
-    flex-shrink: 0;
     position: relative;
 }
-
-.lumina-moments-publish-add::before,
-.lumina-moments-publish-add::after,
-.lumina-moments-edit-add::before,
-.lumina-moments-edit-add::after {
+.lumina-moments-publish-grid-add::before,
+.lumina-moments-publish-grid-add::after,
+.lumina-moments-edit-grid-add::before,
+.lumina-moments-edit-grid-add::after {
     content: '';
     position: absolute;
     background-color: var(--moments-publish-add-border);
 }
+.lumina-moments-publish-grid-add::before,
+.lumina-moments-edit-grid-add::before { width: 24px; height: 2px; }
+.lumina-moments-publish-grid-add::after,
+.lumina-moments-edit-grid-add::after { width: 2px; height: 24px; }
 
-.lumina-moments-publish-add::before,
-.lumina-moments-edit-add::before {
-    width: 24px;
-    height: 2px;
-}
-
-.lumina-moments-publish-add::after,
-.lumina-moments-edit-add::after {
-    width: 2px;
-    height: 24px;
-}
-
-/* 视频预览 */
-.lumina-moments-publish-img-item video,
-.lumina-moments-edit-img-item video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 4px;
-    background: #000;
-}
-
+/* 视频播放图标 */
 .lumina-moments-publish-video-play,
 .lumina-moments-edit-video-play {
     position: absolute;
@@ -12318,7 +12463,6 @@
     pointer-events: none;
     z-index: 2;
 }
-
 .lumina-moments-publish-video-play::after,
 .lumina-moments-edit-video-play::after {
     content: '';

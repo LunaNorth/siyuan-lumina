@@ -49,7 +49,7 @@ const DEFAULT_REVIEW_CONFIG = {
 };
 
 // 主题配置：original (原主题-硬编码绿色), siyuan (适配思源主题)
-const DEFAULT_THEME_MODE = 'original';
+const DEFAULT_THEME_MODE = 'siyuan';
 
 // 字体大小配置
 const DEFAULT_FONT_SIZE_CONFIG = { mode: 'default', customSize: 14.5 };
@@ -168,7 +168,9 @@ const ICONS = {
     pinOutline: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M8 4h8"/><path d="M9 4v6l-2 4"/><path d="M15 4v6l2 4"/><path d="M7 14h10"/></svg>`,
     comment: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M12 11h.01"/><path d="M16 11h.01"/><path d="M8 11h.01"/></svg>`,
     link: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>`,
-    clock: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`
+    clock: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`,
+    file: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/><rect x="8" y="12" width="8" height="1.5" rx="0.5"/><rect x="8" y="15" width="5" height="1.5" rx="0.5"/></svg>`,
+    fileFilled: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg>`
 };
 
 // ============ 轻语速记独立窗口管理类 ============
@@ -1018,7 +1020,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     const content = s.content || '';
                     const tags = this.extractTags(content);
                     if (this.filterQuery === 'no-tag') return tags.length === 0;
-                    if (this.filterQuery === 'has-image') return content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg)\)/i.test(content);
+                    if (this.filterQuery === 'has-image') return content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg|mp4|webm|mov|avi|mkv)/i.test(content);
                     if (this.filterQuery === 'has-link') return /https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content);
                     if (this.filterQuery === 'has-comment') return content.includes('[MEMO:') || /^关联自：/.test(content);
                     return true;
@@ -1900,19 +1902,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     <textarea id="quick-overlay-input" placeholder="记录此刻的想法..."></textarea>
                 </div>
                 <div class="quick-overlay-toolbar">
-                    <div class="quick-overlay-toolbar-left">
-                        <span class="quick-overlay-toolbar-icon" data-action="tag" title="标签">#</span>
-                        <span class="quick-overlay-toolbar-icon" data-action="image" title="图片">${ICONS.image}</span>
-                        <span class="quick-overlay-toolbar-icon" data-action="task" title="任务列表">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="4.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="10.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="16.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 6h12v1.5H9zm0 6h12v1.5H9zm0 6h12v1.5H9z"/></svg>
-                        </span>
-                        <span class="quick-overlay-toolbar-icon" data-action="ul" title="无序列表">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
-                        </span>
-                        <span class="quick-overlay-toolbar-icon" data-action="ol" title="有序列表">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6h2v2H2V6zm4 0h14v2H6V6zM2 11h2v2H2v-2zm4 0h14v2H6v-2zM2 16h2v2H2v-2zm4 0h14v2H6v-2z"/></svg>
-                        </span>
-                        <span class="quick-overlay-toolbar-icon" data-action="mention" title="引用笔记">${ICONS.at}</span>
+                    <div class="north-shuoshuo-toolbar-left">
+                        <span class="north-shuoshuo-toolbar-icon" data-action="tag" title="标签"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconTag"></use></svg></span>
+                        <span class="north-shuoshuo-toolbar-icon" data-action="image" title="上传资源"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconImage"></use></svg></span>
+                        <span class="north-shuoshuo-toolbar-icon" data-action="task" title="任务列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconCheck"></use></svg></span>
+                        <span class="north-shuoshuo-toolbar-icon" data-action="ul" title="无序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconList"></use></svg></span>
+                        <span class="north-shuoshuo-toolbar-icon" data-action="ol" title="有序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconOrderedList"></use></svg></span>
                     </div>
                     <div class="quick-overlay-toolbar-right">
                         <button class="quick-overlay-btn" id="quick-overlay-close">关闭</button>
@@ -2505,53 +2500,24 @@ body {
     <div class="card-footer">
         <div class="toolbar">
             <button class="tool-btn" id="btn-tag">
-                <span style="font-weight:600;">#</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
                 <span class="tooltip">标签</span>
             </button>
             <button class="tool-btn" id="btn-image">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                </svg>
-                <span class="tooltip">图片</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                <span class="tooltip">上传资源</span>
             </button>
             <button class="tool-btn" id="btn-task">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="5" width="4" height="4" rx="1"/>
-                    <rect x="3" y="11" width="4" height="4" rx="1"/>
-                    <rect x="3" y="17" width="4" height="4" rx="1"/>
-                    <line x1="10" y1="7" x2="21" y2="7"/>
-                    <line x1="10" y1="13" x2="21" y2="13"/>
-                    <line x1="10" y1="19" x2="21" y2="19"/>
-                </svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
                 <span class="tooltip">任务列表</span>
             </button>
             <button class="tool-btn" id="btn-ul">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="10" y1="6" x2="21" y2="6"/>
-                    <line x1="10" y1="12" x2="21" y2="12"/>
-                    <line x1="10" y1="18" x2="21" y2="18"/>
-                    <line x1="4" y1="6" x2="4" y2="6.01"/>
-                    <line x1="4" y1="12" x2="4" y2="12.01"/>
-                    <line x1="4" y1="18" x2="4" y2="18.01"/>
-                </svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/></svg>
                 <span class="tooltip">无序列表</span>
             </button>
             <button class="tool-btn" id="btn-ol">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="8" y1="6" x2="21" y2="6"/>
-                    <line x1="8" y1="12" x2="21" y2="12"/>
-                    <line x1="8" y1="18" x2="21" y2="18"/>
-                    <line x1="3" y1="6" x2="3.01" y2="6"/>
-                    <line x1="3" y1="12" x2="3.01" y2="12"/>
-                    <line x1="3" y1="18" x2="3.01" y2="18"/>
-                </svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M4 4h1v5"/><path d="M4 9h2"/><path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02"/></svg>
                 <span class="tooltip">有序列表</span>
-            </button>
-            <button class="tool-btn" id="btn-at">
-                <span style="font-weight:600;">@</span>
-                <span class="tooltip">提及</span>
             </button>
         </div>
         <div class="action-btns">
@@ -2683,37 +2649,46 @@ function insertTag(tag) {
     editor.focus();
 }
 
-// 图片上传
+// 上传资源（图片/视频/文件）
 document.getElementById('btn-image').addEventListener('click', () => {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = 'image/*';
+    fileInput.accept = '*/*';
+    fileInput.multiple = true;
     fileInput.style.display = 'none';
     document.body.appendChild(fileInput);
     fileInput.onchange = async () => {
-        const file = fileInput.files[0];
-        if (!file) { document.body.removeChild(fileInput); return; }
-        if (!file.type.startsWith('image/')) { alert('请选择图片文件'); document.body.removeChild(fileInput); return; }
+        const files = fileInput.files;
+        if (!files || files.length === 0) { document.body.removeChild(fileInput); return; }
         try {
-            const formData = new FormData();
-            formData.append('assetsDirPath', '/assets/');
-            formData.append('file[]', file);
-            const headers = {};
-            if (SIYUAN_TOKEN) {
-                headers['Authorization'] = 'Token ' + SIYUAN_TOKEN;
-            }
-            const response = await fetch(BASE_URL + '/api/asset/upload', { method: 'POST', body: formData, headers });
-            const result = await response.json();
-            if (result.code === 0) {
-                const succMap = result.data.succMap;
-                const newPath = succMap[file.name];
-                if (newPath) {
-                    const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
-                    insertTextAtCursor(\`![图片](\${imgPath})\`, '');
-                    editor.focus();
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const formData = new FormData();
+                formData.append('assetsDirPath', '/assets/');
+                formData.append('file[]', file);
+                const headers = {};
+                if (SIYUAN_TOKEN) {
+                    headers['Authorization'] = 'Token ' + SIYUAN_TOKEN;
                 }
-            } else {
-                alert('上传失败：' + (result.msg || '未知错误'));
+                const response = await fetch(BASE_URL + '/api/asset/upload', { method: 'POST', body: formData, headers });
+                const result = await response.json();
+                if (result.code === 0) {
+                    const succMap = result.data.succMap;
+                    const newPath = succMap[file.name];
+                    if (newPath) {
+                        const mediaPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                        if (file.type.startsWith('image/')) {
+                            insertTextAtCursor(\`![图片](\${mediaPath})\n\`, '');
+                        } else if (file.type.startsWith('video/')) {
+                            insertTextAtCursor(\`![视频](\${mediaPath})\n\`, '');
+                        } else {
+                            insertTextAtCursor(\`[\${file.name}](\${mediaPath})\n\`, '');
+                        }
+                        editor.focus();
+                    }
+                } else {
+                    alert('上传失败：' + (result.msg || '未知错误'));
+                }
             }
         } catch (err) {
             alert('上传失败：' + err.message);
@@ -2747,7 +2722,7 @@ document.getElementById('btn-ol').addEventListener('click', () => {
 });
 
 // @ 引用
-document.getElementById('btn-at').addEventListener('click', (e) => {
+document.getElementById('btn-at')?.addEventListener('click', (e) => {
     e.stopPropagation();
     showMentionPicker();
 });
@@ -2768,9 +2743,9 @@ function showMentionPicker(triggerPos) {
     }
     mentionPicker = document.createElement('div');
     mentionPicker.className = 'mention-picker';
-    const rect = document.getElementById('btn-at').getBoundingClientRect();
-    mentionPicker.style.left = rect.left + 'px';
-    mentionPicker.style.top = (rect.top - Math.min(NOTES.length * 40 + 10, 200)) + 'px';
+    mentionPicker.style.position = 'fixed';
+    mentionPicker.style.bottom = '80px';
+    mentionPicker.style.left = '20px';
     mentionPicker.dataset.triggerPos = atPos;
 
     if (NOTES.length === 0) {
@@ -2818,7 +2793,7 @@ document.addEventListener('click', (e) => {
     if (tagPicker && !tagPicker.contains(e.target) && !e.target.closest('#btn-tag')) {
         tagPicker.remove(); tagPicker = null;
     }
-    if (mentionPicker && !mentionPicker.contains(e.target) && !e.target.closest('#btn-at')) {
+    if (mentionPicker && !mentionPicker.contains(e.target)) {
         mentionPicker.remove(); mentionPicker = null;
     }
 });
@@ -3218,7 +3193,7 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="north-shuoshuo-query-list">
                                 ${this.queryVisibility?.['no-tag'] !== false ? `<div class="north-shuoshuo-query-item" data-query="no-tag">
                                     <span class="north-shuoshuo-query-icon">
-                                        <svg class="icon"><use xlink:href="#iconTags"></use></svg>
+                                        <svg class="icon"><use xlink:href="#iconTag"></use></svg>
                                     </span>
                                     <span class="north-shuoshuo-query-text">无标签</span>
                                     <span class="north-shuoshuo-query-count" data-query-count="no-tag">0</span>
@@ -3292,17 +3267,11 @@ ipcRenderer.on('lumina-close', () => {
                                 </div>
                                 <div class="north-shuoshuo-input-toolbar">
                                     <div class="north-shuoshuo-toolbar-left">
-                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-tag" title="标签">#</span>
-                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-image" title="图片">${ICONS.image}</span>
-                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-task" title="任务列表">
-                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><rect x="3" y="4.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="10.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="16.5" width="3.5" height="3.5" rx="0.8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 6h12v1.5H9zm0 6h12v1.5H9zm0 6h12v1.5H9z"/></svg>
-                                        </span>
-                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-ul" title="无序列表">
-                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
-                                        </span>
-                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-ol" title="有序列表">
-                                            <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2 6h2v2H2V6zm4 0h14v2H6V6zM2 11h2v2H2v-2zm4 0h14v2H6v-2zM2 16h2v2H2v-2zm4 0h14v2H6v-2z"/></svg>
-                                        </span>
+                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-tag" title="标签"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconTag"></use></svg></span>
+                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-image" title="上传资源"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconImage"></use></svg></span>
+                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-task" title="任务列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconCheck"></use></svg></span>
+                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-ul" title="无序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconList"></use></svg></span>
+                                        <span class="north-shuoshuo-toolbar-icon" id="toolbar-ol" title="有序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconOrderedList"></use></svg></span>
                                         <span class="north-shuoshuo-toolbar-icon" id="toolbar-at" title="快速引用">${ICONS.at}</span>
                                     </div>
                                     <button class="north-shuoshuo-send-btn" id="shuoshuo-send">${ICONS.send}</button>
@@ -7198,15 +7167,11 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
                         <div class="north-shuoshuo-random-comment-toolbar">
                             <div class="north-shuoshuo-toolbar-left">
-                                <span class="north-shuoshuo-toolbar-icon" data-action="tag" title="标签">#</span>
-                                <span class="north-shuoshuo-toolbar-icon" data-action="image" title="图片">${ICONS.image}</span>
+                                <span class="north-shuoshuo-toolbar-icon" data-action="tag" title="标签"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconTag"></use></svg></span>
+                                <span class="north-shuoshuo-toolbar-icon" data-action="image" title="上传资源"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconImage"></use></svg></span>
                                 <span class="north-shuoshuo-toolbar-divider"></span>
-                                <span class="north-shuoshuo-toolbar-icon" data-action="ul" title="无序列表">
-                                    <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
-                                </span>
-                                <span class="north-shuoshuo-toolbar-icon" data-action="ol" title="有序列表">
-                                    <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2 6h2v2H2V6zm4 0h14v2H6V6zM2 11h2v2H2v-2zm4 0h14v2H6v-2zM2 16h2v2H2v-2zm4 0h14v2H6v-2z"/></svg>
-                                </span>
+                                <span class="north-shuoshuo-toolbar-icon" data-action="ul" title="无序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconList"></use></svg></span>
+                                <span class="north-shuoshuo-toolbar-icon" data-action="ol" title="有序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconOrderedList"></use></svg></span>
                                 <span class="north-shuoshuo-toolbar-icon" data-action="at" title="快速引用">${ICONS.at}</span>
                             </div>
                             <div style="display:flex;align-items:center;gap:8px;">
@@ -8421,31 +8386,29 @@ ipcRenderer.on('lumina-close', () => {
             </div>`;
         }
 
-        // 天气、心情、地点标签（显示在 meta 栏）
-        const renderTagContent = (val) => {
+        // 天气、心情、地点、日期（显示在 meta 栏）- 朋友圈风格
+        const metaParts = [];
+        const renderMetaIcon = (val) => {
             if (!val) return '';
             if (val.startsWith('icon:')) {
                 const parts = val.substring(5).split(':');
                 const type = parts[0];
                 if (type === 'customEmoji') {
                     const emojiPath = decodeURIComponent(parts[1] || '');
-                    return `<img src="/emojis/${encodeURIComponent(emojiPath)}" style="width:18px;height:18px;border-radius:4px;">`;
+                    return `<img src="/emojis/${encodeURIComponent(emojiPath)}" class="lumina-moments-meta-icon">`;
                 }
                 const content = decodeURIComponent(parts[0]);
                 const color = parts[1] || '#2ecc71';
                 const url = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(color)}&content=${encodeURIComponent(content)}`;
-                return `<img src="${url}" style="width:18px;height:18px;border-radius:4px;">`;
+                return `<img src="${url}" class="lumina-moments-meta-icon">`;
             }
             return val;
         };
-        let metaTagsHtml = '';
-        const tagParts = [];
-        if (m.weather) tagParts.push(`<span class="lumina-moments-meta-tag">${renderTagContent(m.weather)}</span>`);
-        if (m.mood) tagParts.push(`<span class="lumina-moments-meta-tag">${renderTagContent(m.mood)}</span>`);
-        if (m.location) tagParts.push(`<span class="lumina-moments-meta-tag-location"><svg class="icon" style="width:14px;height:14px;vertical-align:middle;margin-right:2px;flex-shrink:0;"><use xlink:href="#iconLanguage"></use></svg>${m.location}</span>`);
-        if (tagParts.length > 0) {
-            metaTagsHtml = `<span class="lumina-moments-meta-tags">${tagParts.join('')}</span>`;
-        }
+        if (m.weather) metaParts.push(`<span class="lumina-moments-meta-item">${renderMetaIcon(m.weather)}<span class="lumina-moments-meta-label">天气</span></span>`);
+        if (m.mood) metaParts.push(`<span class="lumina-moments-meta-item">${renderMetaIcon(m.mood)}<span class="lumina-moments-meta-label">心情</span></span>`);
+        if (m.location) metaParts.push(`<span class="lumina-moments-meta-item">${m.location}</span>`);
+        metaParts.push(`<span class="lumina-moments-meta-item">${dateStr}</span>`);
+        const metaTagsHtml = `<span class="lumina-moments-meta-tags">${metaParts.join('')}</span>`;
 
         const dateKey = this.formatDateKey(new Date(m.created));
         return `
@@ -8456,7 +8419,6 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="lumina-moments-item-text">${m.text || ''}</div>
                     ${mediaHtml}
                     <div class="lumina-moments-item-meta">
-                        <span class="lumina-moments-item-date">${dateStr}</span>
                         ${metaTagsHtml}
                         <div class="lumina-moments-item-actions">
                             <div class="lumina-moments-more-btn" data-mid="${m.id}"></div>
@@ -9210,12 +9172,26 @@ ipcRenderer.on('lumina-close', () => {
         if (!containerEl) return;
         const addBtn = containerEl.querySelector('#momentsPublishAdd');
         containerEl.innerHTML = '';
+
+        // 创建网格容器
+        const grid = document.createElement('div');
+        const count = images.length;
+        let gridClass = 'single';
+        if (count === 2) gridClass = 'double';
+        else if (count === 3) gridClass = 'triple';
+        else if (count === 4) gridClass = 'four';
+        else if (count >= 5) gridClass = 'multi';
+        grid.className = `lumina-moments-publish-grid ${gridClass}`;
+
+        let dragIndex = -1;
         images.forEach((src, index) => {
             const wrapper = document.createElement('div');
-            wrapper.className = 'lumina-moments-publish-img-wrapper';
+            wrapper.className = 'lumina-moments-publish-grid-item';
+            wrapper.draggable = true;
+            wrapper.dataset.index = index;
             if (this._isVideoUrl(src)) {
                 const video = document.createElement('video');
-                video.className = 'lumina-moments-publish-img-item';
+                video.className = 'lumina-moments-publish-grid-media';
                 video.src = src;
                 video.muted = true;
                 video.preload = 'metadata';
@@ -9227,7 +9203,7 @@ ipcRenderer.on('lumina-close', () => {
                 wrapper.appendChild(playIcon);
             } else {
                 const img = document.createElement('img');
-                img.className = 'lumina-moments-publish-img-item';
+                img.className = 'lumina-moments-publish-grid-media';
                 img.src = src;
                 wrapper.appendChild(img);
             }
@@ -9239,21 +9215,83 @@ ipcRenderer.on('lumina-close', () => {
                 this._renderPublishImages(images, containerEl);
             });
             wrapper.appendChild(del);
-            containerEl.appendChild(wrapper);
+
+            // Drag events
+            wrapper.addEventListener('dragstart', (e) => {
+                dragIndex = index;
+                wrapper.classList.add('lumina-moments-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', index);
+            });
+            wrapper.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                if (index !== dragIndex) {
+                    wrapper.classList.add('lumina-moments-drag-over');
+                }
+            });
+            wrapper.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (index !== dragIndex) {
+                    e.dataTransfer.dropEffect = 'move';
+                }
+            });
+            wrapper.addEventListener('dragleave', () => {
+                wrapper.classList.remove('lumina-moments-drag-over');
+            });
+            wrapper.addEventListener('drop', (e) => {
+                e.preventDefault();
+                wrapper.classList.remove('lumina-moments-drag-over');
+                const fromIdx = dragIndex;
+                const toIdx = index;
+                if (fromIdx !== -1 && fromIdx !== toIdx) {
+                    const item = images.splice(fromIdx, 1)[0];
+                    images.splice(toIdx, 0, item);
+                    this._renderPublishImages(images, containerEl);
+                }
+            });
+            wrapper.addEventListener('dragend', () => {
+                wrapper.classList.remove('lumina-moments-dragging');
+                grid.querySelectorAll('.lumina-moments-publish-grid-item').forEach(el => {
+                    el.classList.remove('lumina-moments-drag-over');
+                });
+                dragIndex = -1;
+            });
+
+            grid.appendChild(wrapper);
         });
-        if (addBtn) containerEl.appendChild(addBtn);
+
+        // 添加按钮作为网格最后一个项
+        if (addBtn) {
+            addBtn.className = 'lumina-moments-publish-grid-add';
+            grid.appendChild(addBtn);
+        }
+
+        containerEl.appendChild(grid);
     }
 
     _renderEditImages(images, containerEl) {
         if (!containerEl) return;
         const addBtn = containerEl.querySelector('#momentsEditAdd');
         containerEl.innerHTML = '';
+
+        const grid = document.createElement('div');
+        const count = images.length;
+        let gridClass = 'single';
+        if (count === 2) gridClass = 'double';
+        else if (count === 3) gridClass = 'triple';
+        else if (count === 4) gridClass = 'four';
+        else if (count >= 5) gridClass = 'multi';
+        grid.className = `lumina-moments-edit-grid ${gridClass}`;
+
+        let dragIndex = -1;
         images.forEach((src, index) => {
             const wrapper = document.createElement('div');
-            wrapper.className = 'lumina-moments-edit-img-wrapper';
+            wrapper.className = 'lumina-moments-edit-grid-item';
+            wrapper.draggable = true;
+            wrapper.dataset.index = index;
             if (this._isVideoUrl(src)) {
                 const video = document.createElement('video');
-                video.className = 'lumina-moments-edit-img-item';
+                video.className = 'lumina-moments-edit-grid-media';
                 video.src = src;
                 video.muted = true;
                 video.preload = 'metadata';
@@ -9265,7 +9303,7 @@ ipcRenderer.on('lumina-close', () => {
                 wrapper.appendChild(playIcon);
             } else {
                 const img = document.createElement('img');
-                img.className = 'lumina-moments-edit-img-item';
+                img.className = 'lumina-moments-edit-grid-media';
                 img.src = src;
                 wrapper.appendChild(img);
             }
@@ -9277,9 +9315,57 @@ ipcRenderer.on('lumina-close', () => {
                 this._renderEditImages(images, containerEl);
             });
             wrapper.appendChild(del);
-            containerEl.appendChild(wrapper);
+
+            // Drag events
+            wrapper.addEventListener('dragstart', (e) => {
+                dragIndex = index;
+                wrapper.classList.add('lumina-moments-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', index);
+            });
+            wrapper.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                if (index !== dragIndex) {
+                    wrapper.classList.add('lumina-moments-drag-over');
+                }
+            });
+            wrapper.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (index !== dragIndex) {
+                    e.dataTransfer.dropEffect = 'move';
+                }
+            });
+            wrapper.addEventListener('dragleave', () => {
+                wrapper.classList.remove('lumina-moments-drag-over');
+            });
+            wrapper.addEventListener('drop', (e) => {
+                e.preventDefault();
+                wrapper.classList.remove('lumina-moments-drag-over');
+                const fromIdx = dragIndex;
+                const toIdx = index;
+                if (fromIdx !== -1 && fromIdx !== toIdx) {
+                    const item = images.splice(fromIdx, 1)[0];
+                    images.splice(toIdx, 0, item);
+                    this._renderEditImages(images, containerEl);
+                }
+            });
+            wrapper.addEventListener('dragend', () => {
+                wrapper.classList.remove('lumina-moments-dragging');
+                grid.querySelectorAll('.lumina-moments-edit-grid-item').forEach(el => {
+                    el.classList.remove('lumina-moments-drag-over');
+                });
+                dragIndex = -1;
+            });
+
+            grid.appendChild(wrapper);
         });
-        if (addBtn) containerEl.appendChild(addBtn);
+
+        if (addBtn) {
+            addBtn.className = 'lumina-moments-edit-grid-add';
+            grid.appendChild(addBtn);
+        }
+
+        containerEl.appendChild(grid);
     }
 
     // ============ 图书书架视图 ============
@@ -10900,6 +10986,7 @@ ipcRenderer.on('lumina-close', () => {
                 <div class="north-shuoshuo-icon-picker-body">
                     <div class="north-shuoshuo-icon-preview-section">
                         <img class="north-shuoshuo-icon-preview" src="/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(currentColor)}&content=${encodeURIComponent(currentContent || tagName.substring(0, 2))}" alt="icon">
+                        <span class="north-shuoshuo-icon-preview-emoji" style="display:none;">😊</span>
                     </div>
                     
                     <!-- 标签页 -->
@@ -10945,12 +11032,19 @@ ipcRenderer.on('lumina-close', () => {
         
         // 更新预览
         const updatePreview = (content, isEmoji = false) => {
+            const emojiPreview = modal.querySelector('.north-shuoshuo-icon-preview-emoji');
             if (isEmoji) {
-                // Emoji 直接显示
-                previewImg.src = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(selectedColor)}&content=${encodeURIComponent(content)}`;
+                // Emoji 直接显示字符，不带颜色背景
+                previewImg.style.display = 'none';
+                emojiPreview.style.display = 'inline';
+                emojiPreview.textContent = content;
             } else if (content) {
+                emojiPreview.style.display = 'none';
+                previewImg.style.display = 'inline';
                 previewImg.src = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(selectedColor)}&content=${encodeURIComponent(content)}`;
             } else {
+                emojiPreview.style.display = 'none';
+                previewImg.style.display = 'inline';
                 previewImg.src = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(selectedColor)}&content=${encodeURIComponent(tagName.substring(0, 2))}`;
             }
         };
@@ -11066,8 +11160,8 @@ ipcRenderer.on('lumina-close', () => {
                     // 自定义 emoji：保存为 customEmoji:路径
                     callback(`icon:customEmoji:${encodeURIComponent(selectedIcon.content)}`);
                 } else if (selectedIcon.type === 'emoji') {
-                    // Emoji：直接保存 emoji 字符
-                    callback(`icon:${encodeURIComponent(selectedIcon.content)}:${selectedColor}`);
+                    // Emoji：直接保存为原始 emoji 字符，不使用动态图标渲染（避免带颜色背景）
+                    callback(selectedIcon.content);
                 } else {
                     // 文字图标
                     callback(`icon:${encodeURIComponent(selectedIcon.content)}:${selectedColor}`);
@@ -11136,7 +11230,7 @@ ipcRenderer.on('lumina-close', () => {
                 const indent = level * 20;
                 html += `
                     <li class="north-shuoshuo-tag-tree-item" style="padding-left: ${indent}px;">
-                        <span class="north-shuoshuo-tag-tree-name">#${name}</span>
+                        <span class="north-shuoshuo-tag-tree-name"><svg class="icon" style="width:14px;height:14px;margin-right:2px;"><use xlink:href="#iconTag"></use></svg>${name}</span>
                         <span class="north-shuoshuo-tag-tree-count">${data.count}</span>
                     </li>
                 `;
@@ -11463,7 +11557,14 @@ ipcRenderer.on('lumina-close', () => {
                 }
             }
         }
-        return `<span class="north-shuoshuo-tag-icon-default">#</span>`;
+        // 原始 emoji 字符（从天气/心情选择器保存的格式）
+        if (iconConfig) {
+            const isEmoji = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(iconConfig);
+            if (isEmoji) {
+                return `<span class="north-shuoshuo-tag-emoji">${iconConfig}</span>`;
+            }
+        }
+        return `<span class="north-shuoshuo-tag-icon-default"><svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconTag"></use></svg></span>`;
     }
 
     // 生成最常用标签 Top 10
@@ -12008,21 +12109,61 @@ ipcRenderer.on('lumina-close', () => {
                     e.preventDefault();
                     const imgSrc = imgEl.getAttribute('src');
                     if (imgSrc) {
-                        // 尝试获取同条笔记的多张图片
+                        // 尝试获取同条笔记的多张媒体
                         const noteCard = imgEl.closest('.north-shuoshuo-note-card');
                         if (noteCard) {
                             const noteId = noteCard.dataset.id;
                             const note = this.shuoshuos.find(s => String(s.id) === noteId);
                             if (note && note.content) {
-                                const { images } = this.extractContentAndImages(note.content);
-                                if (images.length > 1) {
-                                    const mediaList = images.map(img => ({ src: img.url, isVideo: this._isVideoUrl(img.url) }));
-                                    const idx = mediaList.findIndex(media => imgSrc.endsWith(media.src));
-                                    if (idx >= 0) { this.showMomentsMediaPreview(mediaList, idx); return; }
+                                const { images, videos } = this.extractContentAndImages(note.content);
+                                const allMedia = [...images.map(s => ({ src: s.url, isVideo: false })), ...videos.map(s => ({ src: s.url, isVideo: true }))];
+                                if (allMedia.length > 1) {
+                                    const idx = allMedia.findIndex(media => imgSrc.endsWith(media.src));
+                                    if (idx >= 0) { this.showMomentsMediaPreview(allMedia, idx); return; }
                                 }
                             }
                         }
                         this.showImagePreview(imgSrc);
+                    }
+                    return;
+                }
+
+                // 处理视频点击播放（在图片网格中）
+                const videoEl = e.target.closest('.north-shuoshuo-grid-video, .north-shuoshuo-video-play-icon');
+                if (videoEl) {
+                    e.stopPropagation();
+                    const videoTag = videoEl.closest('.north-shuoshuo-video-wrapper')?.querySelector('video') || videoEl;
+                    const videoSrc = videoTag.getAttribute('src');
+                    if (videoSrc) {
+                        // 尝试获取同条笔记的多媒体列表
+                        const noteCard = videoTag.closest('.north-shuoshuo-note-card');
+                        if (noteCard) {
+                            const noteId = noteCard.dataset.id;
+                            const note = this.shuoshuos.find(s => String(s.id) === noteId);
+                            if (note && note.content) {
+                                const { images, videos } = this.extractContentAndImages(note.content);
+                                const allMedia = [...images.map(s => ({ src: s.url, isVideo: false })), ...videos.map(s => ({ src: s.url, isVideo: true }))];
+                                if (allMedia.length > 1) {
+                                    const idx = allMedia.findIndex(media => videoSrc.endsWith(media.src));
+                                    if (idx >= 0) { this.showMomentsMediaPreview(allMedia, idx); return; }
+                                }
+                            }
+                        }
+                        this.showVideoPreview(videoSrc);
+                    }
+                    return;
+                }
+
+                // 处理文件点击下载
+                const fileItem = e.target.closest('.north-shuoshuo-file-item');
+                if (fileItem) {
+                    e.stopPropagation();
+                    const fileUrl = fileItem.dataset.fileUrl;
+                    if (fileUrl) {
+                        const a = document.createElement('a');
+                        a.href = fileUrl;
+                        a.download = fileItem.querySelector('.north-shuoshuo-file-name')?.textContent || '下载';
+                        a.click();
                     }
                     return;
                 }
@@ -13049,7 +13190,7 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // 图片按钮
+        // 图片/视频/文件统一上传按钮
         const imageBtn = this.container.querySelector('#toolbar-image');
         if (imageBtn) {
             imageBtn.addEventListener('click', () => {
@@ -13432,7 +13573,7 @@ ipcRenderer.on('lumina-close', () => {
         
         document.body.appendChild(overlay);
 
-        // 详情弹窗中图片点击 - 支持多图切换导航
+        // 详情弹窗中图片/视频/文件点击
         overlay.addEventListener('click', (e) => {
             const imgEl = e.target.closest('.north-shuoshuo-note-card img');
             if (imgEl) {
@@ -13444,16 +13585,54 @@ ipcRenderer.on('lumina-close', () => {
                         const noteId = card.dataset.id;
                         const note = this.shuoshuos.find(s => s.id === noteId);
                         if (note && note.content) {
-                            const { images } = this.extractContentAndImages(note.content);
-                            if (images.length > 1) {
-                                const mediaList = images.map(img => ({ src: img.url, isVideo: this._isVideoUrl(img.url) }));
-                                const idx = mediaList.findIndex(media => imgSrc.endsWith(media.src));
-                                if (idx >= 0) { this.showMomentsMediaPreview(mediaList, idx); return; }
+                            const { images, videos } = this.extractContentAndImages(note.content);
+                            const allMedia = [...images.map(s => ({ src: s.url, isVideo: false })), ...videos.map(s => ({ src: s.url, isVideo: true }))];
+                            if (allMedia.length > 1) {
+                                const idx = allMedia.findIndex(media => imgSrc.endsWith(media.src));
+                                if (idx >= 0) { this.showMomentsMediaPreview(allMedia, idx); return; }
                             }
                         }
                     }
                     this.showImagePreview(imgSrc);
                 }
+                return;
+            }
+            // 处理视频点击（在图片网格中）
+            const videoEl = e.target.closest('.north-shuoshuo-grid-video, .north-shuoshuo-video-play-icon');
+            if (videoEl) {
+                e.stopPropagation();
+                const videoTag = videoEl.closest('.north-shuoshuo-video-wrapper')?.querySelector('video') || videoEl;
+                const videoSrc = videoTag.getAttribute('src');
+                if (videoSrc) {
+                    const card = videoTag.closest('.north-shuoshuo-note-card[data-id]');
+                    if (card) {
+                        const noteId = card.dataset.id;
+                        const note = this.shuoshuos.find(s => s.id === noteId);
+                        if (note && note.content) {
+                            const { images, videos } = this.extractContentAndImages(note.content);
+                            const allMedia = [...images.map(s => ({ src: s.url, isVideo: false })), ...videos.map(s => ({ src: s.url, isVideo: true }))];
+                            if (allMedia.length > 1) {
+                                const idx = allMedia.findIndex(media => videoSrc.endsWith(media.src));
+                                if (idx >= 0) { this.showMomentsMediaPreview(allMedia, idx); return; }
+                            }
+                        }
+                    }
+                    this.showVideoPreview(videoSrc);
+                }
+                return;
+            }
+            // 处理文件点击
+            const fileItem = e.target.closest('.north-shuoshuo-file-item');
+            if (fileItem) {
+                e.stopPropagation();
+                const fileUrl = fileItem.dataset.fileUrl;
+                if (fileUrl) {
+                    const a = document.createElement('a');
+                    a.href = fileUrl;
+                    a.download = fileItem.querySelector('.north-shuoshuo-file-name')?.textContent || '下载';
+                    a.click();
+                }
+                return;
             }
         });
 
@@ -13728,7 +13907,7 @@ ipcRenderer.on('lumina-close', () => {
     insertImage(input) {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
-        fileInput.accept = 'image/*';
+        fileInput.accept = '*/*';
         fileInput.multiple = true;
         fileInput.style.display = 'none';
         document.body.appendChild(fileInput);
@@ -13743,7 +13922,6 @@ ipcRenderer.on('lumina-close', () => {
             try {
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
-                    if (!file.type.startsWith('image/')) continue;
                     
                     showMessage(`正在上传 (${i + 1}/${files.length})...`);
                     const formData = new FormData();
@@ -13766,15 +13944,27 @@ ipcRenderer.on('lumina-close', () => {
                         const originalName = file.name;
                         const newPath = succMap[originalName];
                         if (newPath) {
-                            const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
-                            this.insertText(input, `![图片](${imgPath})\n`, '');
+                            const mediaPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                            // 备份到插件备份目录（防被思源"未引用资源"清理）
+                            try {
+                                await this.backupAsset(mediaPath.replace('assets/', ''), file);
+                            } catch (e) {
+                                console.warn('备份文件失败:', mediaPath, e);
+                            }
+                            if (file.type.startsWith('image/')) {
+                                this.insertText(input, `![图片](${mediaPath})\n`, '');
+                            } else if (file.type.startsWith('video/')) {
+                                this.insertText(input, `![视频](${mediaPath})\n`, '');
+                            } else {
+                                this.insertText(input, `[${file.name}](${mediaPath})\n`, '');
+                            }
                         }
                     } else {
                         showMessage(`上传失败：${file.name} ` + (result.msg || '未知错误'));
                     }
                 }
                 input.focus();
-                showMessage("图片上传完成");
+                showMessage("上传完成");
             } catch (e) {
                 console.error(e);
                 showMessage('上传失败：' + e.message);
@@ -13788,24 +13978,92 @@ ipcRenderer.on('lumina-close', () => {
         fileInput.click();
     }
 
-    // 处理粘贴图片
+    // 插入任意文件（非图片/视频的通用文件）
+    insertFile(input) {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.multiple = true;
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+        
+        fileInput.onchange = async () => {
+            const files = fileInput.files;
+            if (!files || files.length === 0) {
+                document.body.removeChild(fileInput);
+                return;
+            }
+            
+            try {
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    
+                    showMessage(`正在上传 (${i + 1}/${files.length})...`);
+                    const formData = new FormData();
+                    formData.append('assetsDirPath', '/assets/');
+                    formData.append('file[]', file);
+                    
+                    const token = window.siyuan?.config?.api?.token || '';
+                    const headers = {};
+                    if (token) {
+                        headers['Authorization'] = `Token ${token}`;
+                    }
+                    const response = await fetch('/api/asset/upload', {
+                        method: 'POST',
+                        body: formData,
+                        headers
+                    });
+                    const result = await response.json();
+                    if (result.code === 0) {
+                        const succMap = result.data.succMap;
+                        const originalName = file.name;
+                        const newPath = succMap[originalName];
+                        if (newPath) {
+                            const filePath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                            if (file.type.startsWith('image/')) {
+                                this.insertText(input, `![图片](${filePath})\n`, '');
+                            } else if (file.type.startsWith('video/')) {
+                                this.insertText(input, `![视频](${filePath})\n`, '');
+                            } else {
+                                this.insertText(input, `[${file.name}](${filePath})\n`, '');
+                            }
+                        }
+                    } else {
+                        showMessage(`上传失败：${file.name} ` + (result.msg || '未知错误'));
+                    }
+                }
+                input.focus();
+                showMessage("上传完成");
+            } catch (e) {
+                console.error(e);
+                showMessage('上传失败：' + e.message);
+            } finally {
+                if (fileInput.parentNode) {
+                    document.body.removeChild(fileInput);
+                }
+            }
+        };
+        
+        fileInput.click();
+    }
+
+    // 处理粘贴图片/视频
     async handlePasteImage(e, input) {
         const items = e.clipboardData?.items;
         if (!items) return;
         
-        const imageFiles = [];
+        const mediaFiles = [];
         for (let i = 0; i < items.length; i++) {
-            if (items[i].type.startsWith('image/')) {
+            if (items[i].type.startsWith('image/') || items[i].type.startsWith('video/')) {
                 const file = items[i].getAsFile();
-                if (file) imageFiles.push(file);
+                if (file) mediaFiles.push(file);
             }
         }
         
-        if (imageFiles.length === 0) return;
+        if (mediaFiles.length === 0) return;
         
         e.preventDefault();
         
-        for (const file of imageFiles) {
+        for (const file of mediaFiles) {
             try {
                 showMessage("正在上传...");
                 const formData = new FormData();
@@ -13828,9 +14086,13 @@ ipcRenderer.on('lumina-close', () => {
                     const originalName = file.name;
                     const newPath = succMap[originalName];
                     if (newPath) {
-                        const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
-                        this.insertText(input, `![图片](${imgPath})`, '');
-                        showMessage("图片插入成功");
+                        const mediaPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                        if (file.type.startsWith('image/')) {
+                            this.insertText(input, `![图片](${mediaPath})`, '');
+                        } else {
+                            this.insertText(input, `![视频](${mediaPath})`, '');
+                        }
+                        showMessage("插入成功");
                     }
                 } else {
                     showMessage('上传失败：' + (result.msg || '未知错误'));
@@ -13943,7 +14205,7 @@ ipcRenderer.on('lumina-close', () => {
             const tags = this.extractTags(content);
             
             if (tags.length === 0) noTagCount++;
-            if (content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg)\)/i.test(content)) hasImageCount++;
+            if (content.includes('![') || /\[.*?\]\(.*?\.(png|jpg|jpeg|gif|webp|svg|mp4|webm|mov|avi|mkv)\)/i.test(content)) hasImageCount++;
             if (/https?:\/\//.test(content) || /\[.*?\]\(https?:\/\/.*?\)/.test(content)) hasLinkCount++;
         }
         
@@ -14047,7 +14309,7 @@ ipcRenderer.on('lumina-close', () => {
             }
             querySection.style.display = '';
             const builtInItems = [
-                { visible: hasNoTag, query: 'no-tag', label: '无标签', icon: 'iconTags' },
+                { visible: hasNoTag, query: 'no-tag', label: '无标签', icon: 'iconTag' },
                 { visible: hasImage, query: 'has-image', label: '有图片', icon: 'iconImage' },
                 { visible: hasLink, query: 'has-link', label: '有链接', icon: 'iconLink' },
                 { visible: hasComment, query: 'has-comment', label: '已批注', icon: 'iconRef' },
@@ -14745,9 +15007,17 @@ ipcRenderer.on('lumina-close', () => {
                         iconHtml = `<img class="north-shuoshuo-tag-dynamic-icon" src="/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(color)}&content=${encodeURIComponent(content)}" alt="${content}">`;
                     }
                 }
+            } else if (iconConfig) {
+                // 原始 emoji 字符（从天气/心情选择器保存的格式）
+                const isEmoji = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(iconConfig);
+                if (isEmoji) {
+                    iconHtml = `<span class="north-shuoshuo-tag-emoji">${iconConfig}</span>`;
+                } else {
+                    iconHtml = `<span class="north-shuoshuo-tag-icon-default"><svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconTag"></use></svg></span>`;
+                }
             } else {
-                // 默认 # 号
-                iconHtml = `<span class="north-shuoshuo-tag-icon-default">#</span>`;
+                // 默认 #iconTag 图标
+                iconHtml = `<span class="north-shuoshuo-tag-icon-default"><svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconTag"></use></svg></span>`;
             }
             
             const itemId = 'tag-' + Math.random().toString(36).substr(2, 9);
@@ -15568,9 +15838,9 @@ ipcRenderer.on('lumina-close', () => {
         return input ? input.value.trim() : '';
     }
 
-    // 渲染笔记内容（支持九宫格图片布局? 支持搜索高亮）
+    // 渲染笔记内容（支持九宫格图片/视频混合布局、文件下载链接，支持搜索高亮）
     renderNoteContent(content, options = {}) {
-        const { text, images } = this.extractContentAndImages(content);
+        const { text, images, videos, files } = this.extractContentAndImages(content);
         
         let displayText = text;
         if (options.hideTags) {
@@ -15590,9 +15860,18 @@ ipcRenderer.on('lumina-close', () => {
         
         html += '</div>';
         
-        // 渲染图片九宫?
-        if (images.length > 0) {
-            html += this.renderImageGrid(images);
+        // 图片和视频混合排列（像朋友圈视图一样）
+        const mediaItems = [
+            ...images.map(img => ({ ...img, isVideo: false })),
+            ...videos.map(v => ({ ...v, isVideo: true }))
+        ];
+        if (mediaItems.length > 0) {
+            html += this.renderImageGrid(mediaItems);
+        }
+        
+        // 渲染文件附件链接
+        if (files.length > 0) {
+            html += this.renderFileList(files);
         }
         
         // 应用搜索高亮
@@ -15620,63 +15899,156 @@ ipcRenderer.on('lumina-close', () => {
         return url;
     }
 
-    // 提取内容和图片（同时处理 Markdown 图片和 HTML img 标签）
+    // 提取内容中的图片、视频和文件附件（同时处理 Markdown 图片和 HTML img 标签）
     extractContentAndImages(content) {
         const images = [];
+        const videos = [];
+        const files = [];
         let text = content;
         
         // 提取 Markdown 图片
         text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-            images.push({ alt, url: this._resolveImageUrl(url) });
+            const resolvedUrl = this._resolveImageUrl(url);
+            if (this._isVideoUrl(url)) {
+                videos.push({ alt, url: resolvedUrl });
+            } else {
+                images.push({ alt, url: resolvedUrl });
+            }
             return '';
         });
         
         // 提取 HTML <img> 标签（思源内部格式可能使用此方式）
         text = text.replace(/<img[^>]*src=["']([^"']+)["'][^>]*\/?>/gi, (match, src) => {
-            // 提取 alt 属性
             const altMatch = match.match(/alt=["']([^"']*)["']/i);
             const alt = altMatch ? altMatch[1] : '';
             images.push({ alt, url: this._resolveImageUrl(src) });
             return '';
         });
+
+        // 提取 Markdown 文件链接 [name](path) - 指向 assets 的资源
+        text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, name, url) => {
+            const resolvedUrl = this._resolveImageUrl(url);
+            // 只处理指向 assets 目录的文件链接
+            if (resolvedUrl.startsWith('/assets/') || resolvedUrl.startsWith('assets/')) {
+                files.push({ name, url: resolvedUrl });
+                return '';
+            }
+            return match; // 保留非 asset 链接
+        });
         
         // 清理多余的空行
         text = text.replace(/\n{3,}/g, '\n\n').trim();
         
-        return { text, images };
+        return { text, images, videos, files };
     }
 
-    // 渲染九宫格图?
-    renderImageGrid(images) {
-        const count = images.length;
+    // 渲染图片/视频混合网格（像朋友圈视图一样）
+    renderImageGrid(mediaItems) {
+        const count = mediaItems.length;
         if (count === 0) return '';
         
-        // 单张图片：保持原样大显示
+        // 单个媒体：大图/大视频显示
         if (count === 1) {
+            const item = mediaItems[0];
+            if (item.isVideo) {
+                return `
+                    <div class="north-shuoshuo-image-grid single">
+                        <div class="north-shuoshuo-video-wrapper">
+                            <video class="north-shuoshuo-grid-video" src="${item.url}" preload="metadata" playsinline></video>
+                            <div class="north-shuoshuo-video-play-icon"></div>
+                        </div>
+                    </div>
+                `;
+            }
             return `
                 <div class="north-shuoshuo-image-grid single">
-                    <img src="${images[0].url}" alt="${this.escapeHtml(images[0].alt)}" class="north-shuoshuo-grid-img" loading="lazy">
+                    <img src="${item.url}" alt="${this.escapeHtml(item.alt)}" class="north-shuoshuo-grid-img" loading="lazy">
                 </div>
             `;
         }
         
-        // 多张图片：九宫格布局
+        // 多张媒体：网格布局
         let gridClass = 'multi';
         if (count === 2) gridClass += ' grid-2';
         else if (count === 4) gridClass += ' grid-4';
         
         let html = `<div class="north-shuoshuo-image-grid ${gridClass}">`;
         
-        images.slice(0, 9).forEach((img, index) => {
-            html += `
-                <div class="north-shuoshuo-image-item">
-                    <img src="${img.url}" alt="${this.escapeHtml(img.alt)}" loading="lazy">
-                </div>
-            `;
+        mediaItems.slice(0, 9).forEach((item) => {
+            if (item.isVideo) {
+                html += `
+                    <div class="north-shuoshuo-image-item north-shuoshuo-image-item-video">
+                        <div class="north-shuoshuo-video-wrapper">
+                            <video class="north-shuoshuo-grid-video" src="${item.url}" preload="metadata" playsinline></video>
+                            <div class="north-shuoshuo-video-play-icon"></div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="north-shuoshuo-image-item">
+                        <img src="${item.url}" alt="${this.escapeHtml(item.alt)}" loading="lazy">
+                    </div>
+                `;
+            }
         });
         
         html += '</div>';
         return html;
+    }
+
+    // 渲染视频缩略图网格
+    renderVideoGrid(videos) {
+        const count = videos.length;
+        if (count === 0) return '';
+
+        let gridClass = 'single';
+        if (count === 2) gridClass = 'double';
+        else if (count === 3) gridClass = 'triple';
+        else if (count >= 4) gridClass = 'multi';
+
+        const htmlArr = videos.map(v => {
+            const fileName = v.alt || '视频';
+            return `<div class="north-shuoshuo-video-item">
+                <div class="north-shuoshuo-video-wrapper">
+                    <video class="north-shuoshuo-video-thumb" src="${v.url}" preload="metadata" playsinline muted></video>
+                    <div class="north-shuoshuo-video-play-btn"></div>
+                </div>
+                <div class="north-shuoshuo-video-name">${this.escapeHtml(fileName)}</div>
+            </div>`;
+        });
+
+        return `<div class="north-shuoshuo-video-grid ${gridClass}">${htmlArr.join('')}</div>`;
+    }
+
+    // 渲染文件附件列表
+    // 常用文件扩展名颜色映射
+    _fileExtColor(ext) {
+        const colors = {
+            PDF: '#e74c3c', DOC: '#2b5797', DOCX: '#2b5797',
+            XLS: '#217346', XLSX: '#217346', PPT: '#d04526', PPTX: '#d04526',
+            ZIP: '#9b59b6', RAR: '#9b59b6', '7Z': '#9b59b6', GZ: '#9b59b6',
+            TXT: '#95a5a6', MD: '#3498db', JSON: '#e67e22', XML: '#e67e22',
+            CSV: '#27ae60', LOG: '#636e72', EXE: '#e74c3c', DMG: '#636e72',
+            APK: '#27ae60', ISO: '#636e72', TORRENT: '#16a085',
+            HTML: '#e34f26', CSS: '#2965f1', JS: '#f7df1e', TS: '#3178c6',
+        };
+        return colors[ext] || '#1abc9c';
+    }
+
+    // 渲染文件附件列表（deepseek 药丸风格）
+    renderFileList(files) {
+        if (files.length === 0) return '';
+        const htmlArr = files.map(f => {
+            const ext = f.name.includes('.') ? f.name.split('.').pop().toUpperCase() : 'FILE';
+            const extColor = this._fileExtColor(ext);
+            const displayName = f.name.length > 18 ? f.name.slice(0, 15) + '...' : f.name;
+            return `<div class="north-shuoshuo-file-item" data-file-url="${f.url}">
+                <span class="north-shuoshuo-file-badge" style="background:${extColor}">${ext}</span>
+                <span class="north-shuoshuo-file-name" title="${this.escapeHtml(f.name)}">${this.escapeHtml(displayName)}</span>
+            </div>`;
+        });
+        return `<div class="north-shuoshuo-file-list">${htmlArr.join('')}</div>`;
     }
 
     formatContent(content) {
@@ -16832,10 +17204,6 @@ ipcRenderer.on('lumina-close', () => {
         overlay.innerHTML = `
             <div class="north-shuoshuo-image-preview-overlay"></div>
             <div class="north-shuoshuo-image-preview-toolbar">
-                <button class="north-shuoshuo-image-preview-copy">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                    复制视频
-                </button>
                 <div class="north-shuoshuo-image-preview-close">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </div>
@@ -16849,45 +17217,6 @@ ipcRenderer.on('lumina-close', () => {
         const video = overlay.querySelector('.north-shuoshuo-video-preview-video');
         const container = overlay.querySelector('.north-shuoshuo-image-preview-container');
         const closeBtn = overlay.querySelector('.north-shuoshuo-image-preview-close');
-        const copyBtn = overlay.querySelector('.north-shuoshuo-image-preview-copy');
-
-        const copyIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
-        const checkIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-        const originalCopyHTML = copyBtn.innerHTML;
-
-        copyBtn.addEventListener('click', async () => {
-            try {
-                const resp = await fetch(videoSrc);
-                const blob = await resp.blob();
-                const mime = blob.type || 'video/mp4';
-                await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
-                copyBtn.innerHTML = `${checkIcon} 已复制`;
-                copyBtn.classList.add('copied');
-                setTimeout(() => {
-                    copyBtn.innerHTML = originalCopyHTML;
-                    copyBtn.classList.remove('copied');
-                }, 2000);
-            } catch (err) {
-                try {
-                    // 降级：尝试以 base64 方式复制
-                    const resp2 = await fetch(videoSrc);
-                    const blob2 = await resp2.blob();
-                    const item = new ClipboardItem({ 'video/mp4': blob2 });
-                    await navigator.clipboard.write([item]);
-                    copyBtn.innerHTML = `${checkIcon} 已复制`;
-                    copyBtn.classList.add('copied');
-                    setTimeout(() => {
-                        copyBtn.innerHTML = originalCopyHTML;
-                        copyBtn.classList.remove('copied');
-                    }, 2000);
-                } catch (err2) {
-                    copyBtn.innerHTML = `${copyIcon} 复制失败`;
-                    setTimeout(() => {
-                        copyBtn.innerHTML = originalCopyHTML;
-                    }, 2000);
-                }
-            }
-        });
 
         // 关闭
         const closeModal = () => {
@@ -16996,8 +17325,11 @@ ipcRenderer.on('lumina-close', () => {
             if (nextBtn) nextBtn.classList.toggle('disabled', index === total - 1);
 
             hint.style.display = media.isVideo ? 'none' : '';
-            copyBtn.innerHTML = `${copyIconSVG} 复制${media.isVideo ? '视频' : '图片'}`;
-            copyBtn.classList.remove('copied');
+            copyBtn.style.display = media.isVideo ? 'none' : '';
+            if (!media.isVideo) {
+                copyBtn.innerHTML = `${copyIconSVG} 复制图片`;
+                copyBtn.classList.remove('copied');
+            }
 
             if (media.isVideo) {
                 container.className = 'north-shuoshuo-image-preview-container north-shuoshuo-video-preview-container';
@@ -17252,8 +17584,29 @@ ipcRenderer.on('lumina-close', () => {
                         setTimeout(() => { copyBtn.innerHTML = originalCopyHTML; }, 2000);
                     }
                 } else {
-                    copyBtn.innerHTML = `${copyIconSVG} 复制失败`;
-                    setTimeout(() => { copyBtn.innerHTML = originalCopyHTML; }, 2000);
+                    // 视频降级：截取当前视频帧为图片复制
+                    try {
+                        const videoEl = currentVideo;
+                        if (videoEl && videoEl.videoWidth > 0) {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = videoEl.videoWidth || 1280;
+                            canvas.height = videoEl.videoHeight || 720;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(videoEl, 0, 0);
+                            const pngBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                            if (pngBlob) {
+                                await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+                                copyBtn.innerHTML = `${checkIconSVG} 已复制`;
+                                copyBtn.classList.add('copied');
+                                setTimeout(() => { copyBtn.innerHTML = originalCopyHTML; copyBtn.classList.remove('copied'); }, 2000);
+                                return;
+                            }
+                        }
+                        throw new Error('capture frame failed');
+                    } catch (err3) {
+                        copyBtn.innerHTML = `${copyIconSVG} 复制失败`;
+                        setTimeout(() => { copyBtn.innerHTML = originalCopyHTML; }, 2000);
+                    }
                 }
             }
         });
@@ -17438,15 +17791,11 @@ ipcRenderer.on('lumina-close', () => {
             </div>
             <div class="north-shuoshuo-input-toolbar">
                 <div class="north-shuoshuo-toolbar-left">
-                    <span class="north-shuoshuo-toolbar-icon" data-action="tag" title="标签">#</span>
-                    <span class="north-shuoshuo-toolbar-icon" data-action="image" title="图片">${ICONS.image}</span>
-                    <span class="north-shuoshuo-toolbar-divider"></span>
-                    <span class="north-shuoshuo-toolbar-icon" data-action="ul" title="无序列表">
-                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
-                    </span>
-                    <span class="north-shuoshuo-toolbar-icon" data-action="ol" title="有序列表">
-                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2 6h2v2H2V6zm4 0h14v2H6V6zM2 11h2v2H2v-2zm4 0h14v2H6v-2zM2 16h2v2H2v-2zm4 0h14v2H6v-2z"/></svg>
-                    </span>
+                    <span class="north-shuoshuo-toolbar-icon" data-action="tag" title="标签"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconTag"></use></svg></span>
+                    <span class="north-shuoshuo-toolbar-icon" data-action="image" title="上传资源"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconImage"></use></svg></span>
+                    <span class="north-shuoshuo-toolbar-icon" data-action="task" title="任务列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconCheck"></use></svg></span>
+                    <span class="north-shuoshuo-toolbar-icon" data-action="ul" title="无序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconList"></use></svg></span>
+                    <span class="north-shuoshuo-toolbar-icon" data-action="ol" title="有序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconOrderedList"></use></svg></span>
                     <span class="north-shuoshuo-toolbar-icon" data-action="at" title="快速引用">${ICONS.at}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -22784,7 +23133,7 @@ ipcRenderer.on('lumina-close', () => {
         const item = this.shuoshuos.find(s => s.id === shuoshuoId);
         if (!item) return;
 
-        const { text, images } = this.extractContentAndImages(item.content || '');
+        const { text, images, videos } = this.extractContentAndImages(item.content || '');
 
         // 提取链接（支持 [title](url) 格式）
         let link = null;
@@ -22802,7 +23151,7 @@ ipcRenderer.on('lumina-close', () => {
         const newMoment = {
             id: this.getMomentNextId(),
             text: text || '',
-            images: images.map(img => img.url),
+            images: [...images.map(img => img.url), ...videos.map(v => v.url)],
             file: null,
             link: link,
             likes: [],
@@ -23530,6 +23879,9 @@ ipcRenderer.on('lumina-close', () => {
                     previewSrc = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(currentColor)}&content=${encodeURIComponent(currentContent)}`;
                 }
             }
+        } else if (currentIcon) {
+            // 原始 emoji 字符，预览直接显示
+            previewSrc = ''; // 标记为 emoji 模式
         } else {
             previewSrc = `/api/icon/getDynamicIcon?type=8&color=%232ecc71&content=${encodeURIComponent(tagName.substring(0, 2))}`;
         }
@@ -23541,7 +23893,10 @@ ipcRenderer.on('lumina-close', () => {
             <div class="north-shuoshuo-tag-rename-content">
                 <div class="north-shuoshuo-tag-rename-row">
                     <div class="north-shuoshuo-tag-rename-icon" data-tag="${tagName}">
-                        <img src="${previewSrc}" alt="icon">
+                        ${currentIcon && !currentIcon.startsWith('icon:') 
+                            ? `<span class="north-shuoshuo-tag-emoji" style="font-size:20px;">${currentIcon}</span>`
+                            : `<img src="${previewSrc}" alt="icon">`
+                        }
                     </div>
                     <input type="text" class="north-shuoshuo-tag-rename-input" value="${tagName}" placeholder="标签名称">
                     <button class="north-shuoshuo-tag-rename-save">保存</button>
@@ -23564,16 +23919,24 @@ ipcRenderer.on('lumina-close', () => {
                 if (newIcon && newIcon.startsWith('icon:')) {
                     const p = newIcon.substring(5).split(':');
                     if (p[0] === 'dynamic') {
-                        iconBox.querySelector('img').src = `/api/icon/getDynamicIcon?type=${p[1] || '1'}&color=%232ecc71`;
+                        iconBox.innerHTML = `<img src="/api/icon/getDynamicIcon?type=${p[1] || '1'}&color=%232ecc71" alt="icon">`;
                     } else if (p[0] === 'customEmoji') {
-                        iconBox.querySelector('img').src = `/emojis/${decodeURIComponent(p[1] || '')}`;
+                        iconBox.innerHTML = `<img src="/emojis/${decodeURIComponent(p[1] || '')}" alt="icon">`;
                     } else {
                         const c = this.convertHexToEmoji(decodeURIComponent(p[0] || ''));
                         const col = p[1] || '#2ecc71';
-                        iconBox.querySelector('img').src = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(col)}&content=${encodeURIComponent(c)}`;
+                        const isEmoji = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(c);
+                        if (isEmoji) {
+                            iconBox.innerHTML = `<img src="/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(col)}&content=${encodeURIComponent(c)}" alt="icon">`;
+                        } else {
+                            iconBox.innerHTML = `<img src="/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(col)}&content=${encodeURIComponent(c)}" alt="icon">`;
+                        }
                     }
+                } else if (newIcon) {
+                    // 原始 emoji 字符
+                    iconBox.innerHTML = `<span class="north-shuoshuo-tag-emoji" style="font-size:20px;">${newIcon}</span>`;
                 } else {
-                    iconBox.querySelector('img').src = `/api/icon/getDynamicIcon?type=8&color=%232ecc71&content=${encodeURIComponent(tagName.substring(0, 2))}`;
+                    iconBox.innerHTML = `<img src="/api/icon/getDynamicIcon?type=8&color=%232ecc71&content=${encodeURIComponent(tagName.substring(0, 2))}" alt="icon">`;
                 }
             });
         });
