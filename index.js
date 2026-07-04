@@ -24483,6 +24483,80 @@ ipcRenderer.on('lumina-close', () => {
         return this.md5(paramString + FLOMO_SECRET);
     }
 
+    // 通过思源内核 forwardProxy 代理请求 Flomo API，绕过浏览器 CORS 限制
+    async flomoProxyFetch(url, options = {}) {
+        // 方案一：浏览器直连（Flomo 已返回 Access-Control-Allow-Origin: *）
+        // 使用 form-urlencoded（简单 Content-Type，不会触发 CORS 预检）
+        try {
+            return await this._doBrowserDirectFetch(url, options);
+        } catch (e) {
+            console.warn('浏览器直连失败，回退到内核代理:', e.message);
+            // 方案二：内核代理（服务端出站，彻底绕过 CORS）
+            return await this._doKernelProxyFetch(url, options);
+        }
+    }
+    
+    // 内核代理：通过思源 /api/network/forwardProxy 转发
+    async _doKernelProxyFetch(url, options = {}) {
+        const proxyPayload = {
+            url: url,
+            method: options.method || 'GET',
+            headers: options.headers || {},
+            timeout: 120
+        };
+        if (options.body) {
+            proxyPayload.body = options.body;
+        }
+        
+        const token = window.siyuan?.config?.api?.token || '';
+        const proxyHeaders = { 'Content-Type': 'application/json' };
+        if (token) {
+            proxyHeaders['Authorization'] = `Token ${token}`;
+        }
+        
+        const proxyResponse = await fetch('/api/network/forwardProxy', {
+            method: 'POST',
+            headers: proxyHeaders,
+            body: JSON.stringify(proxyPayload)
+        });
+        
+        const proxyResult = await proxyResponse.json();
+        
+        // 调试：打印完整代理响应结构
+        console.debug('Flomo 代理响应:', JSON.stringify(proxyResult).substring(0, 500));
+        
+        if (proxyResult.code !== 0) {
+            throw new Error(proxyResult.msg || '代理请求失败');
+        }
+        
+        // proxyResult.data.body 是原始响应体（可能是 JSON 也可能不是）
+        const rawBody = proxyResult.data?.body || proxyResult.data || '';
+        console.debug('Flomo 原始响应体:', rawBody);
+        
+        // 尝试解析 JSON
+        try {
+            return JSON.parse(rawBody);
+        } catch {
+            // 非 JSON 响应（如限流时 flomo 返回纯文本）
+            // 构造一个和 Flomo API 格式一致的错误对象
+            return { code: -1, message: rawBody || '未知错误' };
+        }
+    }
+    
+    // 浏览器直连：用于内核代理走不通时回退（需要浏览器没有 CORS 限制的环境）
+    async _doBrowserDirectFetch(url, options = {}) {
+        const fetchOptions = {
+            method: options.method || 'GET',
+            headers: options.headers || {},
+        };
+        if (options.body) {
+            fetchOptions.body = options.body;
+        }
+        const response = await fetch(url, fetchOptions);
+        const data = await response.json();
+        return data;
+    }
+
     // Flomo 登录
     async flomoLogin(username, password) {
         try {
@@ -24499,16 +24573,20 @@ ipcRenderer.on('lumina-close', () => {
             
             params.sign = this.createFlomoSign(params);
             
-            const response = await fetch(`${FLOMO_API_BASE}/user/login_by_email`, {
+            // 构建 form-urlencoded body（简单 Content-Type，不触发 CORS 预检）
+            const formBody = Object.entries(params)
+                .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+                .join('&');
+            
+            const data = await this.flomoProxyFetch(`${FLOMO_API_BASE}/user/login_by_email`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json, text/plain, */*',
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 },
-                body: JSON.stringify(params)
+                body: formBody
             });
-            
-            const data = await response.json();
             
             if (data.code === 0 && data.data && data.data.access_token) {
                 this.flomoConfig.username = username;
@@ -24517,7 +24595,12 @@ ipcRenderer.on('lumina-close', () => {
                 await this.saveConfig();
                 return { success: true, message: '登录成功' };
             } else {
-                return { success: false, message: data.message || '登录失败' };
+                // 处理限流等情况（flomo 返回非 JSON 文本如 "gogogo"）
+                let errMsg = data.message || '登录失败';
+                if (errMsg === 'gogogo') {
+                    errMsg = '登录过于频繁，请等待几分钟后再试（Flomo 限流保护）';
+                }
+                return { success: false, message: errMsg };
             }
         } catch (e) {
             console.error('Flomo 登录失败:', e);
@@ -24566,7 +24649,8 @@ ipcRenderer.on('lumina-close', () => {
                 const url = new URL(`${FLOMO_API_BASE}/memo/updated`);
                 url.search = new URLSearchParams(params).toString();
                 
-                const response = await fetch(url, {
+                // 通过内核代理请求，避免 CORS 错误
+                const data = await this.flomoProxyFetch(url.toString(), {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${this.flomoConfig.accessToken}`,
@@ -24574,8 +24658,6 @@ ipcRenderer.on('lumina-close', () => {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                     }
                 });
-                
-                const data = await response.json();
                 
                 if (data.code !== 0) {
                     showMessage('同步失败: ' + (data.message || '未知错误'));
@@ -25892,9 +25974,24 @@ ipcRenderer.on('lumina-close', () => {
         // 处理双链引用 ((...))
         content = content.replace(/\(\(([^)]+)\)\)/g, '[[$1]]');
         
-        // 处理纯 URL 转为 Markdown 链接
+        // 先提取并本地化内容中已有的 Markdown 图片 ![](url)
+        const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+        const imgMatches = [];
+        let imgMatch;
+        while ((imgMatch = imgRegex.exec(content)) !== null) {
+            imgMatches.push({ fullMatch: imgMatch[0], alt: imgMatch[1], url: imgMatch[2] });
+        }
+        for (const { fullMatch, alt, url } of imgMatches) {
+            const fileName = url.split('/').pop() || 'image.png';
+            showMessage(`正在下载图片: ${fileName}...`);
+            const localPath = await this.downloadRemoteImage(url, fileName);
+            if (localPath) {
+                content = content.replace(fullMatch, `![${alt}](${localPath})`);
+            }
+        }
+        
+        // 处理纯 URL 转为 Markdown 链接（在图片处理之后，避免把已处理的图片 URL 再次转换）
         content = content.replace(/(?<![\[(])(https?:\/\/[^\s]+)/g, (url) => {
-            // 如果已经是 markdown 链接的一部分，不处理
             return `[${url}](${url})`;
         });
         
@@ -25913,8 +26010,8 @@ ipcRenderer.on('lumina-close', () => {
                 resourceUrl = `${this.memosConfig.host.replace(/\/$/, '')}/file/${resName}/${filename}`;
             }
             
-            if (isImage && !res.externalLink) {
-                // 下载图片到本地
+            if (isImage) {
+                // 下载所有图片到本地（包括外部图片）
                 showMessage(`正在下载图片: ${filename}...`);
                 const localPath = await this.downloadRemoteImage(resourceUrl, filename);
                 if (localPath) {
@@ -26069,6 +26166,13 @@ ipcRenderer.on('lumina-close', () => {
             
             if (allContent) {
                 await this.appendToDailyNote(allContent, new Date(dateStr).getTime());
+                
+                // 获取每日笔记文档 ID 并转换网络图片为本地资源（同 Flomo 同步逻辑）
+                const dateObj = new Date(dateStr);
+                const docId = await this.getDailyNoteDocId(dateObj);
+                if (docId) {
+                    await this.convertNetImagesToLocal(docId);
+                }
             }
         }
         
@@ -26108,6 +26212,8 @@ ipcRenderer.on('lumina-close', () => {
             
             const result = await response.json();
             if (result.code === 0) {
+                // 转换文档中的网络图片为本地资源
+                await this.convertNetImagesToLocal(docId);
                 showMessage(`成功追加 ${memos.length} 条 Memos 到指定文档`);
             } else {
                 showMessage('保存失败：' + (result.msg || '未知错误'));
