@@ -24700,6 +24700,10 @@ ipcRenderer.on('lumina-close', () => {
             }
             
             if (allMemos.length === 0) {
+                // 即使没有新笔记，也刷新说说视图缓存
+                if (this.flomoConfig.syncTarget === 'dailynote') {
+                    await this._invalidateSiyuanBoundCache();
+                }
                 showMessage('没有新的笔记需要同步');
                 return;
             }
@@ -25182,6 +25186,9 @@ ipcRenderer.on('lumina-close', () => {
 
         // 保存配置（持久化 LifeLog 同步记录）
         await this.saveConfig();
+
+        // 失效说说视图缓存，使刚同步到每日笔记的块能被说说视图识别
+        await this._invalidateSiyuanBoundCache();
 
         const syncTypeText = isFullSync ? '全量同步' : '同步';
         let msgParts = [];
@@ -25852,6 +25859,10 @@ ipcRenderer.on('lumina-close', () => {
             }
             
             if (memos.length === 0) {
+                // 即使没有新 Memos，也刷新说说视图缓存（让每日笔记中已有内容立即显示）
+                if (this.memosConfig.syncTarget === 'dailynote') {
+                    await this._invalidateSiyuanBoundCache();
+                }
                 showMessage('没有需要同步的 Memos');
                 return;
             }
@@ -26241,6 +26252,9 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
         
+        // 失效说说视图缓存，使刚同步到每日笔记的块能被说说视图识别
+        await this._invalidateSiyuanBoundCache();
+
         showMessage(`成功同步 ${addedCount} 条 Memos 到每日笔记`);
     }
 
