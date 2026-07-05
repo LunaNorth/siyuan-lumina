@@ -467,9 +467,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.dailyNoteIconColorWeekday = ''; // 工作日图标颜色
         this.dailyNoteIconColorWeekend = ''; // 周末图标颜色
         this.viewStyle = 'list'; // 'list' 平铺, 'card' 卡片
-        this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [] };
+        this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', syncNotebookId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [] };
         this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
-        this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncScope: 'public' };
+        this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncNotebookId: '', syncScope: 'public' };
         this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
         this.reviewHistory = {}; // {noteId: timestamp} 记录每条笔记上次回顾时间
         this.selectedDate = null;
@@ -15048,9 +15048,12 @@ ipcRenderer.on('lumina-close', () => {
         }).join('');
     }
 
-    async appendToDailyNote(content, timestamp) {
-        if (this.syncMode === 'dailynote' && !this.notebookId) return;
-        if (this.syncMode === 'doc' && !this.syncDocId) return;
+    async appendToDailyNote(content, timestamp, notebookId) {
+        const isExternalCall = !!notebookId;
+        if (!isExternalCall) {
+            if (this.syncMode === 'dailynote' && !this.notebookId) return;
+            if (this.syncMode === 'doc' && !this.syncDocId) return;
+        }
 
         try {
             const timeStr = this.formatTimeForDiary(timestamp);
@@ -15104,10 +15107,11 @@ ipcRenderer.on('lumina-close', () => {
 
             let blockId = null;
 
-            if (this.syncMode === 'dailynote') {
+            const useNotebookId = isExternalCall ? notebookId : null;
+            if (useNotebookId || this.syncMode === 'dailynote') {
                 // 每日笔记模式：按日期分发到对应日期的日记文档
                 const noteDate = new Date(timestamp);
-                const docId = await this.getOrCreateDailyNoteDoc(noteDate);
+                const docId = await this.getOrCreateDailyNoteDoc(noteDate, useNotebookId);
                 if (!docId) {
                     console.warn('无法获取或创建日记文档');
                     return null;
@@ -21914,7 +21918,7 @@ ipcRenderer.on('lumina-close', () => {
 
         if (flomoLogoutBtn) {
             flomoLogoutBtn.onclick = async () => {
-                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [] };
+                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', syncNotebookId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [] };
                 await this.saveConfig();
                 if (flomoUsername) flomoUsername.value = '';
                 if (flomoPassword) flomoPassword.value = '';
@@ -21935,6 +21939,12 @@ ipcRenderer.on('lumina-close', () => {
                 const targetDocIdInput = this.container.querySelector('#flomo-target-doc-id');
                 if (targetDocIdInput) {
                     this.flomoConfig.syncDocId = targetDocIdInput.value.trim();
+                }
+                
+                // 保存选择的笔记本 ID
+                const notebookSelect = this.container.querySelector('#flomo-notebook-select');
+                if (notebookSelect) {
+                    this.flomoConfig.syncNotebookId = notebookSelect.value || '';
                 }
                 
                 await this.saveConfig();
@@ -22290,7 +22300,7 @@ ipcRenderer.on('lumina-close', () => {
 
         if (clearBtn) {
             clearBtn.onclick = async () => {
-                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncScope: 'public' };
+                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncNotebookId: '', syncScope: 'public' };
                 await this.saveConfig();
                 if (hostInput) hostInput.value = '';
                 if (tokenInput) tokenInput.value = '';
@@ -22315,6 +22325,12 @@ ipcRenderer.on('lumina-close', () => {
                 const scopeRadio = this.container.querySelector('input[name="memos-scope"]:checked');
                 if (scopeRadio) {
                     this.memosConfig.syncScope = scopeRadio.value;
+                }
+                
+                // 保存选择的笔记本 ID
+                const notebookSelect = this.container.querySelector('#memos-notebook-select');
+                if (notebookSelect) {
+                    this.memosConfig.syncNotebookId = notebookSelect.value || '';
                 }
                 
                 await this.saveConfig();
@@ -22704,6 +22720,11 @@ ipcRenderer.on('lumina-close', () => {
                     html += `<option value="${nb.id}">${icon} ${nb.name}</option>`;
                 });
                 select.innerHTML = html;
+                
+                // 恢复已保存的笔记本选择
+                if (this.flomoConfig?.syncNotebookId && notebooks.some(nb => nb.id === this.flomoConfig.syncNotebookId)) {
+                    select.value = this.flomoConfig.syncNotebookId;
+                }
             }
         } catch (e) {
             console.error('加载笔记本列表失败', e);
@@ -23463,9 +23484,9 @@ ipcRenderer.on('lumina-close', () => {
                 this.dailyNoteIconColorWeekday = data.dailyNoteIconColorWeekday || '';
                 this.dailyNoteIconColorWeekend = data.dailyNoteIconColorWeekend || '';
                 this.viewStyle = data.viewStyle === 'card' ? 'card' : 'list';
-                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [], ...(data.flomoConfig || data.flomo || {}) };
+                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', syncNotebookId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [], ...(data.flomoConfig || data.flomo || {}) };
                 this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
-                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncScope: 'public', ...(data.memosConfig || data.memos || {}) };
+                this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncNotebookId: '', syncScope: 'public', ...(data.memosConfig || data.memos || {}) };
                 this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG, ...(data.reviewConfig || data.review || {}) };
                 // 优先保留已有的 tagIcons（防止意外覆盖），只有在 data.tagIcons 有值时才更新
                 if (data.tagIcons && Object.keys(data.tagIcons).length > 0) {
@@ -24700,12 +24721,14 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 下载远程图片并上传到本地 assets
-    async downloadRemoteImage(imageUrl, fileName) {
+    // extraHeaders: 可选的额外 HTTP 请求头（如用于 Memos 认证的 Authorization）
+    async downloadRemoteImage(imageUrl, fileName, extraHeaders = {}) {
         try {
             console.log(`开始下载图片: ${imageUrl}`);
             
-            // 下载远程图片
-            const response = await fetch(imageUrl);
+            // 下载远程图片（支持自定义请求头，用于需要认证的私有图片）
+            const fetchOptions = Object.keys(extraHeaders).length > 0 ? { headers: extraHeaders } : {};
+            const response = await fetch(imageUrl, fetchOptions);
             if (!response.ok) {
                 console.error(`下载图片失败: ${imageUrl}, 状态: ${response.status}`);
                 return null;
@@ -24963,12 +24986,14 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 获取每日笔记文档 ID
-    async getDailyNoteDocId(date) {
+    // notebookId: 可选，指定笔记本 ID，不传则使用 this.notebookId
+    async getDailyNoteDocId(date, notebookId) {
         try {
             const year = date.getFullYear();
             const month = (date.getMonth() + 1).toString().padStart(2, '0');
             const day = date.getDate().toString().padStart(2, '0');
             const hPath = `${year}/${month}/${day}`;
+            const nbId = notebookId || this.notebookId;
             
             const response = await fetch('/api/filetree/getIDsByHPath', {
                 method: 'POST',
@@ -24976,7 +25001,7 @@ ipcRenderer.on('lumina-close', () => {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    notebook: this.notebookId,
+                    notebook: nbId,
                     path: hPath
                 })
             });
@@ -25133,7 +25158,8 @@ ipcRenderer.on('lumina-close', () => {
                 const fullContent = tagStr ? `${tagStr}\n${contentTrimmed}` : contentTrimmed;
                 
                 // 每条笔记单独保存到每日笔记（使用引用块格式）
-                await this.appendToDailyNote(fullContent, memoTimestamp);
+                const flomoNbId = this.flomoConfig.syncNotebookId || '';
+                await this.appendToDailyNote(fullContent, memoTimestamp, flomoNbId);
                 normalCount++;
 
                 // 记录已同步的 slug
@@ -25147,7 +25173,8 @@ ipcRenderer.on('lumina-close', () => {
             // 获取每日笔记文档 ID 并转换图片
             const dateObj = new Date(date);
             showMessage(`正在转换 ${date} 的图片...`);
-            const docId = await this.getDailyNoteDocId(dateObj);
+            const flomoNbId = this.flomoConfig.syncNotebookId || '';
+            const docId = await this.getDailyNoteDocId(dateObj, flomoNbId);
             if (docId) {
                 await this.convertNetImagesToLocal(docId);
             }
@@ -25981,10 +26008,17 @@ ipcRenderer.on('lumina-close', () => {
         while ((imgMatch = imgRegex.exec(content)) !== null) {
             imgMatches.push({ fullMatch: imgMatch[0], alt: imgMatch[1], url: imgMatch[2] });
         }
+        // 构建 Memos 认证头（用于下载私有图片）
+        const memosAuthHeaders = {};
+        if (this.memosConfig?.token) {
+            memosAuthHeaders['Authorization'] = `Bearer ${this.memosConfig.token}`;
+        }
+        
         for (const { fullMatch, alt, url } of imgMatches) {
             const fileName = url.split('/').pop() || 'image.png';
             showMessage(`正在下载图片: ${fileName}...`);
-            const localPath = await this.downloadRemoteImage(url, fileName);
+            // 尝试携带 Memos 认证头下载（兼容私有实例上的图片）
+            const localPath = await this.downloadRemoteImage(url, fileName, memosAuthHeaders);
             if (localPath) {
                 content = content.replace(fullMatch, `![${alt}](${localPath})`);
             }
@@ -26012,8 +26046,13 @@ ipcRenderer.on('lumina-close', () => {
             
             if (isImage) {
                 // 下载所有图片到本地（包括外部图片）
+                // 对于 Memos 服务器上的资源，携带认证头下载
+                const imageAuthHeaders = {};
+                if (!res.externalLink && this.memosConfig?.token) {
+                    imageAuthHeaders['Authorization'] = `Bearer ${this.memosConfig.token}`;
+                }
                 showMessage(`正在下载图片: ${filename}...`);
-                const localPath = await this.downloadRemoteImage(resourceUrl, filename);
+                const localPath = await this.downloadRemoteImage(resourceUrl, filename, imageAuthHeaders);
                 if (localPath) {
                     resourceUrl = localPath;
                 }
@@ -26124,6 +26163,11 @@ ipcRenderer.on('lumina-close', () => {
                     html += `<option value="${nb.id}">${icon} ${nb.name}</option>`;
                 });
                 select.innerHTML = html;
+                
+                // 恢复已保存的笔记本选择
+                if (this.memosConfig?.syncNotebookId && notebooks.some(nb => nb.id === this.memosConfig.syncNotebookId)) {
+                    select.value = this.memosConfig.syncNotebookId;
+                }
             }
         } catch (e) {
             console.error('加载笔记本列表失败', e);
@@ -26153,30 +26197,51 @@ ipcRenderer.on('lumina-close', () => {
             memosByDate[dateStr].push(memo);
         }
         
-        // 处理每一天的 Memos
+        let addedCount = 0;
+        const memosNbId = this.memosConfig.syncNotebookId || '';
+        
+        // 逐条处理 Memos（参考 Flomo 按条单独保存，保留每条记录的具体时间）
         for (const [dateStr, dayMemos] of Object.entries(memosByDate)) {
-            let allContent = '';
+            // 按时间排序，从早到晚
+            dayMemos.sort((a, b) => {
+                const ta = (a.createdTs || 0) * 1000;
+                const tb = (b.createdTs || 0) * 1000;
+                return ta - tb;
+            });
             
             for (const memo of dayMemos) {
                 const content = memo.content || '';
                 const resources = memo.resourceList || memo.resources || memo.attachments || [];
                 let processedContent = await this.processMemosContent(content, resources);
-                allContent += `- ${processedContent.trim()}\n\n`;
+                
+                // 提取标签
+                const tags = this.extractTags(processedContent);
+                const tagStr = tags.length > 0 ? ' ' + tags.map(t => `#${t}`).join(' ') : '';
+                const fullContent = tagStr ? `${tagStr}\n${processedContent.trim()}` : processedContent.trim();
+                
+                // 每条笔记单独保存到每日笔记（使用引用块格式），保留具体时间戳
+                let memoTimestamp;
+                try {
+                    if (memo.createdTs) memoTimestamp = memo.createdTs * 1000;
+                    else if (memo.createTime) memoTimestamp = new Date(memo.createTime).getTime();
+                    else memoTimestamp = Date.now();
+                } catch (e) {
+                    memoTimestamp = Date.now();
+                }
+                
+                await this.appendToDailyNote(fullContent, memoTimestamp, memosNbId);
+                addedCount++;
             }
             
-            if (allContent) {
-                await this.appendToDailyNote(allContent, new Date(dateStr).getTime());
-                
-                // 获取每日笔记文档 ID 并转换网络图片为本地资源（同 Flomo 同步逻辑）
-                const dateObj = new Date(dateStr);
-                const docId = await this.getDailyNoteDocId(dateObj);
-                if (docId) {
-                    await this.convertNetImagesToLocal(docId);
-                }
+            // 获取每日笔记文档 ID 并转换网络图片为本地资源（同 Flomo 同步逻辑）
+            const dateObj = new Date(dateStr);
+            const docId = await this.getDailyNoteDocId(dateObj, memosNbId);
+            if (docId) {
+                await this.convertNetImagesToLocal(docId);
             }
         }
         
-        showMessage(`成功同步 ${memos.length} 条 Memos 到每日笔记`);
+        showMessage(`成功同步 ${addedCount} 条 Memos 到每日笔记`);
     }
 
     // 保存 Memos 到指定文档
