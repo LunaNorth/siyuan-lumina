@@ -475,6 +475,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.selectedDate = null;
         this.selectedTag = null;
         this.gallerySelectedTag = null;
+        this.galleryMediaType = 'image'; // 拾光视图媒体类型筛选：all/image/video/file，默认显示图片
         this.filterQuery = null; // 检索式筛选：no-tag, has-image, has-link, custom:xxx
         this.customQueries = []; // 自定义检索式列表
         this.queryVisibility = { 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, 'is-archived': false }; // 检索式可见性配置
@@ -9785,40 +9786,99 @@ ipcRenderer.on('lumina-close', () => {
 
         const allTags = new Set();
         const items = [];
+        let imageCount = 0, videoCount = 0, fileCount = 0;
+
         this.shuoshuos.forEach(s => {
-            const { text, images } = this.extractContentAndImages(s.content);
-            if (images.length > 0) {
-                let displayText = text;
-                if (!displayText.trim() && s.content) {
-                    displayText = s.content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '').trim();
-                }
-                // 移除内容中的标签（#标签名格式），避免重复显示
-                displayText = displayText.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim();
-                displayText = displayText.replace(/\n{3,}/g, '\n\n').trim();
-                const tags = this._getEffectiveTags(s);
-                tags.forEach(t => allTags.add(t));
-                images.forEach(img => {
-                    items.push({
-                        id: s.id,
-                        img: img,
-                        text: displayText || img.alt || '',
-                        created: s.created,
-                        tags: tags
-                    });
-                });
+            const { text, images, videos, files } = this.extractContentAndImages(s.content);
+            const hasMedia = images.length > 0 || videos.length > 0 || files.length > 0;
+            if (!hasMedia) return;
+
+            let displayText = text;
+            if (!displayText.trim() && s.content) {
+                displayText = s.content
+                    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '')
+                    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '')
+                    .trim();
             }
+            // 移除内容中的标签
+            displayText = displayText.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim();
+            displayText = displayText.replace(/\n{3,}/g, '\n\n').trim();
+
+            const tags = this._getEffectiveTags(s);
+            tags.forEach(t => allTags.add(t));
+
+            images.forEach(img => {
+                items.push({
+                    id: s.id,
+                    type: 'image',
+                    media: img,
+                    text: displayText || img.alt || '',
+                    created: s.created,
+                    tags: tags
+                });
+                imageCount++;
+            });
+            videos.forEach(video => {
+                items.push({
+                    id: s.id,
+                    type: 'video',
+                    media: video,
+                    text: displayText || video.alt || '',
+                    created: s.created,
+                    tags: tags
+                });
+                videoCount++;
+            });
+            files.forEach(file => {
+                items.push({
+                    id: s.id,
+                    type: 'file',
+                    media: file,
+                    text: displayText || file.name || '',
+                    created: s.created,
+                    tags: tags
+                });
+                fileCount++;
+            });
         });
 
         items.sort((a, b) => b.created - a.created);
 
+        // 构建总统计字符串
+        const countParts = [];
+        if (imageCount > 0) countParts.push(`${imageCount} 张照片`);
+        if (videoCount > 0) countParts.push(`${videoCount} 个视频`);
+        if (fileCount > 0) countParts.push(`${fileCount} 个文件`);
+        const countStr = countParts.join(' · ');
+
+        // 媒体类型筛选
+        const typeFiltered = this.galleryMediaType === 'all'
+            ? items
+            : items.filter(item => item.type === this.galleryMediaType);
+
         const sortedTags = [...allTags].sort((a, b) => a.localeCompare(b, 'zh'));
         const selectedTag = this.gallerySelectedTag;
         const filteredItems = selectedTag
-            ? items.filter(item => {
+            ? typeFiltered.filter(item => {
                 const tags = this._getEffectiveTags(item);
                 return tags.some(t => t === selectedTag || t.startsWith(selectedTag + '/'));
             })
-            : items;
+            : typeFiltered;
+
+        // 媒体类型筛选标签
+        const mediaTypeChips = [
+            { type: 'all', label: '全部' },
+            { type: 'image', label: '图片' },
+            { type: 'video', label: '视频' },
+            { type: 'file', label: '文件' }
+        ];
+        const mediaTypeHtml = `
+            <div class="north-shuoshuo-gallery-type-filters">
+                ${mediaTypeChips.map(chip => `
+                <span class="north-shuoshuo-gallery-type-chip ${this.galleryMediaType === chip.type ? 'active' : ''}" data-type="${chip.type}">${chip.label}</span>
+                `).join('')}
+            </div>
+        `;
 
         if (items.length === 0) {
             listEl.innerHTML = `
@@ -9828,7 +9888,7 @@ ipcRenderer.on('lumina-close', () => {
                         <circle cx="8.5" cy="8.5" r="1.5"/>
                         <polyline points="21 15 16 10 5 21"/>
                     </svg>
-                    <p>暂无照片，在说说中添加图片后就会出现在这里</p>
+                    <p>暂无内容，在说说中添加图片、视频或文件后就会出现在这里</p>
                 </div>
             `;
             return;
@@ -9840,8 +9900,9 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="north-shuoshuo-gallery-header-top">
                         <div class="north-shuoshuo-gallery-header-title">拾光</div>
                         <div class="north-shuoshuo-gallery-header-meta">
-                            <span class="north-shuoshuo-gallery-header-count">${items.length} 张照片</span>
+                            <span class="north-shuoshuo-gallery-header-count">${countStr}</span>
                         </div>
+                        ${mediaTypeHtml}
                     </div>
                     ${sortedTags.length > 0 ? `
                     <div class="north-shuoshuo-gallery-tags">
@@ -9858,7 +9919,7 @@ ipcRenderer.on('lumina-close', () => {
                         <circle cx="8.5" cy="8.5" r="1.5"/>
                         <polyline points="21 15 16 10 5 21"/>
                     </svg>
-                    <p>该标签下暂无照片</p>
+                    <p>该条件下暂无内容</p>
                 </div>
             `;
             this._bindGalleryEvents(listEl, filteredItems);
@@ -9879,8 +9940,9 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="north-shuoshuo-gallery-header-meta">
                         <span class="north-shuoshuo-gallery-header-date">${dateRangeStr}</span>
                         <span class="north-shuoshuo-gallery-header-dot">·</span>
-                        <span class="north-shuoshuo-gallery-header-count">${filteredItems.length} 张照片</span>
+                        <span class="north-shuoshuo-gallery-header-count">${countStr}</span>
                     </div>
+                    ${mediaTypeHtml}
                 </div>
                 ${sortedTags.length > 0 ? `
                 <div class="north-shuoshuo-gallery-tags">
@@ -9895,18 +9957,43 @@ ipcRenderer.on('lumina-close', () => {
                 ${filteredItems.map(item => {
                     const date = new Date(item.created);
                     const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-                    return `
-                        <div class="north-shuoshuo-gallery-item" data-id="${item.id}">
-                            <div class="north-shuoshuo-gallery-img-wrapper">
-                                <img src="${item.img.url}" alt="${this.escapeHtml(item.img.alt)}" loading="lazy">
+                    if (item.type === 'video') {
+                        return `<div class="north-shuoshuo-gallery-item" data-id="${item.id}">
+                            <div class="north-shuoshuo-gallery-video-wrapper">
+                                <video src="${item.media.url}" preload="metadata" playsinline></video>
+                                <div class="north-shuoshuo-gallery-video-play-icon">
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                </div>
                                 <div class="north-shuoshuo-gallery-overlay">
                                     ${item.tags && item.tags.length > 0 ? `<div class="north-shuoshuo-gallery-overlay-tags">${item.tags.map(t => this.escapeHtml(t)).join(' ')}</div>` : ''}
                                     <div class="north-shuoshuo-gallery-overlay-text">${this.escapeHtml(item.text || '')}</div>
                                     <div class="north-shuoshuo-gallery-overlay-date">${dateStr}</div>
                                 </div>
                             </div>
+                        </div>`;
+                    }
+                    if (item.type === 'file') {
+                        const ext = item.media.name.includes('.') ? item.media.name.split('.').pop().toUpperCase() : 'FILE';
+                        const extColor = this._fileExtColor(ext);
+                        const displayName = item.media.name.length > 24 ? item.media.name.slice(0, 21) + '...' : item.media.name;
+                        return `<div class="north-shuoshuo-gallery-item" data-id="${item.id}">
+                            <div class="north-shuoshuo-gallery-file-wrapper" title="${this.escapeHtml(item.media.name)}">
+                                <span class="north-shuoshuo-file-badge" style="background:${extColor}">${ext}</span>
+                                <span class="north-shuoshuo-file-name">${this.escapeHtml(displayName)}</span>
+                            </div>
+                        </div>`;
+                    }
+                    // 默认：图片
+                    return `<div class="north-shuoshuo-gallery-item" data-id="${item.id}">
+                        <div class="north-shuoshuo-gallery-img-wrapper">
+                            <img src="${item.media.url}" alt="${this.escapeHtml(item.media.alt)}" loading="lazy">
+                            <div class="north-shuoshuo-gallery-overlay">
+                                ${item.tags && item.tags.length > 0 ? `<div class="north-shuoshuo-gallery-overlay-tags">${item.tags.map(t => this.escapeHtml(t)).join(' ')}</div>` : ''}
+                                <div class="north-shuoshuo-gallery-overlay-text">${this.escapeHtml(item.text || '')}</div>
+                                <div class="north-shuoshuo-gallery-overlay-date">${dateStr}</div>
+                            </div>
                         </div>
-                    `;
+                    </div>`;
                 }).join('')}
             </div>
         `;
@@ -9915,6 +10002,15 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     _bindGalleryEvents(listEl, filteredItems) {
+        // 媒体类型筛选
+        listEl.querySelectorAll('.north-shuoshuo-gallery-type-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.galleryMediaType = chip.dataset.type;
+                this.renderGallery();
+            });
+        });
+
         listEl.querySelectorAll('.north-shuoshuo-gallery-tag-chip').forEach(chip => {
             chip.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -14272,10 +14368,20 @@ ipcRenderer.on('lumina-close', () => {
                         listEl.insertAdjacentHTML('afterbegin', cardHtml);
                     }
                 } else {
-                    // 平铺布局：在日期分组后插入
+                    // 平铺布局：确保新卡片插入到正确的日期分组
                     const firstGroup = listEl.querySelector('.north-shuoshuo-date-group');
                     if (firstGroup) {
-                        firstGroup.insertAdjacentHTML('afterend', cardHtml);
+                        const todayKey = this.formatDateKey(new Date());
+                        // 检查第一个分组是不是"今天"
+                        const firstGroupIsToday = firstGroup.textContent.startsWith('今天');
+                        if (firstGroupIsToday) {
+                            // 第一个分组就是今天，直接插入到分组标题后
+                            firstGroup.insertAdjacentHTML('afterend', cardHtml);
+                        } else {
+                            // 第一个分组不是今天，需要在最前面创建新的"今天"分组
+                            const title = this.getDateGroupTitle(todayKey);
+                            listEl.insertAdjacentHTML('afterbegin', `<div class="north-shuoshuo-date-group">${title}</div>${cardHtml}`);
+                        }
                     } else {
                         const todayKey = this.formatDateKey(new Date(shuoshuo.created));
                         const title = this.getDateGroupTitle(todayKey);
