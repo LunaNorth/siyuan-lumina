@@ -467,6 +467,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.dailyNoteIconColorWeekday = ''; // 工作日图标颜色
         this.dailyNoteIconColorWeekend = ''; // 周末图标颜色
         this.viewStyle = 'list'; // 'list' 平铺, 'card' 卡片
+        this.inputPosition = 'top'; // 'top' 顶部, 'bottom' 底部
         this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', syncNotebookId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [] };
         this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '' };
         this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncNotebookId: '', syncScope: 'public' };
@@ -1045,7 +1046,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         const sorted = [...filtered].sort((a, b) => {
             if (a.pinned && !b.pinned) return -1;
             if (!a.pinned && b.pinned) return 1;
-            return b.created - a.created;
+            return this.isInputAtBottom() ? a.created - b.created : b.created - a.created;
         });
 
         return sorted;
@@ -1056,7 +1057,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     _buildNoteListHTML(sorted) {
         const total = sorted.length;
         const displayLimit = this._notesDisplayLimit;
-        const displayItems = sorted.slice(0, displayLimit);
+        const displayItems = this.isInputAtBottom()
+            ? sorted.slice(-displayLimit)
+            : sorted.slice(0, displayLimit);
         const hasMore = total > displayLimit;
 
         if (displayItems.length === 0) {
@@ -1068,7 +1071,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             } else if (this.currentMainView === 'week') {
                 emptyMsg = '本周还没有记录，快去写下第一条想法吧~';
             } else {
-                emptyMsg = '还没有笔记，在上方输入框写下第一条想法吧~';
+                emptyMsg = `还没有笔记，在${this.isInputAtBottom() ? '下方' : '上方'}输入框写下第一条想法吧~`;
             }
             return {
                 html: `<div class="north-shuoshuo-note-card" style="text-align: center; color: #999; padding: 40px;">${emptyMsg}</div>`,
@@ -1087,8 +1090,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             };
         }
 
+        const loadMoreHtml = hasMore ? `<div class="north-shuoshuo-load-more" id="notes-load-more">
+                <button class="north-shuoshuo-load-more-btn" data-notes-load-more>加载更多（${total - displayLimit} 条）</button>
+            </div>` : '';
+
         // 平铺布局：按日期分组
-        const groups = this.groupNotesByDate(displayItems);
+        const groups = this.groupNotesByDate(displayItems, !this.isInputAtBottom());
         let html = '';
 
         if (this.currentMainView === 'week') {
@@ -1106,6 +1113,10 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             `;
         }
 
+        if (this.isInputAtBottom()) {
+            html += loadMoreHtml;
+        }
+
         // 获取搜索文本（传递给卡片渲染用于搜索高亮）
         const searchText = this._getSearchText();
         const cardOptions = searchText ? { searchText } : {};
@@ -1115,11 +1126,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             html += notes.map(item => this.renderNoteCard(item, cardOptions)).join('');
         }
 
-        // 有更多数据时添加"加载更多"按钮
-        if (hasMore) {
-            html += `<div class="north-shuoshuo-load-more" id="notes-load-more">
-                <button class="north-shuoshuo-load-more-btn" data-notes-load-more>加载更多（${total - displayLimit} 条）</button>
-            </div>`;
+        // 顶部输入框模式将加载更多放在列表末尾。
+        if (!this.isInputAtBottom()) {
+            html += loadMoreHtml;
         }
 
         return { html, total, displayed: displayItems.length };
@@ -3261,6 +3270,7 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                             <button class="mobile-search-close" id="shuoshuo-mobile-search-close">取消</button>
                         </div>
+                        <div class="north-shuoshuo-notes-list" id="shuoshuo-notes-list"></div>
                         <div class="north-shuoshuo-input-area" id="shuoshuo-input-area">
                             <div class="north-shuoshuo-input-box" id="shuoshuo-input-box">
                                 <div class="north-shuoshuo-input-wrapper">
@@ -3280,8 +3290,6 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                             <div class="north-shuoshuo-lifelog-input-types" id="lifelog-input-types" style="display:none;"></div>
                         </div>
-
-                        <div class="north-shuoshuo-notes-list" id="shuoshuo-notes-list"></div>
                         <div class="north-shuoshuo-mobile-tabbar">
                             <button class="mobile-tab-item active" data-view="notes">
                                 <svg class="icon"><use xlink:href="#iconSparkles"></use></svg>
@@ -3397,6 +3405,19 @@ ipcRenderer.on('lumina-close', () => {
                                         <select id="view-style-select" class="north-shuoshuo-select-field">
                                             <option value="list" ${this.viewStyle === 'list' ? 'selected' : ''}>平铺布局</option>
                                             <option value="card" ${this.viewStyle === 'card' ? 'selected' : ''}>卡片布局</option>
+                                        </select>
+                                        <span class="north-shuoshuo-select-arrow">▼</span>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>输入框位置</h4>
+                                        <p>顶部模式按最新优先排列；底部模式按时间顺序排列，最新笔记紧邻输入框。</p>
+                                    </div>
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 160px;">
+                                        <select id="input-position-select" class="north-shuoshuo-select-field">
+                                            <option value="top" ${this.inputPosition === 'top' ? 'selected' : ''}>顶部</option>
+                                            <option value="bottom" ${this.inputPosition === 'bottom' ? 'selected' : ''}>底部</option>
                                         </select>
                                         <span class="north-shuoshuo-select-arrow">▼</span>
                                     </div>
@@ -4699,6 +4720,7 @@ ipcRenderer.on('lumina-close', () => {
 
         // 标记当前视图为 notes（供 _syncBoundBlockAttr 等函数检测）
         this.currentMainView = 'notes';
+        this.applyInputPosition();
         if (!this._skipInitialRender) {
             // 先从思源加载最新绑定数据，再渲染
             this.loadShuoshuos().then(() => {
@@ -12043,6 +12065,7 @@ ipcRenderer.on('lumina-close', () => {
         const input = this.container.querySelector('#shuoshuo-input');
         const inputBox = this.container.querySelector('#shuoshuo-input-box');
         const sendBtn = this.container.querySelector('#shuoshuo-send');
+        const ownerContainer = this.container;
 
         // 输入框聚焦效?
         if (input && inputBox) {
@@ -12064,13 +12087,17 @@ ipcRenderer.on('lumina-close', () => {
         // 输入监听，控制发送按钮，并自动转换列表符?
         if (input && sendBtn) {
             const autoResize = () => {
-                // LifeLog 侧边栏 Dock 不做自动扩展，保持固定高度
-                if (this.container?.closest?.('.north-shuoshuo-lifelog-dock-view')) return;
-                input.style.height = 'auto';
-                const minH = this.currentMainView === 'lifelog' ? 30 : 60;
-                const newHeight = Math.max(minH, input.scrollHeight);
-                const maxHeight = 300; // 与CSS中的max-height保持一致
-                input.style.height = Math.min(newHeight, maxHeight) + 'px';
+                if (!document.body.contains(input)) return;
+                const isLifeLog = ownerContainer.closest?.('.north-shuoshuo-lifelog-dock-view')
+                    || this.getContainerMainView(ownerContainer) === 'lifelog';
+                const minHeight = isLifeLog ? 30 : 60;
+                const maxHeight = 240;
+
+                // 从零高度重新测量，避免 textarea 的既有内联高度影响 scrollHeight。
+                input.style.height = '0px';
+                const contentHeight = Math.max(minHeight, input.scrollHeight);
+                input.style.height = `${Math.min(contentHeight, maxHeight)}px`;
+                input.style.overflowY = contentHeight > maxHeight ? 'auto' : 'hidden';
             };
             input.addEventListener('input', () => {
                 if (input.value.trim().length > 0) {
@@ -13429,11 +13456,7 @@ ipcRenderer.on('lumina-close', () => {
             <div class="north-shuoshuo-mention-picker-list"></div>
         `;
         
-        // 定位到输入框下方
-        const rect = input.getBoundingClientRect();
         picker.style.position = 'fixed';
-        picker.style.left = `${rect.left + 20}px`;
-        picker.style.top = `${rect.bottom + 8}px`;
         picker.style.zIndex = '99999';
         
         document.body.appendChild(picker);
@@ -13441,6 +13464,7 @@ ipcRenderer.on('lumina-close', () => {
         const listEl = picker.querySelector('.north-shuoshuo-mention-picker-list');
         const searchText = input.value.substring(triggerPos + 1, input.selectionStart);
         this.filterMentionPicker(listEl, searchText, input);
+        this.positionInputPicker(picker, input, '#toolbar-at, [data-action="at"]', '.north-shuoshuo-mention-picker-list');
         
         // 点击外部关闭
         const closeOnClickOutside = (e) => {
@@ -13452,6 +13476,30 @@ ipcRenderer.on('lumina-close', () => {
         setTimeout(() => {
             document.addEventListener('click', closeOnClickOutside);
         }, 0);
+    }
+
+    // 让输入框工具栏浮层根据输入框位置选择展开方向，并始终留在视口内。
+    positionInputPicker(picker, input, triggerSelector, listSelector) {
+        const toolbar = input.closest('.north-shuoshuo-input-box, .north-shuoshuo-inline-edit, #memoCommentBox');
+        const trigger = toolbar?.querySelector(triggerSelector);
+        const rect = (trigger || input).getBoundingClientRect();
+        const padding = 8;
+        const gap = 8;
+        const spaceAbove = rect.top - gap - padding;
+        const spaceBelow = window.innerHeight - rect.bottom - gap - padding;
+        const preferAbove = this.isInputAtBottom();
+        const openAbove = preferAbove ? spaceAbove >= 80 || spaceAbove > spaceBelow : spaceBelow < 80 && spaceAbove > spaceBelow;
+        const availableHeight = openAbove ? spaceAbove : spaceBelow;
+        const list = picker.querySelector(listSelector);
+
+        if (list && availableHeight < picker.offsetHeight) {
+            const chromeHeight = picker.offsetHeight - list.offsetHeight;
+            list.style.maxHeight = `${Math.max(80, availableHeight - chromeHeight)}px`;
+        }
+
+        const maxLeft = Math.max(padding, window.innerWidth - picker.offsetWidth - padding);
+        picker.style.left = `${Math.min(Math.max(padding, rect.left), maxLeft)}px`;
+        picker.style.top = `${Math.max(padding, openAbove ? rect.top - gap - picker.offsetHeight : rect.bottom + gap)}px`;
     }
 
     // 过滤并渲染 @ 引用列表
@@ -13868,11 +13916,7 @@ ipcRenderer.on('lumina-close', () => {
             </div>
         `;
 
-        // 定位到输入框下方
-        const rect = input.getBoundingClientRect();
         picker.style.position = 'fixed';
-        picker.style.left = `${rect.left + 20}px`;
-        picker.style.top = `${rect.bottom + 8}px`;
         picker.style.zIndex = '99999';
 
         document.body.appendChild(picker);
@@ -13880,6 +13924,8 @@ ipcRenderer.on('lumina-close', () => {
         // 获取元素引用
         const pickerInput = picker.querySelector('.north-shuoshuo-tag-picker-input');
         const pickerList = picker.querySelector('.north-shuoshuo-tag-picker-list');
+
+        this.positionInputPicker(picker, input, '#toolbar-tag, [data-action="tag"]', '.north-shuoshuo-tag-picker-list');
         
         // 聚焦输入框
         pickerInput.focus();
@@ -14349,6 +14395,14 @@ ipcRenderer.on('lumina-close', () => {
 
                 const listEl = container.querySelector('#shuoshuo-notes-list');
                 if (!listEl) continue;
+
+                // 底部输入框模式按正序展示，发布后重新生成当前页，确保新笔记贴近输入框。
+                if (this.isInputAtBottom()) {
+                    this._withContainerContext(container, view, () => {
+                        this._renderNoteListIncremental(this._getFilteredAndSortedNotes());
+                    });
+                    continue;
+                }
 
                 // 如果有空状态提示（还没有笔记），先清除它
                 const hasRealCards = listEl.querySelector('.north-shuoshuo-note-card[data-id]');
@@ -15907,7 +15961,7 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 按日期分组笔记
-    groupNotesByDate(notes) {
+    groupNotesByDate(notes, descending = true) {
         const groups = new Map();
         for (const note of notes) {
             const dateKey = this.formatDateKey(new Date(note.created));
@@ -15916,8 +15970,9 @@ ipcRenderer.on('lumina-close', () => {
             }
             groups.get(dateKey).push(note);
         }
-        // 按日期倒序排列
-        return new Map([...groups.entries()].sort((a, b) => b[0].localeCompare(a[0])));
+        return new Map([...groups.entries()].sort((a, b) => descending
+            ? b[0].localeCompare(a[0])
+            : a[0].localeCompare(b[0])));
     }
 
     // 获取日期分组的友好标题
@@ -20986,6 +21041,16 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        const inputPositionSelect = this.container.querySelector('#input-position-select');
+        if (inputPositionSelect) {
+            inputPositionSelect.addEventListener('change', async () => {
+                this.inputPosition = inputPositionSelect.value === 'bottom' ? 'bottom' : 'top';
+                this.applyInputPosition();
+                await this.saveConfig();
+                this.refreshMountedShuoshuoViews();
+            });
+        }
+
         // 回车直接提交
         const enterSubmitSwitch = this.container.querySelector('#settings-enter-submit-switch');
         if (enterSubmitSwitch) {
@@ -23590,6 +23655,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.dailyNoteIconColorWeekday = data.dailyNoteIconColorWeekday || '';
                 this.dailyNoteIconColorWeekend = data.dailyNoteIconColorWeekend || '';
                 this.viewStyle = data.viewStyle === 'card' ? 'card' : 'list';
+                this.inputPosition = data.inputPosition === 'bottom' ? 'bottom' : 'top';
                 this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncDocId: '', syncNotebookId: '', flomoLifeLogAutoClassify: false, flomoSyncedSlugs: [], ...(data.flomoConfig || data.flomo || {}) };
                 this.writeathonConfig = { token: '', userId: '', spaceId: '', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', ...(data.writeathonConfig || data.writeathon || {}) };
                 this.memosConfig = { host: '', token: '', version: 'v2', lastSyncTime: '', syncTarget: 'shuoshuo', syncDocId: '', syncNotebookId: '', syncScope: 'public', ...(data.memosConfig || data.memos || {}) };
@@ -23636,6 +23702,8 @@ ipcRenderer.on('lumina-close', () => {
                 this.reviewHistory = data.reviewHistory || {};
                 this.customQueries = Array.isArray(data.customQueries) ? data.customQueries : [];
                 this.tagBlocklist = Array.isArray(data.tagBlocklist) ? data.tagBlocklist : [];
+                this.applyInputPosition();
+                this.refreshMountedShuoshuoViews();
             } catch (e) {
                 console.warn("加载配置失败", e);
             }
@@ -23703,6 +23771,7 @@ ipcRenderer.on('lumina-close', () => {
                     dailyNoteIconColorWeekday: this.dailyNoteIconColorWeekday,
                     dailyNoteIconColorWeekend: this.dailyNoteIconColorWeekend,
                     viewStyle: this.viewStyle,
+                    inputPosition: this.inputPosition,
                     flomoConfig: this.flomoConfig,
                     writeathonConfig: this.writeathonConfig,
                     memosConfig: this.memosConfig,
@@ -23781,6 +23850,21 @@ ipcRenderer.on('lumina-close', () => {
                 return;
             }
         }
+    }
+
+    isInputAtBottom() {
+        return this.inputPosition === 'bottom';
+    }
+
+    applyInputPosition() {
+        const containers = this.getMountedLuminaContainers();
+        if (!containers.length && this.container) containers.push(this.container);
+        containers.forEach(container => {
+            if (!(container instanceof HTMLElement)) return;
+            const isBottom = this.isInputAtBottom();
+            container.classList.toggle('north-shuoshuo-input-position-bottom', isBottom);
+            container.classList.toggle('north-shuoshuo-input-position-top', !isBottom);
+        });
     }
 
     // 应用紧凑模式

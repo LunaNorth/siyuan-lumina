@@ -1309,7 +1309,23 @@
 /* 输入区域 */
 .north-shuoshuo-input-area {
     padding: 8px 30px 20px;
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+    flex-shrink: 0;
+}
+
+/* 输入框位置由设置项控制：顶部向下扩展，底部向上占用列表空间。 */
+.north-shuoshuo-input-position-top .north-shuoshuo-input-area {
+    order: -1;
+    border-top: none !important;
     border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+}
+
+.north-shuoshuo-compact.north-shuoshuo-input-position-top .north-shuoshuo-input-area {
+    border-bottom: none !important;
+}
+
+.north-shuoshuo-input-position-bottom .north-shuoshuo-input-area {
+    order: 0;
 }
 
 .north-shuoshuo-input-box {
@@ -1471,7 +1487,7 @@
 .north-shuoshuo-input-field {
     width: 100%;
     min-height: 60px;
-    max-height: 300px;
+    max-height: 240px;
     border: none;
     outline: none;
     font-size: var(--shuoshuo-content-font-size, 14.5px);
@@ -1901,7 +1917,7 @@
 /* Lumina: 紧凑模式（说说 + LifeLog 共用） */
 .north-shuoshuo-compact .north-shuoshuo-input-area,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-input-area {
-    border-bottom: none !important;
+    border-top: none !important;
 }
 
 .north-shuoshuo-compact .north-shuoshuo-date-group,
@@ -2786,6 +2802,11 @@ body.dark .north-shuoshuo-image-item-video,
 }
 
 @media (max-width: 768px) {
+    .north-shuoshuo-input-position-top .north-shuoshuo-mobile-header,
+    .north-shuoshuo-input-position-top .north-shuoshuo-mobile-search-bar {
+        order: -2;
+    }
+
     .north-shuoshuo-notes-list.card-layout {
         flex-direction: column;
         gap: 12px;
@@ -6782,7 +6803,7 @@ body.dark .north-shuoshuo-image-item-video,
 }
 
 .theme-original .north-shuoshuo-input-area {
-    border-bottom: 1px solid #f0f0f0;
+    border-top: 1px solid #f0f0f0;
 }
 
 .theme-original .north-shuoshuo-input-box {
@@ -8845,7 +8866,7 @@ body.dark .north-shuoshuo-image-item-video,
 }
 
 .theme-morandi .north-shuoshuo-input-area {
-    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     background-color: transparent;
 }
 
