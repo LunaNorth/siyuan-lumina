@@ -173,6 +173,53 @@ const ICONS = {
     fileFilled: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg>`
 };
 
+// ============ 左侧栏导航图标自定义 ============
+// 各视图在左侧栏（.north-shuoshuo-sidebar）中的默认图标（SVG）
+const SIDEBAR_DEFAULT_ICONS = {
+    'notes': '<svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>',
+    'gallery': '<svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>',
+    'table': '<svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v18H3V3zm2 2v5h14V5H5zm14 7H5v5h14v-5zM5 10h4v2H5v-2zm6 0h4v2h-4v-2z"/></svg>',
+    'stats': '<svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M341.333333 938.666667H128a42.666667 42.666667 0 0 1-42.666667-42.666667V405.333333a42.666667 42.666667 0 0 1 42.666667-42.666666h213.333333V128a42.666667 42.666667 0 0 1 42.666667-42.666667h256a42.666667 42.666667 0 0 1 42.666667 42.666667v405.333333h213.333333a42.666667 42.666667 0 0 1 42.56 39.466667L938.666667 576v320a42.666667 42.666667 0 0 1-39.466667 42.56L896 938.666667H341.333333z m0-512H149.333333v448h192V426.666667z m533.333334 170.666666h-192v277.333334h192V597.333333zM618.666667 149.333333H405.333333v725.333334h213.333334V149.333333z"/></svg>',
+    'moments': '<svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>',
+    'lifelog': '<svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm1 2v16h12V4H6z"/><path d="M7 7h10v2H7zM7 11h10v2H7zM7 15h6v2H7z"/></svg>',
+    'lifelog-stats': '<svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M128 128h768v85.333H128V128z m0 170.667h768V896H128V298.667z m85.333 85.333v426.667h597.334V384H213.333z m85.334 85.333h128v256H298.667V469.333z m170.666 0h128v256h-128V469.333z m170.667 0h128v256h-128V469.333z"/></svg>',
+    'bookshelf': '<svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 16H8c-.55 0-1-.45-1-1V6h10v13z"/></svg>',
+    'settings': '<svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L3.16 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>'
+};
+
+// 左侧栏各视图的显示名称（用于“轻语设置”列表）
+const SIDEBAR_VIEWS = [
+    { key: 'notes', name: '说说', always: true },
+    { key: 'gallery', name: '拾光', always: true },
+    { key: 'table', name: '表格', always: true },
+    { key: 'stats', name: '统计', always: true },
+    { key: 'moments', name: '朋友圈' },
+    { key: 'lifelog', name: 'LifeLog' },
+    { key: 'lifelog-stats', name: 'LifeLog统计' },
+    { key: 'bookshelf', name: '图书' },
+    { key: 'settings', name: '设置', always: true }
+];
+
+// 思源内置图标（iconfont 符号图标），用于“更换图标”选择器与检索式图标
+const SIYUAN_BUILTIN_ICONS = [
+    'iconStar', 'iconLanguage', 'iconPanelLeft', 'iconPanelBottom', 'iconPanelRight', 'iconPanelLeftDashed', 'iconPanelBottomDashed', 'iconPanelRightDashed', 'iconSelectAll', 'iconUploadAssets', 'iconDownloadAssets', 'iconKeepContent',
+    'iconFullWidth', 'iconTurnInto', 'iconGlobe', 'iconPublish', 'iconDocx', 'iconSearchAsset', 'iconAddDoc', 'iconExpandLevel', 'iconWidth', 'iconAlignSettings', 'iconFoldUnFold', 'iconJumpTo',
+    'iconEnterBack', 'iconEnter', 'iconRecentDocs', 'iconOutline', 'iconCallout', 'iconInclude', 'iconGroups', 'iconCamera', 'iconGallery', 'iconBoard', 'iconTerminal', 'iconSoftWrap',
+    'iconLink', 'iconLinkOff', 'iconImgDown', 'iconArrowDown', 'iconUnpin', 'iconPin', 'iconOpen', 'iconKey', 'iconClock', 'iconAttr', 'iconPaste', 'iconCopy',
+    'iconPhone', 'iconEmail', 'iconDrag', 'iconCalendar', 'iconNumber', 'iconIndeterminateCheck', 'iconPlugin', 'iconUsers', 'iconZoomIn', 'iconZoomOut', 'iconFeedback', 'iconCloseRound',
+    'iconLayout', 'iconFullscreenExit', 'iconFullscreen', 'iconScrollHoriz', 'iconScrollVert', 'iconSparkles', 'iconDatabase', 'iconBIU', 'iconKeyboardHide', 'iconWorkspace', 'iconCloud', 'iconCloudOff',
+    'iconCloudError', 'iconCloudSucc', 'iconLiandi', 'iconRiffCard', 'iconEyeoff', 'iconEye', 'iconReplace', 'iconRtl', 'iconLtr', 'iconBack', 'iconForward', 'iconLayoutBottom',
+    'iconLayoutRight', 'iconRef', 'iconFilter', 'iconDark', 'iconLight', 'iconMode', 'iconHistory', 'iconClear', 'iconFormat', 'iconQuit', 'iconDock', 'iconHideDock',
+    'iconInbox', 'iconGithub', 'iconGitHubI', 'iconHTML5', 'iconSpreadEven', 'iconSpreadOdd', 'iconScrollWrapped', 'iconSelectText', 'iconHand', 'iconSiYuan', 'iconCut', 'iconAdd',
+    'iconUncheck', 'iconDot', 'iconUnderline', 'iconA', 'iconM', 'iconN', 'iconYuque', 'iconGlobalGraph', 'iconGraph', 'iconLeftTop', 'iconLeftBottom', 'iconRightTop',
+    'iconRightBottom', 'iconBottomLeft', 'iconBottomRight', 'iconMove', 'iconBazaar', 'iconKeymap', 'iconFont', 'iconVIP', 'iconSuper', 'iconSelect', 'iconSQL', 'iconSup',
+    'iconSub', 'iconMark', 'iconEdit', 'iconPDF', 'iconVideo', 'iconSplitLR', 'iconSplitTB', 'iconFocus', 'iconSort', 'iconDownload', 'iconUpload', 'iconExact',
+    'iconRegex', 'iconMenu', 'iconLeft', 'iconRight', 'iconDown', 'iconUp', 'iconTags', 'iconTag', 'iconImage', 'iconRefresh', 'iconUnlock', 'iconLock',
+    'iconAccount', 'iconMarkdown', 'iconListItem', 'iconBookmarks', 'iconBookmark', 'iconH1', 'iconH2', 'iconH3', 'iconH4', 'iconH5', 'iconH6', 'iconHeadings',
+    'iconMath', 'iconClose', 'iconRestore', 'iconFiles', 'iconFilesRoot', 'iconMax', 'iconMin', 'iconSettings', 'iconFolder', 'iconSearch', 'iconFile', 'iconHeart',
+    'iconParagraph', 'iconMp', 'iconQuote', 'iconAfter', 'iconBefore', 'iconInsertLeft', 'iconInsertRight', 'iconDeleteColumn', 'iconDeleteRow', 'iconLine', 'iconCode', 'iconInlineCode'
+];
+
 // ============ 轻语速记独立窗口管理类 ============
 class QuickWindow {
     static instance = null;
@@ -3064,41 +3111,41 @@ ipcRenderer.on('lumina-close', () => {
                     </div>
                     
                     <div class="north-shuoshuo-nav-icons">
-                        <button class="north-shuoshuo-nav-item active" data-view="notes" title="说说">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                        <button class="north-shuoshuo-nav-item active" data-view="notes" title="${this.getSidebarViewName('notes')}">
+                            ${this.getSidebarIconHtml('notes')}
                         </button>
-                        <button class="north-shuoshuo-nav-item" data-view="gallery" title="拾光">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                        <button class="north-shuoshuo-nav-item" data-view="gallery" title="${this.getSidebarViewName('gallery')}">
+                            ${this.getSidebarIconHtml('gallery')}
                         </button>
-                        <button class="north-shuoshuo-nav-item" data-view="table" title="表格">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v18H3V3zm2 2v5h14V5H5zm14 7H5v5h14v-5zM5 10h4v2H5v-2zm6 0h4v2h-4v-2z"/></svg>
+                        <button class="north-shuoshuo-nav-item" data-view="table" title="${this.getSidebarViewName('table')}">
+                            ${this.getSidebarIconHtml('table')}
                         </button>
-                        <button class="north-shuoshuo-nav-item" data-view="stats" title="统计">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M341.333333 938.666667H128a42.666667 42.666667 0 0 1-42.666667-42.666667V405.333333a42.666667 42.666667 0 0 1 42.666667-42.666666h213.333333V128a42.666667 42.666667 0 0 1 42.666667-42.666667h256a42.666667 42.666667 0 0 1 42.666667 42.666667v405.333333h213.333333a42.666667 42.666667 0 0 1 42.56 39.466667L938.666667 576v320a42.666667 42.666667 0 0 1-39.466667 42.56L896 938.666667H341.333333z m0-512H149.333333v448h192V426.666667z m533.333334 170.666666h-192v277.333334h192V597.333333zM618.666667 149.333333H405.333333v725.333334h213.333334V149.333333z"/></svg>
+                        <button class="north-shuoshuo-nav-item" data-view="stats" title="${this.getSidebarViewName('stats')}">
+                            ${this.getSidebarIconHtml('stats')}
                         </button>
                         ${this.momentsConfig?.showMomentsSidebar !== false ? `
-                        <button class="north-shuoshuo-nav-item" data-view="moments" title="朋友圈">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                        <button class="north-shuoshuo-nav-item" data-view="moments" title="${this.getSidebarViewName('moments')}">
+                            ${this.getSidebarIconHtml('moments')}
                         </button>
                         ` : ''}
                         ${this.showLifeLogSidebar ? `
-                        <button class="north-shuoshuo-nav-item" data-view="lifelog" title="LifeLog">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M5 2h14a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm1 2v16h12V4H6z"/><path d="M7 7h10v2H7zM7 11h10v2H7zM7 15h6v2H7z"/></svg>
+                        <button class="north-shuoshuo-nav-item" data-view="lifelog" title="${this.getSidebarViewName('lifelog')}">
+                            ${this.getSidebarIconHtml('lifelog')}
                         </button>
-                        <button class="north-shuoshuo-nav-item" data-view="lifelog-stats" title="LifeLog统计">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 1024 1024" fill="currentColor"><path d="M128 128h768v85.333H128V128z m0 170.667h768V896H128V298.667z m85.333 85.333v426.667h597.334V384H213.333z m85.334 85.333h128v256H298.667V469.333z m170.666 0h128v256h-128V469.333z m170.667 0h128v256h-128V469.333z"/></svg>
+                        <button class="north-shuoshuo-nav-item" data-view="lifelog-stats" title="${this.getSidebarViewName('lifelog-stats')}">
+                            ${this.getSidebarIconHtml('lifelog-stats')}
                         </button>
                         ` : ''}
                         ${this.showBookshelfSidebar ? `
-                        <button class="north-shuoshuo-nav-item" data-view="bookshelf" title="图书">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H7c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 16H8c-.55 0-1-.45-1-1V6h10v13z"/></svg>
+                        <button class="north-shuoshuo-nav-item" data-view="bookshelf" title="${this.getSidebarViewName('bookshelf')}">
+                            ${this.getSidebarIconHtml('bookshelf')}
                         </button>
                         ` : ''}
                     </div>
                     
                     <div class="north-shuoshuo-nav-bottom">
-                        <button class="north-shuoshuo-nav-item" data-view="settings" title="设置">
-                            <svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L3.16 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                        <button class="north-shuoshuo-nav-item" data-view="settings" title="${this.getSidebarViewName('settings')}">
+                            ${this.getSidebarIconHtml('settings')}
                         </button>
                     </div>
                 </div>
@@ -3293,19 +3340,19 @@ ipcRenderer.on('lumina-close', () => {
                         <div class="north-shuoshuo-mobile-tabbar">
                             <button class="mobile-tab-item active" data-view="notes">
                                 <svg class="icon"><use xlink:href="#iconSparkles"></use></svg>
-                                <span>说说</span>
+                                <span>${this.getSidebarViewName('notes')}</span>
                             </button>
                             <button class="mobile-tab-item" data-view="stats">
                                 <svg class="icon"><use xlink:href="#iconImgDown"></use></svg>
-                                <span>统计</span>
+                                <span>${this.getSidebarViewName('stats')}</span>
                             </button>
                             <button class="mobile-tab-item" data-view="lifelog">
                                 <svg class="icon"><use xlink:href="#iconSpreadEven"></use></svg>
-                                <span>LifeLog</span>
+                                <span>${this.getSidebarViewName('lifelog')}</span>
                             </button>
                             <button class="mobile-tab-item" data-view="moments">
                                 <svg class="icon"><use xlink:href="#iconCamera"></use></svg>
-                                <span>朋友圈</span>
+                                <span>${this.getSidebarViewName('moments')}</span>
                             </button>
                         </div>
                     </div>
@@ -3388,6 +3435,16 @@ ipcRenderer.on('lumina-close', () => {
                                 <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
                             </svg>
                             <span>主题设置</span>
+                        </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="sidebaricons">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 22C6.49 22 2 17.51 2 12S6.49 2 12 2s10 4.04 10 9c0 3.31-2.69 6-6 6h-1.77c-.28 0-.5.22-.5.5 0 .12.05.23.13.31.41.41.63.94.63 1.5 0 1.17-.83 2-2 2H12zm0-18C7.59 4 4 7.59 4 12s3.59 8 8 8c.34 0 .67-.03 1-.08.69-.12 1.33.19 1.68.76.1.17.31.53.11 1.32-.21 1.18 1.08 2 2.21 2 2.49 0 4.5-2.01 4.5-4.5 0-4.96-4.04-9-9-9z"/>
+                                <circle cx="6.5" cy="11.5" r="1.5"/>
+                                <circle cx="9.5" cy="7.5" r="1.5"/>
+                                <circle cx="14.5" cy="7.5" r="1.5"/>
+                                <circle cx="17.5" cy="11.5" r="1.5"/>
+                            </svg>
+                            <span>轻语设置</span>
                         </div>
                     </div>
 
@@ -4704,6 +4761,19 @@ ipcRenderer.on('lumina-close', () => {
                                         `).join('')}
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- 左侧栏图标自定义 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-sidebaricons" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 4px;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div class="north-shuoshuo-section-title">左侧栏图标</div>
+                                        <div class="north-shuoshuo-section-desc">自定义左侧导航栏各视图的图标与昵称（点击「更换视图昵称」修改，重置可恢复默认）</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-sidebar-icons-custom" id="sidebar-icons-custom-list"></div>
                             </div>
                         </div>
 
@@ -11004,6 +11074,12 @@ ipcRenderer.on('lumina-close', () => {
             currentContent = decodeURIComponent(parts[0] || '');
             currentColor = parts[1] || '#2ecc71';
         }
+
+        // 当前内置图标（思源 iconfont）
+        let currentBuiltin = '';
+        if (currentIcon && currentIcon.startsWith('icon:builtin:')) {
+            currentBuiltin = currentIcon.substring('icon:builtin:'.length);
+        }
         
         const modal = document.createElement('div');
         modal.className = 'north-shuoshuo-icon-picker-modal';
@@ -11105,12 +11181,14 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="north-shuoshuo-icon-preview-section">
                         <img class="north-shuoshuo-icon-preview" src="/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(currentColor)}&content=${encodeURIComponent(currentContent || tagName.substring(0, 2))}" alt="icon">
                         <span class="north-shuoshuo-icon-preview-emoji" style="display:none;">😊</span>
+                        <span class="north-shuoshuo-icon-preview-builtin" style="display:none;"></span>
                     </div>
                     
                     <!-- 标签页 -->
                     <div class="north-shuoshuo-icon-tabs">
                         <div class="north-shuoshuo-icon-tab active" data-tab="emoji">Emoji</div>
                         <div class="north-shuoshuo-icon-tab" data-tab="text">文字</div>
+                        <div class="north-shuoshuo-icon-tab" data-tab="builtin">内置图标</div>
                     </div>
                     
                     <!-- Emoji 面板 -->
@@ -11132,6 +11210,13 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
                     </div>
                     
+                    <!-- 内置图标面板 -->
+                    <div class="north-shuoshuo-icon-panel" data-panel="builtin">
+                        <div class="north-shuoshuo-builtin-icon-grid">
+                            ${SIYUAN_BUILTIN_ICONS.map(name => `<div class="north-shuoshuo-builtin-icon-item${(name === currentBuiltin) ? ' selected' : ''}" data-icon="${name}" title="${name}"><svg class="icon"><use xlink:href="#${name}"></use></svg></div>`).join('')}
+                        </div>
+                    </div>
+                    
                     <div class="north-shuoshuo-icon-actions">
                         <button class="north-shuoshuo-icon-reset">重置为 #</button>
                         <button class="north-shuoshuo-icon-confirm">确定</button>
@@ -11149,19 +11234,28 @@ ipcRenderer.on('lumina-close', () => {
         let selectedIcon = null; // 用于存储选中的图标配置
         
         // 更新预览
-        const updatePreview = (content, isEmoji = false) => {
+        const updatePreview = (content, isEmoji = false, isBuiltin = false) => {
             const emojiPreview = modal.querySelector('.north-shuoshuo-icon-preview-emoji');
+            const builtinPreview = modal.querySelector('.north-shuoshuo-icon-preview-builtin');
             if (isEmoji) {
                 // Emoji 直接显示字符，不带颜色背景
                 previewImg.style.display = 'none';
+                builtinPreview.style.display = 'none';
                 emojiPreview.style.display = 'inline';
                 emojiPreview.textContent = content;
+            } else if (isBuiltin) {
+                previewImg.style.display = 'none';
+                emojiPreview.style.display = 'none';
+                builtinPreview.style.display = 'inline-flex';
+                builtinPreview.innerHTML = `<svg class="icon"><use xlink:href="#${content}"></use></svg>`;
             } else if (content) {
                 emojiPreview.style.display = 'none';
+                builtinPreview.style.display = 'none';
                 previewImg.style.display = 'inline';
                 previewImg.src = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(selectedColor)}&content=${encodeURIComponent(content)}`;
             } else {
                 emojiPreview.style.display = 'none';
+                builtinPreview.style.display = 'none';
                 previewImg.style.display = 'inline';
                 previewImg.src = `/api/icon/getDynamicIcon?type=8&color=${encodeURIComponent(selectedColor)}&content=${encodeURIComponent(tagName.substring(0, 2))}`;
             }
@@ -11200,6 +11294,23 @@ ipcRenderer.on('lumina-close', () => {
                 }
             });
         });
+        
+        // 内置图标选择（思源 iconfont）
+        const builtinItems = modal.querySelectorAll('.north-shuoshuo-builtin-icon-item');
+        builtinItems.forEach(item => {
+            item.addEventListener('click', () => {
+                builtinItems.forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                const iconName = item.dataset.icon;
+                selectedIcon = { type: 'builtin', content: iconName };
+                updatePreview(iconName, false, true);
+            });
+        });
+
+        // 若当前图标为内置图标，初始化预览
+        if (currentBuiltin) {
+            updatePreview(currentBuiltin, false, true);
+        }
         
         // Emoji 搜索功能
         const emojiSearchInput = modal.querySelector('.north-shuoshuo-emoji-search-input');
@@ -11280,6 +11391,9 @@ ipcRenderer.on('lumina-close', () => {
                 } else if (selectedIcon.type === 'emoji') {
                     // Emoji：直接保存为原始 emoji 字符，不使用动态图标渲染（避免带颜色背景）
                     callback(selectedIcon.content);
+                } else if (selectedIcon.type === 'builtin') {
+                    // 思源内置图标：保存为 builtin:图标名
+                    callback(`icon:builtin:${selectedIcon.content}`);
                 } else {
                     // 文字图标
                     callback(`icon:${encodeURIComponent(selectedIcon.content)}:${selectedColor}`);
@@ -11651,9 +11765,8 @@ ipcRenderer.on('lumina-close', () => {
         return html;
     }
 
-    // 获取标签图标 HTML
-    getTagIconHtml(tagName) {
-        const iconConfig = this.tagIcons[tagName] || '';
+    // 根据图标配置字符串渲染图标 HTML（与标签图标格式一致）
+    renderIconConfig(iconConfig) {
         if (iconConfig && iconConfig.startsWith('icon:')) {
             const parts = iconConfig.substring(5).split(':');
             const type = parts[0];
@@ -11663,6 +11776,9 @@ ipcRenderer.on('lumina-close', () => {
             } else if (type === 'customEmoji') {
                 const emojiPath = decodeURIComponent(parts[1] || '');
                 return `<img class="north-shuoshuo-tag-dynamic-icon" src="/emojis/${emojiPath}" alt="emoji">`;
+            } else if (type === 'builtin') {
+                const iconName = parts[1] || 'iconStar';
+                return `<span class="north-shuoshuo-tag-builtin-icon"><svg class="icon"><use xlink:href="#${iconName}"></use></svg></span>`;
             } else {
                 let content = decodeURIComponent(parts[0] || '');
                 const color = parts[1] || '#2ecc71';
@@ -11683,6 +11799,175 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
         return `<span class="north-shuoshuo-tag-icon-default"><svg class="icon" style="width:14px;height:14px;"><use xlink:href="#iconTag"></use></svg></span>`;
+    }
+
+    // 获取标签图标 HTML
+    getTagIconHtml(tagName) {
+        return this.renderIconConfig(this.tagIcons[tagName] || '');
+    }
+
+    // 获取左侧栏导航图标的 HTML（优先使用用户自定义图标，否则使用默认 SVG）
+    getSidebarIconHtml(viewKey) {
+        const custom = this.navIcons?.[viewKey];
+        if (custom && custom.trim()) {
+            return this.renderIconConfig(custom);
+        }
+        return SIDEBAR_DEFAULT_ICONS[viewKey] || '';
+    }
+
+    // 将某个视图的左侧栏图标应用到所有已挂载的实例（实时生效）
+    applySidebarNavIcon(viewKey) {
+        const html = this.getSidebarIconHtml(viewKey);
+        this.getMountedLuminaContainers().forEach(container => {
+            if (!(container instanceof HTMLElement)) return;
+            const btn = container.querySelector(`.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="${viewKey}"]`);
+            if (btn) btn.innerHTML = html;
+        });
+    }
+
+    // 获取左侧栏视图的显示名称（优先使用用户自定义名称，否则使用默认名称）
+    getSidebarViewName(viewKey) {
+        const custom = this.navNames?.[viewKey];
+        if (custom && custom.trim()) return custom.trim();
+        const def = SIDEBAR_VIEWS.find(v => v.key === viewKey);
+        return def ? def.name : viewKey;
+    }
+
+    // 将某个视图的名称应用到所有已挂载实例（侧栏 tooltip + 移动端标签）
+    applySidebarNavName(viewKey) {
+        const name = this.getSidebarViewName(viewKey);
+        this.getMountedLuminaContainers().forEach(container => {
+            if (!(container instanceof HTMLElement)) return;
+            const btn = container.querySelector(`.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="${viewKey}"]`);
+            if (btn) btn.title = name;
+            const tabSpan = container.querySelector(`.north-shuoshuo-mobile-tabbar .mobile-tab-item[data-view="${viewKey}"] span`);
+            if (tabSpan) tabSpan.textContent = name;
+        });
+    }
+
+    // 判断某视图当前是否在左侧栏显示
+    isSidebarViewVisible(view) {
+        if (view === 'moments') return this.momentsConfig?.showMomentsSidebar !== false;
+        if (view === 'lifelog' || view === 'lifelog-stats') return this.showLifeLogSidebar !== false;
+        if (view === 'bookshelf') return this.showBookshelfSidebar !== false;
+        return true;
+    }
+
+    // 渲染“轻语设置”中的左侧栏图标自定义列表
+    renderSidebarIconsSettings(listEl) {
+        if (!listEl) return;
+        const self = this;
+        const escHtml = (s) => self.escapeHtml(s || '');
+        const views = SIDEBAR_VIEWS.filter(v => v.always || self.isSidebarViewVisible(v.key));
+        let html = '';
+        views.forEach(v => {
+            const iconHtml = self.getSidebarIconHtml(v.key);
+            const name = self.getSidebarViewName(v.key);
+            const isIconCustom = !!(self.navIcons?.[v.key] && self.navIcons[v.key].trim());
+            const isNameCustom = !!(self.navNames?.[v.key] && self.navNames[v.key].trim());
+            const isCustom = isIconCustom || isNameCustom;
+            html += `
+                <div class="north-shuoshuo-sidebar-icon-row" data-view="${v.key}">
+                    <div class="north-shuoshuo-sidebar-icon-preview">${iconHtml}</div>
+                    <div class="north-shuoshuo-sidebar-icon-name" title="${escHtml(name)}">${escHtml(name)}</div>
+                    <div class="north-shuoshuo-sidebar-icon-actions">
+                        <button class="north-shuoshuo-sidebar-icon-btn" data-action="change">更换图标</button>
+                        <button class="north-shuoshuo-sidebar-icon-btn" data-action="rename">更换视图昵称</button>
+                        <button class="north-shuoshuo-sidebar-icon-btn" data-action="reset" ${isCustom ? '' : 'disabled style="opacity:.4;cursor:not-allowed;"'}>重置</button>
+                    </div>
+                </div>
+            `;
+        });
+        listEl.innerHTML = html;
+
+        listEl.querySelectorAll('.north-shuoshuo-sidebar-icon-row').forEach(row => {
+            const viewKey = row.dataset.view;
+            const changeBtn = row.querySelector('[data-action="change"]');
+            const renameBtn = row.querySelector('[data-action="rename"]');
+            const resetBtn = row.querySelector('[data-action="reset"]');
+
+            changeBtn.addEventListener('click', () => {
+                const currentName = self.getSidebarViewName(viewKey);
+                const currentIcon = self.navIcons?.[viewKey] || '';
+                self.showIconPicker(currentName, currentIcon, (newIcon) => {
+                    if (newIcon && newIcon.trim()) {
+                        self.navIcons[viewKey] = newIcon.trim();
+                    } else {
+                        delete self.navIcons[viewKey];
+                    }
+                    self.saveConfig();
+                    self.applySidebarNavIcon(viewKey);
+                    // 刷新列表（更新预览与重置按钮状态）
+                    self.renderSidebarIconsSettings(listEl);
+                });
+            });
+
+            renameBtn.addEventListener('click', () => {
+                const currentName = self.getSidebarViewName(viewKey);
+                self.showViewNicknameEditor(currentName, (newName) => {
+                    if (newName && newName.trim()) {
+                        self.navNames[viewKey] = newName.trim();
+                    } else {
+                        delete self.navNames[viewKey];
+                    }
+                    self.saveConfig();
+                    self.applySidebarNavName(viewKey);
+                    // 刷新列表（更新名称显示与重置按钮状态）
+                    self.renderSidebarIconsSettings(listEl);
+                });
+            });
+
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                    // 重置：恢复该视图的默认图标与昵称
+                    delete self.navIcons[viewKey];
+                    delete self.navNames[viewKey];
+                    self.saveConfig();
+                    self.applySidebarNavIcon(viewKey);
+                    self.applySidebarNavName(viewKey);
+                    self.renderSidebarIconsSettings(listEl);
+                });
+            }
+        });
+    }
+
+    // 弹窗修改左侧栏视图昵称
+    showViewNicknameEditor(currentName, callback) {
+        const self = this;
+        const escAttr = (s) => self.escapeHtml(s || '').replace(/"/g, '&quot;');
+        const escHtml = (s) => self.escapeHtml(s || '');
+        const modal = document.createElement('div');
+        modal.className = 'north-shuoshuo-tag-rename-modal';
+        modal.innerHTML = `
+            <div class="north-shuoshuo-modal-overlay"></div>
+            <div class="north-shuoshuo-tag-rename-content">
+                <div class="north-shuoshuo-section-title" style="margin-bottom:10px;">设置「${escHtml(currentName)}」的昵称</div>
+                <div class="north-shuoshuo-tag-rename-row">
+                    <input type="text" class="north-shuoshuo-tag-rename-input" value="${escAttr(currentName)}" placeholder="留空则恢复默认名称" maxlength="20">
+                    <button class="north-shuoshuo-tag-rename-save">保存</button>
+                </div>
+                <div class="north-shuoshuo-tag-rename-hint">留空并保存即可恢复默认名称</div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const input = modal.querySelector('.north-shuoshuo-tag-rename-input');
+        const saveBtn = modal.querySelector('.north-shuoshuo-tag-rename-save');
+
+        const doSave = () => {
+            callback(input.value.trim());
+            modal.remove();
+        };
+        saveBtn.addEventListener('click', doSave);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') doSave();
+        });
+        input.focus();
+        input.select();
+
+        modal.querySelector('.north-shuoshuo-modal-overlay').addEventListener('click', () => {
+            modal.remove();
+        });
     }
 
     // 生成最常用标签 Top 10
@@ -14585,7 +14870,7 @@ ipcRenderer.on('lumina-close', () => {
         });
 
         // 图标选择器
-        const iconNames = ['iconStar', 'iconLanguage', 'iconPanelLeft', 'iconPanelBottom', 'iconPanelRight', 'iconPanelLeftDashed', 'iconPanelBottomDashed', 'iconPanelRightDashed', 'iconSelectAll', 'iconUploadAssets', 'iconDownloadAssets', 'iconKeepContent', 'iconFullWidth', 'iconTurnInto', 'iconGlobe', 'iconPublish', 'iconDocx', 'iconSearchAsset', 'iconAddDoc', 'iconExpandLevel', 'iconWidth', 'iconAlignSettings', 'iconFoldUnFold', 'iconJumpTo', 'iconEnterBack', 'iconEnter', 'iconRecentDocs', 'iconOutline', 'iconCallout', 'iconInclude', 'iconGroups', 'iconCamera', 'iconGallery', 'iconBoard', 'iconTerminal', 'iconSoftWrap', 'iconLink', 'iconLinkOff', 'iconImgDown', 'iconArrowDown', 'iconUnpin', 'iconPin', 'iconOpen', 'iconKey', 'iconClock', 'iconAttr', 'iconPaste', 'iconCopy', 'iconPhone', 'iconEmail', 'iconDrag', 'iconCalendar', 'iconNumber', 'iconIndeterminateCheck', 'iconPlugin', 'iconUsers', 'iconZoomIn', 'iconZoomOut', 'iconFeedback', 'iconCloseRound', 'iconLayout', 'iconFullscreenExit', 'iconFullscreen', 'iconScrollHoriz', 'iconScrollVert', 'iconSparkles', 'iconDatabase', 'iconBIU', 'iconKeyboardHide', 'iconWorkspace', 'iconCloud', 'iconCloudOff', 'iconCloudError', 'iconCloudSucc', 'iconLiandi', 'iconRiffCard', 'iconEyeoff', 'iconEye', 'iconReplace', 'iconRtl', 'iconLtr', 'iconBack', 'iconForward', 'iconLayoutBottom', 'iconLayoutRight', 'iconRef', 'iconFilter', 'iconDark', 'iconLight', 'iconMode', 'iconHistory', 'iconClear', 'iconFormat', 'iconQuit', 'iconDock', 'iconHideDock', 'iconInbox', 'iconGithub', 'iconGitHubI', 'iconHTML5', 'iconSpreadEven', 'iconSpreadOdd', 'iconScrollWrapped', 'iconSelectText', 'iconHand', 'iconSiYuan', 'iconCut', 'iconAdd', 'iconUncheck', 'iconDot', 'iconUnderline', 'iconA', 'iconM', 'iconN', 'iconYuque', 'iconGlobalGraph', 'iconGraph', 'iconLeftTop', 'iconLeftBottom', 'iconRightTop', 'iconRightBottom', 'iconBottomLeft', 'iconBottomRight', 'iconMove', 'iconBazaar', 'iconKeymap', 'iconFont', 'iconVIP', 'iconSuper', 'iconSelect', 'iconSQL', 'iconSup', 'iconSub', 'iconMark', 'iconEdit', 'iconPDF', 'iconVideo', 'iconSplitLR', 'iconSplitTB', 'iconFocus', 'iconSort', 'iconDownload', 'iconUpload', 'iconExact', 'iconRegex', 'iconMenu', 'iconLeft', 'iconRight', 'iconDown', 'iconUp', 'iconTags', 'iconTag', 'iconImage', 'iconRefresh', 'iconUnlock', 'iconLock', 'iconAccount', 'iconMarkdown', 'iconListItem', 'iconBookmarks', 'iconBookmark', 'iconH1', 'iconH2', 'iconH3', 'iconH4', 'iconH5', 'iconH6', 'iconHeadings', 'iconMath', 'iconClose', 'iconRestore', 'iconFiles', 'iconFilesRoot', 'iconMax', 'iconMin', 'iconSettings', 'iconFolder', 'iconSearch', 'iconFile', 'iconHeart', 'iconParagraph', 'iconMp', 'iconQuote', 'iconAfter', 'iconBefore', 'iconInsertLeft', 'iconInsertRight', 'iconDeleteColumn', 'iconDeleteRow', 'iconLine', 'iconCode', 'iconInlineCode'];
+        const iconNames = SIYUAN_BUILTIN_ICONS;
         const gridEl = overlay.querySelector('#query-editor-icon-grid');
         const currentEl = overlay.querySelector('#query-editor-icon-current');
         const selectedIcon = isEdit && queryToEdit.icon ? queryToEdit.icon : 'iconStar';
@@ -21031,6 +21316,12 @@ ipcRenderer.on('lumina-close', () => {
             actionsBar.style.display = '';
         }
 
+        // 渲染“轻语设置”中的左侧栏图标自定义列表
+        const sidebarIconsList = this.container.querySelector('#sidebar-icons-custom-list');
+        if (sidebarIconsList) {
+            this.renderSidebarIconsSettings(sidebarIconsList);
+        }
+
         // 视图样式下拉框
         const viewStyleSelect = this.container.querySelector('#view-style-select');
         if (viewStyleSelect) {
@@ -23675,6 +23966,8 @@ ipcRenderer.on('lumina-close', () => {
                     }
                 }
                 this.pinnedTags = Array.isArray(data.pinnedTags) ? data.pinnedTags : [];
+                this.navIcons = data.navIcons || {};
+                this.navNames = data.navNames || {};
                 this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
                 this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
                 this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...(data.fontSizeConfig || data.fontSize || {}) };
@@ -23777,6 +24070,8 @@ ipcRenderer.on('lumina-close', () => {
                     memosConfig: this.memosConfig,
                     reviewConfig: this.reviewConfig,
                     tagIcons: this.tagIcons,
+                    navIcons: this.navIcons,
+                    navNames: this.navNames,
                     pinnedTags: this.pinnedTags,
                     themeMode: this.themeMode,
                     morandiColor: this.morandiColor,

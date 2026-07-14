@@ -138,6 +138,138 @@
     object-fit: contain;
 }
 
+/* 左侧栏自定义图标渲染（Emoji / 文字动态图标） */
+.north-shuoshuo-nav-item .north-shuoshuo-tag-dynamic-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    object-fit: contain;
+}
+
+.north-shuoshuo-nav-item .north-shuoshuo-tag-emoji {
+    font-size: 22px;
+    line-height: 1;
+    user-select: none;
+}
+
+.north-shuoshuo-nav-item .north-shuoshuo-tag-builtin-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+}
+
+.north-shuoshuo-nav-item .north-shuoshuo-tag-builtin-icon .icon {
+    width: 22px;
+    height: 22px;
+}
+
+/* 轻语设置 - 左侧栏图标自定义列表 */
+.north-shuoshuo-sidebar-icons-custom {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.north-shuoshuo-sidebar-icon-row {
+    flex: 0 0 calc((100% - 20px) / 3);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 8px 10px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
+    border: 1px solid color-mix(in srgb, var(--b3-theme-surface) 70%, transparent);
+}
+
+.north-shuoshuo-sidebar-icon-preview {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--b3-theme-surface);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.north-shuoshuo-sidebar-icon-preview .north-shuoshuo-nav-icon {
+    width: 24px;
+    height: 24px;
+}
+
+.north-shuoshuo-sidebar-icon-preview .north-shuoshuo-tag-dynamic-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+}
+
+.north-shuoshuo-sidebar-icon-preview .north-shuoshuo-tag-emoji {
+    font-size: 22px;
+}
+
+.north-shuoshuo-sidebar-icon-preview .north-shuoshuo-tag-builtin-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+}
+
+.north-shuoshuo-sidebar-icon-preview .north-shuoshuo-tag-builtin-icon .icon {
+    width: 26px;
+    height: 26px;
+}
+
+.north-shuoshuo-sidebar-icon-name {
+    max-width: 100%;
+    font-size: 13px;
+    color: var(--b3-theme-on-background);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.north-shuoshuo-sidebar-icon-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 2px;
+}
+
+.north-shuoshuo-sidebar-icon-btn {
+    flex: 1 1 auto;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 60%, transparent);
+    background: var(--b3-theme-surface);
+    color: var(--b3-theme-on-background);
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color .15s, border-color .15s;
+    white-space: nowrap;
+}
+
+.north-shuoshuo-sidebar-icon-btn:hover:not([disabled]) {
+    background: var(--b3-theme-primary-lightest);
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+
+@media (max-width: 560px) {
+    .north-shuoshuo-sidebar-icon-row {
+        flex: 0 0 calc((100% - 10px) / 2);
+    }
+}
+
 .north-shuoshuo-bottom-nav {
     display: flex;
     flex-direction: column;
@@ -6355,6 +6487,63 @@ body.dark .north-shuoshuo-image-item-video,
     height: 28px;
     object-fit: contain;
     pointer-events: none;
+}
+
+/* 预览区内置图标 */
+.north-shuoshuo-icon-preview-builtin {
+    width: 48px;
+    height: 48px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: var(--b3-theme-on-background);
+}
+
+.north-shuoshuo-icon-preview-builtin .icon {
+    width: 36px;
+    height: 36px;
+}
+
+/* 内置图标网格 */
+.north-shuoshuo-builtin-icon-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.north-shuoshuo-builtin-icon-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 38px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--b3-theme-on-surface);
+    transition: all 0.2s;
+}
+
+.north-shuoshuo-builtin-icon-item:hover {
+    background: var(--b3-list-hover);
+    transform: scale(1.1);
+}
+
+.north-shuoshuo-builtin-icon-item.selected {
+    background: var(--b3-theme-primary-lightest);
+    box-shadow: 0 0 0 2px var(--b3-theme-primary);
+}
+
+.north-shuoshuo-builtin-icon-item .icon {
+    width: 22px;
+    height: 22px;
+}
+
+@media (max-width: 560px) {
+    .north-shuoshuo-builtin-icon-grid {
+        grid-template-columns: repeat(6, 1fr);
+    }
 }
 
 /* 自定义图标网�?*/
