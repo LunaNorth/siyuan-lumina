@@ -197,7 +197,7 @@ const SIDEBAR_VIEWS = [
     { key: 'lifelog', name: 'LifeLog' },
     { key: 'lifelog-stats', name: 'LifeLog统计' },
     { key: 'bookshelf', name: '图书' },
-    { key: 'settings', name: '设置', always: true }
+    { key: 'settings', name: '设置', always: true, cannotHide: true }
 ];
 
 // 思源内置图标（iconfont 符号图标），用于“更换图标”选择器与检索式图标
@@ -521,6 +521,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.reviewConfig = { ...DEFAULT_REVIEW_CONFIG };
         this.reviewHistory = {}; // {noteId: timestamp} 记录每条笔记上次回顾时间
         this.selectedDate = null;
+        this.calendarViewDate = new Date(); // 月历视图当前显示的月份（运行时状态）
         this.selectedTag = null;
         this.gallerySelectedTag = null;
         this.galleryMediaType = 'image'; // 拾光视图媒体类型筛选：all/image/video/file，默认显示图片
@@ -536,8 +537,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.showSidebarDock = false; // 是否显示侧边栏 Dock（默认不显示）
         this.AUTO_OPEN_KEY = 'lumina_auto_open'; // 启动时自动打开轻语 localStorage 键名
         this.showLifelogSidebarDock = false; // 是否显示 LifeLog 侧边栏 Dock
-        this.showLifeLogSidebar = true; // 是否在轻语侧边栏显示 LifeLog 视图入口
-        this.showBookshelfSidebar = true; // 是否在轻语侧边栏显示图书视图入口
         this.showLifeLogRecords = false; // 是否显示读取到的 LifeLog 记录（默认不显示）
         this.lifeLogRecords = []; // LifeLog 记录（仅用于 LifeLog 视图）
         this._lifelogSelectedType = ''; // LifeLog 视图当前选中的类型（左侧筛选）
@@ -558,7 +557,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogStatsCustomStart = null; // LifeLog 统计视图自定义起始时间（毫秒）
         this._lifelogStatsCustomEnd = null; // LifeLog 统计视图自定义结束时间（毫秒）
         this.compactMode = false; // 紧凑模式（默认关闭）
+        this.noteCardHoverBorder = false; // 说说内容列表悬停边框变色（默认关闭）
         this.lifeLogCompactMode = false; // LifeLog 紧凑模式（默认关闭，独立于说说视图）
+        this.shuoshuoHeatmapType = 'heatmap'; // 说说视图日期展示类型：'heatmap' 日历贡献图 / 'calendar' 月历视图
         this.sidebarFullScroll = false; // 侧边栏整体滚动模式（默认关闭，仅标签区独立滚动）
         this.lifelogTypesDefaultExpanded = true; // LifeLog 类型折叠条默认是否展开
         this._lifelogTypesExpanded = this.lifelogTypesDefaultExpanded; // LifeLog 类型折叠条是否展开
@@ -595,7 +596,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // ===== 增量渲染缓存（用于检测变化）=====
         this._lastFilteredIds = [];         // 上次过滤结果的 ID 列表
         this.moments = []; // 朋友圈数据
-        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, coverPosition: 50, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, showMomentsSidebar: true, password: '' };
+        this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, coverPosition: 50, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, password: '' };
         this.momentsUnlocked = false; // 朋友圈密码锁：当前会话是否已解锁
         this.books = []; // 图书书架数据
         this.bookshelfFilters = { type: 'book', sync: 'synced', status: 'read', sort: 'time' };
@@ -3111,40 +3112,34 @@ ipcRenderer.on('lumina-close', () => {
                     </div>
                     
                     <div class="north-shuoshuo-nav-icons">
-                        <button class="north-shuoshuo-nav-item active" data-view="notes" title="${this.getSidebarViewName('notes')}">
+                        <button class="north-shuoshuo-nav-item active" data-view="notes" title="${this.getSidebarViewName('notes')}"${this.isNavViewHidden('notes') ? ' style="display:none;"' : ''}>
                             ${this.getSidebarIconHtml('notes')}
                         </button>
-                        <button class="north-shuoshuo-nav-item" data-view="gallery" title="${this.getSidebarViewName('gallery')}">
+                        <button class="north-shuoshuo-nav-item" data-view="gallery" title="${this.getSidebarViewName('gallery')}"${this.isNavViewHidden('gallery') ? ' style="display:none;"' : ''}>
                             ${this.getSidebarIconHtml('gallery')}
                         </button>
-                        <button class="north-shuoshuo-nav-item" data-view="table" title="${this.getSidebarViewName('table')}">
+                        <button class="north-shuoshuo-nav-item" data-view="table" title="${this.getSidebarViewName('table')}"${this.isNavViewHidden('table') ? ' style="display:none;"' : ''}>
                             ${this.getSidebarIconHtml('table')}
                         </button>
-                        <button class="north-shuoshuo-nav-item" data-view="stats" title="${this.getSidebarViewName('stats')}">
+                        <button class="north-shuoshuo-nav-item" data-view="stats" title="${this.getSidebarViewName('stats')}"${this.isNavViewHidden('stats') ? ' style="display:none;"' : ''}>
                             ${this.getSidebarIconHtml('stats')}
                         </button>
-                        ${this.momentsConfig?.showMomentsSidebar !== false ? `
-                        <button class="north-shuoshuo-nav-item" data-view="moments" title="${this.getSidebarViewName('moments')}">
+                        <button class="north-shuoshuo-nav-item" data-view="moments" title="${this.getSidebarViewName('moments')}"${this.isNavViewHidden('moments') ? ' style="display:none;"' : ''}>
                             ${this.getSidebarIconHtml('moments')}
                         </button>
-                        ` : ''}
-                        ${this.showLifeLogSidebar ? `
-                        <button class="north-shuoshuo-nav-item" data-view="lifelog" title="${this.getSidebarViewName('lifelog')}">
+                        <button class="north-shuoshuo-nav-item" data-view="lifelog" title="${this.getSidebarViewName('lifelog')}"${this.isNavViewHidden('lifelog') ? ' style="display:none;"' : ''}>
                             ${this.getSidebarIconHtml('lifelog')}
                         </button>
-                        <button class="north-shuoshuo-nav-item" data-view="lifelog-stats" title="${this.getSidebarViewName('lifelog-stats')}">
+                        <button class="north-shuoshuo-nav-item" data-view="lifelog-stats" title="${this.getSidebarViewName('lifelog-stats')}"${this.isNavViewHidden('lifelog-stats') ? ' style="display:none;"' : ''}>
                             ${this.getSidebarIconHtml('lifelog-stats')}
                         </button>
-                        ` : ''}
-                        ${this.showBookshelfSidebar ? `
-                        <button class="north-shuoshuo-nav-item" data-view="bookshelf" title="${this.getSidebarViewName('bookshelf')}">
+                        <button class="north-shuoshuo-nav-item" data-view="bookshelf" title="${this.getSidebarViewName('bookshelf')}"${this.isNavViewHidden('bookshelf') ? ' style="display:none;"' : ''}>
                             ${this.getSidebarIconHtml('bookshelf')}
                         </button>
-                        ` : ''}
                     </div>
                     
                     <div class="north-shuoshuo-nav-bottom">
-                        <button class="north-shuoshuo-nav-item" data-view="settings" title="${this.getSidebarViewName('settings')}">
+                        <button class="north-shuoshuo-nav-item" data-view="settings" title="${this.getSidebarViewName('settings')}"${this.isNavViewHidden('settings') ? ' style="display:none;"' : ''}>
                             ${this.getSidebarIconHtml('settings')}
                         </button>
                     </div>
@@ -3218,12 +3213,7 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
 
                         <div class="north-shuoshuo-heatmap-container">
-                            <div class="north-shuoshuo-heatmap">
-                                ${this.generateHeatmap()}
-                            </div>
-                            <div class="north-shuoshuo-months">
-                                ${this.generateHeatmapMonths()}
-                            </div>
+                            ${this.renderShuoshuoHeatmapContainer()}
                         </div>
 
                         <div class="north-shuoshuo-menu-list">
@@ -3317,7 +3307,7 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                             <button class="mobile-search-close" id="shuoshuo-mobile-search-close">取消</button>
                         </div>
-                        <div class="north-shuoshuo-notes-list" id="shuoshuo-notes-list"></div>
+                        <div class="north-shuoshuo-notes-list${this.noteCardHoverBorder ? ' note-hover-border' : ''}" id="shuoshuo-notes-list"></div>
                         <div class="north-shuoshuo-input-area" id="shuoshuo-input-area">
                             <div class="north-shuoshuo-input-box" id="shuoshuo-input-box">
                                 <div class="north-shuoshuo-input-wrapper">
@@ -3338,19 +3328,19 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="north-shuoshuo-lifelog-input-types" id="lifelog-input-types" style="display:none;"></div>
                         </div>
                         <div class="north-shuoshuo-mobile-tabbar">
-                            <button class="mobile-tab-item active" data-view="notes">
+                            <button class="mobile-tab-item active" data-view="notes"${this.isNavViewHidden('notes') ? ' style="display:none;"' : ''}>
                                 <svg class="icon"><use xlink:href="#iconSparkles"></use></svg>
                                 <span>${this.getSidebarViewName('notes')}</span>
                             </button>
-                            <button class="mobile-tab-item" data-view="stats">
+                            <button class="mobile-tab-item" data-view="stats"${this.isNavViewHidden('stats') ? ' style="display:none;"' : ''}>
                                 <svg class="icon"><use xlink:href="#iconImgDown"></use></svg>
                                 <span>${this.getSidebarViewName('stats')}</span>
                             </button>
-                            <button class="mobile-tab-item" data-view="lifelog">
+                            <button class="mobile-tab-item" data-view="lifelog"${this.isNavViewHidden('lifelog') ? ' style="display:none;"' : ''}>
                                 <svg class="icon"><use xlink:href="#iconSpreadEven"></use></svg>
                                 <span>${this.getSidebarViewName('lifelog')}</span>
                             </button>
-                            <button class="mobile-tab-item" data-view="moments">
+                            <button class="mobile-tab-item" data-view="moments"${this.isNavViewHidden('moments') ? ' style="display:none;"' : ''}>
                                 <svg class="icon"><use xlink:href="#iconCamera"></use></svg>
                                 <span>${this.getSidebarViewName('moments')}</span>
                             </button>
@@ -3481,10 +3471,30 @@ ipcRenderer.on('lumina-close', () => {
                                 </div>
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
+                                        <h4>日期展示</h4>
+                                        <p>选择说说视图左侧日期面板的展示方式</p>
+                                    </div>
+                                    <div class="north-shuoshuo-select-wrapper" style="flex: 0 0 160px;">
+                                        <select id="shuoshuo-heatmap-type-select" class="north-shuoshuo-select-field">
+                                            <option value="heatmap" ${this.shuoshuoHeatmapType === 'heatmap' ? 'selected' : ''}>日历贡献图</option>
+                                            <option value="calendar" ${this.shuoshuoHeatmapType === 'calendar' ? 'selected' : ''}>月历视图</option>
+                                        </select>
+                                        <span class="north-shuoshuo-select-arrow">▼</span>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
                                         <h4>紧凑模式</h4>
                                         <p>开启后，说说视图中的笔记间距更紧凑，类似memos的布局</p>
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.compactMode ? 'on' : ''}" id="settings-compact-mode-switch"></div>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>悬停边框变色</h4>
+                                        <p>开启后，鼠标悬浮说说内容列表卡片时边框变为主题强调色并附轻微阴影</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.noteCardHoverBorder ? 'on' : ''}" id="settings-note-hover-border-switch"></div>
                                 </div>
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
@@ -4483,13 +4493,6 @@ ipcRenderer.on('lumina-close', () => {
                                     <input type="number" id="moments-font-size-custom-input" style="width: 80px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="24" step="0.5" value="${this.momentsConfig?.fontSize?.customSize || 14.5}">
                                     <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">px</span>
                                 </div>
-                                <div class="north-shuoshuo-toggle-row">
-                                    <div class="north-shuoshuo-toggle-info">
-                                        <h4>显示朋友圈</h4>
-                                        <p>开启后，在轻语侧边栏显示朋友圈视图</p>
-                                    </div>
-                                    <div class="north-shuoshuo-switch ${this.momentsConfig?.showMomentsSidebar !== false ? 'on' : ''}" id="settings-show-moments-switch"></div>
-                                </div>
                                 <div class="north-shuoshuo-form-row" style="margin-top:12px; padding-top:12px; border-top:1px solid color-mix(in srgb, var(--b3-border-color) 20%, transparent);">
                                     <label class="north-shuoshuo-form-label">访问密码</label>
                                     <div class="north-shuoshuo-password-wrap">
@@ -4521,13 +4524,6 @@ ipcRenderer.on('lumina-close', () => {
                                         <p>开启后，在 LifeLog 视图中显示本年度从思源笔记读取到的 LifeLog 记录。</p>
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.showLifeLogRecords ? 'on' : ''}" id="lifelog-settings-show-records-switch"></div>
-                                </div>
-                                <div class="north-shuoshuo-toggle-row">
-                                    <div class="north-shuoshuo-toggle-info">
-                                        <h4>显示 LifeLog 视图</h4>
-                                        <p>开启后，在轻语侧边栏显示 LifeLog 和 LifeLog 统计视图入口</p>
-                                    </div>
-                                    <div class="north-shuoshuo-switch ${this.showLifeLogSidebar ? 'on' : ''}" id="lifelog-settings-show-sidebar-switch"></div>
                                 </div>
                                 <div class="north-shuoshuo-toggle-row">
                                     <div class="north-shuoshuo-toggle-info">
@@ -4689,13 +4685,6 @@ ipcRenderer.on('lumina-close', () => {
                                 </div>
                             </div>
 
-                            <div class="north-shuoshuo-toggle-row">
-                                <div class="north-shuoshuo-toggle-info">
-                                    <h4>显示图书视图</h4>
-                                    <p>开启后，在轻语侧边栏显示图书视图入口</p>
-                                </div>
-                                <div class="north-shuoshuo-switch ${this.showBookshelfSidebar ? 'on' : ''}" id="bookshelf-settings-show-sidebar-switch"></div>
-                            </div>
                         </div>
 
                         <!-- 主题设置 -->
@@ -4806,7 +4795,9 @@ ipcRenderer.on('lumina-close', () => {
         this.syncEnterKeyHint();
         if (!this._skipInitialRender) {
             // 初始化视图状态（确保移动端说说视图的顶部栏等逻辑正确执行）
-            this.switchMainView('notes', null);
+            // 若默认视图被隐藏，则回退到第一个可见视图
+            const initialView = this.isNavViewHidden('notes') ? this.getFirstVisibleSidebarView() : 'notes';
+            this.switchMainView(initialView, null);
         }
     }
 
@@ -5152,6 +5143,91 @@ ipcRenderer.on('lumina-close', () => {
         return html;
     }
 
+    // 生成说说视图的月历视图（替代日历贡献图）
+    generateShuoshuoMonthCalendar() {
+        const year = this.calendarViewDate.getFullYear();
+        const month = this.calendarViewDate.getMonth();
+        const today = new Date();
+        const todayKey = this.formatDateKey(today);
+        const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+
+        // 该月第一天与最后一天
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+
+        // 以周一为每周第一天，计算上月填充天数
+        let startWeekday = firstDay.getDay(); // 0=周日, 1=周一...
+        if (startWeekday === 0) startWeekday = 7;
+        const leadingDays = startWeekday - 1;
+
+        const cells = [];
+
+        // 上月填充日
+        for (let i = leadingDays - 1; i >= 0; i--) {
+            const d = new Date(year, month, -i);
+            cells.push(`<div class="north-shuoshuo-calendar-cell other-month" data-date="${this.formatDateKey(d)}">${d.getDate()}</div>`);
+        }
+
+        // 当月日期
+        for (let d = 1; d <= lastDay.getDate(); d++) {
+            const date = new Date(year, month, d);
+            const dateKey = this.formatDateKey(date);
+            const count = this.getNoteCountByDate(date);
+            let level = 0;
+            if (count >= 1) level = 1;
+            if (count >= 3) level = 2;
+            if (count >= 5) level = 3;
+            if (count >= 10) level = 4;
+            const selectedClass = this.selectedDate === dateKey ? ' selected' : '';
+            const todayClass = dateKey === todayKey ? ' today' : '';
+            const tooltip = count > 0
+                ? `${count}条 ${date.getMonth() + 1}月${date.getDate()}日`
+                : `${date.getMonth() + 1}月${date.getDate()}日`;
+            const dot = level > 0 ? '<span class="north-shuoshuo-calendar-dot"></span>' : '';
+            cells.push(`<div class="north-shuoshuo-calendar-cell level-${level}${selectedClass}${todayClass}" data-date="${dateKey}" data-lumina-tip="${tooltip}">${d}${dot}</div>`);
+        }
+
+        // 下月填充日，按实际需要补满整行（多数月份 5 行即可，不强制 6 行）
+        const totalCells = cells.length;
+        const totalRows = Math.ceil(totalCells / 7);
+        const trailingDays = totalRows * 7 - totalCells;
+        for (let i = 1; i <= trailingDays; i++) {
+            const d = new Date(year, month + 1, i);
+            cells.push(`<div class="north-shuoshuo-calendar-cell other-month" data-date="${this.formatDateKey(d)}">${d.getDate()}</div>`);
+        }
+
+        const headerHtml = `
+            <div class="north-shuoshuo-calendar-header">
+                <button class="north-shuoshuo-calendar-prev" type="button" title="上月">‹</button>
+                <span class="north-shuoshuo-calendar-title">${year}年${month + 1}月</span>
+                <button class="north-shuoshuo-calendar-next" type="button" title="下月">›</button>
+            </div>
+        `;
+        const weekdaysHtml = `<div class="north-shuoshuo-calendar-weekdays">${weekdays.map(w => `<span>${w}</span>`).join('')}</div>`;
+        const daysHtml = `<div class="north-shuoshuo-calendar-days">${cells.join('')}</div>`;
+
+        return headerHtml + weekdaysHtml + daysHtml;
+    }
+
+    // 渲染说说视图的日期面板内部（根据 shuoshuoHeatmapType 选择热力图或月历）
+    renderShuoshuoHeatmapContainer() {
+        if (this.shuoshuoHeatmapType === 'calendar') {
+            return `
+                <div class="north-shuoshuo-calendar">
+                    ${this.generateShuoshuoMonthCalendar()}
+                </div>
+            `;
+        }
+        return `
+            <div class="north-shuoshuo-heatmap">
+                ${this.generateHeatmap()}
+            </div>
+            <div class="north-shuoshuo-months">
+                ${this.generateHeatmapMonths()}
+            </div>
+        `;
+    }
+
     _scheduleRender(view) {
         requestAnimationFrame(() => {
             const targetView = view || this.currentMainView;
@@ -5206,21 +5282,14 @@ ipcRenderer.on('lumina-close', () => {
         this.container.classList.remove('north-shuoshuo-lifelog-compact');
         this.applyCompactMode();
 
-        // 更新热力图
-        const heatmapEl = this.container.querySelector('.north-shuoshuo-heatmap');
-        if (heatmapEl) {
-            heatmapEl.innerHTML = this.generateHeatmap();
-            // 恢复选中状态
+        // 更新日期面板（日历贡献图或月历视图）
+        const heatmapContainerEl = this.container.querySelector('.north-shuoshuo-heatmap-container');
+        if (heatmapContainerEl) {
+            heatmapContainerEl.innerHTML = this.renderShuoshuoHeatmapContainer();
             if (this.selectedDate) {
-                const selectedCell = heatmapEl.querySelector(`[data-date="${this.selectedDate}"]`);
-                if (selectedCell) {
-                    selectedCell.classList.add('selected');
-                }
+                const selectedCell = heatmapContainerEl.querySelector(`[data-date="${this.selectedDate}"]`);
+                if (selectedCell) selectedCell.classList.add('selected');
             }
-        }
-        const monthsEl = this.container.querySelector('.north-shuoshuo-months');
-        if (monthsEl) {
-            monthsEl.innerHTML = this.generateHeatmapMonths();
         }
 
         this.renderTags();
@@ -5379,8 +5448,8 @@ ipcRenderer.on('lumina-close', () => {
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
         // 应用紧凑模式（LifeLog 独立 compact 配置，不影响说说视图；并清除说说视图的紧凑样式残留）
-        this.container.classList.remove('north-shuoshuo-compact');
-        this.container.classList.toggle('north-shuoshuo-lifelog-compact', this.lifeLogCompactMode);
+        // 统一交由 applyCompactMode 处理：建立 LifeLog 视图上下文类、清除说说上下文与说说紧凑类
+        this.applyCompactMode();
         listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout', 'gallery-layout');
         // 清除其他视图残留的内联样式，确保宽度与说说视图一致
         listEl.style.padding = '';
@@ -5794,8 +5863,8 @@ ipcRenderer.on('lumina-close', () => {
         const listEl = this.container.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
         // 应用紧凑模式（LifeLog 独立 compact 配置，不影响说说视图；并清除说说视图的紧凑样式残留）
-        this.container.classList.remove('north-shuoshuo-compact');
-        this.container.classList.toggle('north-shuoshuo-lifelog-compact', this.lifeLogCompactMode);
+        // 统一交由 applyCompactMode 处理：建立 LifeLog 视图上下文类、清除说说上下文与说说紧凑类
+        this.applyCompactMode();
         listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout', 'gallery-layout');
         listEl.style.padding = '';
         listEl.style.maxWidth = '';
@@ -7964,14 +8033,15 @@ ipcRenderer.on('lumina-close', () => {
                             showMessage('该笔记已被删除');
                             return;
                         }
-                        // 清理插件目录中的图片
+                        // 先从内存移除该笔记（确保引用已不存在），再清理其图片资源
+                        this.shuoshuos = this.shuoshuos.filter(s => String(s.id) !== String(id));
+                        // 清理插件目录中的图片（引用已移除，deletePluginImage 会连备份一并删除，做到真正删除）
                         const { images } = this.extractContentAndImages(noteNow.content || '');
                         for (const img of images) {
                             if (img.url && (img.url.startsWith('/assets/') || img.url.startsWith('assets/'))) {
                                 await this.deletePluginImage(img.url);
                             }
                         }
-                        this.shuoshuos = this.shuoshuos.filter(s => String(s.id) !== String(id));
                         await this.saveShuoshuos();
                         if (noteNow.boundBlockId) {
                             await this.deleteSiyuanBlock(noteNow.boundBlockId);
@@ -8278,10 +8348,32 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
                     </div>
                     <div class="lumina-moments-cover${cover ? ' has-cover-img' : ''}" id="momentsCoverSection">
-                        ${cover ? `<img class="lumina-moments-cover-img" src="${this._resolveImageUrl(cover)}" alt="cover" style="object-position: 50% ${cfg.coverPosition || 50}%;">` : `<svg class="lumina-moments-cover-img" viewBox="0 0 375 320" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="momentsCoverGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#1a2980"/><stop offset="50%" style="stop-color:#26d0ce"/><stop offset="100%" style="stop-color:#1a2980"/></linearGradient><pattern id="momentsPattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100%" height="100%" fill="url(#momentsCoverGrad)"/><rect width="100%" height="100%" fill="url(#momentsPattern)"/><circle cx="300" cy="80" r="60" fill="rgba(255,255,255,0.05)"/><circle cx="80" cy="200" r="40" fill="rgba(255,255,255,0.03)"/></svg>`}
+                        ${cover ? `<img class="lumina-moments-cover-img" src="${this._resolveImageUrl(cover)}" alt="cover" style="object-position: 50% ${cfg.coverPosition || 50}%;">` : this._defaultCoverSvg()}
                         <div class="lumina-moments-cover-user">
                             <span class="lumina-moments-cover-name">${nickname}</span>
                             <img class="lumina-moments-cover-avatar" id="momentsCoverAvatar" src="${avatar}" alt="avatar">
+                        </div>
+                        <div class="lumina-moments-cover-toolbar" id="momentsCoverToolbar">
+                            <button class="lumina-moments-cover-tool" data-act="upload" type="button" title="上传本地图片">
+                                <svg><use xlink:href="#iconUpload"></use></svg><span>上传</span>
+                            </button>
+                            <button class="lumina-moments-cover-tool" data-act="link" type="button" title="网络图片链接">
+                                <svg><use xlink:href="#iconLink"></use></svg><span>链接</span>
+                            </button>
+                            <button class="lumina-moments-cover-tool" data-act="resource" type="button" title="从资源库选择">
+                                <svg><use xlink:href="#iconImage"></use></svg><span>资源</span>
+                            </button>
+                            <button class="lumina-moments-cover-tool" data-act="drag" type="button" title="拖动调整位置">
+                                <svg><use xlink:href="#iconMove"></use></svg><span>拖动</span>
+                            </button>
+                            <button class="lumina-moments-cover-tool lumina-moments-cover-tool-danger" data-act="delete" type="button" title="删除并恢复默认">
+                                <svg><use xlink:href="#iconTrashcan"></use></svg><span>删除</span>
+                            </button>
+                        </div>
+                        <div class="lumina-moments-cover-drag-confirm" id="momentsCoverDragConfirm" style="display:none">
+                            <span class="lumina-moments-cover-drag-hint">拖动图片调整位置，确认后生效</span>
+                            <button class="lumina-moments-cover-drag-btn" id="momentsCoverDragOk" type="button">确定</button>
+                            <button class="lumina-moments-cover-drag-btn lumina-moments-cover-drag-cancel" id="momentsCoverDragCancel" type="button">取消</button>
                         </div>
                         <input type="file" id="momentsCoverInput" class="lumina-moments-file-input" accept="image/*">
                     </div>
@@ -8387,6 +8479,37 @@ ipcRenderer.on('lumina-close', () => {
                         <div class="lumina-moments-calendar-body" id="momentsCalendarBody"></div>
                     </div>
                 </div>
+
+                <!-- 封面：网络链接弹窗 -->
+                <div class="lumina-moments-cover-modal" id="momentsCoverLinkModal">
+                    <div class="lumina-moments-cover-modal-overlay" data-close="link"></div>
+                    <div class="lumina-moments-cover-modal-content">
+                        <div class="lumina-moments-cover-modal-header">
+                            <span class="lumina-moments-cover-modal-title">网络图片链接</span>
+                            <div class="lumina-moments-cover-modal-close" data-close="link">×</div>
+                        </div>
+                        <div class="lumina-moments-cover-modal-body">
+                            <input type="text" class="lumina-moments-cover-link-input" id="momentsCoverLinkInput" placeholder="粘贴图片网络地址，如 https://example.com/cover.jpg">
+                            <div class="lumina-moments-cover-modal-tip">支持 http(s) 图片链接，或 data:image 开头的图片数据</div>
+                            <button class="lumina-moments-cover-modal-ok" id="momentsCoverLinkOk" type="button">确定</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 封面：资源库选择弹窗 -->
+                <div class="lumina-moments-cover-modal" id="momentsCoverResourceModal">
+                    <div class="lumina-moments-cover-modal-overlay" data-close="resource"></div>
+                    <div class="lumina-moments-cover-modal-content">
+                        <div class="lumina-moments-cover-modal-header">
+                            <span class="lumina-moments-cover-modal-title">从资源库选择</span>
+                            <div class="lumina-moments-cover-modal-close" data-close="resource">×</div>
+                        </div>
+                        <div class="lumina-moments-cover-modal-body">
+                            <div class="lumina-moments-cover-grid" id="momentsCoverResourceGrid"><div class="lumina-moments-cover-grid-loading">加载中...</div></div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         `;
 
@@ -8601,10 +8724,6 @@ ipcRenderer.on('lumina-close', () => {
             }
         }
         if (coverSection && coverInput) {
-            coverSection.addEventListener('click', (e) => {
-                if (e.target === coverAvatar || e.target.closest('#momentsCoverAvatar')) return;
-                coverInput.click();
-            });
             coverInput.addEventListener('change', async (e) => {
                 const file = e.target.files[0];
                 if (file) {
@@ -8641,6 +8760,66 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // ===== 封面工具栏 =====
+        const coverToolbar = container.querySelector('#momentsCoverToolbar');
+        const coverDragConfirm = container.querySelector('#momentsCoverDragConfirm');
+        if (coverToolbar) {
+            // 悬停意图：进入显示，离开后延时隐藏，避免鼠标经过导航栏遮挡区时误隐藏
+            let coverToolbarHideTimer = null;
+            const showCoverToolbar = () => {
+                if (coverToolbarHideTimer) { clearTimeout(coverToolbarHideTimer); coverToolbarHideTimer = null; }
+                coverToolbar.classList.add('visible');
+            };
+            const hideCoverToolbar = () => {
+                if (coverToolbarHideTimer) clearTimeout(coverToolbarHideTimer);
+                coverToolbarHideTimer = setTimeout(() => coverToolbar.classList.remove('visible'), 220);
+            };
+            if (coverSection) {
+                coverSection.addEventListener('mouseenter', showCoverToolbar);
+                coverSection.addEventListener('mouseleave', hideCoverToolbar);
+            }
+            coverToolbar.addEventListener('mouseenter', showCoverToolbar);
+            coverToolbar.addEventListener('mouseleave', hideCoverToolbar);
+            coverToolbar.addEventListener('click', (e) => {
+                const btn = e.target.closest('.lumina-moments-cover-tool');
+                if (!btn) return;
+                const act = btn.dataset.act;
+                if (act === 'upload') {
+                    coverInput.click();
+                } else if (act === 'link') {
+                    this._openCoverLinkModal();
+                } else if (act === 'resource') {
+                    this._openCoverResourceModal();
+                } else if (act === 'drag') {
+                    this._enterCoverDragMode();
+                } else if (act === 'delete') {
+                    this._deleteCover();
+                }
+            });
+        }
+        if (coverDragConfirm) {
+            coverDragConfirm.querySelector('#momentsCoverDragOk')?.addEventListener('click', () => this._confirmCoverDrag());
+            coverDragConfirm.querySelector('#momentsCoverDragCancel')?.addEventListener('click', () => this._cancelCoverDrag());
+        }
+
+        // ===== 封面弹窗（链接/资源/内置）通用关闭 =====
+        container.querySelectorAll('.lumina-moments-cover-modal').forEach(modal => {
+            modal.querySelectorAll('[data-close]').forEach(el => {
+                el.addEventListener('click', () => modal.classList.remove('active'));
+            });
+        });
+        const linkModal = container.querySelector('#momentsCoverLinkModal');
+        if (linkModal) {
+            linkModal.querySelector('#momentsCoverLinkOk')?.addEventListener('click', () => {
+                const input = linkModal.querySelector('#momentsCoverLinkInput');
+                const val = (input?.value || '').trim();
+                if (!val) { showMessage('请输入图片链接'); return; }
+                if (!/^(https?:\/\/|data:image\/)/i.test(val)) { showMessage('链接格式不正确，需为 http(s) 或 data:image 图片'); return; }
+                this._applyCover(val);
+                linkModal.classList.remove('active');
+            });
+        }
+
         // more按钮 & 弹出菜单
         container.addEventListener('click', (e) => {
             const moreBtn = e.target.closest('.lumina-moments-more-btn');
@@ -8665,7 +8844,9 @@ ipcRenderer.on('lumina-close', () => {
                 container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
                 this.confirmAboveMobileShell('⚠️ 确认删除', '确定要删除这条朋友圈吗？此操作不可恢复。', async () => {
                     const target = this.moments.find(x => x.id === mid);
-                    // 清理插件目录中的图片
+                    // 先从内存移除该条朋友圈（确保引用已不存在），再清理其图片资源
+                    this.moments = this.moments.filter(x => x.id !== mid);
+                    // 清理插件目录中的图片（引用已移除，deletePluginImage 会连备份一并删除，做到真正删除）
                     if (target) {
                         const allImgs = [...(target.images || [])];
                         for (const img of allImgs) {
@@ -8674,7 +8855,6 @@ ipcRenderer.on('lumina-close', () => {
                             }
                         }
                     }
-                    this.moments = this.moments.filter(x => x.id !== mid);
                     await this.saveMoments();
                     this._doRenderMoments();
                 });
@@ -9201,20 +9381,9 @@ ipcRenderer.on('lumina-close', () => {
             return match ? parseFloat(match[1]) : (this.momentsConfig.coverPosition || 50);
         };
 
-        const onDragStart = (e) => {
-            // 鼠标事件仅响应右键（button === 2），触摸事件不受限制
-            if (e.button !== undefined && e.button !== 2) return;
-            isDragging = true;
-            hasMoved = false;
-            startY = e.clientY || (e.touches && e.touches[0].clientY);
-            startPosition = getPosition();
-            imgEl.classList.add('dragging');
-            e.preventDefault();
-        };
-
         const onDragMove = (e) => {
             if (!isDragging) return;
-            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] && e.touches[0].clientY);
             if (clientY === undefined) return;
             const deltaY = clientY - startY;
             if (Math.abs(deltaY) > 3) hasMoved = true;
@@ -9229,29 +9398,34 @@ ipcRenderer.on('lumina-close', () => {
             if (!isDragging) return;
             isDragging = false;
             imgEl.classList.remove('dragging');
-            if (hasMoved) {
-                const finalPos = getPosition();
-                this.momentsConfig.coverPosition = Math.round(finalPos * 10) / 10;
-                this.saveMoments();
-            }
+            document.removeEventListener('mousemove', onDragMove);
+            document.removeEventListener('mouseup', onDragEnd);
+            document.removeEventListener('touchmove', onDragMove);
+            document.removeEventListener('touchend', onDragEnd);
+            // 拖动模式下不自动保存，等待"确定"按钮确认
         };
 
-        // 鼠标事件（仅右键触发拖动）
+        const onDragStart = (e) => {
+            // 仅当通过工具栏"拖动"进入拖动模式后才允许左键拖动
+            if (imgEl.dataset.coverDragEnabled !== 'true') return;
+            if (e.button !== undefined && e.button !== 0) return;
+            isDragging = true;
+            hasMoved = false;
+            startY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] && e.touches[0].clientY);
+            startPosition = getPosition();
+            imgEl.classList.add('dragging');
+            document.addEventListener('mousemove', onDragMove);
+            document.addEventListener('mouseup', onDragEnd);
+            document.addEventListener('touchmove', onDragMove, { passive: false });
+            document.addEventListener('touchend', onDragEnd);
+            e.preventDefault();
+        };
+
         imgEl.addEventListener('mousedown', onDragStart);
-        document.addEventListener('mousemove', onDragMove);
-        document.addEventListener('mouseup', onDragEnd);
-
-        // 拦截右键菜单，避免拖动时弹出菜单
-        imgEl.addEventListener('contextmenu', (e) => e.preventDefault());
-
-        // 触摸事件（移动端）
         imgEl.addEventListener('touchstart', onDragStart, { passive: false });
-        document.addEventListener('touchmove', onDragMove, { passive: false });
-        document.addEventListener('touchend', onDragEnd);
-
+        imgEl.addEventListener('contextmenu', (e) => e.preventDefault());
         imgEl.dataset.dragInitialized = 'true';
 
-        // 监听图片加载完成，确保 object-position 生效
         if (imgEl.complete) {
             imgEl.style.objectPosition = `50% ${this.momentsConfig.coverPosition || 50}%`;
         } else {
@@ -9261,6 +9435,148 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    // 默认封面 SVG（深蓝→青渐变 + 圆点纹理）
+    _defaultCoverSvg() {
+        return `<svg class="lumina-moments-cover-img" viewBox="0 0 600 320" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="defaultWaveGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#2b5876"/><stop offset="100%" style="stop-color:#4e4376"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#defaultWaveGrad)"/><path d="M0 220 Q150 160 300 220 T600 220 V320 H0 Z" fill="rgba(255,255,255,0.12)"/><path d="M0 260 Q150 200 300 260 T600 260 V320 H0 Z" fill="rgba(255,255,255,0.16)"/></svg>`;
+    }
+
+    // 应用封面图片（url 可为 assets 路径、网络链接或内置 SVG data URL）
+    _applyCover(url, save = true) {
+        const coverSection = this.container && this.container.querySelector('#momentsCoverSection');
+        if (!coverSection) return;
+        const resolved = this._resolveImageUrl(url);
+        let img = coverSection.querySelector('img.lumina-moments-cover-img');
+        const oldSvg = coverSection.querySelector('svg.lumina-moments-cover-img');
+        if (!img) {
+            img = document.createElement('img');
+            img.className = 'lumina-moments-cover-img';
+            if (oldSvg) coverSection.replaceChild(img, oldSvg);
+            else coverSection.insertBefore(img, coverSection.firstChild);
+        } else if (oldSvg) {
+            oldSvg.remove();
+        }
+        img.src = resolved;
+        img.dataset.coverDragEnabled = 'false';
+        img.classList.remove('cover-draggable');
+        img.style.objectPosition = `50% ${this.momentsConfig.coverPosition || 50}%`;
+        coverSection.classList.add('has-cover-img');
+        this._initCoverDrag(img, coverSection);
+        this.momentsConfig.cover = url;
+        if (save) this.saveMoments();
+    }
+
+    // 删除封面，恢复默认样式
+    _resetCoverDefault() {
+        const coverSection = this.container && this.container.querySelector('#momentsCoverSection');
+        if (!coverSection) return;
+        coverSection.classList.remove('has-cover-img');
+        const img = coverSection.querySelector('img.lumina-moments-cover-img');
+        const oldSvg = coverSection.querySelector('svg.lumina-moments-cover-img');
+        if (img) img.remove();
+        if (!oldSvg) {
+            const wrap = document.createElement('div');
+            wrap.innerHTML = this._defaultCoverSvg();
+            coverSection.insertBefore(wrap.firstChild, coverSection.firstChild);
+        }
+        const bar = coverSection.querySelector('#momentsCoverDragConfirm');
+        if (bar) bar.style.display = 'none';
+        this.momentsConfig.cover = null;
+        this.momentsConfig.coverPosition = 50;
+        this.saveMoments();
+    }
+
+    // 进入拖动模式（左键拖动调整封面位置）
+    _enterCoverDragMode() {
+        const coverSection = this.container && this.container.querySelector('#momentsCoverSection');
+        if (!coverSection) return;
+        const img = coverSection.querySelector('img.lumina-moments-cover-img[src]');
+        if (!img) {
+            showMessage('请先设置封面图片，再调整位置');
+            return;
+        }
+        img.dataset.coverDragEnabled = 'true';
+        img.classList.add('cover-draggable');
+        const bar = coverSection.querySelector('#momentsCoverDragConfirm');
+        if (bar) bar.style.display = 'flex';
+    }
+
+    // 确认拖动：保存位置
+    _confirmCoverDrag() {
+        const coverSection = this.container && this.container.querySelector('#momentsCoverSection');
+        if (!coverSection) return;
+        const img = coverSection.querySelector('img.lumina-moments-cover-img[src]');
+        if (img) {
+            const match = (img.style.objectPosition || '').match(/50%\s*([\d.]+)%/);
+            const pos = match ? parseFloat(match[1]) : (this.momentsConfig.coverPosition || 50);
+            this.momentsConfig.coverPosition = Math.round(pos * 10) / 10;
+            img.dataset.coverDragEnabled = 'false';
+            img.classList.remove('cover-draggable');
+            this.saveMoments();
+        }
+        const bar = coverSection.querySelector('#momentsCoverDragConfirm');
+        if (bar) bar.style.display = 'none';
+    }
+
+    // 取消拖动：还原位置
+    _cancelCoverDrag() {
+        const coverSection = this.container && this.container.querySelector('#momentsCoverSection');
+        if (!coverSection) return;
+        const img = coverSection.querySelector('img.lumina-moments-cover-img[src]');
+        if (img) {
+            img.style.objectPosition = `50% ${this.momentsConfig.coverPosition || 50}%`;
+            img.dataset.coverDragEnabled = 'false';
+            img.classList.remove('cover-draggable');
+        }
+        const bar = coverSection.querySelector('#momentsCoverDragConfirm');
+        if (bar) bar.style.display = 'none';
+    }
+
+    // 删除封面（带确认）
+    _deleteCover() {
+        this.confirmAboveMobileShell('删除封面', '确定要删除当前封面，恢复为默认样式吗？', () => {
+            this._resetCoverDefault();
+        });
+    }
+
+    // 打开网络链接弹窗
+    _openCoverLinkModal() {
+        const modal = this.container && this.container.querySelector('#momentsCoverLinkModal');
+        if (!modal) return;
+        const input = modal.querySelector('#momentsCoverLinkInput');
+        if (input) input.value = '';
+        modal.classList.add('active');
+        setTimeout(() => input && input.focus(), 50);
+    }
+
+    // 打开资源库选择弹窗
+    _openCoverResourceModal() {
+        const modal = this.container && this.container.querySelector('#momentsCoverResourceModal');
+        if (!modal) return;
+        modal.classList.add('active');
+        const grid = modal.querySelector('#momentsCoverResourceGrid');
+        if (!grid) return;
+        grid.innerHTML = '<div class="lumina-moments-cover-grid-loading">加载中...</div>';
+        this._listAssetsFiles().then(files => {
+            if (!grid.isConnected) return;
+            const imgs = [...files].filter(f => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f));
+            if (imgs.length === 0) {
+                grid.innerHTML = '<div class="lumina-moments-cover-grid-loading">资源库中没有可用图片</div>';
+                return;
+            }
+            grid.innerHTML = imgs.map(f => `<div class="lumina-moments-cover-grid-item" data-file="${f}" style="background-image:url(&quot;/assets/${encodeURIComponent(f)}&quot;)" title="${f}"></div>`).join('');
+            grid.querySelectorAll('.lumina-moments-cover-grid-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const f = item.dataset.file;
+                    this._applyCover('assets/' + f);
+                    modal.classList.remove('active');
+                });
+            });
+        }).catch(() => {
+            if (grid.isConnected) grid.innerHTML = '<div class="lumina-moments-cover-grid-loading">加载失败</div>';
+        });
+    }
+
+    // 打开内置背景弹窗
     _renderPublishImages(images, containerEl) {
         if (!containerEl) return;
         const addBtn = containerEl.querySelector('#momentsPublishAdd');
@@ -9964,11 +10280,18 @@ ipcRenderer.on('lumina-close', () => {
             { type: 'video', label: '视频' },
             { type: 'file', label: '文件' }
         ];
+        const currentTypeLabel = (mediaTypeChips.find(c => c.type === this.galleryMediaType) || mediaTypeChips[1]).label;
         const mediaTypeHtml = `
-            <div class="north-shuoshuo-gallery-type-filters">
-                ${mediaTypeChips.map(chip => `
-                <span class="north-shuoshuo-gallery-type-chip ${this.galleryMediaType === chip.type ? 'active' : ''}" data-type="${chip.type}">${chip.label}</span>
-                `).join('')}
+            <div class="north-shuoshuo-gallery-type-select">
+                <div class="north-shuoshuo-gallery-type-trigger" tabindex="0">
+                    <span class="north-shuoshuo-gallery-type-trigger-label">${currentTypeLabel}</span>
+                    <svg class="north-shuoshuo-gallery-type-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+                <div class="north-shuoshuo-gallery-type-menu">
+                    ${mediaTypeChips.map(chip => `
+                    <div class="north-shuoshuo-gallery-type-option ${this.galleryMediaType === chip.type ? 'active' : ''}" data-type="${chip.type}">${chip.label}</div>
+                    `).join('')}
+                </div>
             </div>
         `;
 
@@ -10094,14 +10417,39 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     _bindGalleryEvents(listEl, filteredItems) {
-        // 媒体类型筛选
-        listEl.querySelectorAll('.north-shuoshuo-gallery-type-chip').forEach(chip => {
-            chip.addEventListener('click', (e) => {
+        // 媒体类型筛选（下拉）
+        const typeSelect = listEl.querySelector('.north-shuoshuo-gallery-type-select');
+        if (typeSelect) {
+            const trigger = typeSelect.querySelector('.north-shuoshuo-gallery-type-trigger');
+            let closeHandler = null;
+            const closeMenu = () => {
+                typeSelect.classList.remove('open');
+                if (closeHandler) {
+                    document.removeEventListener('click', closeHandler);
+                    closeHandler = null;
+                }
+            };
+            const openMenu = () => {
+                typeSelect.classList.add('open');
+                closeHandler = (ev) => {
+                    if (!typeSelect.contains(ev.target)) closeMenu();
+                };
+                setTimeout(() => document.addEventListener('click', closeHandler), 0);
+            };
+            trigger.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.galleryMediaType = chip.dataset.type;
-                this.renderGallery();
+                if (typeSelect.classList.contains('open')) closeMenu();
+                else openMenu();
             });
-        });
+            typeSelect.querySelectorAll('.north-shuoshuo-gallery-type-option').forEach(opt => {
+                opt.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.galleryMediaType = opt.dataset.type;
+                    closeMenu();
+                    this.renderGallery();
+                });
+            });
+        }
 
         listEl.querySelectorAll('.north-shuoshuo-gallery-tag-chip').forEach(chip => {
             chip.addEventListener('click', (e) => {
@@ -11845,12 +12193,44 @@ ipcRenderer.on('lumina-close', () => {
         });
     }
 
-    // 判断某视图当前是否在左侧栏显示
+    // 判断某视图当前是否在左侧栏显示（受轻语设置中的“隐藏”开关控制）
     isSidebarViewVisible(view) {
-        if (view === 'moments') return this.momentsConfig?.showMomentsSidebar !== false;
-        if (view === 'lifelog' || view === 'lifelog-stats') return this.showLifeLogSidebar !== false;
-        if (view === 'bookshelf') return this.showBookshelfSidebar !== false;
-        return true;
+        return !this.isNavViewHidden(view);
+    }
+
+    // 判断某视图是否在左侧栏被隐藏（轻语设置中的“隐藏”开关）
+    isNavViewHidden(viewKey) {
+        return !!(this.navHidden && this.navHidden[viewKey]);
+    }
+
+    // 将某个视图的“隐藏/显示”状态应用到所有已挂载实例（左侧栏 + 移动端标签）
+    applySidebarNavVisibility(viewKey) {
+        const hidden = this.isNavViewHidden(viewKey);
+        this.getMountedLuminaContainers().forEach(container => {
+            if (!(container instanceof HTMLElement)) return;
+            const btn = container.querySelector(`.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="${viewKey}"]`);
+            if (btn) btn.style.display = hidden ? 'none' : '';
+            const tab = container.querySelector(`.north-shuoshuo-mobile-tabbar .mobile-tab-item[data-view="${viewKey}"]`);
+            if (tab) tab.style.display = hidden ? 'none' : '';
+        });
+    }
+
+    // 说说内容列表悬停边框变色：根据 noteCardHoverBorder 为各已挂载实例的说说列表容器加/去类
+    applyNoteCardHoverBorder() {
+        this.getMountedLuminaContainers().forEach(container => {
+            if (!(container instanceof HTMLElement)) return;
+            const list = container.querySelector('#shuoshuo-notes-list');
+            if (list) list.classList.toggle('note-hover-border', this.noteCardHoverBorder === true);
+        });
+    }
+
+    // 获取第一个既在侧栏可见、又未被隐藏的视图（用于隐藏当前视图后回退）
+    getFirstVisibleSidebarView() {
+        const order = ['notes', 'gallery', 'table', 'stats', 'moments', 'lifelog', 'lifelog-stats', 'bookshelf', 'settings'];
+        for (const key of order) {
+            if (this.isSidebarViewVisible(key) && !this.isNavViewHidden(key)) return key;
+        }
+        return 'notes';
     }
 
     // 渲染“轻语设置”中的左侧栏图标自定义列表
@@ -11858,7 +12238,7 @@ ipcRenderer.on('lumina-close', () => {
         if (!listEl) return;
         const self = this;
         const escHtml = (s) => self.escapeHtml(s || '');
-        const views = SIDEBAR_VIEWS.filter(v => v.always || self.isSidebarViewVisible(v.key));
+        const views = SIDEBAR_VIEWS.filter(v => v.always || self.isSidebarViewVisible(v.key) || self.isNavViewHidden(v.key));
         let html = '';
         views.forEach(v => {
             const iconHtml = self.getSidebarIconHtml(v.key);
@@ -11866,14 +12246,17 @@ ipcRenderer.on('lumina-close', () => {
             const isIconCustom = !!(self.navIcons?.[v.key] && self.navIcons[v.key].trim());
             const isNameCustom = !!(self.navNames?.[v.key] && self.navNames[v.key].trim());
             const isCustom = isIconCustom || isNameCustom;
+            const isHidden = self.isNavViewHidden(v.key);
+            const cannotHide = !!v.cannotHide;
             html += `
-                <div class="north-shuoshuo-sidebar-icon-row" data-view="${v.key}">
+                <div class="north-shuoshuo-sidebar-icon-row" data-view="${v.key}"${isHidden ? ' data-hidden="1"' : ''}>
                     <div class="north-shuoshuo-sidebar-icon-preview">${iconHtml}</div>
                     <div class="north-shuoshuo-sidebar-icon-name" title="${escHtml(name)}">${escHtml(name)}</div>
                     <div class="north-shuoshuo-sidebar-icon-actions">
                         <button class="north-shuoshuo-sidebar-icon-btn" data-action="change">更换图标</button>
                         <button class="north-shuoshuo-sidebar-icon-btn" data-action="rename">更换视图昵称</button>
                         <button class="north-shuoshuo-sidebar-icon-btn" data-action="reset" ${isCustom ? '' : 'disabled style="opacity:.4;cursor:not-allowed;"'}>重置</button>
+                        <button class="north-shuoshuo-sidebar-icon-btn" data-action="toggle-visibility"${cannotHide ? ' disabled title="该图标不可隐藏" style="opacity:.4;cursor:not-allowed;"' : ''}>${isHidden ? '显示' : '隐藏'}</button>
                     </div>
                 </div>
             `;
@@ -11885,6 +12268,7 @@ ipcRenderer.on('lumina-close', () => {
             const changeBtn = row.querySelector('[data-action="change"]');
             const renameBtn = row.querySelector('[data-action="rename"]');
             const resetBtn = row.querySelector('[data-action="reset"]');
+            const toggleBtn = row.querySelector('[data-action="toggle-visibility"]');
 
             changeBtn.addEventListener('click', () => {
                 const currentName = self.getSidebarViewName(viewKey);
@@ -11925,6 +12309,29 @@ ipcRenderer.on('lumina-close', () => {
                     self.saveConfig();
                     self.applySidebarNavIcon(viewKey);
                     self.applySidebarNavName(viewKey);
+                    self.renderSidebarIconsSettings(listEl);
+                });
+            }
+
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', () => {
+                    // 不可隐藏的视图（如设置）不允许执行隐藏操作
+                    if (SIDEBAR_VIEWS.find(v => v.key === viewKey)?.cannotHide) return;
+                    // 隐藏/显示该视图在左侧栏的入口
+                    if (self.isNavViewHidden(viewKey)) {
+                        delete self.navHidden[viewKey];
+                    } else {
+                        self.navHidden[viewKey] = true;
+                    }
+                    self.saveConfig();
+                    self.applySidebarNavVisibility(viewKey);
+                    // 若隐藏的恰好是当前激活视图，回退到第一个可见视图
+                    if (self.isNavViewHidden(viewKey) && self.currentMainView === viewKey) {
+                        const fallback = self.getFirstVisibleSidebarView();
+                        const fallbackBtn = self.container?.querySelector?.(`.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="${fallback}"]`);
+                        self.switchMainView(fallback, fallbackBtn);
+                    }
+                    // 刷新列表（更新按钮文案与行标记）
                     self.renderSidebarIconsSettings(listEl);
                 });
             }
@@ -12375,7 +12782,11 @@ ipcRenderer.on('lumina-close', () => {
                 if (!document.body.contains(input)) return;
                 const isLifeLog = ownerContainer.closest?.('.north-shuoshuo-lifelog-dock-view')
                     || this.getContainerMainView(ownerContainer) === 'lifelog';
-                const minHeight = isLifeLog ? 30 : 60;
+                // 说说视图空态输入框为 3 行高（rows="3"），输入时最小高度须与之一致，
+                // 否则 1~2 行内容会被压到 60px，比空态更矮，出现“输入后变小”的问题。
+                // 按当前行高动态计算 3 行高度，兼容自定义字号。
+                const lineHeight = parseFloat(getComputedStyle(input).lineHeight) || 29;
+                const minHeight = isLifeLog ? 30 : Math.round(lineHeight * 3);
                 const maxHeight = 240;
 
                 // 从零高度重新测量，避免 textarea 的既有内联高度影响 scrollHeight。
@@ -12769,7 +13180,7 @@ ipcRenderer.on('lumina-close', () => {
                         this.filterQuery = null;
                         this.selectedTag = null;
                         this.selectedDate = null;
-                        this.container.querySelectorAll('.north-shuoshuo-heatmap-cell').forEach(c => c.classList.remove('selected'));
+                        this.container.querySelectorAll('.north-shuoshuo-heatmap-cell, .north-shuoshuo-calendar-cell').forEach(c => c.classList.remove('selected'));
                         this.container.querySelectorAll('.north-shuoshuo-tag-tree-item').forEach(t => t.classList.remove('selected'));
                         this.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => item.classList.remove('selected'));
                         this.container.querySelectorAll('.north-shuoshuo-menu-item').forEach(item => item.classList.remove('active'));
@@ -12798,9 +13209,9 @@ ipcRenderer.on('lumina-close', () => {
                 const container = item.closest('.north-shuoshuo-flomo-area') || item.closest('.north-shuoshuo-container') || this.container;
                 this.container = container;
                 
-                // 清除热力图选中
+                // 清除热力图 / 月历选中
                 this.selectedDate = null;
-                this.container.querySelectorAll('.north-shuoshuo-heatmap-cell').forEach(c => {
+                this.container.querySelectorAll('.north-shuoshuo-heatmap-cell, .north-shuoshuo-calendar-cell').forEach(c => {
                     c.classList.remove('selected');
                 });
                 
@@ -12960,59 +13371,67 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // 热力图交互（点击筛?+ tooltip?
-        const heatmapEl = this.container.querySelector('.north-shuoshuo-heatmap');
-        if (heatmapEl) {
-            // 点击筛选
-            heatmapEl.addEventListener('click', (e) => {
-                const cell = e.target.closest('.north-shuoshuo-heatmap-cell');
+        // 日期面板交互（日历贡献图 + 月历视图）
+        const heatmapContainer = this.container.querySelector('.north-shuoshuo-heatmap-container');
+        if (heatmapContainer) {
+            heatmapContainer.addEventListener('click', (e) => {
+                const cell = e.target.closest('.north-shuoshuo-heatmap-cell, .north-shuoshuo-calendar-cell');
                 if (cell) {
                     const dateStr = cell.dataset.date;
-                    if (dateStr) {
-                        const wasSelected = cell.classList.contains('selected');
-                        heatmapEl.querySelectorAll('.north-shuoshuo-heatmap-cell').forEach(c => {
-                            c.classList.remove('selected');
-                        });
-                        
-                        // 清除检索式选中
-                        this.filterQuery = null;
-                        this.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
-                            item.classList.remove('selected');
-                        });
-                        
-                        if (wasSelected) {
-                            this.selectedDate = null;
-                            if (this.currentMainView === 'lifelog') {
-                                this.renderLifeLog();
-                            } else {
-                                this.renderNotes();
-                            }
+                    if (!dateStr) return;
+                    const wasSelected = cell.classList.contains('selected');
+                    heatmapContainer.querySelectorAll('.north-shuoshuo-heatmap-cell, .north-shuoshuo-calendar-cell').forEach(c => {
+                        c.classList.remove('selected');
+                    });
+
+                    // 清除检索式选中
+                    this.filterQuery = null;
+                    this.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
+                        item.classList.remove('selected');
+                    });
+
+                    if (wasSelected) {
+                        this.selectedDate = null;
+                        if (this.currentMainView === 'lifelog') {
+                            this.renderLifeLog();
                         } else {
-                            cell.classList.add('selected');
-                            this.selectedDate = dateStr;
-                            if (this.currentMainView === 'lifelog') {
-                                this.renderLifeLog();
-                            } else {
-                                this.renderNotes();
-                            }
+                            this.renderNotes();
+                        }
+                    } else {
+                        cell.classList.add('selected');
+                        this.selectedDate = dateStr;
+                        if (this.currentMainView === 'lifelog') {
+                            this.renderLifeLog();
+                        } else {
+                            this.renderNotes();
                         }
                     }
+                    return;
+                }
+
+                // 月历视图翻页
+                if (e.target.closest('.north-shuoshuo-calendar-prev')) {
+                    this.calendarViewDate.setMonth(this.calendarViewDate.getMonth() - 1);
+                    this.renderNotes();
+                    return;
+                }
+                if (e.target.closest('.north-shuoshuo-calendar-next')) {
+                    this.calendarViewDate.setMonth(this.calendarViewDate.getMonth() + 1);
+                    this.renderNotes();
+                    return;
                 }
             });
 
             // Tooltip 显示
-            heatmapEl.addEventListener('mouseover', (e) => {
-                const cell = e.target.closest('.north-shuoshuo-heatmap-cell');
+            heatmapContainer.addEventListener('mouseover', (e) => {
+                const cell = e.target.closest('.north-shuoshuo-heatmap-cell, .north-shuoshuo-calendar-cell');
                 if (cell) {
-                    // LifeLog 热力图单元格使用 data-count
                     const lifelogCount = cell.dataset.count;
                     const tooltip = cell.dataset.luminaTip || (lifelogCount ? `${cell.dataset.date}: ${lifelogCount} 条 LifeLog` : '');
                     if (tooltip) {
-                        // 移除旧 tooltip
                         const oldTooltip = document.querySelector('.north-shuoshuo-global-tooltip');
                         if (oldTooltip) oldTooltip.remove();
-                        
-                        // 创建?tooltip
+
                         const tooltipEl = document.createElement('div');
                         tooltipEl.className = 'north-shuoshuo-global-tooltip';
                         tooltipEl.textContent = tooltip;
@@ -13029,7 +13448,7 @@ ipcRenderer.on('lumina-close', () => {
                             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                         `;
                         document.body.appendChild(tooltipEl);
-                        
+
                         const rect = cell.getBoundingClientRect();
                         tooltipEl.style.left = `${rect.left + rect.width / 2 - tooltipEl.offsetWidth / 2}px`;
                         tooltipEl.style.top = `${rect.top - tooltipEl.offsetHeight - 6}px`;
@@ -13037,7 +13456,7 @@ ipcRenderer.on('lumina-close', () => {
                 }
             });
 
-            heatmapEl.addEventListener('mouseout', (e) => {
+            heatmapContainer.addEventListener('mouseout', () => {
                 const tooltip = document.querySelector('.north-shuoshuo-global-tooltip');
                 if (tooltip) tooltip.remove();
             });
@@ -14446,6 +14865,12 @@ ipcRenderer.on('lumina-close', () => {
                         const newPath = succMap[originalName];
                         if (newPath) {
                             const filePath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                            // 备份到插件备份目录（防被思源"未引用资源"清理），与 insertImage 保持一致
+                            try {
+                                await this.backupAsset(filePath.replace('assets/', ''), file);
+                            } catch (e) {
+                                console.warn('备份文件失败:', filePath, e);
+                            }
                             if (file.type.startsWith('image/')) {
                                 this.insertText(input, `![图片](${filePath})\n`, '');
                             } else if (file.type.startsWith('video/')) {
@@ -16504,14 +16929,14 @@ ipcRenderer.on('lumina-close', () => {
     formatContent(content) {
         // 先处理 Markdown 图片和 HTML img 标签（在转义 HTML 之前，因为 URL 可能包含特殊字符）
         let html = content;
-        
+
         // 提取并临时替换图片标记
         const images = [];
         html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
             images.push({ alt, url: this._resolveImageUrl(url) });
             return `{{IMAGE${images.length - 1}}}`;
         });
-        
+
         // 提取 HTML <img> 标签
         html = html.replace(/<img[^>]*src=["']([^"']+)["'][^>]*\/?>/gi, (match, src) => {
             const altMatch = match.match(/alt=["']([^"']*)["']/i);
@@ -16519,14 +16944,24 @@ ipcRenderer.on('lumina-close', () => {
             images.push({ alt, url: this._resolveImageUrl(src) });
             return `{{IMAGE${images.length - 1}}}`;
         });
-        
+
         // 提取思源笔记块引用 ((id 'title')) 格式
         const blockRefs = [];
         html = html.replace(/\(\(\s*([\w-]+)\s+'([^']+)'\s*\)\)/g, (match, blockId, title) => {
             blockRefs.push({ blockId, title });
             return `{{BLOCKREF${blockRefs.length - 1}}}`;
         });
-        
+
+        // ★ 清理从思源笔记同步回来的引用块(callout)格式——必须在转义 HTML 之前处理，
+        // 否则 '>' 已被转义成 '&gt;'，后续 /^>\s?/ 正则将无法匹配，导致列表/段落被错误地当作引用块嵌套。
+        // 仅当内容确为 [!NOTE] 引用块时才清理，避免误删用户自己在说说里写的正文引用块。
+        if (/^>\s*\[!NOTE\]/m.test(html)) {
+            // 移除 > [!NOTE] ✏️ 2026-4-30 21:42 这样的标题行
+            html = html.replace(/^>\s*\[!NOTE\][^\n]*\n?/gm, '');
+            // 移除每行开头的 > 引用标记，保留正文（兼容多级引用）
+            html = html.replace(/^>\s?/gm, '');
+        }
+
         // 转义 HTML
         html = this.escapeHtml(html);
 
@@ -16534,12 +16969,6 @@ ipcRenderer.on('lumina-close', () => {
         // 例如: "1. {: id=\"xxx\" updated=\"xxx\"}内容" -> "1. 内容"
         // 注意：只移除 {:...} 本身，不移除前面的空格，避免误删列表标记后的空格
         html = html.replace(/\{:([^}]+)\}/g, '');
-
-        // 清理引用块格式（从思源笔记同步回来的内容可能包含）
-        // 移除 > [!NOTE] ✏️ 2026-4-30 21:42 这样的标题行
-        html = html.replace(/^>\s*\[!NOTE\][^\n]*\n?/gm, '');
-        // 移除 > 开头的引用标记，保留内容
-        html = html.replace(/^>\s?/gm, '');
 
         // ★ 批注 MEMO 处理：在 Markdown 渲染之前，先处理原始文本
         // 这样避免操作 HTML 导致的标签残缺问题
@@ -19168,21 +19597,53 @@ ipcRenderer.on('lumina-close', () => {
         await fetch('/api/file/putFile', { method: 'POST', body: backupForm, headers });
     }
 
-    // 从 assets/ 删除图片（保留备份作为安全网）
+    // 从 assets/ 删除图片（插件内部的删除 = 真正删除，不再触发备份恢复）
     async deletePluginImage(filePath) {
         // 支持 assets/xxx 和 /assets/xxx 两种格式
         const clean = filePath.startsWith('/') ? filePath.substring(1) : filePath;
         if (!clean.startsWith('assets/')) return;
+        const fileName = clean.substring('assets/'.length);
         try {
-            const formData = new FormData();
-            formData.append('path', `data/${clean}`);
             const token = window.siyuan?.config?.api?.token || '';
             const headers = {};
             if (token) headers['Authorization'] = `Token ${token}`;
+
+            // 标记为本插件主动删除：后续 _verifyAndRestoreAssets 将跳过恢复
+            if (!this._pluginDeletedAssets) this._pluginDeletedAssets = new Set();
+            this._pluginDeletedAssets.add(fileName);
+
+            // 1) 删除 assets/ 中的实际文件
+            const formData = new FormData();
+            formData.append('path', `data/${clean}`);
             await fetch('/api/file/removeFile', { method: 'POST', body: formData, headers });
+
+            // 2) 若该文件已无任何引用，则连备份也一并删除，做到真正删除（插件外删除不会走到这里，备份得以保留）
+            if (!this._isAssetReferenced(fileName)) {
+                await this.deleteBackupAsset(fileName);
+            }
         } catch (e) {
             console.error('删除图片失败:', e);
         }
+    }
+
+    // 删除插件备份目录中的备份文件（配合 deletePluginImage 实现“真正删除”）
+    async deleteBackupAsset(fileName) {
+        try {
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = {};
+            if (token) headers['Authorization'] = `Token ${token}`;
+            const formData = new FormData();
+            formData.append('path', `data/storage/petal/siyuan-lumina/images/${fileName}`);
+            await fetch('/api/file/removeFile', { method: 'POST', body: formData, headers });
+        } catch (e) {
+            console.error('删除备份文件失败:', e);
+        }
+    }
+
+    // 判断某个 assets 文件是否仍被任意说说 / 朋友圈 / 配置引用
+    _isAssetReferenced(fileName) {
+        const referenced = this._collectReferencedAssetFiles();
+        return referenced.includes(fileName);
     }
 
     // 将图片 URL 转为可显示的路径
@@ -19200,12 +19661,20 @@ ipcRenderer.on('lumina-close', () => {
     // 从所有数据中收集被引用的 assets 文件名
     _collectReferencedAssetFiles() {
         const filenames = new Set();
-        // 说说中的 Markdown 图片引用
+        // 说说中的 Markdown 图片与文件附件引用
         for (const s of this.shuoshuos || []) {
-            const { images } = this.extractContentAndImages(s.content || '');
+            const { images, files } = this.extractContentAndImages(s.content || '');
             for (const img of images) {
                 if (img.url) {
                     const match = img.url.match(/\/?assets\/(.+)/);
+                    if (match) filenames.add(match[1]);
+                }
+            }
+            // 文件附件（非图片/视频的通用文件，如 pdf/doc/zip 等）同样需要纳入引用收集，
+            // 否则「思源清理未引用资源」后被删，_verifyAndRestoreAssets 不会从备份恢复，导致点击下载 404。
+            for (const f of files) {
+                if (f.url) {
+                    const match = f.url.match(/\/?assets\/(.+)/);
                     if (match) filenames.add(match[1]);
                 }
             }
@@ -19308,6 +19777,10 @@ ipcRenderer.on('lumina-close', () => {
         console.log(`[轻语] 发现 ${missing.length} 张图片缺失，尝试从备份恢复...`);
         let restored = 0;
         for (const f of missing) {
+            // 插件内部主动删除的文件不恢复（用户明确要删除，做到真正删除）
+            if (this._pluginDeletedAssets && this._pluginDeletedAssets.has(f)) {
+                continue;
+            }
             if (await this._restoreAssetFromBackup(f)) restored++;
         }
         if (restored > 0) {
@@ -20755,6 +21228,12 @@ ipcRenderer.on('lumina-close', () => {
         if (mobileHeader) mobileHeader.style.display = (this.isMobile && isShuoshuoView) ? '' : 'none';
         if (mobileSearchBar) mobileSearchBar.classList.remove('show');
 
+        // 移动端：切换视图时收起"加号"弹出的输入框浮层。
+        // 浮层靠 .mobile-visible 经 CSS 的 display:block!important 强制显示，
+        // 仅设置内联 display:none（无 !important）无法覆盖，会残留并浮在其它视图（如朋友圈）上方。
+        const mobileInputArea = this.container.querySelector('.north-shuoshuo-input-area');
+        if (mobileInputArea) mobileInputArea.classList.remove('mobile-visible');
+
         // 移动端 Dock 栏内隐藏思源侧栏顶部工具栏；独立面板内打开时不影响宿主侧栏。
         // 仅朋友圈和说说相关视图隐藏顶部栏，统计、设置等视图保留。
         const shouldHideSiyuanSidebarToolbar = this.isMobile && !this.isInMobileShell() && (view === 'moments' || isShuoshuoView);
@@ -20814,6 +21293,10 @@ ipcRenderer.on('lumina-close', () => {
         if (targetMobileTab) {
             targetMobileTab.classList.add('active');
         }
+
+        // 同步各视图的紧凑模式上下文类（north-shuoshuo-view-shuoshuo / north-shuoshuo-view-lifelog），
+        // 使 CSS 紧凑样式严格按视图隔离，避免说说紧凑误伤 LifeLog 视图
+        this.applyCompactMode();
 
         this.currentMainView = view;
 
@@ -21208,22 +21691,6 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // 显示朋友圈开关
-        const showMomentsSwitch = this.container.querySelector('#settings-show-moments-switch');
-        if (showMomentsSwitch) {
-            showMomentsSwitch.replaceWith(showMomentsSwitch.cloneNode(true));
-            const newShowMomentsSwitch = this.container.querySelector('#settings-show-moments-switch');
-            newShowMomentsSwitch.addEventListener('click', async () => {
-                const isOn = newShowMomentsSwitch.classList.toggle('on');
-                if (!this.momentsConfig) this.momentsConfig = {};
-                this.momentsConfig.showMomentsSidebar = isOn;
-                await this.saveMoments();
-                // 刷新所有视图
-                this.refreshMountedShuoshuoViews();
-                showMessage(isOn ? '已开启朋友圈侧边栏，请刷新界面生效' : '已关闭朋友圈侧边栏，请刷新界面生效');
-            });
-        }
-
         // 朋友圈密码眼切换
         const passwordEye = this.container.querySelector('#momentsPasswordEye');
         if (passwordEye) {
@@ -21342,6 +21809,16 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        const heatmapTypeSelect = this.container.querySelector('#shuoshuo-heatmap-type-select');
+        if (heatmapTypeSelect) {
+            heatmapTypeSelect.addEventListener('change', async () => {
+                this.shuoshuoHeatmapType = heatmapTypeSelect.value === 'calendar' ? 'calendar' : 'heatmap';
+                await this.saveConfig();
+                this.refreshMountedShuoshuoViews();
+                showMessage(this.shuoshuoHeatmapType === 'calendar' ? '已切换为月历视图' : '已切换为日历贡献图');
+            });
+        }
+
         // 回车直接提交
         const enterSubmitSwitch = this.container.querySelector('#settings-enter-submit-switch');
         if (enterSubmitSwitch) {
@@ -21425,28 +21902,6 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // LifeLog 设置 - 显示 LifeLog 侧边栏视图开关
-        const lifelogShowSidebarSwitch = this.container.querySelector('#lifelog-settings-show-sidebar-switch');
-        if (lifelogShowSidebarSwitch) {
-            lifelogShowSidebarSwitch.replaceWith(lifelogShowSidebarSwitch.cloneNode(true));
-            const newLifelogShowSidebarSwitch = this.container.querySelector('#lifelog-settings-show-sidebar-switch');
-            newLifelogShowSidebarSwitch.addEventListener('click', async () => {
-                const isOn = newLifelogShowSidebarSwitch.classList.toggle('on');
-                this.showLifeLogSidebar = isOn;
-                await this.saveConfig();
-                this.refreshMountedShuoshuoViews();
-                // 动态显示/隐藏 LifeLog 导航按钮
-                const sidebar = this.container?.querySelector?.('.north-shuoshuo-sidebar');
-                if (sidebar) {
-                    const lifelogBtns = sidebar.querySelectorAll('[data-view="lifelog"], [data-view="lifelog-stats"]');
-                    lifelogBtns.forEach(btn => {
-                        btn.style.display = isOn ? '' : 'none';
-                    });
-                }
-                showMessage(isOn ? '已开启 LifeLog 视图' : '已关闭 LifeLog 视图');
-            });
-        }
-
         // LifeLog 设置 - 显示 LifeLog 侧边栏开关
         const lifelogSidebarDockSwitch = this.container.querySelector('#settings-show-lifelog-sidebar-dock-switch');
         if (lifelogSidebarDockSwitch) {
@@ -21471,6 +21926,8 @@ ipcRenderer.on('lumina-close', () => {
                 newLifelogCompactModeSwitch.classList.toggle('on');
                 this.lifeLogCompactMode = newLifelogCompactModeSwitch.classList.contains('on');
                 await this.saveConfig();
+                // 按视图隔离刷新紧凑模式（LifeLog 只应用自身紧凑配置）
+                this.applyCompactMode();
                 // 刷新 LifeLog 视图
                 if (this.currentMainView === 'lifelog') {
                     this.renderLifeLog();
@@ -21543,6 +22000,20 @@ ipcRenderer.on('lumina-close', () => {
                 // 刷新所有视图
                 this.refreshMountedShuoshuoViews();
                 showMessage(this.compactMode ? '已开启紧凑模式' : '已关闭紧凑模式');
+            });
+        }
+
+        // 说说内容列表悬停边框变色开关
+        const noteHoverBorderSwitch = this.container.querySelector('#settings-note-hover-border-switch');
+        if (noteHoverBorderSwitch) {
+            noteHoverBorderSwitch.replaceWith(noteHoverBorderSwitch.cloneNode(true));
+            const newNoteHoverBorderSwitch = this.container.querySelector('#settings-note-hover-border-switch');
+            newNoteHoverBorderSwitch.addEventListener('click', async () => {
+                newNoteHoverBorderSwitch.classList.toggle('on');
+                this.noteCardHoverBorder = newNoteHoverBorderSwitch.classList.contains('on');
+                await this.saveConfig();
+                this.applyNoteCardHoverBorder();
+                showMessage(this.noteCardHoverBorder ? '已开启悬停边框变色' : '已关闭悬停边框变色');
             });
         }
 
@@ -21748,20 +22219,6 @@ ipcRenderer.on('lumina-close', () => {
                 showMessage('正在加载笔记本列表...');
                 this.loadNotebooks();
             };
-        }
-
-        // 图书视图 - 显示侧边栏开关
-        const bookshelfShowSidebarSwitch = this.container.querySelector('#bookshelf-settings-show-sidebar-switch');
-        if (bookshelfShowSidebarSwitch) {
-            bookshelfShowSidebarSwitch.replaceWith(bookshelfShowSidebarSwitch.cloneNode(true));
-            const newBookshelfShowSidebarSwitch = this.container.querySelector('#bookshelf-settings-show-sidebar-switch');
-            newBookshelfShowSidebarSwitch.addEventListener('click', async () => {
-                const isOn = newBookshelfShowSidebarSwitch.classList.toggle('on');
-                this.showBookshelfSidebar = isOn;
-                await this.saveConfig();
-                this.refreshMountedShuoshuoViews();
-                showMessage(isOn ? '已开启图书视图' : '已关闭图书视图，请刷新界面生效');
-            });
         }
 
         // ==================== 微信读书 API Key 设置事件绑定 ====================
@@ -23259,17 +23716,21 @@ ipcRenderer.on('lumina-close', () => {
                     const merged = [];
                     const processedBoundIds = new Set();
 
-                    // 遍历本地说说，已绑定的用思源数据替换
+                    // 遍历本地说说，已绑定的以本地原始内容为准渲染
                     for (const local of localShuoshuos) {
                         if (local.boundBlockId && boundMap.has(local.boundBlockId)) {
                             const siyuan = boundMap.get(local.boundBlockId);
+                            // 关键修复：以本地原始 content 为显示真相，避免思源 callout 往返
+                            // （> [!NOTE] 引用块 + 标签被挪进标题行）导致任务列表丢失、标签重复。
+                            // 仅当本地内容缺失时（如纯在思源外部创建的块）才回退到思源内容。
                             merged.push({
-                                ...siyuan,
+                                ...local,
                                 // 优先保留本地创建时间（避免 custom-lumina-date 属性缺失导致日期回退到当前时间）
                                 created: local.created || siyuan.created,
-                                pinned: local.pinned || false,
-                                archived: local.archived || false,
-                                id: local.id // 保留本地ID维持引用
+                                updated: siyuan.updated || local.updated,
+                                boundBlockId: local.boundBlockId,
+                                // 本地有标签则沿用本地；否则用思源解析出的标签
+                                tags: (local.tags && local.tags.length) ? local.tags : (siyuan.tags || [])
                             });
                             processedBoundIds.add(local.boundBlockId);
                         } else if (local.boundBlockId) {
@@ -23523,7 +23984,6 @@ ipcRenderer.on('lumina-close', () => {
                     syncNotebookId: '',
                     syncMode: 'dailynote',
                     syncDocId: '',
-                    showMomentsSidebar: true,
                     password: ''
                 };
             } catch (e) {
@@ -23968,17 +24428,20 @@ ipcRenderer.on('lumina-close', () => {
                 this.pinnedTags = Array.isArray(data.pinnedTags) ? data.pinnedTags : [];
                 this.navIcons = data.navIcons || {};
                 this.navNames = data.navNames || {};
+                this.navHidden = data.navHidden || {};
+                // 不可隐藏的视图（如设置）即便曾被误存隐藏状态，也强制恢复为可见
+                SIDEBAR_VIEWS.forEach(v => { if (v.cannotHide) delete this.navHidden[v.key]; });
                 this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
                 this.morandiColor = MORANDI_COLORS.map(c => c.key).includes(data.morandiColor) ? data.morandiColor : MORANDI_COLORS[0].key;
                 this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG, ...(data.fontSizeConfig || data.fontSize || {}) };
                 this.enterToSubmit = data.enterToSubmit === true || data.enterToSubmit === 'true' || data.enterToSubmit === 1;
                 this.showSidebarDock = data.showSidebarDock === true || data.showSidebarDock === 'true' || data.showSidebarDock === 1;
                 this.showLifelogSidebarDock = data.showLifelogSidebarDock === true || data.showLifelogSidebarDock === 'true' || data.showLifelogSidebarDock === 1;
-                this.showLifeLogSidebar = data.showLifeLogSidebar !== false;
-                this.showBookshelfSidebar = data.showBookshelfSidebar !== false;
                 this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
                 this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
+                this.noteCardHoverBorder = data.noteCardHoverBorder === true;
                 this.lifeLogCompactMode = data.lifeLogCompactMode === true || data.lifeLogCompactMode === 'true' || data.lifeLogCompactMode === 1;
+                this.shuoshuoHeatmapType = (data.shuoshuoHeatmapType === 'calendar') ? 'calendar' : 'heatmap';
                 this.sidebarFullScroll = data.sidebarFullScroll === true || data.sidebarFullScroll === 'true' || data.sidebarFullScroll === 1;
                 this.lifelogTypesDefaultExpanded = data.lifelogTypesDefaultExpanded !== undefined
                   ? (data.lifelogTypesDefaultExpanded === true || data.lifelogTypesDefaultExpanded === 'true' || data.lifelogTypesDefaultExpanded === 1)
@@ -24072,6 +24535,7 @@ ipcRenderer.on('lumina-close', () => {
                     tagIcons: this.tagIcons,
                     navIcons: this.navIcons,
                     navNames: this.navNames,
+                    navHidden: this.navHidden,
                     pinnedTags: this.pinnedTags,
                     themeMode: this.themeMode,
                     morandiColor: this.morandiColor,
@@ -24079,11 +24543,11 @@ ipcRenderer.on('lumina-close', () => {
                     enterToSubmit: this.enterToSubmit,
                     showSidebarDock: this.showSidebarDock,
                     showLifelogSidebarDock: this.showLifelogSidebarDock,
-                    showLifeLogSidebar: this.showLifeLogSidebar,
-                    showBookshelfSidebar: this.showBookshelfSidebar,
                     showLifeLogRecords: this.showLifeLogRecords,
                     compactMode: this.compactMode,
+                    noteCardHoverBorder: this.noteCardHoverBorder,
                     lifeLogCompactMode: this.lifeLogCompactMode,
+                    shuoshuoHeatmapType: this.shuoshuoHeatmapType,
                     sidebarFullScroll: this.sidebarFullScroll,
                     lifelogTypesDefaultExpanded: this.lifelogTypesDefaultExpanded,
                     lifeLogTimeMode: this.lifeLogTimeMode,
@@ -24162,13 +24626,37 @@ ipcRenderer.on('lumina-close', () => {
         });
     }
 
-    // 应用紧凑模式
+    // 应用紧凑模式（按视图隔离：说说紧凑只作用于说说视图，LifeLog 紧凑只作用于 LifeLog 视图，互不污染）
+    // 同时维护视图上下文类 north-shuoshuo-view-shuoshuo / north-shuoshuo-view-lifelog，
+    // 让 CSS 紧凑样式严格按视图上下文生效，即使 north-shuoshuo-compact 残留也不会误伤 LifeLog 卡片。
     applyCompactMode() {
         const containers = this.getMountedLuminaContainers();
         if (!containers.length && this.container) containers.push(this.container);
+        const shuoshuoFamily = ['notes', 'week', 'review', 'random', 'table', 'stats', 'gallery'];
         containers.forEach(container => {
-            if (container) {
+            if (!container) return;
+            const view = this.getContainerMainView(container);
+            const isLifeLog = view === 'lifelog' || view === 'lifelog-stats' ||
+                !!container.closest?.('.north-shuoshuo-lifelog-dock-view');
+            if (isLifeLog) {
+                // LifeLog 视图：只应用 LifeLog 独立紧凑配置，绝不残留/应用说说紧凑类与说说视图上下文
+                container.classList.remove('north-shuoshuo-compact');
+                container.classList.remove('north-shuoshuo-view-shuoshuo');
+                container.classList.add('north-shuoshuo-view-lifelog');
+                container.classList.toggle('north-shuoshuo-lifelog-compact', this.lifeLogCompactMode);
+            } else if (shuoshuoFamily.includes(view)) {
+                // 说说家族视图：只应用说说紧凑配置，绝不残留 LifeLog 紧凑类与 LifeLog 视图上下文
+                container.classList.remove('north-shuoshuo-lifelog-compact');
+                container.classList.remove('north-shuoshuo-view-lifelog');
+                container.classList.add('north-shuoshuo-view-shuoshuo');
                 container.classList.toggle('north-shuoshuo-compact', this.compactMode);
+            } else {
+                // 设置 / 朋友圈 / 图书等不参与紧凑的视图：所有紧凑类与视图上下文都清理，
+                // 避免「在设置里开启说说紧凑」时底层其实是 LifeLog，却错误加上的说说紧凑类污染 LifeLog
+                container.classList.remove('north-shuoshuo-compact');
+                container.classList.remove('north-shuoshuo-lifelog-compact');
+                container.classList.remove('north-shuoshuo-view-shuoshuo');
+                container.classList.remove('north-shuoshuo-view-lifelog');
             }
         });
     }

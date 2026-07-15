@@ -245,6 +245,17 @@
     margin-top: 2px;
 }
 
+/* 已隐藏的视图在设置列表中淡化显示 */
+.north-shuoshuo-sidebar-icon-row[data-hidden="1"] {
+    opacity: 0.5;
+}
+
+.north-shuoshuo-sidebar-icon-row[data-hidden="1"] .north-shuoshuo-sidebar-icon-name::after {
+    content: "（已隐藏）";
+    color: var(--b3-theme-on-surface);
+    font-size: 11px;
+}
+
 .north-shuoshuo-sidebar-icon-btn {
     flex: 1 1 auto;
     padding: 6px 10px;
@@ -389,6 +400,143 @@
 .north-shuoshuo-months span {
     text-align: left;
     white-space: nowrap;
+}
+
+/* 月历视图（说说视图日期面板的备选展示） */
+.north-shuoshuo-calendar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.north-shuoshuo-calendar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 2px;
+}
+
+.north-shuoshuo-calendar-header button {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--b3-theme-on-surface);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0;
+}
+
+.north-shuoshuo-calendar-header button:hover {
+    background: var(--b3-theme-surface-lighter);
+    color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-calendar-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--b3-theme-on-surface);
+}
+
+.north-shuoshuo-calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+}
+
+.north-shuoshuo-calendar-weekdays span {
+    text-align: center;
+    font-size: 11px;
+    color: var(--b3-theme-on-surface-light);
+    padding: 2px 0;
+}
+
+.north-shuoshuo-calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+}
+
+.north-shuoshuo-calendar-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background-color: transparent;
+    color: var(--b3-theme-on-background);
+    position: relative;
+}
+
+.north-shuoshuo-calendar-cell:hover {
+    transform: scale(1.05);
+    background-color: var(--b3-theme-surface-lighter);
+}
+
+.north-shuoshuo-calendar-cell.other-month {
+    color: var(--b3-theme-on-surface-light);
+    background-color: transparent;
+}
+
+/* 暗色模式下交换两色：当月数字用 on-surface-light，邻月数字用 on-surface（亮色模式保持不变） */
+:root[data-theme-mode=dark] .north-shuoshuo-calendar-cell,
+body.dark .north-shuoshuo-calendar-cell,
+.fn__dark .north-shuoshuo-calendar-cell,
+body[theme-mode="dark"] .north-shuoshuo-calendar-cell {
+    color: var(--b3-theme-on-surface-light);
+}
+:root[data-theme-mode=dark] .north-shuoshuo-calendar-cell.other-month,
+body.dark .north-shuoshuo-calendar-cell.other-month,
+.fn__dark .north-shuoshuo-calendar-cell.other-month,
+body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
+    color: var(--b3-theme-on-surface);
+}
+
+.north-shuoshuo-calendar-cell.today {
+    font-weight: 600;
+    color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-calendar-cell.selected {
+    box-shadow: 0 0 0 2px var(--b3-theme-primary);
+}
+
+.north-shuoshuo-calendar-dot {
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: var(--b3-theme-primary);
+    transition: opacity 0.2s;
+}
+
+.north-shuoshuo-calendar-cell.level-1 .north-shuoshuo-calendar-dot {
+    opacity: 0.45;
+}
+
+.north-shuoshuo-calendar-cell.level-2 .north-shuoshuo-calendar-dot {
+    opacity: 0.65;
+}
+
+.north-shuoshuo-calendar-cell.level-3 .north-shuoshuo-calendar-dot {
+    opacity: 0.85;
+}
+
+.north-shuoshuo-calendar-cell.level-4 .north-shuoshuo-calendar-dot {
+    opacity: 1;
 }
 
 /* 菜单 */
@@ -1452,7 +1600,7 @@
     border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
 }
 
-.north-shuoshuo-compact.north-shuoshuo-input-position-top .north-shuoshuo-input-area {
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact.north-shuoshuo-input-position-top .north-shuoshuo-input-area {
     border-bottom: none !important;
 }
 
@@ -1913,9 +2061,15 @@
     contain: layout style paint;
 }
 
-.north-shuoshuo-note-card:hover {
-    /* 无悬停效�?*/
+/* 说说视图内容列表：开启「悬停边框变色」后，鼠标悬浮时边框变色为强调色，并加轻微阴影，过渡平滑 */
+.north-shuoshuo-notes-list.note-hover-border .north-shuoshuo-note-card {
+    border-color: color-mix(in srgb, var(--b3-border-color) 70%, transparent);
 }
+.north-shuoshuo-notes-list.note-hover-border .north-shuoshuo-note-card:hover {
+    border-color: color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--b3-theme-primary) 15%, transparent);
+}
+
 
 @keyframes noteHighlight {
     0% { box-shadow: 0 0 0 0 var(--b3-theme-primary-lighter); }
@@ -2046,19 +2200,20 @@
     -webkit-user-select: text;
 }
 
-/* Lumina: 紧凑模式（说说 + LifeLog 共用） */
-.north-shuoshuo-compact .north-shuoshuo-input-area,
+/* Lumina: 紧凑模式（说说 / LifeLog 各自独立；说说紧凑严格限定在 .north-shuoshuo-view-shuoshuo 视图上下文内，绝不污染 LifeLog） */
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact .north-shuoshuo-input-area,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-input-area {
     border-top: none !important;
+    padding: 6px 30px 10px !important;
 }
 
-.north-shuoshuo-compact .north-shuoshuo-date-group,
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact .north-shuoshuo-date-group,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-date-group {
-    margin: 12px 0 !important;
+    margin: 8px 0 !important;
     padding: 0 4px !important;
 }
 
-.north-shuoshuo-compact .north-shuoshuo-note-card,
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact .north-shuoshuo-note-card,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-card {
     padding: 4px 14px 8px !important;
     margin-bottom: 8px !important;
@@ -2066,33 +2221,33 @@
     min-height: 0 !important;
 }
 
-.north-shuoshuo-compact .north-shuoshuo-note-header,
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact .north-shuoshuo-note-header,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-header {
     margin-bottom: 0px !important;
     min-height: 0 !important;
     line-height: 1.25 !important;
 }
 
-.north-shuoshuo-compact .north-shuoshuo-note-date,
-.north-shuoshuo-compact .north-shuoshuo-note-time,
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact .north-shuoshuo-note-date,
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact .north-shuoshuo-note-time,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-date,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-time {
     line-height: 1.25 !important;
 }
 
-.north-shuoshuo-compact .north-shuoshuo-note-content,
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact .north-shuoshuo-note-content,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-content {
     margin: 0 !important;
     line-height: 1.6 !important;
 }
 
-.north-shuoshuo-compact .north-shuoshuo-note-content p,
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact .north-shuoshuo-note-content p,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-content p {
     margin: 0 0 8px !important;
     line-height: 1.6 !important;
 }
 
-.north-shuoshuo-compact .north-shuoshuo-note-content p:last-child,
+.north-shuoshuo-view-shuoshuo.north-shuoshuo-compact .north-shuoshuo-note-content p:last-child,
 .north-shuoshuo-lifelog-compact .north-shuoshuo-note-content p:last-child {
     margin-bottom: 0 !important;
 }
@@ -11726,7 +11881,7 @@ body.dark .north-shuoshuo-image-item-video,
     height: 320px;
     margin-top: -44px;
     background: linear-gradient(135deg, #1a2980 0%, #26d0ce 50%, #1a2980 100%);
-    cursor: pointer;
+    cursor: default;
 }
 
 .lumina-moments-cover-img {
@@ -11735,6 +11890,7 @@ body.dark .north-shuoshuo-image-item-video,
     object-fit: cover;
     display: block;
     pointer-events: none;
+    background: linear-gradient(135deg, #c7d2fe 0%, #e0c3fc 50%, #fbc2eb 100%);
 }
 
 /* 当有封面图片时，允许交互实现拖动调整位置 */
@@ -11747,6 +11903,256 @@ body.dark .north-shuoshuo-image-item-video,
 
 .lumina-moments-cover-img.dragging {
     cursor: grabbing;
+}
+
+/* 封面工具栏（悬停显示） */
+.lumina-moments-cover-toolbar {
+    position: absolute;
+    top: 30px;
+    left: 12px;
+    max-width: calc(100% - 24px);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    z-index: 20;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+}
+
+.lumina-moments-cover:hover .lumina-moments-cover-toolbar,
+.lumina-moments-cover-toolbar:hover,
+.lumina-moments-cover-toolbar.visible {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+
+/* 触摸设备无 hover，常驻显示 */
+@media (hover: none) {
+    .lumina-moments-cover-toolbar {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+    }
+}
+
+.lumina-moments-cover-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.28);
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    backdrop-filter: blur(10px) saturate(160%);
+    -webkit-backdrop-filter: blur(10px) saturate(160%);
+    transition: background 0.15s ease;
+}
+
+.lumina-moments-cover-tool svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    fill: currentColor;
+}
+
+.lumina-moments-cover-tool:hover {
+    background: rgba(0, 0, 0, 0.48);
+}
+
+.lumina-moments-cover-tool-danger:hover {
+    background: rgba(220, 38, 38, 0.8);
+}
+
+.lumina-moments-cover-img.cover-draggable {
+    cursor: grabbing;
+}
+
+/* 拖动确认条 */
+.lumina-moments-cover-drag-confirm {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 10px;
+    z-index: 25;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.lumina-moments-cover-drag-hint {
+    opacity: 0.9;
+}
+
+.lumina-moments-cover-drag-btn {
+    padding: 4px 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--b3-theme-primary, #5b8def);
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    transition: opacity 0.15s ease;
+}
+
+.lumina-moments-cover-drag-btn:hover {
+    opacity: 0.85;
+}
+
+.lumina-moments-cover-drag-cancel {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* 封面弹窗（链接 / 资源 / 内置） */
+.lumina-moments-cover-modal {
+    position: absolute;
+    inset: 0;
+    z-index: 300;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.lumina-moments-cover-modal.active {
+    display: flex;
+}
+
+.lumina-moments-cover-modal-overlay {
+    position: absolute;
+    inset: 0;
+    background-color: var(--moments-modal-overlay);
+}
+
+.lumina-moments-cover-modal-content {
+    position: relative;
+    background-color: var(--moments-modal-bg);
+    border-radius: 12px;
+    width: 94%;
+    max-width: 720px;
+    max-height: 86vh;
+    overflow-y: auto;
+    z-index: 301;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.lumina-moments-cover-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--moments-modal-header-border);
+}
+
+.lumina-moments-cover-modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--moments-text);
+}
+
+.lumina-moments-cover-modal-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    color: var(--moments-close-color);
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.lumina-moments-cover-modal-close:hover {
+    background-color: var(--moments-close-hover-bg);
+    color: var(--moments-close-hover-color);
+}
+
+.lumina-moments-cover-modal-body {
+    padding: 16px;
+}
+
+.lumina-moments-cover-link-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--moments-modal-header-border);
+    border-radius: 8px;
+    background: var(--moments-modal-bg);
+    color: var(--moments-text);
+    font-size: 14px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.lumina-moments-cover-link-input:focus {
+    border-color: var(--b3-theme-primary, #5b8def);
+}
+
+.lumina-moments-cover-modal-tip {
+    font-size: 12px;
+    color: var(--moments-year-color);
+    margin: 8px 0 12px;
+}
+
+.lumina-moments-cover-modal-ok {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 8px;
+    background: var(--b3-theme-primary, #5b8def);
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    transition: opacity 0.15s ease;
+}
+
+.lumina-moments-cover-modal-ok:hover {
+    opacity: 0.85;
+}
+
+/* 背景选择网格 */
+.lumina-moments-cover-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 10px;
+}
+
+.lumina-moments-cover-grid-item {
+    aspect-ratio: 16 / 10;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--moments-modal-header-border);
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.lumina-moments-cover-grid-item:hover {
+    border-color: var(--b3-theme-primary, #5b8def);
+    transform: translateY(-2px);
+}
+
+.lumina-moments-cover-grid-loading {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--moments-year-color);
+    padding: 24px;
+    font-size: 13px;
 }
 
 
@@ -14797,8 +15203,9 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     font-size: 13px;
 }
 
-.north-shuoshuo-gallery-header-top .north-shuoshuo-gallery-type-filters {
-    display: inline-flex;
+.north-shuoshuo-gallery-header-top .north-shuoshuo-gallery-type-select {
+    position: relative;
+    flex-shrink: 0;
     margin-left: auto;
 }
 
@@ -14816,17 +15223,17 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     color: var(--b3-theme-on-surface);
 }
 
-.north-shuoshuo-gallery-type-filters {
-    display: flex;
-    gap: 6px;
-    padding: 4px 0 2px;
-    flex-shrink: 0;
+.north-shuoshuo-gallery-type-select {
+    position: relative;
 }
-.north-shuoshuo-gallery-type-chip {
+
+.north-shuoshuo-gallery-type-trigger {
     display: inline-flex;
     align-items: center;
-    padding: 4px 14px;
+    gap: 6px;
+    padding: 5px 14px;
     font-size: 12px;
+    font-weight: 500;
     border-radius: 14px;
     cursor: pointer;
     color: var(--b3-theme-on-surface);
@@ -14834,17 +15241,56 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
     border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
     transition: all 0.2s ease;
     user-select: none;
-    font-weight: 500;
+    outline: none;
 }
-.north-shuoshuo-gallery-type-chip:hover {
+.north-shuoshuo-gallery-type-trigger:hover,
+.north-shuoshuo-gallery-type-select.open .north-shuoshuo-gallery-type-trigger {
     background: var(--b3-theme-primary-lightest);
     color: var(--b3-theme-primary);
     border-color: var(--b3-theme-primary-lightest);
 }
-.north-shuoshuo-gallery-type-chip.active {
-    background: var(--b3-theme-primary);
-    color: var(--b3-theme-on-primary);
-    border-color: var(--b3-theme-primary);
+.north-shuoshuo-gallery-type-chevron {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+.north-shuoshuo-gallery-type-select.open .north-shuoshuo-gallery-type-chevron {
+    transform: rotate(180deg);
+}
+
+.north-shuoshuo-gallery-type-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 120px;
+    background: var(--b3-theme-surface-lighter);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    padding: 4px;
+    z-index: 50;
+    display: none;
+    flex-direction: column;
+}
+.north-shuoshuo-gallery-type-select.open .north-shuoshuo-gallery-type-menu {
+    display: flex;
+}
+.north-shuoshuo-gallery-type-option {
+    padding: 7px 12px;
+    font-size: 13px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--b3-theme-on-background);
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.north-shuoshuo-gallery-type-option:hover {
+    background: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+}
+.north-shuoshuo-gallery-type-option.active {
+    color: var(--b3-theme-primary);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--b3-theme-primary-lightest) 70%, transparent);
 }
 
 .north-shuoshuo-gallery-tags {
