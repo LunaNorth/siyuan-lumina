@@ -281,6 +281,198 @@
     }
 }
 
+/* ===== 左侧栏图标：拖拽排序 ===== */
+.north-shuoshuo-sidebar-icon-row[data-sortable="1"] {
+    position: relative;
+}
+
+.north-shuoshuo-sidebar-icon-drag {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--b3-theme-on-surface-light, var(--b3-theme-on-surface));
+    opacity: 0.45;
+    cursor: grab;
+    border-radius: 5px;
+    transition: opacity .15s, background-color .15s, color .15s;
+}
+
+.north-shuoshuo-sidebar-icon-row[data-sortable="1"]:hover .north-shuoshuo-sidebar-icon-drag {
+    opacity: 0.9;
+}
+
+.north-shuoshuo-sidebar-icon-drag:hover {
+    color: var(--b3-theme-primary);
+    background: var(--b3-theme-primary-lightest);
+}
+
+.north-shuoshuo-sidebar-icon-drag:active {
+    cursor: grabbing;
+}
+
+.north-shuoshuo-sidebar-icon-row.dragging {
+    opacity: 0.4;
+    outline: 2px dashed var(--b3-theme-primary);
+    outline-offset: -2px;
+}
+
+/* ===== 自定义视图排序弹窗 ===== */
+.north-shuoshuo-nav-order-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.north-shuoshuo-nav-order-content {
+    position: relative;
+    z-index: 1;
+    width: min(440px, calc(100vw - 40px));
+    max-height: min(76vh, 640px);
+    display: flex;
+    flex-direction: column;
+    background: var(--b3-theme-background);
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 60%, transparent);
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+    padding: 18px 18px 14px;
+}
+
+.north-shuoshuo-nav-order-hint {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light, var(--b3-theme-on-surface));
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.north-shuoshuo-nav-order-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px;
+}
+
+.north-shuoshuo-nav-order-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--b3-theme-surface) 40%, transparent);
+    border: 1px solid color-mix(in srgb, var(--b3-theme-surface) 70%, transparent);
+    cursor: grab;
+    transition: background-color .15s, border-color .15s, opacity .15s;
+}
+
+.north-shuoshuo-nav-order-item:hover {
+    border-color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-nav-order-item.dragging {
+    opacity: 0.45;
+    outline: 2px dashed var(--b3-theme-primary);
+    outline-offset: -2px;
+}
+
+.north-shuoshuo-nav-order-item:active {
+    cursor: grabbing;
+}
+
+.north-shuoshuo-nav-order-grip {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--b3-theme-on-surface-light, var(--b3-theme-on-surface));
+    opacity: 0.6;
+}
+
+.north-shuoshuo-nav-order-icon {
+    flex: 0 0 26px;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--b3-theme-surface);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.north-shuoshuo-nav-order-icon .north-shuoshuo-nav-icon,
+.north-shuoshuo-nav-order-icon .icon {
+    width: 18px;
+    height: 18px;
+}
+
+.north-shuoshuo-nav-order-icon .north-shuoshuo-tag-emoji {
+    font-size: 16px;
+}
+
+.north-shuoshuo-nav-order-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--b3-theme-on-background);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.north-shuoshuo-nav-order-hidden {
+    font-style: normal;
+    font-size: 11px;
+    color: var(--b3-theme-on-surface);
+    opacity: 0.7;
+}
+
+.north-shuoshuo-nav-order-btns {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+}
+
+.north-shuoshuo-nav-order-move {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 60%, transparent);
+    background: var(--b3-theme-surface);
+    color: var(--b3-theme-on-background);
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s, color .15s;
+}
+
+.north-shuoshuo-nav-order-move:hover:not([disabled]) {
+    background: var(--b3-theme-primary-lightest);
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-nav-order-move[disabled] {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.north-shuoshuo-nav-order-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+
 .north-shuoshuo-bottom-nav {
     display: flex;
     flex-direction: column;
@@ -2429,8 +2621,7 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
 }
 
 .north-shuoshuo-image-grid.single .north-shuoshuo-grid-img {
-    max-width: 100%;
-    max-height: 300px;
+    max-width: var(--north-shuoshuo-img-single-maxwidth, 100%);
     border-radius: 3px;
     object-fit: cover;
 }
@@ -2438,16 +2629,26 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
 /* 多张图片 - 默认3�?*/
 .north-shuoshuo-image-grid.multi {
     grid-template-columns: repeat(3, 1fr);
+    max-width: var(--north-shuoshuo-img-multi-maxwidth, 50%);
 }
 
 /* 2张图�?- 2�?*/
 .north-shuoshuo-image-grid.grid-2 {
     grid-template-columns: repeat(2, 1fr);
+    max-width: var(--north-shuoshuo-img-grid2-maxwidth, 50%);
 }
 
 /* 4张图�?- 2x2布局 */
 .north-shuoshuo-image-grid.grid-4 {
     grid-template-columns: repeat(2, 1fr);
+    max-width: var(--north-shuoshuo-img-grid4-maxwidth, 50%);
+}
+
+/* 图片大小设置：每行两张，节省纵向空间 */
+.north-shuoshuo-imgsize-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
 }
 
 /* 图片�?- 固定正方形，图片居中完整显示 */
@@ -3111,6 +3312,12 @@ body.dark .north-shuoshuo-image-item-video,
     }
 }
 
+@media (max-width: 560px) {
+    .north-shuoshuo-imgsize-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* 笔记菜单下拉 */
 .north-shuoshuo-note-menu-dropdown {
     background: var(--b3-theme-surface);
@@ -3650,7 +3857,7 @@ body.dark .north-shuoshuo-image-item-video,
 }
 
 .north-shuoshuo-btn-secondary {
-    background: var(--b3-theme-surface-lighter);
+    background: var(--b3-theme-surface);
     color: var(--b3-theme-on-background);
 }
 

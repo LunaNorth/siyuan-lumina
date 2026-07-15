@@ -533,6 +533,11 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
         this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
         this.fontSizeConfig = { ...DEFAULT_FONT_SIZE_CONFIG }; // 字体大小配置
+        // 说说视图插入图片的显示宽度占比（%）：单张 / 两图 / 四图 / 多图 各自独立配置
+        this.imgSingleSize = 100; // 单张（原 max-width:100%）
+        this.imgGrid2Size = 50;   // 两图（原 max-width:50%）
+        this.imgGrid4Size = 50;   // 四图（原 max-width:50%）
+        this.imgMultiSize = 50;   // 多图（原 max-width:50%）
         this.enterToSubmit = false; // 输入框回车直接提交
         this.showSidebarDock = false; // 是否显示侧边栏 Dock（默认不显示）
         this.AUTO_OPEN_KEY = 'lumina_auto_open'; // 启动时自动打开轻语 localStorage 键名
@@ -3112,30 +3117,15 @@ ipcRenderer.on('lumina-close', () => {
                     </div>
                     
                     <div class="north-shuoshuo-nav-icons">
-                        <button class="north-shuoshuo-nav-item active" data-view="notes" title="${this.getSidebarViewName('notes')}"${this.isNavViewHidden('notes') ? ' style="display:none;"' : ''}>
-                            ${this.getSidebarIconHtml('notes')}
-                        </button>
-                        <button class="north-shuoshuo-nav-item" data-view="gallery" title="${this.getSidebarViewName('gallery')}"${this.isNavViewHidden('gallery') ? ' style="display:none;"' : ''}>
-                            ${this.getSidebarIconHtml('gallery')}
-                        </button>
-                        <button class="north-shuoshuo-nav-item" data-view="table" title="${this.getSidebarViewName('table')}"${this.isNavViewHidden('table') ? ' style="display:none;"' : ''}>
-                            ${this.getSidebarIconHtml('table')}
-                        </button>
-                        <button class="north-shuoshuo-nav-item" data-view="stats" title="${this.getSidebarViewName('stats')}"${this.isNavViewHidden('stats') ? ' style="display:none;"' : ''}>
-                            ${this.getSidebarIconHtml('stats')}
-                        </button>
-                        <button class="north-shuoshuo-nav-item" data-view="moments" title="${this.getSidebarViewName('moments')}"${this.isNavViewHidden('moments') ? ' style="display:none;"' : ''}>
-                            ${this.getSidebarIconHtml('moments')}
-                        </button>
-                        <button class="north-shuoshuo-nav-item" data-view="lifelog" title="${this.getSidebarViewName('lifelog')}"${this.isNavViewHidden('lifelog') ? ' style="display:none;"' : ''}>
-                            ${this.getSidebarIconHtml('lifelog')}
-                        </button>
-                        <button class="north-shuoshuo-nav-item" data-view="lifelog-stats" title="${this.getSidebarViewName('lifelog-stats')}"${this.isNavViewHidden('lifelog-stats') ? ' style="display:none;"' : ''}>
-                            ${this.getSidebarIconHtml('lifelog-stats')}
-                        </button>
-                        <button class="north-shuoshuo-nav-item" data-view="bookshelf" title="${this.getSidebarViewName('bookshelf')}"${this.isNavViewHidden('bookshelf') ? ' style="display:none;"' : ''}>
-                            ${this.getSidebarIconHtml('bookshelf')}
-                        </button>
+                        ${(() => {
+                            const ordered = this.getSortableSidebarViews();
+                            const firstVisible = ordered.find(v => !this.isNavViewHidden(v.key));
+                            const cur = this.currentMainView;
+                            const activeKey = (cur && ordered.some(v => v.key === cur) && !this.isNavViewHidden(cur))
+                                ? cur
+                                : (firstVisible ? firstVisible.key : (ordered[0] && ordered[0].key));
+                            return ordered.map(v => this.getSidebarNavItemHtml(v.key, v.key === activeKey)).join('');
+                        })()}
                     </div>
                     
                     <div class="north-shuoshuo-nav-bottom">
@@ -3544,6 +3534,64 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-form-row" id="font-size-custom-row" style="display: ${this.fontSizeConfig.mode === 'custom' ? 'flex' : 'none'}; align-items: center; gap: 8px; margin-top: 8px;">
                                     <input type="number" id="font-size-custom-input" style="width: 80px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="24" step="0.5" value="${this.fontSizeConfig.customSize || 14.5}">
                                     <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">px</span>
+                                </div>
+                            </div>
+
+                            <div class="north-shuoshuo-imgsize-grid">
+                                <div class="north-shuoshuo-section-card">
+                                    <div class="north-shuoshuo-section-header">
+                                        <div>
+                                            <div class="north-shuoshuo-section-title">图片大小（单张）</div>
+                                            <div class="north-shuoshuo-section-desc">单张图片显示宽度占内容区比例，默认 100%</div>
+                                        </div>
+                                    </div>
+                                    <div class="north-shuoshuo-form-row" style="align-items: center; gap: 8px; margin-top: 8px;">
+                                        <input type="number" id="img-single-size-input" style="width: 76px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="100" step="5" value="${this.imgSingleSize || 100}">
+                                        <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">%</span>
+                                        <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="img-single-size-reset" style="margin-left: 6px;">恢复默认</button>
+                                    </div>
+                                </div>
+
+                                <div class="north-shuoshuo-section-card">
+                                    <div class="north-shuoshuo-section-header">
+                                        <div>
+                                            <div class="north-shuoshuo-section-title">图片大小（两张）</div>
+                                            <div class="north-shuoshuo-section-desc">两张图片（.grid-2）网格宽度，默认 50%</div>
+                                        </div>
+                                    </div>
+                                    <div class="north-shuoshuo-form-row" style="align-items: center; gap: 8px; margin-top: 8px;">
+                                        <input type="number" id="img-grid2-size-input" style="width: 76px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="100" step="5" value="${this.imgGrid2Size || 50}">
+                                        <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">%</span>
+                                        <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="img-grid2-size-reset" style="margin-left: 6px;">恢复默认</button>
+                                    </div>
+                                </div>
+
+                                <div class="north-shuoshuo-section-card">
+                                    <div class="north-shuoshuo-section-header">
+                                        <div>
+                                            <div class="north-shuoshuo-section-title">图片大小（四张）</div>
+                                            <div class="north-shuoshuo-section-desc">四张图片（.grid-4）网格宽度，默认 50%</div>
+                                        </div>
+                                    </div>
+                                    <div class="north-shuoshuo-form-row" style="align-items: center; gap: 8px; margin-top: 8px;">
+                                        <input type="number" id="img-grid4-size-input" style="width: 76px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="100" step="5" value="${this.imgGrid4Size || 50}">
+                                        <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">%</span>
+                                        <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="img-grid4-size-reset" style="margin-left: 6px;">恢复默认</button>
+                                    </div>
+                                </div>
+
+                                <div class="north-shuoshuo-section-card">
+                                    <div class="north-shuoshuo-section-header">
+                                        <div>
+                                            <div class="north-shuoshuo-section-title">图片大小（多张）</div>
+                                            <div class="north-shuoshuo-section-desc">多张图片（.multi）网格宽度，默认 50%</div>
+                                        </div>
+                                    </div>
+                                    <div class="north-shuoshuo-form-row" style="align-items: center; gap: 8px; margin-top: 8px;">
+                                        <input type="number" id="img-multi-size-input" style="width: 76px; height: 32px; padding: 0 10px; border: 1px solid var(--b3-border-color); border-radius: 4px; font-size: 14px; background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none;" min="10" max="100" step="5" value="${this.imgMultiSize || 50}">
+                                        <span style="color: var(--b3-theme-on-surface-light); font-size: 13px;">%</span>
+                                        <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="img-multi-size-reset" style="margin-left: 6px;">恢复默认</button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -4759,8 +4807,9 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-section-header" style="align-items: center; gap: 16px; margin-bottom: 4px;">
                                     <div style="flex: 1; min-width: 0;">
                                         <div class="north-shuoshuo-section-title">左侧栏图标</div>
-                                        <div class="north-shuoshuo-section-desc">自定义左侧导航栏各视图的图标与昵称（点击「更换视图昵称」修改，重置可恢复默认）</div>
+                                        <div class="north-shuoshuo-section-desc">自定义左侧导航栏各视图的图标、昵称与顺序（可直接拖动下方条目，或点击「自定义视图排序」）</div>
                                     </div>
+                                    <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="sidebar-order-btn" style="flex:0 0 auto;white-space:nowrap;">自定义视图排序</button>
                                 </div>
                                 <div class="north-shuoshuo-sidebar-icons-custom" id="sidebar-icons-custom-list"></div>
                             </div>
@@ -4790,6 +4839,7 @@ ipcRenderer.on('lumina-close', () => {
         setTimeout(() => {
             this.applyThemeMode();
             this.applyFontSizeConfig();
+            this.applyImgInsertSize();
         }, 0);
         this.bindEvents();
         this.syncEnterKeyHint();
@@ -12224,13 +12274,55 @@ ipcRenderer.on('lumina-close', () => {
         });
     }
 
-    // 获取第一个既在侧栏可见、又未被隐藏的视图（用于隐藏当前视图后回退）
+    // 获取第一个既在侧栏可见、又未被隐藏的视图（用于隐藏当前视图后回退，尊重自定义排序）
     getFirstVisibleSidebarView() {
-        const order = ['notes', 'gallery', 'table', 'stats', 'moments', 'lifelog', 'lifelog-stats', 'bookshelf', 'settings'];
+        const order = [...this.getSortableSidebarViews().map(v => v.key), 'settings'];
         for (const key of order) {
             if (this.isSidebarViewVisible(key) && !this.isNavViewHidden(key)) return key;
         }
         return 'notes';
+    }
+
+    // 获取可排序的左侧栏视图（排除“设置”，设置恒定在底部不参与排序），并按 navOrder 应用自定义顺序
+    getSortableSidebarViews() {
+        const sortable = SIDEBAR_VIEWS.filter(v => v.key !== 'settings' && !v.cannotHide);
+        const order = Array.isArray(this.navOrder) ? this.navOrder : [];
+        const byKey = new Map(sortable.map(v => [v.key, v]));
+        const result = [];
+        // 先按用户保存的顺序排列
+        order.forEach(k => {
+            if (byKey.has(k)) {
+                result.push(byKey.get(k));
+                byKey.delete(k);
+            }
+        });
+        // 未在 navOrder 中出现的视图（如新增视图），按默认顺序追加到末尾
+        sortable.forEach(v => {
+            if (byKey.has(v.key)) result.push(v);
+        });
+        return result;
+    }
+
+    // 生成单个左侧栏导航按钮的 HTML
+    getSidebarNavItemHtml(viewKey, isActive) {
+        return `
+                        <button class="north-shuoshuo-nav-item${isActive ? ' active' : ''}" data-view="${viewKey}" title="${this.getSidebarViewName(viewKey)}"${this.isNavViewHidden(viewKey) ? ' style="display:none;"' : ''}>
+                            ${this.getSidebarIconHtml(viewKey)}
+                        </button>`;
+    }
+
+    // 将自定义排序实时应用到所有已挂载实例的左侧栏（通过重排 DOM 节点，无需整体重渲染）
+    applySidebarNavOrder() {
+        const orderedKeys = this.getSortableSidebarViews().map(v => v.key);
+        this.getMountedLuminaContainers().forEach(container => {
+            if (!(container instanceof HTMLElement)) return;
+            const wrap = container.querySelector('.north-shuoshuo-sidebar .north-shuoshuo-nav-icons');
+            if (!wrap) return;
+            orderedKeys.forEach(key => {
+                const btn = wrap.querySelector(`.north-shuoshuo-nav-item[data-view="${key}"]`);
+                if (btn) wrap.appendChild(btn); // 依次 append 即按顺序重排
+            });
+        });
     }
 
     // 渲染“轻语设置”中的左侧栏图标自定义列表
@@ -12238,7 +12330,10 @@ ipcRenderer.on('lumina-close', () => {
         if (!listEl) return;
         const self = this;
         const escHtml = (s) => self.escapeHtml(s || '');
-        const views = SIDEBAR_VIEWS.filter(v => v.always || self.isSidebarViewVisible(v.key) || self.isNavViewHidden(v.key));
+        // 按自定义顺序排列可排序视图，设置视图恒定在末尾
+        const settingsView = SIDEBAR_VIEWS.find(v => v.key === 'settings');
+        const views = [...self.getSortableSidebarViews()];
+        if (settingsView) views.push(settingsView);
         let html = '';
         views.forEach(v => {
             const iconHtml = self.getSidebarIconHtml(v.key);
@@ -12248,8 +12343,11 @@ ipcRenderer.on('lumina-close', () => {
             const isCustom = isIconCustom || isNameCustom;
             const isHidden = self.isNavViewHidden(v.key);
             const cannotHide = !!v.cannotHide;
+            // 设置视图不参与排序
+            const sortable = v.key !== 'settings';
             html += `
-                <div class="north-shuoshuo-sidebar-icon-row" data-view="${v.key}"${isHidden ? ' data-hidden="1"' : ''}>
+                <div class="north-shuoshuo-sidebar-icon-row" data-view="${v.key}"${isHidden ? ' data-hidden="1"' : ''}${sortable ? ' data-sortable="1" draggable="true"' : ''}>
+                    ${sortable ? '<div class="north-shuoshuo-sidebar-icon-drag" title="拖动排序"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></div>' : ''}
                     <div class="north-shuoshuo-sidebar-icon-preview">${iconHtml}</div>
                     <div class="north-shuoshuo-sidebar-icon-name" title="${escHtml(name)}">${escHtml(name)}</div>
                     <div class="north-shuoshuo-sidebar-icon-actions">
@@ -12262,6 +12360,9 @@ ipcRenderer.on('lumina-close', () => {
             `;
         });
         listEl.innerHTML = html;
+
+        // 绑定行拖拽排序
+        self.bindSidebarIconRowsDrag(listEl);
 
         listEl.querySelectorAll('.north-shuoshuo-sidebar-icon-row').forEach(row => {
             const viewKey = row.dataset.view;
@@ -12335,6 +12436,168 @@ ipcRenderer.on('lumina-close', () => {
                     self.renderSidebarIconsSettings(listEl);
                 });
             }
+        });
+    }
+
+    // 持久化左侧栏视图自定义排序（orderedKeys 为可排序视图的 key 数组），并实时应用
+    persistNavOrder(orderedKeys) {
+        const valid = new Set(this.getSortableSidebarViews().map(v => v.key));
+        const cleaned = [];
+        (Array.isArray(orderedKeys) ? orderedKeys : []).forEach(k => {
+            if (valid.has(k) && !cleaned.includes(k)) cleaned.push(k);
+        });
+        // 补齐可能遗漏的视图，保证完整
+        valid.forEach(k => { if (!cleaned.includes(k)) cleaned.push(k); });
+        this.navOrder = cleaned;
+        this.saveConfig();
+        this.applySidebarNavOrder();
+    }
+
+    // 为设置列表中的可排序行绑定原生拖拽排序
+    bindSidebarIconRowsDrag(listEl) {
+        if (!listEl) return;
+        const self = this;
+        let draggingEl = null;
+
+        const getOrderFromDom = () => Array.from(
+            listEl.querySelectorAll('.north-shuoshuo-sidebar-icon-row[data-sortable="1"]')
+        ).map(el => el.dataset.view);
+
+        listEl.querySelectorAll('.north-shuoshuo-sidebar-icon-row[data-sortable="1"]').forEach(row => {
+            row.addEventListener('dragstart', (e) => {
+                draggingEl = row;
+                row.classList.add('dragging');
+                try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', row.dataset.view); } catch (err) {}
+            });
+            row.addEventListener('dragend', () => {
+                if (draggingEl) draggingEl.classList.remove('dragging');
+                listEl.querySelectorAll('.north-shuoshuo-sidebar-icon-row.drag-over').forEach(el => el.classList.remove('drag-over'));
+                const newOrder = getOrderFromDom();
+                draggingEl = null;
+                self.persistNavOrder(newOrder);
+            });
+            row.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (!draggingEl || draggingEl === row) return;
+                try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+                const rect = row.getBoundingClientRect();
+                // 网格布局：用中点判断插入到目标之前还是之后
+                const before = (e.clientY - rect.top) < rect.height / 2 || (e.clientX - rect.left) < rect.width / 2;
+                if (before) {
+                    listEl.insertBefore(draggingEl, row);
+                } else {
+                    listEl.insertBefore(draggingEl, row.nextSibling);
+                }
+            });
+        });
+    }
+
+    // 弹窗：自定义左侧栏视图排序（支持拖拽与上下按钮，设置视图不参与排序）
+    showSidebarOrderEditor(onChange) {
+        const self = this;
+        const escHtml = (s) => self.escapeHtml(s || '');
+
+        const modal = document.createElement('div');
+        modal.className = 'north-shuoshuo-nav-order-modal';
+        modal.innerHTML = `
+            <div class="north-shuoshuo-modal-overlay"></div>
+            <div class="north-shuoshuo-nav-order-content">
+                <div class="north-shuoshuo-section-title" style="margin-bottom:6px;">自定义视图排序</div>
+                <div class="north-shuoshuo-nav-order-hint">拖动条目或使用上下按钮调整左侧栏视图顺序（设置视图固定在底部，不参与排序）</div>
+                <div class="north-shuoshuo-nav-order-list"></div>
+                <div class="north-shuoshuo-nav-order-actions">
+                    <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" data-action="reset-order">恢复默认</button>
+                    <button class="north-shuoshuo-btn north-shuoshuo-btn-primary" data-action="close-order">完成</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const listWrap = modal.querySelector('.north-shuoshuo-nav-order-list');
+
+        const commit = () => {
+            const keys = Array.from(listWrap.querySelectorAll('.north-shuoshuo-nav-order-item')).map(el => el.dataset.view);
+            self.persistNavOrder(keys);
+            if (typeof onChange === 'function') onChange();
+        };
+
+        const renderList = () => {
+            const views = self.getSortableSidebarViews();
+            listWrap.innerHTML = views.map((v, i) => {
+                const name = self.getSidebarViewName(v.key);
+                const iconHtml = self.getSidebarIconHtml(v.key);
+                const isHidden = self.isNavViewHidden(v.key);
+                return `
+                    <div class="north-shuoshuo-nav-order-item" data-view="${v.key}" draggable="true">
+                        <span class="north-shuoshuo-nav-order-grip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>
+                        <span class="north-shuoshuo-nav-order-icon">${iconHtml}</span>
+                        <span class="north-shuoshuo-nav-order-name">${escHtml(name)}${isHidden ? ' <em class="north-shuoshuo-nav-order-hidden">（已隐藏）</em>' : ''}</span>
+                        <span class="north-shuoshuo-nav-order-btns">
+                            <button class="north-shuoshuo-nav-order-move" data-move="up" title="上移"${i === 0 ? ' disabled' : ''}>
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                            </button>
+                            <button class="north-shuoshuo-nav-order-move" data-move="down" title="下移"${i === views.length - 1 ? ' disabled' : ''}>
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                        </span>
+                    </div>
+                `;
+            }).join('');
+            bindItems();
+        };
+
+        let draggingEl = null;
+        const bindItems = () => {
+            listWrap.querySelectorAll('.north-shuoshuo-nav-order-item').forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    draggingEl = item;
+                    item.classList.add('dragging');
+                    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', item.dataset.view); } catch (err) {}
+                });
+                item.addEventListener('dragend', () => {
+                    if (draggingEl) draggingEl.classList.remove('dragging');
+                    draggingEl = null;
+                    commit();
+                    renderList(); // 重新渲染以刷新上下按钮禁用状态
+                });
+                item.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    if (!draggingEl || draggingEl === item) return;
+                    const rect = item.getBoundingClientRect();
+                    const before = (e.clientY - rect.top) < rect.height / 2;
+                    if (before) {
+                        listWrap.insertBefore(draggingEl, item);
+                    } else {
+                        listWrap.insertBefore(draggingEl, item.nextSibling);
+                    }
+                });
+                item.querySelectorAll('.north-shuoshuo-nav-order-move').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const dir = btn.dataset.move;
+                        if (dir === 'up' && item.previousElementSibling) {
+                            listWrap.insertBefore(item, item.previousElementSibling);
+                        } else if (dir === 'down' && item.nextElementSibling) {
+                            listWrap.insertBefore(item.nextElementSibling, item);
+                        }
+                        commit();
+                        renderList();
+                    });
+                });
+            });
+        };
+
+        renderList();
+
+        const closeModal = () => modal.remove();
+        modal.querySelector('[data-action="close-order"]').addEventListener('click', closeModal);
+        modal.querySelector('.north-shuoshuo-modal-overlay').addEventListener('click', closeModal);
+        modal.querySelector('[data-action="reset-order"]').addEventListener('click', () => {
+            // 恢复默认顺序：清空 navOrder
+            self.navOrder = [];
+            self.saveConfig();
+            self.applySidebarNavOrder();
+            if (typeof onChange === 'function') onChange();
+            renderList();
         });
     }
 
@@ -21789,6 +22052,17 @@ ipcRenderer.on('lumina-close', () => {
             this.renderSidebarIconsSettings(sidebarIconsList);
         }
 
+        // “自定义视图排序”按钮：打开排序弹窗，排序变化后同步刷新下方列表
+        const sidebarOrderBtn = this.container.querySelector('#sidebar-order-btn');
+        if (sidebarOrderBtn) {
+            sidebarOrderBtn.addEventListener('click', () => {
+                this.showSidebarOrderEditor(() => {
+                    const listEl = this.container.querySelector('#sidebar-icons-custom-list');
+                    if (listEl) this.renderSidebarIconsSettings(listEl);
+                });
+            });
+        }
+
         // 视图样式下拉框
         const viewStyleSelect = this.container.querySelector('#view-style-select');
         if (viewStyleSelect) {
@@ -22144,6 +22418,33 @@ ipcRenderer.on('lumina-close', () => {
                 await this.saveConfig();
             });
         }
+
+        // 说说视图插入图片大小设置（显示宽度占比 %）：单张 / 两图 / 四图 / 多图 各自独立
+        const bindImgSize = (inputId, resetId, defaultVal, key) => {
+            const input = this.container.querySelector(inputId);
+            const reset = this.container.querySelector(resetId);
+            if (!input) return;
+            const apply = async (val, save) => {
+                let size = parseInt(val, 10);
+                if (isNaN(size) || size < 10) size = 10;
+                if (size > 100) size = 100;
+                this[key] = size;
+                this.applyImgInsertSize();
+                if (save) await this.saveConfig();
+            };
+            input.addEventListener('input', () => apply(input.value, false));
+            input.addEventListener('change', () => apply(input.value, true));
+            if (reset) {
+                reset.addEventListener('click', () => {
+                    input.value = defaultVal;
+                    apply(defaultVal, true);
+                });
+            }
+        };
+        bindImgSize('#img-single-size-input', '#img-single-size-reset', 100, 'imgSingleSize');
+        bindImgSize('#img-grid2-size-input', '#img-grid2-size-reset', 50, 'imgGrid2Size');
+        bindImgSize('#img-grid4-size-input', '#img-grid4-size-reset', 50, 'imgGrid4Size');
+        bindImgSize('#img-multi-size-input', '#img-multi-size-reset', 50, 'imgMultiSize');
 
         // 图书视图字体大小设置
         const bookshelfFontInputs = [
@@ -24429,6 +24730,8 @@ ipcRenderer.on('lumina-close', () => {
                 this.navIcons = data.navIcons || {};
                 this.navNames = data.navNames || {};
                 this.navHidden = data.navHidden || {};
+                // 左侧栏视图自定义排序（仅存储可排序视图的 key，设置视图恒定在底部不参与排序）
+                this.navOrder = Array.isArray(data.navOrder) ? data.navOrder.filter(k => typeof k === 'string') : [];
                 // 不可隐藏的视图（如设置）即便曾被误存隐藏状态，也强制恢复为可见
                 SIDEBAR_VIEWS.forEach(v => { if (v.cannotHide) delete this.navHidden[v.key]; });
                 this.themeMode = data.themeMode || DEFAULT_THEME_MODE;
@@ -24440,6 +24743,14 @@ ipcRenderer.on('lumina-close', () => {
                 this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
                 this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
                 this.noteCardHoverBorder = data.noteCardHoverBorder === true;
+                const parsedImgSingle = parseInt(data.imgSingleSize, 10);
+                this.imgSingleSize = (parsedImgSingle >= 10 && parsedImgSingle <= 100) ? parsedImgSingle : 100;
+                const parsedImgGrid2 = parseInt(data.imgGrid2Size, 10);
+                this.imgGrid2Size = (parsedImgGrid2 >= 10 && parsedImgGrid2 <= 100) ? parsedImgGrid2 : 50;
+                const parsedImgGrid4 = parseInt(data.imgGrid4Size, 10);
+                this.imgGrid4Size = (parsedImgGrid4 >= 10 && parsedImgGrid4 <= 100) ? parsedImgGrid4 : 50;
+                const parsedImgMulti = parseInt(data.imgMultiSize, 10);
+                this.imgMultiSize = (parsedImgMulti >= 10 && parsedImgMulti <= 100) ? parsedImgMulti : 50;
                 this.lifeLogCompactMode = data.lifeLogCompactMode === true || data.lifeLogCompactMode === 'true' || data.lifeLogCompactMode === 1;
                 this.shuoshuoHeatmapType = (data.shuoshuoHeatmapType === 'calendar') ? 'calendar' : 'heatmap';
                 this.sidebarFullScroll = data.sidebarFullScroll === true || data.sidebarFullScroll === 'true' || data.sidebarFullScroll === 1;
@@ -24536,6 +24847,7 @@ ipcRenderer.on('lumina-close', () => {
                     navIcons: this.navIcons,
                     navNames: this.navNames,
                     navHidden: this.navHidden,
+                    navOrder: this.navOrder,
                     pinnedTags: this.pinnedTags,
                     themeMode: this.themeMode,
                     morandiColor: this.morandiColor,
@@ -24545,6 +24857,10 @@ ipcRenderer.on('lumina-close', () => {
                     showLifelogSidebarDock: this.showLifelogSidebarDock,
                     showLifeLogRecords: this.showLifeLogRecords,
                     compactMode: this.compactMode,
+                    imgSingleSize: this.imgSingleSize,
+                    imgGrid2Size: this.imgGrid2Size,
+                    imgGrid4Size: this.imgGrid4Size,
+                    imgMultiSize: this.imgMultiSize,
                     noteCardHoverBorder: this.noteCardHoverBorder,
                     lifeLogCompactMode: this.lifeLogCompactMode,
                     shuoshuoHeatmapType: this.shuoshuoHeatmapType,
@@ -24596,7 +24912,9 @@ ipcRenderer.on('lumina-close', () => {
     async applyViewStyle() {
         const listEl = this.container?.querySelector('#shuoshuo-notes-list');
         if (!listEl) return;
-        
+        // 同步说说视图插入图片的显示尺寸
+        this.applyImgInsertSize();
+
         if (this.viewStyle === 'card') {
             listEl.classList.add('card-layout');
             listEl.classList.remove('list-layout');
@@ -25222,6 +25540,33 @@ ipcRenderer.on('lumina-close', () => {
         });
         // 同时设置到根元素，让轻语速记浮层等也能使用
         document.documentElement.style.setProperty('--shuoshuo-content-font-size', fontSize);
+    }
+
+    // 应用说说视图中插入图片（单图）的显示宽度占比（%）
+    applyImgInsertSize() {
+        const clamp = (v, d) => {
+            const n = parseInt(v, 10);
+            return (n >= 10 && n <= 100) ? n : d;
+        };
+        const single = `${clamp(this.imgSingleSize, 100)}%`;
+        const grid2 = `${clamp(this.imgGrid2Size, 50)}%`;
+        const grid4 = `${clamp(this.imgGrid4Size, 50)}%`;
+        const multi = `${clamp(this.imgMultiSize, 50)}%`;
+        const containers = this.getMountedLuminaContainers();
+        if (!containers.length && this.container) containers.push(this.container);
+        containers.forEach(container => {
+            const shuoshuoContainer = container.querySelector('.north-shuoshuo-container');
+            if (shuoshuoContainer) {
+                shuoshuoContainer.style.setProperty('--north-shuoshuo-img-single-maxwidth', single);
+                shuoshuoContainer.style.setProperty('--north-shuoshuo-img-grid2-maxwidth', grid2);
+                shuoshuoContainer.style.setProperty('--north-shuoshuo-img-grid4-maxwidth', grid4);
+                shuoshuoContainer.style.setProperty('--north-shuoshuo-img-multi-maxwidth', multi);
+            }
+        });
+        document.documentElement.style.setProperty('--north-shuoshuo-img-single-maxwidth', single);
+        document.documentElement.style.setProperty('--north-shuoshuo-img-grid2-maxwidth', grid2);
+        document.documentElement.style.setProperty('--north-shuoshuo-img-grid4-maxwidth', grid4);
+        document.documentElement.style.setProperty('--north-shuoshuo-img-multi-maxwidth', multi);
     }
 
     // 根据回顾配置获取回顾笔记
