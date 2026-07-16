@@ -6694,6 +6694,14 @@ body.dark .north-shuoshuo-image-item-video,
     justify-content: center;
 }
 
+/* 移动端：选择器挂载到插件容器内，改为绝对定位填满容器，
+   处于插件自身层叠上下文中，避免被思源顶部栏/导航遮挡 */
+.north-shuoshuo-icon-picker-modal.in-container {
+    position: absolute;
+    inset: 0;
+    z-index: 9999;
+}
+
 .north-shuoshuo-icon-picker-content {
     background: var(--b3-theme-surface);
     border-radius: 12px;
@@ -6724,6 +6732,8 @@ body.dark .north-shuoshuo-image-item-video,
 .north-shuoshuo-icon-picker-body {
     padding: 20px;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* 预览区域 */

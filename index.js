@@ -1641,6 +1641,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     }
 
     onunload() {
+        this.unhookMobileGoBack();
         if (this._luminaMobileTopBarTimer) {
             clearTimeout(this._luminaMobileTopBarTimer);
             this._luminaMobileTopBarTimer = null;
@@ -1901,7 +1902,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
     closeMobileShuoshuoDock() {
         try {
-            this.unhookMobileGoBack();
             // 清理热力图/日历残留的全局 tooltip
             const staleTooltip = document.querySelector('.north-shuoshuo-global-tooltip');
             if (staleTooltip) staleTooltip.remove();
@@ -1931,6 +1931,28 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         return !!(this.container instanceof Element && this.container.closest?.('.north-shuoshuo-mobile-shell'));
     }
 
+    _suppressKeyboardToolbarOn(el) {
+        if (!el || !this.isMobile) return;
+        el.addEventListener('focus', () => {
+            if (this.isInMobileShell()) return;
+            const kb = document.getElementById('keyboardToolbar');
+            if (!kb) return;
+            this._kbObserver?.disconnect();
+            this._kbObserver = new MutationObserver(() => {
+                if (!kb.classList.contains('fn__none')) {
+                    kb.classList.add('fn__none');
+                    kb.style.height = '';
+                }
+            });
+            kb.classList.add('fn__none');
+            this._kbObserver.observe(kb, { attributes: true, attributeFilter: ['class'] });
+        });
+        el.addEventListener('blur', () => {
+            this._kbObserver?.disconnect();
+            this._kbObserver = null;
+        });
+    }
+
     hookMobileGoBack() {
         if (this._luminaGoBackHooked) return;
         const original = window.goBack;
@@ -1940,6 +1962,18 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         window.goBack = () => {
             const noNativeDialogs = !window.siyuan.dialogs || window.siyuan.dialogs.length === 0;
             if (noNativeDialogs) {
+                // 0. 图片/视频预览（z-index 最高，挂在 document.body 下）
+                const imagePreview = document.querySelector('.north-shuoshuo-image-preview-modal');
+                if (imagePreview) {
+                    imagePreview.remove();
+                    return;
+                }
+                // 0.5 图标选择器（天气/心情/标签等）：优先关闭它，而不是退回笔记页
+                const iconPicker = document.querySelector('.north-shuoshuo-icon-picker-modal');
+                if (iconPicker) {
+                    iconPicker.remove();
+                    return;
+                }
                 // 1. 封面弹窗（网络图片链接 / 资源库选择）
                 const coverModal = this.container?.querySelector?.(
                     '.lumina-moments-cover-modal.active'
@@ -3292,6 +3326,9 @@ ipcRenderer.on('lumina-close', () => {
             this.container = container;
             this.registerLuminaContainer(container);
         }
+        if (this.isMobile) {
+            this.hookMobileGoBack();
+        }
         if (!this.container) return;
 
         this.container.innerHTML = `
@@ -3710,13 +3747,6 @@ ipcRenderer.on('lumina-close', () => {
                                         <p>开启后，在思源笔记右侧 Dock 栏显示轻语侧边栏。</p>
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.showSidebarDock ? 'on' : ''}" id="settings-show-sidebar-dock-switch"></div>
-                                </div>
-                                <div class="north-shuoshuo-toggle-row">
-                                    <div class="north-shuoshuo-toggle-info">
-                                        <h4>启动时打开轻语</h4>
-                                        <p>开启后，启动思源笔记自动打开轻语标签页</p>
-                                    </div>
-                                    <div class="north-shuoshuo-switch ${this.autoOpen === true ? 'on' : ''}" id="settings-auto-open-switch"></div>
                                 </div>
                             </div>
 
@@ -5017,6 +5047,15 @@ ipcRenderer.on('lumina-close', () => {
                                 </div>
                                 <div class="north-shuoshuo-sidebar-icons-custom" id="sidebar-icons-custom-list"></div>
                             </div>
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>启动时打开轻语</h4>
+                                        <p>开启后，启动思源笔记自动打开轻语标签页，并默认显示左侧栏排在第一位的视图</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.autoOpen === true ? 'on' : ''}" id="settings-auto-open-switch"></div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- 移动端设置 -->
@@ -5070,7 +5109,12 @@ ipcRenderer.on('lumina-close', () => {
         if (!this._skipInitialRender) {
             // 先从思源加载最新绑定数据，再渲染
             this.loadShuoshuos().then(() => {
-                this.renderNotes();
+                // 仅当落地视图为说说相关视图时才刷新笔记列表；
+                // 其他视图（LifeLog/朋友圈/书架/回顾/随机漫步等）已由 switchMainView 自行加载渲染，
+                // 这里若强制 renderNotes 会在异步完成后覆盖掉正确的初始视图。
+                if (this.currentMainView === 'notes' || this.currentMainView === 'week') {
+                    this.renderNotes();
+                }
             });
         }
         // 应用主题模式（默认为原主题）
@@ -5083,8 +5127,8 @@ ipcRenderer.on('lumina-close', () => {
         this.syncEnterKeyHint();
         if (!this._skipInitialRender) {
             // 初始化视图状态（确保移动端说说视图的顶部栏等逻辑正确执行）
-            // 若默认视图被隐藏，则回退到第一个可见视图
-            const initialView = this.isNavViewHidden('notes') ? this.getFirstVisibleSidebarView() : 'notes';
+            // 默认显示左侧栏排在第一位且可见的视图（与“启动时打开轻语”保持一致）
+            const initialView = this.getFirstVisibleSidebarView();
             this.switchMainView(initialView, null);
         }
     }
@@ -7641,7 +7685,7 @@ ipcRenderer.on('lumina-close', () => {
                 </div>
 
                 <div class="north-shuoshuo-keyboard-hint">
-                    <span>快捷键</span>
+                    <span>点击卡片或</span>
                     <kbd class="north-shuoshuo-kbd">Space</kbd>
                     <span>换一条</span>
                 </div>
@@ -7832,6 +7876,25 @@ ipcRenderer.on('lumina-close', () => {
             commentInput.style.height = 'auto';
             showMessage('批注已保存');
         });
+
+        // 移动端（无键盘）：点击卡片主体切换下一条；编辑/批注/引用/链接等交互元素不触发
+        const isInteractiveTarget = (target) => target.closest(
+            '.north-shuoshuo-random-actions, #memoCommentBox, .north-shuoshuo-block-ref, a, .north-shuoshuo-toolbar-icon'
+        );
+        memoCard.addEventListener('click', (e) => {
+            if (isInteractiveTarget(e.target)) return;
+            next();
+        });
+
+        // 让“换一条”提示本身也可点击，移动端无需键盘也能切换
+        const hintEl = listEl.querySelector('.north-shuoshuo-keyboard-hint');
+        if (hintEl) {
+            hintEl.style.cursor = 'pointer';
+            hintEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                next();
+            });
+        }
 
         // 键盘事件
         if (this._randomKeyHandler) {
@@ -9453,6 +9516,7 @@ ipcRenderer.on('lumina-close', () => {
         }
         // 朋友圈发表支持 Ctrl+V 粘贴图片/视频
         if (publishText) {
+            this._suppressKeyboardToolbarOn(publishText);
             publishText.addEventListener('paste', (e) => {
                 const items = e.clipboardData?.items;
                 if (!items) return;
@@ -11735,9 +11799,25 @@ ipcRenderer.on('lumina-close', () => {
             currentBuiltin = currentIcon.substring('icon:builtin:'.length);
         }
         
+        // 去重：避免移动端重复点击天气/心情按钮时叠加出多个选择器
+        document.querySelectorAll('.north-shuoshuo-icon-picker-modal').forEach(m => m.remove());
+
         const modal = document.createElement('div');
         modal.className = 'north-shuoshuo-icon-picker-modal';
-        
+
+        // 移动端：把选择器挂到插件容器内（而非 document.body），
+        // 这样它处于插件自身的层叠上下文中，不会被思源顶部栏/导航遮挡；
+        // 同时返回手势会优先被本插件的 goBack 钩子捕获并关闭它，而不是退回笔记页。
+        let iconPickerMount = document.body;
+        if (this.isMobile && this.container) {
+            const containerEl = this.container.querySelector('.north-shuoshuo-container')
+                || this.container.closest('.north-shuoshuo-container');
+            if (containerEl) {
+                iconPickerMount = containerEl;
+                modal.classList.add('in-container');
+            }
+        }
+
         let colorsHtml = presetColors.map(color => `
             <span class="north-shuoshuo-color-option ${color === currentColor ? 'selected' : ''}" 
                   data-color="${color}" 
@@ -11878,8 +11958,15 @@ ipcRenderer.on('lumina-close', () => {
                 </div>
             </div>
         `;
-        
-        document.body.appendChild(modal);
+
+        // 二次去重：防止在 await fetchEmojiConf 期间连续点击又生成多个实例
+        document.querySelectorAll('.north-shuoshuo-icon-picker-modal').forEach(m => { if (m !== modal) m.remove(); });
+        iconPickerMount.appendChild(modal);
+
+        // 移动端容器内：阻止触摸滚动冒泡到 document，避免被思源识别为“返回手势”
+        if (modal.classList.contains('in-container')) {
+            modal.addEventListener('touchmove', (e) => { e.stopPropagation(); }, { passive: true });
+        }
         
         const previewImg = modal.querySelector('.north-shuoshuo-icon-preview');
         const textInput = modal.querySelector('.north-shuoshuo-icon-text-input');
@@ -13294,6 +13381,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.handlePasteImage(e, input);
             });
         }
+        this._suppressKeyboardToolbarOn(input);
 
         // 输入监听，控制发送按钮，并自动转换列表符?
         if (input && sendBtn) {
@@ -13691,6 +13779,7 @@ ipcRenderer.on('lumina-close', () => {
                 }
             });
         }
+        this._suppressKeyboardToolbarOn(mobileSearchInput);
         const _mobileSearchRender = () => {
             if (this.currentMainView === 'lifelog') {
                 this.renderLifeLog();
@@ -14277,6 +14366,7 @@ ipcRenderer.on('lumina-close', () => {
                 debouncedSearch();
             });
         }
+        this._suppressKeyboardToolbarOn(searchInput);
 
         if (searchClear) {
             searchClear.addEventListener('click', () => {
@@ -14563,6 +14653,10 @@ ipcRenderer.on('lumina-close', () => {
             };
         }
 
+        this._bindInputToolbar(input);
+    }
+
+    _bindInputToolbar(input) {
         // 标签按钮
         const tagBtn = this.container.querySelector('#toolbar-tag');
         if (tagBtn) {
@@ -14602,7 +14696,7 @@ ipcRenderer.on('lumina-close', () => {
         const olBtn = this.container.querySelector('#toolbar-ol');
         if (olBtn) {
             olBtn.addEventListener('click', () => {
-                // 获取当前行号或默?
+                // 获取当前行号或默认值
                 const lines = input.value.substring(0, input.selectionStart).split('\n');
                 const currentLine = lines[lines.length - 1];
                 const match = currentLine.match(/^(\d+)\.\s/);
@@ -14620,7 +14714,6 @@ ipcRenderer.on('lumina-close', () => {
                 this.showMentionPicker(input);
             });
         }
-
     }
 
     // 在光标位置插入文?
@@ -19261,6 +19354,7 @@ ipcRenderer.on('lumina-close', () => {
         }
 
         const textarea = editBox.querySelector('.north-shuoshuo-inline-edit-field');
+        this._suppressKeyboardToolbarOn(textarea);
         const autoResize = () => {
             textarea.style.height = 'auto';
             textarea.style.height = Math.max(80, textarea.scrollHeight) + 'px';
@@ -22119,6 +22213,9 @@ ipcRenderer.on('lumina-close', () => {
             toolbarLeft.style.gap = '';
             if (this._lifelogToolbarLeftHTML) {
                 toolbarLeft.innerHTML = this._lifelogToolbarLeftHTML;
+                // innerHTML 替换后工具栏按钮事件监听丢失，重新绑定
+                const input = this.container.querySelector('#shuoshuo-input');
+                if (input) this._bindInputToolbar(input);
             }
         }
         const sendBtn = this.container.querySelector('.north-shuoshuo-send-btn');
