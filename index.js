@@ -1794,6 +1794,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             shell.classList.add('show');
             document.body.classList.add('north-shuoshuo-mobile-shell-open');
             this.render(body);
+            this.hookMobileGoBack();
             return true;
         } catch (e) {
             console.error("打开轻语移动端面板失败", e);
@@ -1803,6 +1804,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
     closeMobileShuoshuoDock() {
         try {
+            this.unhookMobileGoBack();
             const shell = document.querySelector('.north-shuoshuo-mobile-shell');
             if (shell instanceof HTMLElement) {
                 shell.classList.remove('show');
@@ -1827,6 +1829,93 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
     isInMobileShell() {
         return !!(this.container instanceof Element && this.container.closest?.('.north-shuoshuo-mobile-shell'));
+    }
+
+    hookMobileGoBack() {
+        if (this._luminaGoBackHooked) return;
+        const original = window.goBack;
+        if (typeof original !== 'function') return;
+        this._luminaOrigGoBack = original;
+        this._luminaGoBackHooked = true;
+        window.goBack = () => {
+            const noNativeDialogs = !window.siyuan.dialogs || window.siyuan.dialogs.length === 0;
+            if (noNativeDialogs) {
+                // 1. 封面弹窗（网络图片链接 / 资源库选择）
+                const coverModal = this.container?.querySelector?.(
+                    '.lumina-moments-cover-modal.active'
+                );
+                if (coverModal) {
+                    coverModal.classList.remove('active');
+                    return;
+                }
+                // 2. 日历弹窗 - 说说/LifeLog（移动端会被移到 document.body 下，需从 document 查询；
+                //    关闭不能只去 active，还要移回原父元素并清理主题类，所以模拟点击关闭按钮触发完整逻辑）
+                const calendarModal = document.querySelector('#shuoshuo-calendar-modal.active');
+                if (calendarModal) {
+                    const closeBtn = calendarModal.querySelector('#shuoshuo-calendar-close');
+                    if (closeBtn) {
+                        closeBtn.click();
+                    } else {
+                        const overlay = calendarModal.querySelector('#shuoshuo-calendar-overlay');
+                        if (overlay) overlay.click();
+                    }
+                    return;
+                }
+                // 3. 日历弹窗 - 朋友圈（不移到 body，普通 .active 控制）
+                const momentsCalendar = this.container?.querySelector?.('#momentsCalendarModal.active');
+                if (momentsCalendar) {
+                    momentsCalendar.classList.remove('active');
+                    return;
+                }
+                // 4. 朋友圈发表页
+                const publishPage = this.container?.querySelector?.('#momentsPublishPage');
+                if (publishPage && publishPage.classList.contains('active')) {
+                    publishPage.classList.remove('active');
+                    const mainPage = this.container?.querySelector?.('#momentsMainPage');
+                    if (mainPage) mainPage.style.visibility = '';
+                    return;
+                }
+                // 5. 说说/LifeLog 输入框
+                const inputArea = this.container?.querySelector?.(
+                    '.north-shuoshuo-input-area.mobile-visible'
+                );
+                if (inputArea) {
+                    inputArea.classList.remove('mobile-visible');
+                    return;
+                }
+                // 6. 移动端搜索栏
+                const searchBar = this.container?.querySelector?.(
+                    '#shuoshuo-mobile-search-bar.show'
+                );
+                if (searchBar) {
+                    searchBar.classList.remove('show');
+                    return;
+                }
+                // 7. 抽屉侧边栏
+                const drawerOpen = this.container?.querySelector?.(
+                    '.north-shuoshuo-flomo-sidebar.drawer-open'
+                );
+                if (drawerOpen) {
+                    this._closeMobileDrawer();
+                    return;
+                }
+                // 8. 以上都没有，才关闭整个轻语浮层
+                if (this.isInMobileShell()) {
+                    this.closeMobileShuoshuoDock();
+                    return;
+                }
+            }
+            original.call(window);
+        };
+    }
+
+    unhookMobileGoBack() {
+        if (!this._luminaGoBackHooked) return;
+        if (typeof this._luminaOrigGoBack === 'function') {
+            window.goBack = this._luminaOrigGoBack;
+        }
+        this._luminaOrigGoBack = null;
+        this._luminaGoBackHooked = false;
     }
 
     prepareNativeDialogAboveMobileShell() {
