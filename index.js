@@ -1962,6 +1962,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         window.goBack = () => {
             const noNativeDialogs = !window.siyuan.dialogs || window.siyuan.dialogs.length === 0;
             if (noNativeDialogs) {
+                // 0. 图片/视频预览（z-index 最高，挂在 document.body 下）
+                const imagePreview = document.querySelector('.north-shuoshuo-image-preview-modal');
+                if (imagePreview) {
+                    imagePreview.remove();
+                    return;
+                }
                 // 1. 封面弹窗（网络图片链接 / 资源库选择）
                 const coverModal = this.container?.querySelector?.(
                     '.lumina-moments-cover-modal.active'
