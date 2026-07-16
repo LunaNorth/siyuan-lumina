@@ -901,11 +901,22 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
     border: none;
     background: transparent;
     padding: 0;
+    margin-right: 4px;
 }
 
 .north-shuoshuo-query-action-btn:hover {
     background: var(--b3-list-hover);
     color: var(--b3-theme-on-surface);
+}
+
+/* 说说视图「检索式」区块的「+」按钮：默认隐藏，hover 整个区块时淡入显示
+   （与检索式数量 hover 显示的行为一致），仅作用于说说视图，不影响设置视图中常显的按钮 */
+.north-shuoshuo-query-section .north-shuoshuo-query-action-btn {
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s, color 0.15s;
+}
+.north-shuoshuo-query-section:hover .north-shuoshuo-query-action-btn {
+    opacity: 1;
 }
 
 /* 检索式编辑模式 */
@@ -12137,14 +12148,7 @@ body.dark .north-shuoshuo-image-item-video,
     pointer-events: auto;
 }
 
-/* 触摸设备无 hover，常驻显示 */
-@media (hover: none) {
-    .lumina-moments-cover-toolbar {
-        opacity: 1;
-        transform: none;
-        pointer-events: auto;
-    }
-}
+/* 移动端（触摸设备）不再常驻显示，改为点击封面区域时由 JS 切换 .visible 显隐 */
 
 .lumina-moments-cover-tool {
     display: inline-flex;
@@ -13454,6 +13458,32 @@ body.dark .north-shuoshuo-image-item-video,
     font-size: 8px;
     color: var(--moments-text-tertiary);
     line-height: 1;
+}
+
+/* ===== 移动端朋友圈发布栏 extra-row 优化 ===== */
+@media (max-width: 600px) {
+    .lumina-moments-publish-extra-row {
+        flex-wrap: wrap;
+        gap: 6px 10px;
+    }
+
+    .lumina-moments-publish-date-input {
+        width: auto;
+        flex: 1 1 120px;
+        min-width: 110px;
+    }
+
+    .lumina-moments-publish-emoji-btn {
+        padding: 0 14px;
+        min-width: 56px;
+        flex-shrink: 0;
+    }
+
+    .lumina-moments-publish-location-input {
+        width: auto;
+        flex: 1 1 80px;
+        min-width: 70px;
+    }
 }
 
 
@@ -14916,6 +14946,29 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         width: 16px;
         height: 16px;
     }
+    /* 「写说说」按钮悬浮模式：脱离顶部，以悬浮球形式浮在说说视图上（默认右下角） */
+    .mobile-header-add.mobile-add-floating {
+        position: fixed;
+        right: 16px;
+        bottom: 80px;
+        left: auto;
+        top: auto;
+        width: 48px;
+        height: 48px;
+        z-index: 60;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        touch-action: none;
+        transition: box-shadow 0.15s ease, transform 0.1s ease;
+    }
+    .mobile-header-add.mobile-add-floating .icon {
+        width: 22px;
+        height: 22px;
+    }
+    .mobile-header-add.mobile-add-floating.dragging {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+        transform: scale(1.08);
+        opacity: 0.92;
+    }
     
     .mobile-header-title {
         font-size: 16px;
@@ -14957,6 +15010,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         visibility: visible;
         pointer-events: auto;
         box-shadow: 4px 0 20px rgba(0,0,0,0.12);
+        background-color: var(--b3-theme-background);
     }
     /* 遮罩�?*/
     .north-shuoshuo-drawer-overlay {
@@ -15030,7 +15084,7 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
 /* 底部 Tab �?*/
     .north-shuoshuo-mobile-tabbar {
         display: flex;
-        height: 56px;
+        height: 48px;
         flex-shrink: 0;
         background: var(--b3-theme-surface);
         border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
@@ -15046,27 +15100,130 @@ body.north-shuoshuo-native-dialog-open .b3-dialog--open[data-key="dialog-confirm
         border: none;
         background: transparent;
         color: var(--b3-theme-on-surface-light);
-        font-size: 11px;
+        font-size: 10px;
         cursor: pointer;
-        padding: 4px 0;
+        padding: 2px 0;
         transition: color 0.2s;
     }
     .mobile-tab-item svg {
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
         stroke-width: 1.8;
     }
     .mobile-tab-item.active {
         color: var(--b3-theme-primary);
     }
 
-    /* 输入框默认隐藏，点击加号后显�?*/
+    /* 输入框默认隐藏，移动端点击加号后以底部弹窗（Bottom Sheet）形式滑出 */
     .north-shuoshuo-input-area {
         display: none !important;
-        padding: 8px 16px 12px;
+        padding: 0;
+        border-top: none !important;
     }
+
+    /* 底部弹窗：fixed 定位、撑满全屏。遮罩先淡入，面板紧跟从底部滑出 */
     .north-shuoshuo-input-area.mobile-visible {
-        display: block !important;
+        display: flex !important;
+        flex-direction: column;
+        justify-content: flex-end;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9999;
+        background: rgba(0, 0, 0, 0.4);
+        padding: 0;
+        animation: lumina-mask-in 0.2s ease forwards;
+    }
+
+    /* 关闭态：遮罩淡出 */
+    .north-shuoshuo-input-area.mobile-visible.closing {
+        animation: lumina-mask-out 0.22s ease forwards;
+    }
+
+    /* 移动端弹窗下强制清除紧凑模式（PC 端侧边栏）遗留的左右内边距，确保输入框占满全屏。
+       紧凑规则（.north-shuoshuo-lifelog-compact .north-shuoshuo-input-area）含 !important，
+       此处用 body 前缀提高特异性以覆盖它，且不影响 PC 端（PC 端 input-area 无 .mobile-visible）。 */
+    body .north-shuoshuo-input-area.mobile-visible {
+        padding: 0 !important;
+    }
+
+    @keyframes lumina-mask-in {
+        from { background: rgba(0, 0, 0, 0); }
+        to   { background: rgba(0, 0, 0, 0.4); }
+    }
+
+    @keyframes lumina-mask-out {
+        from { background: rgba(0, 0, 0, 0.4); }
+        to   { background: rgba(0, 0, 0, 0); }
+    }
+
+    @keyframes lumina-sheet-up {
+        from { transform: translateY(100%); }
+        to   { transform: translateY(0); }
+    }
+
+    @keyframes lumina-sheet-down {
+        from { transform: translateY(0); }
+        to   { transform: translateY(100%); }
+    }
+
+    /* 弹窗内容面板（紧凑自适应，不撑满屏幕）——遮罩淡入后再滑出 */
+    .north-shuoshuo-input-area.mobile-visible .north-shuoshuo-input-box {
+        border-radius: 18px 18px 0 0;
+        border: none;
+        box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.14);
+        background: var(--b3-theme-background);
+        padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+        margin: 6px 0 0;
+        max-height: 55vh;
+        overflow-y: auto;
+        flex-shrink: 0;
+        animation: lumina-sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+        animation-delay: 0.12s;
+    }
+
+    /* 关闭态：面板先下滑 */
+    .north-shuoshuo-input-area.mobile-visible.closing .north-shuoshuo-input-box {
+        animation: lumina-sheet-down 0.22s ease-in forwards;
+        animation-delay: 0s;
+    }
+
+    /* 移动端弹窗下：LifeLog 类型选择条作为面板的一部分，带同色底色浮在遮罩之上，
+       紧贴输入框面板无缝衔接，不再直接浮在半透明遮罩背景上 */
+    .north-shuoshuo-input-area.mobile-visible #lifelog-input-types {
+        display: flex;
+        background: var(--b3-theme-background);
+        margin: 0;
+        padding: 2px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+        border-radius: 0;
+        flex-shrink: 0;
+        animation: lumina-sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+        animation-delay: 0.12s;
+    }
+
+    /* 关闭态：类型条与面板一起下滑 */
+    .north-shuoshuo-input-area.mobile-visible.closing #lifelog-input-types {
+        animation: lumina-sheet-down 0.22s ease-in forwards;
+        animation-delay: 0s;
+    }
+
+    /* 顶部拖拽指示条 */
+    .north-shuoshuo-input-area.mobile-visible .north-shuoshuo-input-box::before {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--b3-border-color);
+        margin: 0 auto 10px;
+        flex-shrink: 0;
+    }
+
+    /* 弹窗内输入框高度限制，避免撑开过多 */
+    .north-shuoshuo-input-area.mobile-visible .north-shuoshuo-input-field {
+        max-height: 35vh;
     }
 
     /* 设置页面改为上下布局 */
@@ -16991,4 +17148,12 @@ body[theme-mode="dark"] .north-shuoshuo-share-footer {
 
 body[theme-mode="dark"] .north-shuoshuo-share-save-btn {
     box-shadow: 0 4px 14px color-mix(in srgb, var(--share-card-accent, #8b7355) 20%, transparent);
+}
+
+/* ========== 移动端全屏覆盖层 (mobile-shell) ==========
+   从侧边栏/顶栏进入轻语时使用，解决系统返回键与左滑手势失效问题
+   注：shell 结构由 JS 内联样式控制（position:fixed;inset:0;z-index:60000），此处只做补充
+*/
+.north-shuoshuo-mobile-shell.show {
+    display: flex !important;
 }
