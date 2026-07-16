@@ -1931,6 +1931,28 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         return !!(this.container instanceof Element && this.container.closest?.('.north-shuoshuo-mobile-shell'));
     }
 
+    _suppressKeyboardToolbarOn(el) {
+        if (!el || !this.isMobile) return;
+        el.addEventListener('focus', () => {
+            if (this.isInMobileShell()) return;
+            const kb = document.getElementById('keyboardToolbar');
+            if (!kb) return;
+            this._kbObserver?.disconnect();
+            this._kbObserver = new MutationObserver(() => {
+                if (!kb.classList.contains('fn__none')) {
+                    kb.classList.add('fn__none');
+                    kb.style.height = '';
+                }
+            });
+            kb.classList.add('fn__none');
+            this._kbObserver.observe(kb, { attributes: true, attributeFilter: ['class'] });
+        });
+        el.addEventListener('blur', () => {
+            this._kbObserver?.disconnect();
+            this._kbObserver = null;
+        });
+    }
+
     hookMobileGoBack() {
         if (this._luminaGoBackHooked) return;
         const original = window.goBack;
@@ -9453,6 +9475,7 @@ ipcRenderer.on('lumina-close', () => {
         }
         // 朋友圈发表支持 Ctrl+V 粘贴图片/视频
         if (publishText) {
+            this._suppressKeyboardToolbarOn(publishText);
             publishText.addEventListener('paste', (e) => {
                 const items = e.clipboardData?.items;
                 if (!items) return;
@@ -13294,6 +13317,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.handlePasteImage(e, input);
             });
         }
+        this._suppressKeyboardToolbarOn(input);
 
         // 输入监听，控制发送按钮，并自动转换列表符?
         if (input && sendBtn) {
@@ -13691,6 +13715,7 @@ ipcRenderer.on('lumina-close', () => {
                 }
             });
         }
+        this._suppressKeyboardToolbarOn(mobileSearchInput);
         const _mobileSearchRender = () => {
             if (this.currentMainView === 'lifelog') {
                 this.renderLifeLog();
@@ -14277,6 +14302,7 @@ ipcRenderer.on('lumina-close', () => {
                 debouncedSearch();
             });
         }
+        this._suppressKeyboardToolbarOn(searchInput);
 
         if (searchClear) {
             searchClear.addEventListener('click', () => {
@@ -19261,6 +19287,7 @@ ipcRenderer.on('lumina-close', () => {
         }
 
         const textarea = editBox.querySelector('.north-shuoshuo-inline-edit-field');
+        this._suppressKeyboardToolbarOn(textarea);
         const autoResize = () => {
             textarea.style.height = 'auto';
             textarea.style.height = Math.max(80, textarea.scrollHeight) + 'px';
