@@ -540,7 +540,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.imgMultiSize = 50;   // 多图（原 max-width:50%）
         this.enterToSubmit = false; // 输入框回车直接提交
         this.showSidebarDock = false; // 是否显示侧边栏 Dock（默认不显示）
-        this.AUTO_OPEN_KEY = 'lumina_auto_open'; // 启动时自动打开轻语 localStorage 键名
+        this.autoOpen = false; // 启动时自动打开轻语（持久化配置，默认关闭）
         this.showLifelogSidebarDock = false; // 是否显示 LifeLog 侧边栏 Dock
         this.showLifeLogRecords = false; // 是否显示读取到的 LifeLog 记录（默认不显示）
         this.lifeLogRecords = []; // LifeLog 记录（仅用于 LifeLog 视图）
@@ -562,10 +562,14 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogStatsCustomStart = null; // LifeLog 统计视图自定义起始时间（毫秒）
         this._lifelogStatsCustomEnd = null; // LifeLog 统计视图自定义结束时间（毫秒）
         this.compactMode = false; // 紧凑模式（默认关闭）
-        this.noteCardHoverBorder = false; // 说说内容列表悬停边框变色（默认关闭）
+        this.noteCardHoverBorder = true; // 说说内容列表悬停边框变色（默认开启）
         this.lifeLogCompactMode = false; // LifeLog 紧凑模式（默认关闭，独立于说说视图）
         this.shuoshuoHeatmapType = 'heatmap'; // 说说视图日期展示类型：'heatmap' 日历贡献图 / 'calendar' 月历视图
         this.sidebarFullScroll = false; // 侧边栏整体滚动模式（默认关闭，仅标签区独立滚动）
+        this.mobileAddFloating = false; // 移动端「写说说」按钮悬浮显示（默认在顶部，不悬浮）
+        this.mobileAddFloatPos = null;  // 悬浮按钮自定义位置 {left, top}（px），null 为默认右下角
+        this.lifeLogAddFloating = false; // 移动端 LifeLog 视图「写 LifeLog」按钮悬浮显示（独立于说说视图）
+        this.lifeLogAddFloatPos = null;  // LifeLog 悬浮按钮自定义位置 {left, top}（px），null 为默认右下角
         this.lifelogTypesDefaultExpanded = true; // LifeLog 类型折叠条默认是否展开
         this._lifelogTypesExpanded = this.lifelogTypesDefaultExpanded; // LifeLog 类型折叠条是否展开
         this.lifeLogTimeMode = 'end'; // LifeLog 时间模式: 'end'=结束模式(默认) 'start'=开始模式
@@ -637,7 +641,12 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             langText: "打开轻语",
             hotkey: "⌥⌘S",
             callback: () => {
-                this.openShuoshuoTab();
+                if (this.isMobile) {
+                    // 移动端：Ctrl+Alt+S 打开底栏 Dock 原生面板（而非 mobile-shell 覆盖层）
+                    this._openMobileViaNativeDock();
+                } else {
+                    this.openShuoshuoTab();
+                }
             }
         });
 
@@ -1399,8 +1408,21 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         // 在 onLayoutReady 中也触发一次数据加载（补充保障）
         // 主要数据刷新机制在 switchMainView 视图切换时已实现
 
-        // 自动打开轻语（通过 localStorage 标志控制，默认关闭）
-        if (localStorage.getItem(this.AUTO_OPEN_KEY) === 'true') {
+        // 兼容性迁移：旧版本把“启动时打开轻语”只存在 localStorage，
+        // 在 SiYuan 重启后不保证持久化。这里读取一次并写入真正的持久化配置，
+        // 随后清除旧键，避免重启后丢失。
+        try {
+            if (typeof localStorage !== 'undefined' && localStorage.getItem('lumina_auto_open') === 'true') {
+                this.autoOpen = true;
+                this.saveConfig();
+                localStorage.removeItem('lumina_auto_open');
+            }
+        } catch (e) {
+            // 忽略迁移异常，不影响后续逻辑
+        }
+
+        // 自动打开轻语（通过持久化配置 autoOpen 控制，默认关闭）
+        if (this.autoOpen === true) {
             setTimeout(() => {
                 this.openShuoshuoTab();
             }, 500);
@@ -1743,9 +1765,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
     openShuoshuoTab() {
         if (this.isMobile) {
+            // 移动端：打开自定义全屏覆盖层（mobile-shell），包含 dock 视图内容
             this.openMobileShuoshuoDock();
-            // 移动端 render() 内部已调用 loadShuoshuos().then(renderNotes)
-            // 不再需要此处额外触发，避免双次加载导致的竞态问题
             return;
         }
         openTab({
@@ -1758,11 +1779,87 @@ module.exports = class ShuoshuoPlugin extends Plugin {
             }
         });
         // 打开说说标签时，异步加载思源最新数据
-        // 注意：桌面端 openTab 的 init() 回调中也会调用 render() → loadShuoshuos
-        // 此处额外触发确保数据更新，但 _withSaveLock 会处理并发
         setTimeout(() => {
             this.loadShuoshuos();
         }, 500);
+    }
+
+    // ========== 移动端：通过思源原生 Dock（底栏 Dock 面板）打开轻语 ==========
+    // 目标：Ctrl+Alt+S 在移动端打开底栏 Dock 的原生面板（与手动点击底栏 Dock 拼图图标效果一致），
+    //       而非 mobile-shell 覆盖层。系统返回键 / 手势由思源原生接管。
+    _openMobileViaNativeDock() {
+        if (!this.isMobile) return false;
+        const type = "lumina_dock";
+
+        // 方式1（最可靠）：思源插件官方 API showDock —— 自动定位 dock 所在 Layout 并 toggleModel
+        try {
+            if (typeof this.showDock === "function") {
+                const ok = this.showDock(type);
+                if (ok) {
+                    console.log("[轻语] showDock 打开原生 Dock 成功");
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.error("[轻语] showDock 失败", e);
+        }
+
+        // 方式2：复刻思源 getDockByType(type).toggleModel(type, true, false)
+        try {
+            const L = (window.siyuan && window.siyuan.layout) || (this.app && this.app.layout);
+            if (L) {
+                const areas = [L.leftDock, L.rightDock, L.bottomDock];
+                for (const area of areas) {
+                    if (area && area.data && area.data[type]) {
+                        if (typeof area.toggleModel === "function") {
+                            area.toggleModel(type, true, false);
+                            console.log("[轻语] toggleModel 打开原生 Dock 成功");
+                            return true;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("[轻语] toggleModel 失败", e);
+        }
+
+        // 方式3：DOM 点击 dock 面板里 [data-type="lumina_dock"] 的可见项（等价于手动点击）
+        try {
+            const candidates = document.querySelectorAll(`[data-type="${type}"]`);
+            for (const el of candidates) {
+                if (!(el instanceof HTMLElement)) continue;
+                const rect = el.getBoundingClientRect();
+                if (rect.width === 0 && rect.height === 0) continue;
+                const inDock = el.closest('.layout__dockb, #dockLeft, #dockRight, #dockBottom, .dock__list, .sidebar-plugin, .plugin-dock, .fn__flex-1, .north-shuoshuo-dock-view') || el.classList.contains('dock__item');
+                if (!inDock) continue;
+                console.log("[轻语] 点击原生 Dock 项", el.className);
+                el.click();
+                return true;
+            }
+        } catch (e) {
+            console.error("[轻语] DOM 点击 dock 项失败", e);
+        }
+
+        // 方式4：点击底栏拼图图标（Dock 开关）展开面板后再点轻语项
+        try {
+            const dockToggle = document.querySelector('.layout__dockb');
+            if (dockToggle instanceof HTMLElement) {
+                dockToggle.click();
+                setTimeout(() => {
+                    const item = document.querySelector(`[data-type="${type}"]`);
+                    if (item instanceof HTMLElement) item.click();
+                }, 300);
+                console.log("[轻语] 点击底栏 Dock 拼图图标展开面板");
+                return true;
+            }
+        } catch (e) {
+            console.error("[轻语] 点击底栏 Dock 拼图图标失败", e);
+        }
+
+        // 兜底：原生方式均失败时，回退到 mobile-shell 覆盖层（保证一定能打开，不报错）
+        console.warn("[轻语] 原生 Dock 触发均失败，回退到 mobile-shell");
+        this.openMobileShuoshuoDock();
+        return true;
     }
 
     openMobileShuoshuoDock() {
@@ -1829,30 +1926,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         return !!(this.container instanceof Element && this.container.closest?.('.north-shuoshuo-mobile-shell'));
     }
 
-    prepareNativeDialogAboveMobileShell() {
-        if (!this.isMobile) return () => {};
-        try {
-            document.body.classList.add('north-shuoshuo-native-dialog-open');
-            return () => {
-                try { document.body.classList.remove('north-shuoshuo-native-dialog-open'); } catch (e) {}
-            };
-        } catch (e) {
-            return () => {};
-        }
-    }
-
-    confirmAboveMobileShell(title, message, onConfirm, onCancel, isDelete) {
-        const restore = this.prepareNativeDialogAboveMobileShell();
-        const done = (callback) => async (dialog) => {
-            try {
-                if (callback) await callback(dialog);
-            } finally {
-                restore();
-            }
-        };
-        return confirm(title, message, done(onConfirm), done(onCancel), isDelete);
-    }
-
+    // 捕获思源移动端 dock 状态，以便关闭 mobile-shell 时恢复
     captureSiyuanMobileDockState() {
         if (!this.isMobile || this._luminaMobileDockState) return;
         try {
@@ -1879,6 +1953,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         }
     }
 
+    // 恢复思源移动端 dock 状态
     restoreSiyuanMobileDockState() {
         if (!this.isMobile) return;
         try {
@@ -1939,6 +2014,30 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 pluginPanel.classList.add("fn__none");
             }
         } catch (e) {}
+    }
+
+    prepareNativeDialogAboveMobileShell() {
+        if (!this.isMobile) return () => {};
+        try {
+            document.body.classList.add('north-shuoshuo-native-dialog-open');
+            return () => {
+                try { document.body.classList.remove('north-shuoshuo-native-dialog-open'); } catch (e) {}
+            };
+        } catch (e) {
+            return () => {};
+        }
+    }
+
+    confirmAboveMobileShell(title, message, onConfirm, onCancel, isDelete) {
+        const restore = this.prepareNativeDialogAboveMobileShell();
+        const done = (callback) => async (dialog) => {
+            try {
+                if (callback) await callback(dialog);
+            } finally {
+                restore();
+            }
+        };
+        return confirm(title, message, done(onConfirm), done(onCancel), isDelete);
     }
 
     // 打开轻语速记浮层（复用说说输入框功能）
@@ -3226,7 +3325,14 @@ ipcRenderer.on('lumina-close', () => {
                         </div>
 
                         <div class="north-shuoshuo-query-section">
-                            <div class="north-shuoshuo-section-title">检索式</div>
+                            <div class="north-shuoshuo-query-header">
+                                <div class="north-shuoshuo-section-title">检索式</div>
+                                <div class="north-shuoshuo-query-actions">
+                                    <button class="north-shuoshuo-query-action-btn" id="shuoshuo-add-query-btn" title="新建检索式" type="button">
+                                        <svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconAdd"></use></svg>
+                                    </button>
+                                </div>
+                            </div>
                             <div class="north-shuoshuo-query-list">
                                 ${this.queryVisibility?.['no-tag'] !== false ? `<div class="north-shuoshuo-query-item" data-query="no-tag">
                                     <span class="north-shuoshuo-query-icon">
@@ -3426,6 +3532,12 @@ ipcRenderer.on('lumina-close', () => {
                             </svg>
                             <span>轻语设置</span>
                         </div>
+                        <div class="north-shuoshuo-settings-nav-item" data-setting="mobile">
+                            <svg class="north-shuoshuo-settings-nav-icon" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14zm-5 3c.83 0 1.5-.67 1.5-1.5S12.83 19 12 19s-1.5.67-1.5 1.5.67 1.5 1.5 1.5z"/>
+                            </svg>
+                            <span>移动端设置</span>
+                        </div>
                     </div>
 
                     <!-- 右侧：具体设置内容 -->
@@ -3512,7 +3624,7 @@ ipcRenderer.on('lumina-close', () => {
                                         <h4>启动时打开轻语</h4>
                                         <p>开启后，启动思源笔记自动打开轻语标签页</p>
                                     </div>
-                                    <div class="north-shuoshuo-switch ${localStorage.getItem(this.AUTO_OPEN_KEY) === 'true' ? 'on' : ''}" id="settings-auto-open-switch"></div>
+                                    <div class="north-shuoshuo-switch ${this.autoOpen === true ? 'on' : ''}" id="settings-auto-open-switch"></div>
                                 </div>
                             </div>
 
@@ -4815,6 +4927,40 @@ ipcRenderer.on('lumina-close', () => {
                             </div>
                         </div>
 
+                        <!-- 移动端设置 -->
+                        <div class="north-shuoshuo-settings-section" id="setting-group-mobile" style="display: none;">
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header" style="margin-bottom: 4px;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div class="north-shuoshuo-section-title">说说视图</div>
+                                        <div class="north-shuoshuo-section-desc">移动端说说视图的相关设置</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>「写说说」按钮悬浮</h4>
+                                        <p>开启后，顶部的「写说说」按钮将不在顶部，而是以悬浮球形式浮在说说视图上（默认右下角）。长按悬浮球即可拖动调整位置。</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.mobileAddFloating ? 'on' : ''}" id="settings-mobile-add-float-switch"></div>
+                                </div>
+                            </div>
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-section-header" style="margin-bottom: 4px;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div class="north-shuoshuo-section-title">LifeLog 视图</div>
+                                        <div class="north-shuoshuo-section-desc">移动端 LifeLog 视图的相关设置</div>
+                                    </div>
+                                </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>「写 LifeLog」按钮悬浮</h4>
+                                        <p>开启后，顶部的「写 LifeLog」按钮将不在顶部，而是以悬浮球形式浮在 LifeLog 视图上（默认右下角）。长按悬浮球即可拖动调整位置。该设置与「说说视图」的悬浮相互独立。</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.lifeLogAddFloating ? 'on' : ''}" id="settings-mobile-lifelog-add-float-switch"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 底部操作 -->
                         <div class="north-shuoshuo-actions">
                             <button class="north-shuoshuo-btn north-shuoshuo-btn-secondary" id="settings-cancel">取消</button>
@@ -5485,6 +5631,7 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     async openSiyuanBlockAndCloseMobileShell(blockId) {
+        // 移动端：从 mobile-shell 中打开块时，先关闭覆盖层
         const opened = await this.openSiyuanBlock(blockId);
         if (opened && this.isInMobileShell()) {
             this.closeMobileShuoshuoDock();
@@ -5601,7 +5748,7 @@ ipcRenderer.on('lumina-close', () => {
                     self._renderLifeLogInContainer(ownerContainer, false);
                 });
             }
-            // 其他类型按钮：选择/取消选择类型（不切换折叠状态），选中后自动聚焦输入框
+            // 其他类型按钮：仅设置新记录的类型（不筛选列表）
             inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type:not(#lifelog-type-toggle)').forEach(item => {
                 item.addEventListener('click', function() {
                     const type = this.dataset.lifelogInputType;
@@ -5611,8 +5758,11 @@ ipcRenderer.on('lumina-close', () => {
                     } else {
                         self._lifelogCurrentInputType = type || '';
                     }
-                    self._renderLifeLogInContainer(ownerContainer, false);
-                    // 渲染后自动聚焦输入框
+                    // 仅更新按钮的 active 样式，不重新渲染整个视图（避免触发列表筛选）
+                    inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type').forEach(btn => {
+                        btn.classList.toggle('active', btn.dataset.lifelogInputType === self._lifelogCurrentInputType);
+                    });
+                    // 聚焦输入框
                     setTimeout(() => {
                         const input = ownerContainer.querySelector('#shuoshuo-input');
                         if (input) input.focus();
@@ -5797,7 +5947,7 @@ ipcRenderer.on('lumina-close', () => {
             if (sorted.length === 0) {
                 html += `
                     <div class="north-shuoshuo-note-card" style="text-align: center; color: #999; padding: 40px;">
-                        ${this.showLifeLogRecords ? '暂无 LifeLog 记录' : '请先在设置中开启 LifeLog 记录显示'}
+                        ${this.showLifeLogRecords ? '暂无 LifeLog 记录' : '这个视图是配合叶归 LifeLog 记录使用的，需要先安装叶归并开启 LifeLog，才能正常显示内容。<br>请在 LifeLog 设置中开启显示 LifeLog 记录'}
                     </div>
                 `;
             } else {
@@ -6006,8 +6156,11 @@ ipcRenderer.on('lumina-close', () => {
                     } else {
                         self._lifelogCurrentInputType = type || '';
                     }
-                    self._renderLifeLogInContainer(ownerContainer, false);
-                    // 渲染后自动聚焦输入框
+                    // 仅更新按钮的 active 样式，不重新渲染整个视图（避免触发列表筛选）
+                    inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type').forEach(btn => {
+                        btn.classList.toggle('active', btn.dataset.lifelogInputType === self._lifelogCurrentInputType);
+                    });
+                    // 聚焦输入框
                     setTimeout(() => {
                         const input = ownerContainer.querySelector('#shuoshuo-input');
                         if (input) input.focus();
@@ -6059,7 +6212,7 @@ ipcRenderer.on('lumina-close', () => {
         let html = '';
         if (sorted.length === 0) {
             html = `<div class="north-shuoshuo-note-card" style="text-align: center; color: #999; padding: 40px;">
-                ${this.showLifeLogRecords ? '暂无 LifeLog 记录' : '请先在设置中开启 LifeLog 记录显示'}
+                ${this.showLifeLogRecords ? '暂无 LifeLog 记录' : '这个视图是配合叶归 LifeLog 记录使用的，需要先安装叶归并开启 LifeLog，才能正常显示内容。<br>请在 LifeLog 设置中开启显示 LifeLog 记录'}
             </div>`;
         } else {
             html += `
@@ -8689,9 +8842,9 @@ ipcRenderer.on('lumina-close', () => {
                         <div class="lumina-moments-item-actions">
                             <div class="lumina-moments-more-btn" data-mid="${m.id}"></div>
                             <div class="lumina-moments-action-popup" data-mid="${m.id}">
-                                <div class="lumina-moments-action-popup-btn delete-btn" data-mid="${m.id}"><span class="icon">🗑️</span>删除</div>
-                                <div class="lumina-moments-action-popup-btn edit-btn" data-mid="${m.id}"><span class="icon">✏️</span>修改</div>
-                                <div class="lumina-moments-action-popup-btn sync-btn" data-mid="${m.id}"><span class="icon">🔄</span>同步</div>
+                                <div class="lumina-moments-action-popup-btn delete-btn" data-mid="${m.id}"><svg class="icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconTrashcan"></use></svg>删除</div>
+                                <div class="lumina-moments-action-popup-btn edit-btn" data-mid="${m.id}"><svg class="icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconEdit"></use></svg>修改</div>
+                                <div class="lumina-moments-action-popup-btn sync-btn" data-mid="${m.id}"><svg class="icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconCloud"></use></svg>同步</div>
                             </div>
                         </div>
                     </div>
@@ -8830,6 +8983,16 @@ ipcRenderer.on('lumina-close', () => {
             }
             coverToolbar.addEventListener('mouseenter', showCoverToolbar);
             coverToolbar.addEventListener('mouseleave', hideCoverToolbar);
+
+            // 触摸设备（无 hover）：改为点击封面区域（cover 区）切换工具栏显隐
+            if (window.matchMedia('(hover: none)').matches && coverSection) {
+                coverSection.addEventListener('click', (e) => {
+                    // 点击工具栏内按钮时不切换显隐，交给工具栏自身的点击处理
+                    if (e.target.closest('.lumina-moments-cover-toolbar')) return;
+                    coverToolbar.classList.toggle('visible');
+                });
+            }
+
             coverToolbar.addEventListener('click', (e) => {
                 const btn = e.target.closest('.lumina-moments-cover-tool');
                 if (!btn) return;
@@ -13340,18 +13503,36 @@ ipcRenderer.on('lumina-close', () => {
             });
         });
 
-        // 移动端顶部加号按钮：显示/隐藏输入框
+        // 移动端顶部加号按钮：显示/隐藏底部输入弹窗
         const mobileAddBtn = this.container.querySelector('#shuoshuo-mobile-add');
         const inputArea = this.container.querySelector('#shuoshuo-input-area');
         if (mobileAddBtn && inputArea) {
             mobileAddBtn.addEventListener('click', () => {
+                // 悬浮球刚拖动完，抑制这次点击，避免误触发写说说
+                if (mobileAddBtn._luminaJustDragged) { mobileAddBtn._luminaJustDragged = false; return; }
                 const isVisible = inputArea.classList.toggle('mobile-visible');
                 if (isVisible) {
-                    const input = inputArea.querySelector('#shuoshuo-input');
-                    if (input) input.focus();
+                    // 延迟聚焦，等动画开始后聚焦（避免键盘弹出打断动画）
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            const input = inputArea.querySelector('#shuoshuo-input');
+                            if (input) input.focus();
+                        });
+                    });
+                }
+            });
+
+            // 点击遮罩层关闭底部弹窗
+            inputArea.addEventListener('click', (e) => {
+                if (!inputArea.classList.contains('mobile-visible')) return;
+                // 只有点击到遮罩层（即非 input-box 区域）才关闭
+                if (e.target === inputArea || e.target === inputArea.children[0]) {
+                    this._closeMobileInputSheet();
                 }
             });
         }
+        // 应用移动端「写说说」按钮悬浮状态（含长按拖动）
+        this.applyMobileAddFloating();
 
         // 移动端汉堡菜单：打开/关闭抽屉侧边栏
         const mobileMenuBtn = this.container.querySelector('#shuoshuo-mobile-menu');
@@ -13609,20 +13790,20 @@ ipcRenderer.on('lumina-close', () => {
                 if (!queryItem) return;
                 const query = queryItem.dataset.query;
                 if (!query) return;
-                
+
                 const wasSelected = queryItem.classList.contains('selected');
-                
+
                 // 清除所有检索式选中
                 queryListEl.querySelectorAll('.north-shuoshuo-query-item').forEach(item => {
                     item.classList.remove('selected');
                 });
-                
+
                 // 清除标签选中状态
                 this.container.querySelectorAll('.north-shuoshuo-tag-tree-item').forEach(item => {
                     item.classList.remove('selected');
                 });
                 this.selectedTag = null;
-                
+
                 if (wasSelected) {
                     this.filterQuery = null;
                     this.renderNotes();
@@ -13631,6 +13812,18 @@ ipcRenderer.on('lumina-close', () => {
                     this.filterQuery = query;
                     this.renderNotes();
                 }
+            });
+        }
+
+        // 检索式区块的「+」按钮：新建检索式（hover 才显示，功能等同设置视图中的新建检索式）
+        const addQueryBtn = this.container.querySelector('#shuoshuo-add-query-btn');
+        if (addQueryBtn) {
+            // 替换克隆节点清除旧监听，避免 render 重渲染时重复绑定导致重复打开编辑器
+            addQueryBtn.replaceWith(addQueryBtn.cloneNode(true));
+            const newAddQueryBtn = this.container.querySelector('#shuoshuo-add-query-btn');
+            newAddQueryBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._openQueryEditor(null);
             });
         }
 
@@ -13746,6 +13939,9 @@ ipcRenderer.on('lumina-close', () => {
         if (sendBtn) sendBtn.classList.remove('active');
         const inputBox = target.querySelector('#shuoshuo-input-box');
         if (inputBox) inputBox.classList.remove('focused');
+
+        // 移动端：提交成功后自动收起底部弹窗
+        this._closeMobileInputSheet(target);
     }
 
     async addShuoshuo(content, sourceContainer = null) {
@@ -15413,6 +15609,16 @@ ipcRenderer.on('lumina-close', () => {
                         const todayKey = this.formatDateKey(new Date(shuoshuo.created));
                         const title = this.getDateGroupTitle(todayKey);
                         listEl.insertAdjacentHTML('afterbegin', `<div class="north-shuoshuo-date-group">${title}</div>${cardHtml}`);
+                    }
+                }
+
+                // 刷新日历贡献图（发布后当天格子立即点亮）
+                const heatmapEl = container.querySelector('.north-shuoshuo-heatmap-container');
+                if (heatmapEl) {
+                    heatmapEl.innerHTML = this.renderShuoshuoHeatmapContainer();
+                    if (this.selectedDate) {
+                        const selectedCell = heatmapEl.querySelector(`[data-date="${this.selectedDate}"]`);
+                        if (selectedCell) selectedCell.classList.add('selected');
                     }
                 }
             }
@@ -21497,6 +21703,9 @@ ipcRenderer.on('lumina-close', () => {
         const mobileInputArea = this.container.querySelector('.north-shuoshuo-input-area');
         if (mobileInputArea) mobileInputArea.classList.remove('mobile-visible');
 
+        // 移动端：切换视图后按当前视图重新应用悬浮按钮状态（说说 / LifeLog 各自独立）
+        if (this.isMobile) this.applyMobileAddFloating(view);
+
         // 移动端 Dock 栏内隐藏思源侧栏顶部工具栏；独立面板内打开时不影响宿主侧栏。
         // 仅朋友圈和说说相关视图隐藏顶部栏，统计、设置等视图保留。
         const shouldHideSiyuanSidebarToolbar = this.isMobile && !this.isInMobileShell() && (view === 'moments' || isShuoshuoView);
@@ -22123,9 +22332,10 @@ ipcRenderer.on('lumina-close', () => {
         if (autoOpenSwitch) {
             autoOpenSwitch.replaceWith(autoOpenSwitch.cloneNode(true));
             const newAutoOpenSwitch = this.container.querySelector('#settings-auto-open-switch');
-            newAutoOpenSwitch.addEventListener('click', () => {
+            newAutoOpenSwitch.addEventListener('click', async () => {
                 const isOn = newAutoOpenSwitch.classList.toggle('on');
-                localStorage.setItem(this.AUTO_OPEN_KEY, isOn ? 'true' : 'false');
+                this.autoOpen = isOn;
+                await this.saveConfig();
                 showMessage(isOn ? '已开启启动时打开轻语' : '已关闭启动时打开轻语');
             });
         }
@@ -22302,6 +22512,34 @@ ipcRenderer.on('lumina-close', () => {
                 await this.saveConfig();
                 this.applySidebarFullScroll();
                 showMessage(this.sidebarFullScroll ? '已开启左侧面板整体滚动' : '已关闭左侧面板整体滚动');
+            });
+        }
+
+        // 移动端「写说说」按钮悬浮开关
+        const mobileAddFloatSwitch = this.container.querySelector('#settings-mobile-add-float-switch');
+        if (mobileAddFloatSwitch) {
+            mobileAddFloatSwitch.replaceWith(mobileAddFloatSwitch.cloneNode(true));
+            const newMobileAddFloatSwitch = this.container.querySelector('#settings-mobile-add-float-switch');
+            newMobileAddFloatSwitch.addEventListener('click', async () => {
+                newMobileAddFloatSwitch.classList.toggle('on');
+                this.mobileAddFloating = newMobileAddFloatSwitch.classList.contains('on');
+                await this.saveConfig();
+                this.applyMobileAddFloating();
+                showMessage(this.mobileAddFloating ? '已开启「写说说」按钮悬浮' : '已关闭「写说说」按钮悬浮');
+            });
+        }
+
+        // 移动端 LifeLog 视图「写 LifeLog」按钮悬浮开关（独立于说说视图）
+        const mobileLifeLogAddFloatSwitch = this.container.querySelector('#settings-mobile-lifelog-add-float-switch');
+        if (mobileLifeLogAddFloatSwitch) {
+            mobileLifeLogAddFloatSwitch.replaceWith(mobileLifeLogAddFloatSwitch.cloneNode(true));
+            const newMobileLifeLogAddFloatSwitch = this.container.querySelector('#settings-mobile-lifelog-add-float-switch');
+            newMobileLifeLogAddFloatSwitch.addEventListener('click', async () => {
+                newMobileLifeLogAddFloatSwitch.classList.toggle('on');
+                this.lifeLogAddFloating = newMobileLifeLogAddFloatSwitch.classList.contains('on');
+                await this.saveConfig();
+                this.applyMobileAddFloating();
+                showMessage(this.lifeLogAddFloating ? '已开启「写 LifeLog」按钮悬浮' : '已关闭「写 LifeLog」按钮悬浮');
             });
         }
 
@@ -24700,6 +24938,10 @@ ipcRenderer.on('lumina-close', () => {
                 this.userAvatarUrl = data.userAvatarUrl ?? null;
                 this.notebookId = data.notebookId ?? DEFAULT_NOTEBOOK_ID;
                 this.autoSync = data.autoSync === true || data.autoSync === 'true' || data.autoSync === 1;
+                // 启动时自动打开轻语：优先用持久化配置；兼容旧版本仅写入 localStorage 的情况
+                const legacyAutoOpen = (typeof localStorage !== 'undefined') ? localStorage.getItem('lumina_auto_open') : null;
+                this.autoOpen = data.autoOpen === true || data.autoOpen === 'true' || data.autoOpen === 1 ||
+                    (data.autoOpen === undefined && legacyAutoOpen === 'true');
                 this.syncMode = data.syncMode === 'doc' ? 'doc' : 'dailynote';
                 this.syncDocId = data.syncDocId || '';
                 this.dailyNotePathTemplate = data.dailyNotePathTemplate || '';
@@ -24742,7 +24984,8 @@ ipcRenderer.on('lumina-close', () => {
                 this.showLifelogSidebarDock = data.showLifelogSidebarDock === true || data.showLifelogSidebarDock === 'true' || data.showLifelogSidebarDock === 1;
                 this.showLifeLogRecords = data.showLifeLogRecords === true || data.showLifeLogRecords === 'true' || data.showLifeLogRecords === 1;
                 this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
-                this.noteCardHoverBorder = data.noteCardHoverBorder === true;
+                // 悬停边框变色：默认开启。配置中未显式设置（undefined）时回退为 true；已显式关闭的保持不变
+                this.noteCardHoverBorder = data.noteCardHoverBorder === undefined ? true : (data.noteCardHoverBorder === true || data.noteCardHoverBorder === 'true' || data.noteCardHoverBorder === 1);
                 const parsedImgSingle = parseInt(data.imgSingleSize, 10);
                 this.imgSingleSize = (parsedImgSingle >= 10 && parsedImgSingle <= 100) ? parsedImgSingle : 100;
                 const parsedImgGrid2 = parseInt(data.imgGrid2Size, 10);
@@ -24754,6 +24997,10 @@ ipcRenderer.on('lumina-close', () => {
                 this.lifeLogCompactMode = data.lifeLogCompactMode === true || data.lifeLogCompactMode === 'true' || data.lifeLogCompactMode === 1;
                 this.shuoshuoHeatmapType = (data.shuoshuoHeatmapType === 'calendar') ? 'calendar' : 'heatmap';
                 this.sidebarFullScroll = data.sidebarFullScroll === true || data.sidebarFullScroll === 'true' || data.sidebarFullScroll === 1;
+                this.mobileAddFloating = data.mobileAddFloating === true || data.mobileAddFloating === 'true' || data.mobileAddFloating === 1;
+                this.mobileAddFloatPos = (data.mobileAddFloatPos && typeof data.mobileAddFloatPos.left === 'number' && typeof data.mobileAddFloatPos.top === 'number') ? data.mobileAddFloatPos : null;
+                this.lifeLogAddFloating = data.lifeLogAddFloating === true || data.lifeLogAddFloating === 'true' || data.lifeLogAddFloating === 1;
+                this.lifeLogAddFloatPos = (data.lifeLogAddFloatPos && typeof data.lifeLogAddFloatPos.left === 'number' && typeof data.lifeLogAddFloatPos.top === 'number') ? data.lifeLogAddFloatPos : null;
                 this.lifelogTypesDefaultExpanded = data.lifelogTypesDefaultExpanded !== undefined
                   ? (data.lifelogTypesDefaultExpanded === true || data.lifelogTypesDefaultExpanded === 'true' || data.lifelogTypesDefaultExpanded === 1)
                   : true;
@@ -24831,6 +25078,7 @@ ipcRenderer.on('lumina-close', () => {
                     userAvatarUrl: this.userAvatarUrl,
                     notebookId: this.notebookId,
                     autoSync: this.autoSync,
+                    autoOpen: this.autoOpen,
                     syncMode: this.syncMode,
                     syncDocId: this.syncDocId,
                     dailyNotePathTemplate: this.dailyNotePathTemplate,
@@ -24865,6 +25113,10 @@ ipcRenderer.on('lumina-close', () => {
                     lifeLogCompactMode: this.lifeLogCompactMode,
                     shuoshuoHeatmapType: this.shuoshuoHeatmapType,
                     sidebarFullScroll: this.sidebarFullScroll,
+                    mobileAddFloating: this.mobileAddFloating,
+                    mobileAddFloatPos: this.mobileAddFloatPos,
+                    lifeLogAddFloating: this.lifeLogAddFloating,
+                    lifeLogAddFloatPos: this.lifeLogAddFloatPos,
                     lifelogTypesDefaultExpanded: this.lifelogTypesDefaultExpanded,
                     lifeLogTimeMode: this.lifeLogTimeMode,
                     galleryColumnCount: this.galleryColumnCount,
@@ -24988,6 +25240,138 @@ ipcRenderer.on('lumina-close', () => {
                 sidebar.classList.toggle('north-shuoshuo-sidebar-full-scroll', this.sidebarFullScroll);
             }
         });
+    }
+
+    // 应用移动端「写说说」按钮的悬浮状态（仅移动端生效）
+    applyMobileAddFloating(currentView) {
+        if (!this.isMobile || !this.container) return;
+        const btn = this.container.querySelector('#shuoshuo-mobile-add');
+        if (!btn) return;
+        const view = currentView || this.getContainerMainView(this.container) || 'notes';
+        // 仅说说类视图（含 LifeLog）支持悬浮；统计/朋友圈/设置等视图顶部加号隐藏，不处理
+        const shuoshuoViews = ['notes', 'week', 'review', 'random', 'lifelog'];
+        if (!shuoshuoViews.includes(view)) {
+            btn.classList.remove('mobile-add-floating');
+            btn.style.left = btn.style.top = btn.style.right = btn.style.bottom = '';
+            return;
+        }
+        // 按当前视图选用各自独立的悬浮配置与位置（说说视图 / LifeLog 视图互不相关）
+        const isLifeLog = view === 'lifelog';
+        const floating = isLifeLog ? this.lifeLogAddFloating : this.mobileAddFloating;
+        const pos = isLifeLog ? this.lifeLogAddFloatPos : this.mobileAddFloatPos;
+        if (floating) {
+            btn.classList.add('mobile-add-floating');
+            // 应用已保存的自定义位置；无则回退到 CSS 默认（右下角）
+            if (pos && typeof pos.left === 'number') {
+                // 夹取到可视区域内，防止旧位置超出屏幕
+                const bw = btn.offsetWidth || 48;
+                const bh = btn.offsetHeight || 48;
+                const left = Math.max(4, Math.min(window.innerWidth - bw - 4, pos.left));
+                const top = Math.max(4, Math.min(window.innerHeight - bh - 4, pos.top));
+                btn.style.left = left + 'px';
+                btn.style.top = top + 'px';
+                btn.style.right = 'auto';
+                btn.style.bottom = 'auto';
+            } else {
+                btn.style.left = '';
+                btn.style.top = '';
+                btn.style.right = '';
+                btn.style.bottom = '';
+            }
+            this._bindMobileAddDrag(btn);
+        } else {
+            btn.classList.remove('mobile-add-floating');
+            btn.style.left = btn.style.top = btn.style.right = btn.style.bottom = '';
+        }
+    }
+
+    // 悬浮球长按拖动：长按 380ms 进入拖动，移动更新位置，松手持久化
+    _bindMobileAddDrag(btn) {
+        if (btn._luminaDragBound) return;
+        btn._luminaDragBound = true;
+        let longPressTimer = null;
+        let dragging = false;
+        let startX = 0, startY = 0, origLeft = 0, origTop = 0;
+
+        const clearTimer = () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
+
+        const onStart = (e) => {
+            const curView = this.getContainerMainView(this.container) || 'notes';
+            const curFloating = curView === 'lifelog' ? this.lifeLogAddFloating : this.mobileAddFloating;
+            if (!curFloating) return;
+            const t = e.touches ? e.touches[0] : e;
+            startX = t.clientX;
+            startY = t.clientY;
+            clearTimer();
+            longPressTimer = setTimeout(() => {
+                dragging = true;
+                btn.classList.add('dragging');
+                const rect = btn.getBoundingClientRect();
+                origLeft = rect.left;
+                origTop = rect.top;
+                if (navigator.vibrate) { try { navigator.vibrate(30); } catch (_) {} }
+            }, 380);
+        };
+        const onMove = (e) => {
+            const t = e.touches ? e.touches[0] : e;
+            if (!dragging) {
+                // 长按触发前若手指明显移动，视为滚动/滑动，取消长按
+                if (longPressTimer && (Math.abs(t.clientX - startX) > 8 || Math.abs(t.clientY - startY) > 8)) {
+                    clearTimer();
+                }
+                return;
+            }
+            e.preventDefault();
+            const bw = btn.offsetWidth, bh = btn.offsetHeight;
+            let nl = origLeft + (t.clientX - startX);
+            let nt = origTop + (t.clientY - startY);
+            nl = Math.max(4, Math.min(window.innerWidth - bw - 4, nl));
+            nt = Math.max(4, Math.min(window.innerHeight - bh - 4, nt));
+            btn.style.left = nl + 'px';
+            btn.style.top = nt + 'px';
+            btn.style.right = 'auto';
+            btn.style.bottom = 'auto';
+        };
+        const onEnd = async () => {
+            clearTimer();
+            if (dragging) {
+                dragging = false;
+                btn.classList.remove('dragging');
+                btn._luminaJustDragged = true; // 抑制随后的 click
+                const rect = btn.getBoundingClientRect();
+                const curView = this.getContainerMainView(this.container) || 'notes';
+                if (curView === 'lifelog') {
+                    this.lifeLogAddFloatPos = { left: Math.round(rect.left), top: Math.round(rect.top) };
+                } else {
+                    this.mobileAddFloatPos = { left: Math.round(rect.left), top: Math.round(rect.top) };
+                }
+                await this.saveConfig();
+            }
+        };
+
+        btn.addEventListener('touchstart', onStart, { passive: true });
+        btn.addEventListener('touchmove', onMove, { passive: false });
+        btn.addEventListener('touchend', onEnd);
+        btn.addEventListener('touchcancel', onEnd);
+        // 兼容鼠标端（浏览器移动端模拟/触控板）
+        btn.addEventListener('mousedown', onStart);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onEnd);
+    }
+
+    // 关闭移动端底部输入弹窗（面板先下滑、遮罩淡出）
+    _closeMobileInputSheet(target) {
+        if (!this.isMobile) return;
+        const container = target || this.container;
+        const inputArea = container?.querySelector('#shuoshuo-input-area') || this.container?.querySelector('#shuoshuo-input-area');
+        if (!inputArea || !inputArea.classList.contains('mobile-visible')) return;
+        if (inputArea.classList.contains('closing')) return;
+
+        // 加 closing 触发关闭动画（遮罩淡出 + 面板下滑），动画结束后移除
+        inputArea.classList.add('closing');
+        setTimeout(() => {
+            inputArea.classList.remove('mobile-visible', 'closing');
+        }, 240);
     }
 
     async saveShuoshuos() {
