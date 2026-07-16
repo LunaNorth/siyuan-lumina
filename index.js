@@ -5759,7 +5759,7 @@ ipcRenderer.on('lumina-close', () => {
                 item.addEventListener('click', function() {
                     const subview = this.dataset.lifelogSubview;
                     if (self._lifelogActiveSubView === subview) return;
-                   self._lifelogActiveSubView = subview;
+                    self._lifelogActiveSubView = subview;
                     self._closeMobileDrawer();
                     // 切换到其他子视图时重置每日回顾状态
                     if (subview !== 'review') {
@@ -21719,7 +21719,8 @@ ipcRenderer.on('lumina-close', () => {
                     inputArea.style.display = '';
                     inputArea.classList.remove('mobile-visible');
                 }
-                // 侧边栏不做 display: none，由 CSS 抽屉机制控制（transform 平移）
+                // 清掉别的视图残留的内联 display:none，由 CSS 抽屉机制控制（transform 平移）
+                if (sidebar) sidebar.style.display = '';
                 const headerTitle = this.container.querySelector('.mobile-header-title');
                 if (headerTitle) headerTitle.textContent = 'LifeLog';
                 const mobileSearchInput = this.container.querySelector('#shuoshuo-mobile-search-input');
