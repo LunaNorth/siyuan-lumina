@@ -14589,6 +14589,10 @@ ipcRenderer.on('lumina-close', () => {
             };
         }
 
+        this._bindInputToolbar(input);
+    }
+
+    _bindInputToolbar(input) {
         // 标签按钮
         const tagBtn = this.container.querySelector('#toolbar-tag');
         if (tagBtn) {
@@ -14628,7 +14632,7 @@ ipcRenderer.on('lumina-close', () => {
         const olBtn = this.container.querySelector('#toolbar-ol');
         if (olBtn) {
             olBtn.addEventListener('click', () => {
-                // 获取当前行号或默?
+                // 获取当前行号或默认值
                 const lines = input.value.substring(0, input.selectionStart).split('\n');
                 const currentLine = lines[lines.length - 1];
                 const match = currentLine.match(/^(\d+)\.\s/);
@@ -14646,7 +14650,6 @@ ipcRenderer.on('lumina-close', () => {
                 this.showMentionPicker(input);
             });
         }
-
     }
 
     // 在光标位置插入文?
@@ -22146,6 +22149,9 @@ ipcRenderer.on('lumina-close', () => {
             toolbarLeft.style.gap = '';
             if (this._lifelogToolbarLeftHTML) {
                 toolbarLeft.innerHTML = this._lifelogToolbarLeftHTML;
+                // innerHTML 替换后工具栏按钮事件监听丢失，重新绑定
+                const input = this.container.querySelector('#shuoshuo-input');
+                if (input) this._bindInputToolbar(input);
             }
         }
         const sendBtn = this.container.querySelector('.north-shuoshuo-send-btn');
