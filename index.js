@@ -5670,7 +5670,8 @@ ipcRenderer.on('lumina-close', () => {
                 item.addEventListener('click', function() {
                     const subview = this.dataset.lifelogSubview;
                     if (self._lifelogActiveSubView === subview) return;
-                    self._lifelogActiveSubView = subview;
+                   self._lifelogActiveSubView = subview;
+                    self._closeMobileDrawer();
                     // 切换到其他子视图时重置每日回顾状态
                     if (subview !== 'review') {
                         self._lifelogReviewStarted = false;
@@ -21460,8 +21461,30 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    _closeMobileDrawer() {
+        if (!this.isMobile) return;
+        const root = this.container?.querySelector?.('.north-shuoshuo-container')
+            || this.container?.closest?.('.north-shuoshuo-container')
+            || this.container;
+        if (!root) return;
+        const sidebar = root.querySelector('.north-shuoshuo-flomo-sidebar');
+        if (sidebar) {
+            sidebar.classList.remove('drawer-open');
+            sidebar.style.removeProperty('z-index');
+        }
+        root.querySelectorAll('.north-shuoshuo-drawer-overlay').forEach(overlay => {
+            overlay.classList.remove('show');
+            overlay.style.opacity = '0';
+            overlay.style.pointerEvents = 'none';
+            setTimeout(() => {
+                if (!overlay.classList.contains('show')) overlay.remove();
+            }, 300);
+        });
+    }
+
     // 切换主视图（说说视图 vs 设置视图）
     switchMainView(view, navItem) {
+        this._closeMobileDrawer();
         // LifeLog Dock 允许切换到 lifelog 视图
         if (this.container?.closest?.('.north-shuoshuo-lifelog-dock-view')) {
             if (view !== 'lifelog') return;
