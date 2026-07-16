@@ -1641,6 +1641,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
     }
 
     onunload() {
+        this.unhookMobileGoBack();
         if (this._luminaMobileTopBarTimer) {
             clearTimeout(this._luminaMobileTopBarTimer);
             this._luminaMobileTopBarTimer = null;
@@ -1901,7 +1902,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
     closeMobileShuoshuoDock() {
         try {
-            this.unhookMobileGoBack();
             // 清理热力图/日历残留的全局 tooltip
             const staleTooltip = document.querySelector('.north-shuoshuo-global-tooltip');
             if (staleTooltip) staleTooltip.remove();
@@ -3319,6 +3319,9 @@ ipcRenderer.on('lumina-close', () => {
         if (container) {
             this.container = container;
             this.registerLuminaContainer(container);
+        }
+        if (this.isMobile) {
+            this.hookMobileGoBack();
         }
         if (!this.container) return;
 
