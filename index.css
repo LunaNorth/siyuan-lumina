@@ -1723,6 +1723,19 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
     object-fit: contain;
 }
 
+.north-shuoshuo-tag-rename-icon-builtin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+}
+
+.north-shuoshuo-tag-rename-icon-builtin .icon {
+    width: 28px;
+    height: 28px;
+}
+
 .north-shuoshuo-tag-rename-input {
     flex: 1;
     height: 32px;
@@ -6679,6 +6692,27 @@ body.dark .north-shuoshuo-image-item-video,
     font-weight: 600;
     user-select: none;
     font-family: "SF Mono", Monaco, monospace;
+}
+
+/* 思源内置图标（标签树 / 标签云通用，匹配其它图标 16px 尺寸） */
+.north-shuoshuo-tag-builtin-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+}
+.north-shuoshuo-tag-builtin-icon .icon {
+    width: 16px;
+    height: 16px;
+}
+.north-shuoshuo-tag-cloud-item .north-shuoshuo-tag-builtin-icon {
+    width: 16px;
+    height: 16px;
+}
+.north-shuoshuo-tag-cloud-item .north-shuoshuo-tag-builtin-icon .icon {
+    width: 16px;
+    height: 16px;
 }
 
 /* 图标选择器弹�?*/
@@ -12738,6 +12772,323 @@ body.dark .north-shuoshuo-image-item-video,
 
 .lumina-moments-action-popup-btn .icon {
     font-size: 14px;
+}
+
+/* 朋友圈修改时间日期选择器 */
+/* ============ 修改时间 · 精致日历选择器（圆角矩形） ============ */
+.lumina-moments-datetime-picker {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.lumina-moments-datetime-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.32);
+}
+
+.lumina-moments-datetime-content {
+    position: relative;
+    z-index: 1;
+    width: 92%;
+    max-width: 340px;
+    padding: 20px 20px 18px;
+    border-radius: 20px;
+    color: var(--moments-text, var(--b3-theme-on-background));
+    background: var(--moments-modal-bg, var(--b3-theme-background));
+    border: 1px solid color-mix(in srgb, var(--b3-theme-on-background) 8%, transparent);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18), 0 6px 16px rgba(0, 0, 0, 0.08);
+    animation: lumina-datetime-in 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes lumina-datetime-in {
+    from { opacity: 0; transform: translateY(12px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.lumina-moments-datetime-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.lumina-moments-datetime-label {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--moments-text, var(--b3-theme-on-background));
+}
+
+.lumina-moments-datetime-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    line-height: 1;
+    color: color-mix(in srgb, var(--moments-text, var(--b3-theme-on-background)) 55%, transparent);
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background 0.15s, color 0.15s;
+}
+.lumina-moments-datetime-close:hover {
+    background: color-mix(in srgb, var(--b3-theme-on-background) 10%, transparent);
+    color: var(--moments-text, var(--b3-theme-on-background));
+}
+
+.lumina-moments-datetime-body {
+    padding: 2px 0 0;
+}
+
+.lumina-moments-datetime-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0 16px;
+}
+
+.lumina-moments-datetime-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--moments-text, var(--b3-theme-on-background));
+}
+
+.lumina-moments-datetime-prev,
+.lumina-moments-datetime-next {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    font-size: 17px;
+    color: color-mix(in srgb, var(--moments-text, var(--b3-theme-on-background)) 55%, transparent);
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background 0.15s, color 0.15s;
+}
+.lumina-moments-datetime-prev:hover,
+.lumina-moments-datetime-next:hover {
+    background: color-mix(in srgb, var(--b3-theme-on-background) 10%, transparent);
+    color: var(--moments-text, var(--b3-theme-on-background));
+}
+
+.lumina-moments-datetime-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+    padding: 4px 0 12px;
+}
+.lumina-moments-datetime-weekdays span {
+    font-size: 12px;
+    font-weight: 500;
+    color: color-mix(in srgb, var(--moments-text, var(--b3-theme-on-background)) 50%, transparent);
+}
+
+.lumina-moments-datetime-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    text-align: center;
+}
+
+.lumina-moments-datetime-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--moments-text, var(--b3-theme-on-background));
+    border-radius: 10px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s, transform 0.10s, color 0.15s;
+}
+.lumina-moments-datetime-cell:hover {
+    background: color-mix(in srgb, var(--b3-theme-on-background) 10%, transparent);
+    transform: scale(1.03);
+}
+.lumina-moments-datetime-cell.other-month {
+    color: color-mix(in srgb, var(--moments-text, var(--b3-theme-on-background)) 32%, transparent);
+}
+.lumina-moments-datetime-cell.today {
+    color: var(--moments-primary, #2ecc71);
+    font-weight: 600;
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--moments-primary, #2ecc71) 70%, transparent);
+}
+.lumina-moments-datetime-cell.selected {
+    background-color: var(--moments-primary, #2ecc71);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 5px 14px color-mix(in srgb, var(--moments-primary, #2ecc71) 30%, transparent);
+}
+
+.lumina-moments-datetime-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid color-mix(in srgb, var(--b3-theme-on-background) 10%, transparent);
+    gap: 12px;
+}
+
+.lumina-moments-datetime-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--b3-theme-on-background) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--b3-theme-on-background) 10%, transparent);
+}
+.lumina-moments-datetime-time .icon {
+    color: var(--moments-primary, #2ecc71);
+    flex-shrink: 0;
+}
+
+/* 自定义时间选择器 */
+.lumina-moments-datetime-time-wrapper {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+.lumina-moments-datetime-display {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    height: 26px;
+    padding: 0 2px;
+    font-size: 14px;
+    font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+    letter-spacing: 0.5px;
+    color: var(--moments-text, var(--b3-theme-on-background));
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s;
+}
+.lumina-moments-datetime-display:hover {
+    color: var(--moments-primary, #2ecc71);
+}
+
+.lumina-moments-datetime-time-popup {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    z-index: 10;
+    display: none;
+    width: 210px;
+    padding: 10px 8px;
+    border-radius: 14px;
+    background: var(--moments-modal-bg, var(--b3-theme-background));
+    border: 1px solid color-mix(in srgb, var(--b3-theme-on-background) 12%, transparent);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+    animation: lumina-time-popup-in 0.18s ease-out;
+}
+.lumina-moments-datetime-time-popup.show {
+    display: flex;
+}
+@keyframes lumina-time-popup-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.lumina-moments-datetime-time-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+}
+.lumina-moments-datetime-time-header {
+    font-size: 11px;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--moments-text, var(--b3-theme-on-background)) 55%, transparent);
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+}
+.lumina-moments-datetime-time-list {
+    width: 100%;
+    height: 170px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--b3-theme-on-background) 4%, transparent);
+    padding: 4px 0;
+}
+.lumina-moments-datetime-time-list::-webkit-scrollbar {
+    display: none;
+}
+.lumina-moments-datetime-time-item {
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+    color: var(--moments-text, var(--b3-theme-on-background));
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    margin: 1px 6px;
+}
+.lumina-moments-datetime-time-item:hover {
+    background: color-mix(in srgb, var(--b3-theme-on-background) 10%, transparent);
+}
+.lumina-moments-datetime-time-item.selected {
+    background-color: var(--moments-primary, #2ecc71);
+    color: #fff;
+    font-weight: 700;
+    box-shadow: 0 3px 8px color-mix(in srgb, var(--moments-primary, #2ecc71) 35%, transparent);
+}
+
+.lumina-moments-datetime-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.lumina-moments-datetime-btn {
+    height: 34px;
+    padding: 0 15px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, transform 0.10s, box-shadow 0.15s;
+}
+.lumina-moments-datetime-btn:hover {
+    transform: translateY(-1px);
+}
+.lumina-moments-datetime-btn-cancel {
+    background: color-mix(in srgb, var(--b3-theme-on-background) 10%, transparent);
+    color: var(--moments-text, var(--b3-theme-on-background));
+}
+.lumina-moments-datetime-btn-cancel:hover {
+    background: color-mix(in srgb, var(--b3-theme-on-background) 18%, transparent);
+}
+.lumina-moments-datetime-btn-confirm {
+    background-color: var(--moments-primary, #2ecc71);
+    color: #fff;
+    box-shadow: 0 5px 14px color-mix(in srgb, var(--moments-primary, #2ecc71) 30%, transparent);
+}
+.lumina-moments-datetime-btn-confirm:hover {
+    box-shadow: 0 7px 18px color-mix(in srgb, var(--moments-primary, #2ecc71) 40%, transparent);
 }
 
 /* 互动�?*/

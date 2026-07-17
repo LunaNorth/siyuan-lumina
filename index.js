@@ -8971,6 +8971,10 @@ ipcRenderer.on('lumina-close', () => {
                 if (type === 'customEmoji') {
                     const emojiPath = decodeURIComponent(parts[1] || '');
                     return `<img src="/emojis/${encodeURIComponent(emojiPath)}" class="lumina-moments-meta-icon">`;
+                } else if (type === 'builtin') {
+                    // 思源内置图标
+                    const iconName = parts[1] || 'iconStar';
+                    return `<span class="lumina-moments-meta-icon"><svg class="icon"><use xlink:href="#${iconName}"></use></svg></span>`;
                 }
                 const content = decodeURIComponent(parts[0]);
                 const color = parts[1] || '#2ecc71';
@@ -9000,6 +9004,7 @@ ipcRenderer.on('lumina-close', () => {
                             <div class="lumina-moments-action-popup" data-mid="${m.id}">
                                 <div class="lumina-moments-action-popup-btn delete-btn" data-mid="${m.id}"><svg class="icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconTrashcan"></use></svg>删除</div>
                                 <div class="lumina-moments-action-popup-btn edit-btn" data-mid="${m.id}"><svg class="icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconEdit"></use></svg>修改</div>
+                                <div class="lumina-moments-action-popup-btn change-time-btn" data-mid="${m.id}"><svg class="icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>修改时间</div>
                                 <div class="lumina-moments-action-popup-btn sync-btn" data-mid="${m.id}"><svg class="icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconCloud"></use></svg>同步</div>
                             </div>
                         </div>
@@ -9236,6 +9241,15 @@ ipcRenderer.on('lumina-close', () => {
                 e.stopPropagation();
                 container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
                 this._openMomentEdit(editBtn.dataset.mid);
+                return;
+            }
+
+            // 修改时间
+            const changeTimeBtn = e.target.closest('.change-time-btn');
+            if (changeTimeBtn) {
+                e.stopPropagation();
+                container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
+                this._showMomentDateTimePicker(changeTimeBtn.dataset.mid);
                 return;
             }
 
@@ -9736,6 +9750,441 @@ ipcRenderer.on('lumina-close', () => {
             if (scrollContainer) scrollContainer.scrollTop = 0;
             container.querySelectorAll('.lumina-moments-action-popup.active').forEach(p => p.classList.remove('active'));
         };
+    }
+
+    /**
+     * 将当前容器的 --moments-* 主题变量同步到指定元素
+     * 日历/日期选择器等弹窗直接挂在 body 下，无法继承 .north-shuoshuo-container 上的变量，
+     * 这里手动复制一份，使其跟随 original / siyuan / morandi 三种主题模式
+     */
+    _syncThemeVars(targetEl) {
+        if (!targetEl) return;
+        // 与 applyThemeMode 保持一致：兼容 this.container 自身就是容器、或嵌套在不同层级的情况
+        const container = this.container?.querySelector('.north-shuoshuo-container')
+            || this.container?.closest('.north-shuoshuo-container')
+            || (this.container?.classList?.contains('north-shuoshuo-container') ? this.container : null)
+            || document.querySelector('.north-shuoshuo-container');
+        if (!container) return;
+        const cs = window.getComputedStyle(container);
+        for (let i = 0; i < cs.length; i++) {
+            const prop = cs[i];
+            if (prop.startsWith('--moments-')) {
+                const val = cs.getPropertyValue(prop).trim();
+                if (val) targetEl.style.setProperty(prop, val);
+            }
+        }
+    }
+
+    /**
+     * 显示朋友圈日期时间选择器，修改内容的创建时间
+     */
+    _showMomentDateTimePicker(mid) {
+        const m = this.moments.find(x => x.id === mid);
+        if (!m) return;
+
+        const closePicker = () => {
+            const picker = document.querySelector('.lumina-moments-datetime-picker');
+            if (picker) picker.remove();
+        };
+
+        closePicker();
+
+        const currentDate = new Date(m.created || Date.now());
+        let viewYear = currentDate.getFullYear();
+        let viewMonth = currentDate.getMonth();
+        let selectedDate = new Date(currentDate.getTime());
+
+        const picker = document.createElement('div');
+        picker.className = 'lumina-moments-datetime-picker';
+        picker.innerHTML = `
+            <div class="lumina-moments-datetime-overlay"></div>
+            <div class="lumina-moments-datetime-content">
+                <div class="lumina-moments-datetime-top">
+                    <span class="lumina-moments-datetime-label">修改时间</span>
+                    <button class="lumina-moments-datetime-close" type="button" aria-label="关闭">×</button>
+                </div>
+                <div class="lumina-moments-datetime-body"></div>
+                <div class="lumina-moments-datetime-footer">
+                    <div class="lumina-moments-datetime-time">
+                        <svg class="icon" style="width:16px;height:16px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>
+                        <div class="lumina-moments-datetime-time-wrapper">
+                            <div class="lumina-moments-datetime-display" data-hours="${String(selectedDate.getHours()).padStart(2, '0')}" data-minutes="${String(selectedDate.getMinutes()).padStart(2, '0')}" data-seconds="${String(selectedDate.getSeconds()).padStart(2, '0')}">${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}:${String(selectedDate.getSeconds()).padStart(2, '0')}</div>
+                            <div class="lumina-moments-datetime-time-popup">
+                                <div class="lumina-moments-datetime-time-col" data-col="hours">
+                                    <div class="lumina-moments-datetime-time-header">时</div>
+                                    <div class="lumina-moments-datetime-time-list" data-col="hours"></div>
+                                </div>
+                                <div class="lumina-moments-datetime-time-col" data-col="minutes">
+                                    <div class="lumina-moments-datetime-time-header">分</div>
+                                    <div class="lumina-moments-datetime-time-list" data-col="minutes"></div>
+                                </div>
+                                <div class="lumina-moments-datetime-time-col" data-col="seconds">
+                                    <div class="lumina-moments-datetime-time-header">秒</div>
+                                    <div class="lumina-moments-datetime-time-list" data-col="seconds"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="lumina-moments-datetime-actions">
+                        <button class="lumina-moments-datetime-btn lumina-moments-datetime-btn-cancel" type="button">取消</button>
+                        <button class="lumina-moments-datetime-btn lumina-moments-datetime-btn-confirm" type="button">确定</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(picker);
+        this._syncThemeVars(picker);
+
+        const renderCalendar = () => {
+            const firstDay = new Date(viewYear, viewMonth, 1);
+            const lastDay = new Date(viewYear, viewMonth + 1, 0);
+            let startWeekday = firstDay.getDay(); // 0=周日
+            const leadingDays = startWeekday;
+
+            const cells = [];
+            const today = new Date();
+            const todayKey = this.formatDateKey(today);
+            const selectedKey = this.formatDateKey(selectedDate);
+
+            // 上月填充日
+            for (let i = leadingDays - 1; i >= 0; i--) {
+                const d = new Date(viewYear, viewMonth, -i);
+                cells.push(`<div class="lumina-moments-datetime-cell other-month" data-date="${this.formatDateKey(d)}">${d.getDate()}</div>`);
+            }
+
+            // 当月日期
+            for (let d = 1; d <= lastDay.getDate(); d++) {
+                const date = new Date(viewYear, viewMonth, d);
+                const dateKey = this.formatDateKey(date);
+                const selectedClass = dateKey === selectedKey ? ' selected' : '';
+                const todayClass = dateKey === todayKey ? ' today' : '';
+                cells.push(`<div class="lumina-moments-datetime-cell${selectedClass}${todayClass}" data-date="${dateKey}">${d}</div>`);
+            }
+
+            // 下月填充日，补满 6 行（42 格）
+            const totalCells = cells.length;
+            const trailingDays = 42 - totalCells;
+            for (let i = 1; i <= trailingDays; i++) {
+                const d = new Date(viewYear, viewMonth + 1, i);
+                cells.push(`<div class="lumina-moments-datetime-cell other-month" data-date="${this.formatDateKey(d)}">${d.getDate()}</div>`);
+            }
+
+            const headerHtml = `
+                <div class="lumina-moments-datetime-header">
+                    <button class="lumina-moments-datetime-prev" type="button" title="上月">‹</button>
+                    <span class="lumina-moments-datetime-title">${viewYear}年${viewMonth + 1}月</span>
+                    <button class="lumina-moments-datetime-next" type="button" title="下月">›</button>
+                </div>
+            `;
+            const weekdaysHtml = `<div class="lumina-moments-datetime-weekdays">${['日','一','二','三','四','五','六'].map(w => `<span>${w}</span>`).join('')}</div>`;
+            const daysHtml = `<div class="lumina-moments-datetime-days">${cells.join('')}</div>`;
+
+            const body = picker.querySelector('.lumina-moments-datetime-body');
+            if (body) body.innerHTML = headerHtml + weekdaysHtml + daysHtml;
+        };
+
+        renderCalendar();
+
+        // 关闭/取消
+        picker.querySelector('.lumina-moments-datetime-overlay').addEventListener('click', closePicker);
+        picker.querySelector('.lumina-moments-datetime-close').addEventListener('click', closePicker);
+        picker.querySelector('.lumina-moments-datetime-btn-cancel').addEventListener('click', closePicker);
+
+        // 月份切换
+        picker.querySelector('.lumina-moments-datetime-body').addEventListener('click', (e) => {
+            const prev = e.target.closest('.lumina-moments-datetime-prev');
+            const next = e.target.closest('.lumina-moments-datetime-next');
+            if (prev) {
+                viewMonth--;
+                if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+                renderCalendar();
+                return;
+            }
+            if (next) {
+                viewMonth++;
+                if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+                renderCalendar();
+                return;
+            }
+            const cell = e.target.closest('.lumina-moments-datetime-cell[data-date]');
+            if (cell) {
+                const dateKey = cell.dataset.date;
+                const parts = dateKey.split('-');
+                selectedDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]),
+                    selectedDate.getHours(), selectedDate.getMinutes(), selectedDate.getSeconds());
+                renderCalendar();
+            }
+        });
+
+        // 确定保存
+        picker.querySelector('.lumina-moments-datetime-btn-confirm').addEventListener('click', () => {
+            const display = picker.querySelector('.lumina-moments-datetime-display');
+            const hours = parseInt(display?.dataset.hours) || 0;
+            const minutes = parseInt(display?.dataset.minutes) || 0;
+            const seconds = parseInt(display?.dataset.seconds) || 0;
+
+            const newDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+                hours, minutes, seconds);
+            m.created = newDate.getTime();
+            m.date = this.formatDateKey(newDate);
+            m.updated = Date.now();
+
+            this.moments.sort((a, b) => (b.created || 0) - (a.created || 0));
+            this.saveMoments();
+            this._doRenderMoments();
+            showMessage('时间已修改');
+            closePicker();
+        });
+
+        this._initCustomTimePicker(picker, selectedDate);
+    }
+
+    /**
+     * 显示说说日期时间选择器，修改笔记的创建时间
+     */
+    _showShuoshuoDateTimePicker(id) {
+        const item = this.shuoshuos.find(x => String(x.id) === String(id));
+        if (!item) return;
+
+        const closePicker = () => {
+            const picker = document.querySelector('.lumina-moments-datetime-picker');
+            if (picker) picker.remove();
+        };
+
+        closePicker();
+
+        const currentDate = new Date(item.created || Date.now());
+        let viewYear = currentDate.getFullYear();
+        let viewMonth = currentDate.getMonth();
+        let selectedDate = new Date(currentDate.getTime());
+
+        const picker = document.createElement('div');
+        picker.className = 'lumina-moments-datetime-picker';
+        picker.innerHTML = `
+            <div class="lumina-moments-datetime-overlay"></div>
+            <div class="lumina-moments-datetime-content">
+                <div class="lumina-moments-datetime-top">
+                    <span class="lumina-moments-datetime-label">修改时间</span>
+                    <button class="lumina-moments-datetime-close" type="button" aria-label="关闭">×</button>
+                </div>
+                <div class="lumina-moments-datetime-body"></div>
+                <div class="lumina-moments-datetime-footer">
+                    <div class="lumina-moments-datetime-time">
+                        <svg class="icon" style="width:16px;height:16px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>
+                        <div class="lumina-moments-datetime-time-wrapper">
+                            <div class="lumina-moments-datetime-display" data-hours="${String(selectedDate.getHours()).padStart(2, '0')}" data-minutes="${String(selectedDate.getMinutes()).padStart(2, '0')}" data-seconds="${String(selectedDate.getSeconds()).padStart(2, '0')}">${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}:${String(selectedDate.getSeconds()).padStart(2, '0')}</div>
+                            <div class="lumina-moments-datetime-time-popup">
+                                <div class="lumina-moments-datetime-time-col" data-col="hours">
+                                    <div class="lumina-moments-datetime-time-header">时</div>
+                                    <div class="lumina-moments-datetime-time-list" data-col="hours"></div>
+                                </div>
+                                <div class="lumina-moments-datetime-time-col" data-col="minutes">
+                                    <div class="lumina-moments-datetime-time-header">分</div>
+                                    <div class="lumina-moments-datetime-time-list" data-col="minutes"></div>
+                                </div>
+                                <div class="lumina-moments-datetime-time-col" data-col="seconds">
+                                    <div class="lumina-moments-datetime-time-header">秒</div>
+                                    <div class="lumina-moments-datetime-time-list" data-col="seconds"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="lumina-moments-datetime-actions">
+                        <button class="lumina-moments-datetime-btn lumina-moments-datetime-btn-cancel" type="button">取消</button>
+                        <button class="lumina-moments-datetime-btn lumina-moments-datetime-btn-confirm" type="button">确定</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(picker);
+        this._syncThemeVars(picker);
+
+        const renderCalendar = () => {
+            const firstDay = new Date(viewYear, viewMonth, 1);
+            const lastDay = new Date(viewYear, viewMonth + 1, 0);
+            let startWeekday = firstDay.getDay(); // 0=周日
+            const leadingDays = startWeekday;
+
+            const cells = [];
+            const today = new Date();
+            const todayKey = this.formatDateKey(today);
+            const selectedKey = this.formatDateKey(selectedDate);
+
+            // 上月填充日
+            for (let i = leadingDays - 1; i >= 0; i--) {
+                const d = new Date(viewYear, viewMonth, -i);
+                cells.push(`<div class="lumina-moments-datetime-cell other-month" data-date="${this.formatDateKey(d)}">${d.getDate()}</div>`);
+            }
+
+            // 当月日期
+            for (let d = 1; d <= lastDay.getDate(); d++) {
+                const date = new Date(viewYear, viewMonth, d);
+                const dateKey = this.formatDateKey(date);
+                const selectedClass = dateKey === selectedKey ? ' selected' : '';
+                const todayClass = dateKey === todayKey ? ' today' : '';
+                cells.push(`<div class="lumina-moments-datetime-cell${selectedClass}${todayClass}" data-date="${dateKey}">${d}</div>`);
+            }
+
+            // 下月填充日，补满 6 行（42 格）
+            const totalCells = cells.length;
+            const trailingDays = 42 - totalCells;
+            for (let i = 1; i <= trailingDays; i++) {
+                const d = new Date(viewYear, viewMonth + 1, i);
+                cells.push(`<div class="lumina-moments-datetime-cell other-month" data-date="${this.formatDateKey(d)}">${d.getDate()}</div>`);
+            }
+
+            const headerHtml = `
+                <div class="lumina-moments-datetime-header">
+                    <button class="lumina-moments-datetime-prev" type="button" title="上月">‹</button>
+                    <span class="lumina-moments-datetime-title">${viewYear}年${viewMonth + 1}月</span>
+                    <button class="lumina-moments-datetime-next" type="button" title="下月">›</button>
+                </div>
+            `;
+            const weekdaysHtml = `<div class="lumina-moments-datetime-weekdays">${['日','一','二','三','四','五','六'].map(w => `<span>${w}</span>`).join('')}</div>`;
+            const daysHtml = `<div class="lumina-moments-datetime-days">${cells.join('')}</div>`;
+
+            const body = picker.querySelector('.lumina-moments-datetime-body');
+            if (body) body.innerHTML = headerHtml + weekdaysHtml + daysHtml;
+        };
+
+        renderCalendar();
+
+        // 关闭/取消
+        picker.querySelector('.lumina-moments-datetime-overlay').addEventListener('click', closePicker);
+        picker.querySelector('.lumina-moments-datetime-close').addEventListener('click', closePicker);
+        picker.querySelector('.lumina-moments-datetime-btn-cancel').addEventListener('click', closePicker);
+
+        // 月份切换
+        picker.querySelector('.lumina-moments-datetime-body').addEventListener('click', (e) => {
+            const prev = e.target.closest('.lumina-moments-datetime-prev');
+            const next = e.target.closest('.lumina-moments-datetime-next');
+            if (prev) {
+                viewMonth--;
+                if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+                renderCalendar();
+                return;
+            }
+            if (next) {
+                viewMonth++;
+                if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+                renderCalendar();
+                return;
+            }
+            const cell = e.target.closest('.lumina-moments-datetime-cell[data-date]');
+            if (cell) {
+                const dateKey = cell.dataset.date;
+                const parts = dateKey.split('-');
+                selectedDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]),
+                    selectedDate.getHours(), selectedDate.getMinutes(), selectedDate.getSeconds());
+                renderCalendar();
+            }
+        });
+
+        // 确定保存
+        picker.querySelector('.lumina-moments-datetime-btn-confirm').addEventListener('click', () => {
+            const display = picker.querySelector('.lumina-moments-datetime-display');
+            const hours = parseInt(display?.dataset.hours) || 0;
+            const minutes = parseInt(display?.dataset.minutes) || 0;
+            const seconds = parseInt(display?.dataset.seconds) || 0;
+
+            const newDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+                hours, minutes, seconds);
+            item.created = newDate.getTime();
+            item.date = this.formatDateKey(newDate);
+            item.updated = Date.now();
+
+            this.saveShuoshuos().then(() => {
+                this._renderNoteListIncremental(this._getFilteredAndSortedNotes());
+                this.refreshMountedShuoshuoViews();
+                showMessage('时间已修改');
+            });
+            closePicker();
+        });
+
+        this._initCustomTimePicker(picker, selectedDate);
+    }
+
+    /**
+     * 初始化自定义时间选择器（替换原生 input[type=time]）
+     */
+    _initCustomTimePicker(picker, selectedDate) {
+        let hours = selectedDate.getHours();
+        let minutes = selectedDate.getMinutes();
+        let seconds = selectedDate.getSeconds();
+
+        const display = picker.querySelector('.lumina-moments-datetime-display');
+        const popup = picker.querySelector('.lumina-moments-datetime-time-popup');
+        if (!display || !popup) return;
+
+        const ranges = {
+            hours: { max: 24, pad: 2 },
+            minutes: { max: 60, pad: 2 },
+            seconds: { max: 60, pad: 2 }
+        };
+
+        const updateDisplay = () => {
+            display.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            display.dataset.hours = String(hours).padStart(2, '0');
+            display.dataset.minutes = String(minutes).padStart(2, '0');
+            display.dataset.seconds = String(seconds).padStart(2, '0');
+        };
+
+        const scrollToSelected = () => {
+            popup.querySelectorAll('.lumina-moments-datetime-time-list').forEach(list => {
+                const col = list.dataset.col;
+                const val = col === 'hours' ? hours : col === 'minutes' ? minutes : seconds;
+                const active = list.querySelector(`[data-time-value="${val}"]`);
+                if (active && list.scrollTop !== active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2) {
+                    list.scrollTo({ top: active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2, behavior: 'auto' });
+                }
+            });
+        };
+
+        const renderColumns = () => {
+            popup.querySelectorAll('.lumina-moments-datetime-time-list').forEach(list => {
+                const col = list.dataset.col;
+                const max = ranges[col].max;
+                const current = col === 'hours' ? hours : col === 'minutes' ? minutes : seconds;
+                let html = '';
+                for (let i = 0; i < max; i++) {
+                    const val = String(i).padStart(2, '0');
+                    const cls = i === current ? 'lumina-moments-datetime-time-item selected' : 'lumina-moments-datetime-time-item';
+                    html += `<div class="${cls}" data-time-value="${i}" data-col="${col}">${val}</div>`;
+                }
+                list.innerHTML = html;
+            });
+            setTimeout(scrollToSelected, 0);
+        };
+
+        updateDisplay();
+        renderColumns();
+
+        display.addEventListener('click', (e) => {
+            e.stopPropagation();
+            popup.classList.toggle('show');
+            if (popup.classList.contains('show')) scrollToSelected();
+        });
+
+        popup.addEventListener('click', (e) => {
+            const item = e.target.closest('.lumina-moments-datetime-time-item[data-time-value]');
+            if (!item) return;
+            const col = item.dataset.col;
+            const val = parseInt(item.dataset.timeValue);
+            if (col === 'hours') hours = val;
+            else if (col === 'minutes') minutes = val;
+            else if (col === 'seconds') seconds = val;
+            updateDisplay();
+            renderColumns();
+        });
+
+        // 点击弹窗外或遮罩层关闭时间选择面板
+        const closePopup = (e) => {
+            if (!popup.contains(e.target) && !display.contains(e.target)) {
+                popup.classList.remove('show');
+            }
+        };
+        picker.addEventListener('click', closePopup);
+        picker.querySelector('.lumina-moments-datetime-overlay')?.addEventListener('click', () => popup.classList.remove('show'));
     }
 
     _initCoverDrag(imgEl, coverSection) {
@@ -12048,8 +12497,10 @@ ipcRenderer.on('lumina-close', () => {
             });
         });
 
-        // 若当前图标为内置图标，初始化预览
+        // 若当前图标为内置图标，初始化预览与已选状态
+        // （否则重新打开后直接点“确定”会落入文字分支，把内置图标存坏）
         if (currentBuiltin) {
+            selectedIcon = { type: 'builtin', content: currentBuiltin };
             updatePreview(currentBuiltin, false, true);
         }
         
@@ -16519,6 +16970,10 @@ ipcRenderer.on('lumina-close', () => {
                     // 自定义 emoji 图片
                     const emojiPath = decodeURIComponent(parts[1] || '');
                     iconHtml = `<img class="north-shuoshuo-tag-dynamic-icon" src="/emojis/${emojiPath}" alt="emoji">`;
+                } else if (type === 'builtin') {
+                    // 思源内置图标（iconfont 符号）
+                    const iconName = parts[1] || 'iconStar';
+                    iconHtml = `<span class="north-shuoshuo-tag-builtin-icon"><svg class="icon"><use xlink:href="#${iconName}"></use></svg></span>`;
                 } else {
                     // Emoji 或文字图标
                     let content = decodeURIComponent(parts[0] || '');
@@ -18048,6 +18503,10 @@ ipcRenderer.on('lumina-close', () => {
                 <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconMark"></use></svg></span>
                 <span class="north-shuoshuo-menu-text">批注</span>
             </div>
+            <div class="north-shuoshuo-menu-item" data-action="change-time">
+                <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconClock"></use></svg></span>
+                <span class="north-shuoshuo-menu-text">修改时间</span>
+            </div>
             ${item.boundBlockId ? `
             <div class="north-shuoshuo-menu-item" data-action="jump">
                 <span class="north-shuoshuo-menu-icon"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconOpen"></use></svg></span>
@@ -18133,6 +18592,9 @@ ipcRenderer.on('lumina-close', () => {
                     break;
                 case 'comment':
                     this.commentOnNote(id);
+                    break;
+                case 'change-time':
+                    this._showShuoshuoDateTimePicker(id);
                     break;
                 case 'jump':
                     await this.openSiyuanBlockAndCloseMobileShell(item.boundBlockId);
@@ -25784,6 +26246,9 @@ ipcRenderer.on('lumina-close', () => {
                 previewSrc = `/api/icon/getDynamicIcon?type=${parts[1] || '1'}&color=%232ecc71`;
             } else if (parts[0] === 'customEmoji') {
                 previewSrc = `/emojis/${decodeURIComponent(parts[1] || '')}`;
+            } else if (parts[0] === 'builtin') {
+                // 思源内置图标：用 builtin:图标名 标记，模板处渲染 SVG
+                previewSrc = `builtin:${parts[1] || 'iconStar'}`;
             } else {
                 currentContent = decodeURIComponent(parts[0] || '');
                 currentColor = parts[1] || '#2ecc71';
@@ -25811,7 +26276,9 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="north-shuoshuo-tag-rename-icon" data-tag="${tagName}">
                         ${currentIcon && !currentIcon.startsWith('icon:') 
                             ? `<span class="north-shuoshuo-tag-emoji" style="font-size:20px;">${currentIcon}</span>`
-                            : `<img src="${previewSrc}" alt="icon">`
+                            : previewSrc.startsWith('builtin:')
+                                ? `<span class="north-shuoshuo-tag-rename-icon-builtin"><svg class="icon"><use xlink:href="#${previewSrc.substring('builtin:'.length)}"></use></svg></span>`
+                                : `<img src="${previewSrc}" alt="icon">`
                         }
                     </div>
                     <input type="text" class="north-shuoshuo-tag-rename-input" value="${tagName}" placeholder="标签名称">
@@ -25838,6 +26305,9 @@ ipcRenderer.on('lumina-close', () => {
                         iconBox.innerHTML = `<img src="/api/icon/getDynamicIcon?type=${p[1] || '1'}&color=%232ecc71" alt="icon">`;
                     } else if (p[0] === 'customEmoji') {
                         iconBox.innerHTML = `<img src="/emojis/${decodeURIComponent(p[1] || '')}" alt="icon">`;
+                    } else if (p[0] === 'builtin') {
+                        const iconName = p[1] || 'iconStar';
+                        iconBox.innerHTML = `<span class="north-shuoshuo-tag-rename-icon-builtin"><svg class="icon"><use xlink:href="#${iconName}"></use></svg></span>`;
                     } else {
                         const c = this.convertHexToEmoji(decodeURIComponent(p[0] || ''));
                         const col = p[1] || '#2ecc71';
