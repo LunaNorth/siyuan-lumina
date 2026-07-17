@@ -16363,6 +16363,16 @@ body.dark .north-shuoshuo-gallery-file-wrapper:hover,
     margin-left: 4px;
 }
 
+.north-shuoshuo-lifelog-type-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-right: 8px;
+    margin-left: -12px;
+    background-color: var(--b3-theme-primary);
+}
+
 /* ========== LifeLog 加载更多 ========== */
 .north-shuoshuo-load-more {
     text-align: center;
@@ -16464,6 +16474,16 @@ body.dark .north-shuoshuo-gallery-file-wrapper:hover,
     min-width: 20px;
     text-align: right;
     margin-left: 4px;
+}
+
+.north-shuoshuo-lifelog-type-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-right: 8px;
+    margin-left: -12px;
+    background-color: var(--b3-theme-primary);
 }
 
 /* ========== LifeLog ========== */
@@ -16578,6 +16598,307 @@ body.dark .north-shuoshuo-gallery-file-wrapper:hover,
     vertical-align: middle;
     margin-left: 2px;
     line-height: 1.6;
+}
+
+/* ========== LifeLog 时间轴布局 ========== */
+/* 时间轴布局下隐藏底部输入区域（含移动端弹窗） */
+.north-shuoshuo-container.lifelog-timeline .north-shuoshuo-input-area,
+.north-shuoshuo-container.lifelog-timeline .north-shuoshuo-input-area.mobile-visible {
+    display: none !important;
+}
+
+/* 主视图：与输入框保持相同的水平内边距，确保宽度一致 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout {
+    padding: 16px 30px 24px !important;
+}
+
+/* Dock 视图：与 Dock 输入框保持相同的水平内边距 */
+.north-shuoshuo-dock-view .north-shuoshuo-notes-list.lifelog-timeline-layout {
+    padding: 12px 12px 16px !important;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-date-group {
+    margin: 20px 0 12px 74px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--b3-theme-primary);
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-date-group:first-child {
+    margin-top: 0;
+}
+
+/* 时间轴布局下隐藏旧的标题栏，改为日历式周历条 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-lifelog-week-header-bar,
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-lifelog-all-header-bar,
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-lifelog-review-header-bar {
+    display: none;
+}
+
+/* 日历式周历条 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-week-strip {
+    padding: 12px 4px;
+    margin-bottom: 16px;
+    background: var(--b3-theme-background);
+    border-radius: 12px;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-weekday-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-weekday-header {
+    text-align: center;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    padding: 4px 0;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+    padding: 4px;
+    border-radius: 8px;
+    color: var(--b3-theme-on-surface);
+    cursor: default;
+    transition: background 0.15s ease;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-cell:hover {
+    background: color-mix(in srgb, var(--b3-theme-surface) 70%, transparent);
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-cell.weekend {
+    color: #d32f2f;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-cell.today {
+    background: var(--b3-theme-primary);
+    box-shadow: none;
+    border: none;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-cell.today .lifelog-calendar-day-num,
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-cell.today .lifelog-calendar-day-sub {
+    color: var(--b3-theme-background);
+    font-weight: 600;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-num {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-sub {
+    font-size: 10px;
+    color: var(--b3-theme-on-surface-light);
+    text-align: center;
+    line-height: 1.2;
+    margin-top: 3px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 紧凑模式：周历 */
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-cell {
+    min-height: 42px;
+    padding: 2px;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-num {
+    font-size: 13px;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-calendar-day-sub {
+    font-size: 9px;
+    margin-top: 2px;
+}
+
+/* 回顾模式在日历条下方的操作栏 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-lifelog-review-actions-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 12px 74px;
+    padding: 8px 0;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-lifelog-review-actions-bar .north-shuoshuo-review-header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-note-card.lifelog-timeline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    padding: 0 0 20px 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    position: relative;
+    overflow: visible;
+    contain: layout style;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-note-card.lifelog-timeline-item:last-child {
+    padding-bottom: 0;
+}
+
+/* 左侧时间：与节点圆环中线对齐 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-left {
+    min-width: 44px;
+    max-width: 60px;
+    flex-shrink: 0;
+    padding-top: 9px;
+    text-align: right;
+    padding-right: 12px;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-time {
+    font-size: 14px;
+    color: var(--b3-theme-on-surface);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+/* 中轴 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-axis {
+    position: relative;
+    width: 18px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    padding-top: 12px;
+}
+
+/* 时间轴线：从圆环中心开始向下，保证圆环上方没有线 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-axis::before {
+    content: '';
+    position: absolute;
+    top: 17px;
+    bottom: -86px;
+    width: 1.5px;
+    background: color-mix(in srgb, var(--b3-border-color) 35%, transparent);
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-item:first-child .lifelog-timeline-axis::before {
+    top: 17px;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-item:last-child .lifelog-timeline-axis::before {
+    bottom: auto;
+    height: 17px;
+}
+
+/* 时间轴节点：空心圆环 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-marker {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--b3-theme-background);
+    border: 2px solid var(--lifelog-timeline-color, var(--b3-theme-primary));
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+    box-sizing: border-box;
+}
+
+/* 右侧卡片 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-card {
+    flex: 1;
+    min-width: 0;
+    margin-left: 12px;
+    padding: 12px 14px;
+    background: color-mix(in srgb, var(--b3-theme-surface) 35%, var(--b3-theme-background));
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 45%, transparent);
+    border-radius: 10px;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-range {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface);
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-type {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-content .north-shuoshuo-note-content {
+    margin-top: 0;
+}
+
+/* 时间轴布局下的空状态 */
+.north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-note-card:not(.lifelog-timeline-item) {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* 紧凑模式：时间轴 */
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-note-card.lifelog-timeline-item {
+    padding-bottom: 14px;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-card {
+    padding: 10px 12px;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-left {
+    padding-top: 7px;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-time {
+    line-height: 1;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-axis {
+    padding-top: 10px;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-axis::before {
+    top: 15px;
+    bottom: -86px;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-item:first-child .lifelog-timeline-axis::before {
+    top: 15px;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-item:last-child .lifelog-timeline-axis::before {
+    bottom: auto;
+    height: 15px;
+}
+
+.north-shuoshuo-lifelog-compact .north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-date-group {
+    margin: 14px 0 8px 74px !important;
+    padding: 0 !important;
 }
 
 /* ========== LifeLog 统计视图 ========== */
