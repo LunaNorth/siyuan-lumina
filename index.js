@@ -582,6 +582,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogTypesExpanded = this.lifelogTypesDefaultExpanded; // LifeLog 类型折叠条是否展开
         this.lifeLogTimeMode = 'end'; // LifeLog 时间模式: 'end'=结束模式(默认) 'start'=开始模式
         this.lifeLogViewStyle = 'card'; // LifeLog 展示样式: 'card'=卡片布局(默认) 'timeline'=时间轴布局
+        this._lifelogTypeColorCache = new Map(); // 缓存 LifeLog 类型颜色（按 类型|主题 维度），避免每张卡片都触发 getComputedStyle 强制重排
+        this._lifelogSelectedDate = null; // LifeLog 视图独立的选中日期（与说说 selectedDate 隔离，避免互相影响）
         this.galleryColumnCount = 3; // 拾光视图列数（默认3列）
         this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG }; // 图书视图字体大小配置
         this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG }; // 图书视图同步配置
@@ -5968,8 +5970,23 @@ ipcRenderer.on('lumina-close', () => {
         if (statsContainer) statsContainer.style.display = '';
 
         // 显示热力图
-        const heatmapContainer = this.container.querySelector('.north-shuoshuo-heatmap-container');
-        if (heatmapContainer) heatmapContainer.style.display = '';
+        // 隐藏说说的共享日期组件（日历贡献图 / 月历）——它会随说说的模式与选中日期变化，
+        // 不能直接复用，否则说说的日期展示会泄漏进 LifeLog（这是之前的 bug 根源）。
+        const heatmapContainer = this.container.querySelector('.north-shuoshuo-heatmap-container:not(.north-shuoshuo-lifelog-heatmap-container)');
+        if (heatmapContainer) heatmapContainer.style.display = 'none';
+
+        // LifeLog 拥有一套独立的日历贡献图容器：只受 LifeLog 自身数据 / 选中日期驱动，
+        // 与说说完全隔离。首次进入时创建并绑定交互，之后复用。
+        let lifelogHeatmap = this.container.querySelector('.north-shuoshuo-lifelog-heatmap-container');
+        if (!lifelogHeatmap && heatmapContainer && heatmapContainer.parentElement) {
+            lifelogHeatmap = document.createElement('div');
+            lifelogHeatmap.className = 'north-shuoshuo-heatmap-container north-shuoshuo-lifelog-heatmap-container';
+            lifelogHeatmap.innerHTML = '<div class="north-shuoshuo-heatmap"></div>';
+            // 插到说说热力图容器之后，保持与说说一致的侧边栏位置
+            heatmapContainer.parentElement.insertBefore(lifelogHeatmap, heatmapContainer.nextSibling);
+            this._bindLifeLogHeatmapEvents(lifelogHeatmap);
+        }
+        if (lifelogHeatmap) lifelogHeatmap.style.display = '';
 
         // 更新菜单列表：移除 随机漫步，切换为 LifeLog 内部视图模式
         const menuList = this.container.querySelector('.north-shuoshuo-menu-list');
@@ -6038,18 +6055,29 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // 日期筛选（热力图）
-        if (this.selectedDate) {
-            records = records.filter(r => {
-                const noteDate = new Date(r.created);
-                return this.formatDateKey(noteDate) === this.selectedDate;
-            });
-        }
-
         // 类型筛选（优先使用侧边栏类型列表的_lifelogSelectedType，其次使用输入类型标签的_lifelogCurrentInputType）
         const selectedType = this._lifelogSelectedType || this._lifelogCurrentInputType || '';
         if (selectedType) {
             records = records.filter(r => r._lifeLogType === selectedType);
+        }
+
+        // 渲染 LifeLog 独立贡献图：以「搜索 + 类型」筛选后、但未按日期筛选的记录为准，
+        // 保证贡献图密度分布完整（点选某天只筛列表，不让贡献图缩水）。
+        const heatmapEl = lifelogHeatmap ? lifelogHeatmap.querySelector('.north-shuoshuo-heatmap') : null;
+        if (heatmapEl) {
+            heatmapEl.innerHTML = this.generateLifeLogHeatmap(records);
+            if (this._lifelogSelectedDate) {
+                const selectedCell = heatmapEl.querySelector(`[data-date="${this._lifelogSelectedDate}"]`);
+                if (selectedCell) selectedCell.classList.add('selected');
+            }
+        }
+
+        // 日期筛选（LifeLog 独立选中日期，与说说 selectedDate 互不影响）
+        if (this._lifelogSelectedDate) {
+            records = records.filter(r => {
+                const noteDate = new Date(r.created);
+                return this.formatDateKey(noteDate) === this._lifelogSelectedDate;
+            });
         }
 
         // 按时间倒序排序
@@ -6057,16 +6085,6 @@ ipcRenderer.on('lumina-close', () => {
 
         // 更新统计
         this._updateLifeLogStats(records);
-
-        // 更新热力图
-        const heatmapEl = this.container.querySelector('.north-shuoshuo-heatmap');
-        if (heatmapEl) {
-            heatmapEl.innerHTML = this.generateLifeLogHeatmap(records);
-            if (this.selectedDate) {
-                const selectedCell = heatmapEl.querySelector(`[data-date="${this.selectedDate}"]`);
-                if (selectedCell) selectedCell.classList.add('selected');
-            }
-        }
 
         // 子视图处理
         const subView = this._lifelogActiveSubView || 'notes';
@@ -6474,6 +6492,62 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    // 绑定 LifeLog 独立贡献图的交互（点击筛选当天 / hover 提示）。
+    // 只绑一次（用 _lifelogHeatmapBound 标记防重复），事件仅操作 LifeLog 自身状态，不触碰说说。
+    _bindLifeLogHeatmapEvents(container) {
+        if (!container || container._lifelogHeatmapBound) return;
+        container._lifelogHeatmapBound = true;
+
+        container.addEventListener('click', (e) => {
+            const cell = e.target.closest('.north-shuoshuo-heatmap-cell');
+            if (!cell) return;
+            const dateStr = cell.dataset.date;
+            if (!dateStr) return;
+            const wasSelected = cell.classList.contains('selected');
+            container.querySelectorAll('.north-shuoshuo-heatmap-cell').forEach(c => c.classList.remove('selected'));
+            if (wasSelected) {
+                this._lifelogSelectedDate = null;
+            } else {
+                cell.classList.add('selected');
+                this._lifelogSelectedDate = dateStr;
+            }
+            this.renderLifeLog(false);
+        });
+
+        container.addEventListener('mouseover', (e) => {
+            const cell = e.target.closest('.north-shuoshuo-heatmap-cell');
+            if (!cell) return;
+            const tooltip = cell.dataset.luminaTip;
+            if (!tooltip) return;
+            const oldTooltip = document.querySelector('.north-shuoshuo-global-tooltip');
+            if (oldTooltip) oldTooltip.remove();
+            const tooltipEl = document.createElement('div');
+            tooltipEl.className = 'north-shuoshuo-global-tooltip';
+            tooltipEl.textContent = tooltip;
+            tooltipEl.style.cssText = `
+                position: fixed;
+                background: rgba(0, 0, 0, 0.85);
+                color: #fff;
+                padding: 5px 10px;
+                border-radius: 4px;
+                font-size: 12px;
+                z-index: 99999;
+                pointer-events: none;
+                white-space: nowrap;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            `;
+            document.body.appendChild(tooltipEl);
+            const rect = cell.getBoundingClientRect();
+            tooltipEl.style.left = `${rect.left + rect.width / 2 - tooltipEl.offsetWidth / 2}px`;
+            tooltipEl.style.top = `${rect.top - tooltipEl.offsetHeight - 6}px`;
+        });
+
+        container.addEventListener('mouseout', () => {
+            const tooltip = document.querySelector('.north-shuoshuo-global-tooltip');
+            if (tooltip) tooltip.remove();
+        });
+    }
+
     // 生成 LifeLog 热力图（同说说视图的 7行×12列 紧凑布局）
     generateLifeLogHeatmap(records) {
         const today = new Date();
@@ -6693,8 +6767,8 @@ ipcRenderer.on('lumina-close', () => {
         if (querySection) querySection.style.display = 'none';
         const statsContainer = this.container.querySelector('.north-shuoshuo-stats');
         if (statsContainer) statsContainer.style.display = 'none';
-        const heatmapContainer = this.container.querySelector('.north-shuoshuo-heatmap-container');
-        if (heatmapContainer) heatmapContainer.style.display = 'none';
+        // 隐藏所有日历贡献图容器（说说共享的 + LifeLog 独立的）
+        this.container.querySelectorAll('.north-shuoshuo-heatmap-container').forEach(el => { el.style.display = 'none'; });
         const typeSection = this.container.querySelector('.north-shuoshuo-lifelog-types-section');
         if (typeSection) typeSection.style.display = 'none';
 
@@ -7399,6 +7473,11 @@ ipcRenderer.on('lumina-close', () => {
     // 获取 LifeLog 类型颜色：优先读取 LifeLog 插件 CSS 定义的 --en-lifelog-border-color，未定义时用哈希算法兜底
     getLifeLogTypeColor(type) {
         if (!type) return '';
+        const mode = document.documentElement.getAttribute('data-theme-mode') || 'light';
+        const cacheKey = 'D:' + type + '|' + mode;
+        if (this._lifelogTypeColorCache && this._lifelogTypeColorCache.has(cacheKey)) {
+            return this._lifelogTypeColorCache.get(cacheKey);
+        }
         // 创建临时 NodeParagraph 元素匹配 LifeLog 插件的 CSS 规则
         const temp = document.createElement('div');
         temp.setAttribute('data-type', 'NodeParagraph');
@@ -7421,6 +7500,7 @@ ipcRenderer.on('lumina-close', () => {
         if (document.documentElement.getAttribute('data-theme-mode') === 'dark') {
             color = this._darkenColor(color);
         }
+        this._lifelogTypeColorCache.set(cacheKey, color);
         return color;
     }
 
@@ -7450,6 +7530,11 @@ ipcRenderer.on('lumina-close', () => {
     // 获取 LifeLog 类型的明亮色（不随暗色模式调暗，用于柱状图等需要保持亮色的场景）
     _getLifeLogTypeColorLight(type) {
         if (!type) return '';
+        const mode = document.documentElement.getAttribute('data-theme-mode') || 'light';
+        const cacheKey = 'L:' + type + '|' + mode;
+        if (this._lifelogTypeColorCache && this._lifelogTypeColorCache.has(cacheKey)) {
+            return this._lifelogTypeColorCache.get(cacheKey);
+        }
         const temp = document.createElement('div');
         temp.setAttribute('data-type', 'NodeParagraph');
         temp.setAttribute('custom-lifelog-type', type);
@@ -7466,6 +7551,7 @@ ipcRenderer.on('lumina-close', () => {
             const hue = Math.abs(hash % 360);
             color = `hsl(${hue}, 70%, 55%)`;
         }
+        this._lifelogTypeColorCache.set(cacheKey, color);
         return color;
     }
 
@@ -23055,8 +23141,10 @@ ipcRenderer.on('lumina-close', () => {
                 if (inputArea) inputArea.style.display = '';
                 if (sidebar) sidebar.style.display = 'flex';
             }
-            // 异步加载 LifeLog 数据并渲染（强制刷新，避免从后台恢复时显示缓存旧数据）
-            this.loadLifeLogData(true).then(() => {
+            // 切换进 LifeLog 视图：优先使用 30s 缓存（避免每次切换都重新查询导致卡顿）。
+            // 从后台/失焦恢复时，visibilitychange/focus 监听已主动清空 _lifelogCache，
+            // 因此缓存不会命中，会自动重新查询，数据新鲜度不受影响。
+            this.loadLifeLogData(false).then(() => {
                 if (this.currentMainView === 'lifelog') {
                     this.renderLifeLog();
                 }
@@ -23069,8 +23157,8 @@ ipcRenderer.on('lumina-close', () => {
             if (inputArea) inputArea.style.display = 'none';
             const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
             if (sidebar) sidebar.style.display = 'none';
-            // 异步加载 LifeLog 数据并渲染统计（强制刷新）
-            this.loadLifeLogData(true).then(() => {
+            // 切换进 LifeLog 统计视图：同样优先使用 30s 缓存（与 LifeLog 视图一致）
+            this.loadLifeLogData(false).then(() => {
                 if (this.currentMainView === 'lifelog-stats') {
                     this.renderLifeLogStats();
                 }
@@ -23139,6 +23227,11 @@ ipcRenderer.on('lumina-close', () => {
         // 移除 LifeLog 类型筛选区块
         const typeSection = this.container.querySelector('.north-shuoshuo-lifelog-types-section');
         if (typeSection) typeSection.remove();
+
+        // 移除 LifeLog 独立日历贡献图容器，并清除其选中日期（回到说说视图时不残留）
+        const lifelogHeatmap = this.container.querySelector('.north-shuoshuo-lifelog-heatmap-container');
+        if (lifelogHeatmap) lifelogHeatmap.remove();
+        this._lifelogSelectedDate = null;
 
         // 恢复搜索栏
         const searchBar = this.container.querySelector('#shuoshuo-search-bar');
@@ -25570,7 +25663,9 @@ ipcRenderer.on('lumina-close', () => {
     // 只查询带有 custom-lifelog-* 属性的块（LifeLog 插件标准方式）
     async queryLifeLogRecords() {
         const records = [];
-        const pageSize = 500;
+        // 单次分页拉取更多，减少与思源内核的串行往返次数（原 500 → 2000，
+        // 在 maxScan=10000 下最多 5 次查询，而非原来的 20 次，显著降低切换等待）
+        const pageSize = 2000;
         const maxScan = 10000;
         let scanned = 0;
         let lastDate = '';
