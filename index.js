@@ -1,6 +1,7 @@
 const { Plugin, showMessage, openTab, openMobileFileById, getFrontend, confirm } = require("siyuan");
 
 const STORAGE_NAME = "shuoshuo-data";
+const RECYCLE_BIN_STORAGE_NAME = "lumina-recycle-bin";
 const CONFIG_STORAGE_NAME = "shuoshuo-config";
 const MOMENTS_STORAGE_NAME = "lumina-moments-data";
 const MOMENTS_CONFIG_NAME = "lumina-moments-config";
@@ -537,6 +538,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.customQueries = []; // 自定义检索式列表
         this.queryVisibility = { 'no-tag': true, 'has-image': true, 'has-link': true, 'has-comment': false, 'is-archived': false }; // 检索式可见性配置
         this.tagIcons = {}; // 标签图标映射 {tagName: emoji/icon}
+        this.mobileNavIcons = {}; // 移动端底部标签栏图标映射（独立于左侧栏 navIcons，互不影响）
         this.pinnedTags = []; // 置顶标签列表
         this.themeMode = DEFAULT_THEME_MODE; // 主题模式：original 或 siyuan 或 morandi
         this.morandiColor = MORANDI_COLORS[0].key; // 默认第一个莫兰迪配色
@@ -571,6 +573,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogStatsCustomEnd = null; // LifeLog 统计视图自定义结束时间（毫秒）
         this.compactMode = false; // 紧凑模式（默认关闭）
         this.noteCardHoverBorder = true; // 说说内容列表悬停边框变色（默认开启）
+        this.momentsCardHoverBorder = true; // 朋友圈动态列表悬停边框变色（默认开启）
         this.lifeLogCompactMode = false; // LifeLog 紧凑模式（默认关闭，独立于说说视图）
         this.shuoshuoHeatmapType = 'heatmap'; // 说说视图日期展示类型：'heatmap' 日历贡献图 / 'calendar' 月历视图
         this.sidebarFullScroll = false; // 侧边栏整体滚动模式（默认关闭，仅标签区独立滚动）
@@ -615,6 +618,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // ===== 增量渲染缓存（用于检测变化）=====
         this._lastFilteredIds = [];         // 上次过滤结果的 ID 列表
+        // ===== 回收站（防误删）=====
+        this._recycleBin = [];              // 回收站数据：[{ id, deletedAt, note }]
+        this._recycleBinLoaded = false;     // 回收站数据是否已从存储加载
         this.moments = []; // 朋友圈数据
         this.momentsConfig = { nickname: '', signature: '', avatar: null, cover: null, coverPosition: 50, syncToSiyuan: false, syncNotebookId: '', syncMode: 'dailynote', syncDocId: '', dailyNotePathTemplate: '', fontSize: { mode: 'default', customSize: 14.5 }, password: '' };
         this.momentsUnlocked = false; // 朋友圈密码锁：当前会话是否已解锁
@@ -626,6 +632,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.wereadApiKey = '';
         this.wereadLastSyncTime = null;
         this.tagBlocklist = []; // 标签屏蔽列表
+        this._ensureRecycleBinLoaded(); // 先加载回收站数据，供 loadShuoshuos 合并时排除已软删除的块
         this.loadShuoshuos();
         this.loadConfig();
         // 异步加载朋友圈数据，确保切换时更丝滑
@@ -4800,6 +4807,16 @@ ipcRenderer.on('lumina-close', () => {
                                     </div>
                                 </div>
                             </div>
+
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>悬停边框变色</h4>
+                                        <p>开启后，鼠标悬停在朋友圈动态卡片上时会高亮边框，便于聚焦当前条目（默认关闭）</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.momentsCardHoverBorder ? 'on' : ''}" id="settings-moments-hover-border-switch"></div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- LifeLog 视图设置 -->
@@ -8380,6 +8397,10 @@ ipcRenderer.on('lumina-close', () => {
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                         <span>删除</span>
                     </button>
+                    <button class="north-shuoshuo-table-recycle-bin-btn" id="table-recycle-bin-btn" title="回收站（还原或彻底删除已删除的笔记）">
+                        <svg style="width:16px;height:16px;"><use xlink:href="#iconTrashcan"></use></svg>
+                        <span>回收站</span>
+                    </button>
                     ${resetBtnHtml}
                 </div>
             </div>
@@ -8533,7 +8554,7 @@ ipcRenderer.on('lumina-close', () => {
             });
         });
 
-        // 绑定批量删除事件
+        // 绑定批量删除事件（软删除：移入回收站）
         const batchDeleteBtn = listEl.querySelector('#table-batch-delete');
         if (batchDeleteBtn) {
             batchDeleteBtn.addEventListener('click', () => {
@@ -8560,26 +8581,19 @@ ipcRenderer.on('lumina-close', () => {
                     } else {
                         contentPreview = '（笔记未找到）';
                     }
-                    confirmMsg = `确定要删除这条笔记吗？\n\n${contentPreview}\n\n此操作不可恢复。`;
+                    confirmMsg = `确定要删除这条笔记吗？\n\n${contentPreview}\n\n将移入回收站，可在回收站中还原或彻底删除。`;
                 } else {
-                    confirmMsg = `确定要删除选中的 ${checkedIds.length} 条笔记吗？此操作不可恢复。`;
+                    confirmMsg = `确定要删除选中的 ${checkedIds.length} 条笔记吗？\n\n将移入回收站，可在回收站中还原或彻底删除。`;
                 }
 
-                // 使用思源笔记的 confirm 函数格式：confirm(title, message, callback)
                 this.confirmAboveMobileShell(confirmTitle, confirmMsg, async () => {
                     this._deletingInProgress = true;
                     try {
-                        const idsToDelete = new Set(checkedIds.map(id => String(id)));
-                        const notesToDelete = this.shuoshuos.filter(s => idsToDelete.has(String(s.id)));
-                        this.shuoshuos = this.shuoshuos.filter(s => !idsToDelete.has(String(s.id)));
-                        await this.saveShuoshuos();
-                        for (const note of notesToDelete) {
-                            if (note.boundBlockId) {
-                                await this.deleteSiyuanBlock(note.boundBlockId);
-                            }
-                        }
+                        const count = await this._softDeleteShuoshuos(checkedIds);
+                        this.renderTable();
+                        this._updateRecycleBinBadge();
                         this.refreshMountedShuoshuoViews();
-                        showMessage(`已删除 ${checkedIds.length} 条笔记`);
+                        showMessage(`已移入回收站 ${count} 条笔记`);
                     } finally {
                         this._deletingInProgress = false;
                     }
@@ -8587,7 +8601,7 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
-        // 绑定单条删除事件
+        // 绑定单条删除事件（软删除：移入回收站）
         listEl.querySelectorAll('.north-shuoshuo-table-delete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -8610,8 +8624,7 @@ ipcRenderer.on('lumina-close', () => {
                 } else {
                     contentPreview = '（笔记未找到）';
                 }
-                // 使用思源笔记的 confirm 函数格式：confirm(title, message, callback)
-                this.confirmAboveMobileShell('⚠️ 确认删除', `确定要删除这条笔记吗？\n\n${contentPreview}\n\n此操作不可恢复。`, async () => {
+                this.confirmAboveMobileShell('⚠️ 确认删除', `确定要删除这条笔记吗？\n\n${contentPreview}\n\n将移入回收站，可在回收站中还原或彻底删除。`, async () => {
                     this._deletingInProgress = true;
                     try {
                         const noteNow = this.shuoshuos.find(s => String(s.id) === String(id));
@@ -8619,27 +8632,27 @@ ipcRenderer.on('lumina-close', () => {
                             showMessage('该笔记已被删除');
                             return;
                         }
-                        // 先从内存移除该笔记（确保引用已不存在），再清理其图片资源
-                        this.shuoshuos = this.shuoshuos.filter(s => String(s.id) !== String(id));
-                        // 清理插件目录中的图片（引用已移除，deletePluginImage 会连备份一并删除，做到真正删除）
-                        const { images } = this.extractContentAndImages(noteNow.content || '');
-                        for (const img of images) {
-                            if (img.url && (img.url.startsWith('/assets/') || img.url.startsWith('assets/'))) {
-                                await this.deletePluginImage(img.url);
-                            }
-                        }
-                        await this.saveShuoshuos();
-                        if (noteNow.boundBlockId) {
-                            await this.deleteSiyuanBlock(noteNow.boundBlockId);
-                        }
+                        const count = await this._softDeleteShuoshuos([id]);
+                        this.renderTable();
+                        this._updateRecycleBinBadge();
                         this.refreshMountedShuoshuoViews();
-                        showMessage('已删除 1 条笔记');
+                        if (count > 0) showMessage('已移入回收站 1 条笔记');
                     } finally {
                         this._deletingInProgress = false;
                     }
                 });
             });
         });
+
+        // 绑定回收站按钮事件
+        const recycleBinBtn = listEl.querySelector('#table-recycle-bin-btn');
+        if (recycleBinBtn) {
+            recycleBinBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._showRecycleBinModal();
+            });
+        }
+        this._updateRecycleBinBadge();
 
         // 绑定查看详情事件
         listEl.querySelectorAll('.north-shuoshuo-table-view-btn').forEach(btn => {
@@ -8966,7 +8979,7 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="lumina-moments-signature">
                         <div class="lumina-moments-signature-text">${signature}</div>
                     </div>
-                    <div class="lumina-moments-list" id="momentsList">${momentsHtml}</div>
+                    <div class="lumina-moments-list${this.momentsCardHoverBorder ? ' moments-hover-border' : ''}" id="momentsList">${momentsHtml}</div>
                     <div class="lumina-moments-bottom-space"></div>
                 </div>
 
@@ -11553,6 +11566,20 @@ ipcRenderer.on('lumina-close', () => {
 
                     await this.loadShuoshuos();
                     this.renderNotes();
+                    // 目标说说可能超出第一页（默认50条），需扩展显示上限后重新渲染
+                    const _sortedForLocate = this._getFilteredAndSortedNotes();
+                    const _targetIdx = _sortedForLocate.findIndex(n => n.id === id);
+                    if (_targetIdx >= 0) {
+                        const _inputAtBottom = this.isInputAtBottom();
+                        // 输入框在底部时列表为升序、从末尾截取；在顶部时为降序、从头部截取
+                        const _needed = _inputAtBottom
+                            ? _sortedForLocate.length - _targetIdx
+                            : _targetIdx + 1;
+                        if (_needed > this._notesDisplayLimit) {
+                            this._notesDisplayLimit = Math.ceil(_needed / this._notesPageSize) * this._notesPageSize;
+                            this._renderNoteListIncremental(_sortedForLocate);
+                        }
+                    }
                     listEl.classList.add('gallery-exit');
                     setTimeout(() => listEl.classList.remove('gallery-exit'), 1000);
                     const checkInterval = setInterval(() => {
@@ -13234,9 +13261,9 @@ ipcRenderer.on('lumina-close', () => {
         return SIDEBAR_DEFAULT_ICONS[viewKey] || '';
     }
 
-    // 获取移动端底部标签栏图标的 HTML（优先使用用户自定义图标，否则使用移动端默认图标）
+    // 获取移动端底部标签栏图标的 HTML（优先使用移动端自定义图标 mobileNavIcons，否则使用移动端默认图标）
     getMobileIconHtml(viewKey) {
-        const custom = this.navIcons?.[viewKey];
+        const custom = this.mobileNavIcons?.[viewKey];
         if (custom && custom.trim()) {
             return this.renderIconConfig(custom);
         }
@@ -13315,6 +13342,15 @@ ipcRenderer.on('lumina-close', () => {
             if (!(container instanceof HTMLElement)) return;
             const list = container.querySelector('#shuoshuo-notes-list');
             if (list) list.classList.toggle('note-hover-border', this.noteCardHoverBorder === true);
+        });
+    }
+
+    // 朋友圈动态列表悬停边框变色：根据 momentsCardHoverBorder 为各已挂载实例的朋友圈列表容器加/去类
+    applyMomentsCardHoverBorder() {
+        this.getMountedLuminaContainers().forEach(container => {
+            if (!(container instanceof HTMLElement)) return;
+            const list = container.querySelector('.lumina-moments-list');
+            if (list) list.classList.toggle('moments-hover-border', this.momentsCardHoverBorder === true);
         });
     }
 
@@ -13493,7 +13529,7 @@ ipcRenderer.on('lumina-close', () => {
         mobileViews.forEach(vKey => {
             const iconHtml = self.getMobileIconHtml(vKey);
             const name = self.getSidebarViewName(vKey);
-            const isIconCustom = !!(self.navIcons?.[vKey] && self.navIcons[vKey].trim());
+            const isIconCustom = !!(self.mobileNavIcons?.[vKey] && self.mobileNavIcons[vKey].trim());
             const isNameCustom = !!(self.navNames?.[vKey] && self.navNames[vKey].trim());
             const isCustom = isIconCustom || isNameCustom;
             const isHidden = self.isNavViewHidden(vKey);
@@ -13521,12 +13557,12 @@ ipcRenderer.on('lumina-close', () => {
 
             changeBtn.addEventListener('click', () => {
                 const currentName = self.getSidebarViewName(viewKey);
-                const currentIcon = self.navIcons?.[viewKey] || '';
+                const currentIcon = self.mobileNavIcons?.[viewKey] || '';
                 self.showIconPicker(currentName, currentIcon, (newIcon) => {
                     if (newIcon && newIcon.trim()) {
-                        self.navIcons[viewKey] = newIcon.trim();
+                        self.mobileNavIcons[viewKey] = newIcon.trim();
                     } else {
-                        delete self.navIcons[viewKey];
+                        delete self.mobileNavIcons[viewKey];
                     }
                     self.saveConfig();
                     self.applyMobileNavIcon(viewKey);
@@ -13550,11 +13586,10 @@ ipcRenderer.on('lumina-close', () => {
 
             if (resetBtn) {
                 resetBtn.addEventListener('click', () => {
-                    delete self.navIcons[viewKey];
-                    delete self.navNames[viewKey];
+                    // 仅重置移动端图标（独立存储），不影响左侧栏图标/昵称
+                    delete self.mobileNavIcons[viewKey];
                     self.saveConfig();
                     self.applyMobileNavIcon(viewKey);
-                    self.applySidebarNavName(viewKey);
                     self.renderMobileIconsSettings(listEl);
                 });
             }
@@ -21897,23 +21932,296 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    // 删除笔记（软删除：移入回收站，支持还原）
     deleteShuoshuo(id) {
-        const item = this.shuoshuos.find(s => s.id === id);
+        const item = this.shuoshuos.find(s => String(s.id) === String(id));
+        if (!item) {
+            showMessage('笔记不存在或已删除');
+            return;
+        }
         // LifeLog 记录为只读，不允许删除
-        if (item && item._isLifeLog) {
+        if (item._isLifeLog) {
             showMessage('LifeLog 记录为只读，无法删除');
             return;
         }
-        this.confirmAboveMobileShell("⚠️ 确认删除", "确定要删除这条笔记吗？\n\n如果已绑定到思源笔记块，将同时删除对应的块。", async () => {
-            // 如果有绑定的思源块，先删除块
-            this.shuoshuos = this.shuoshuos.filter(s => s.id !== id);
-            await this.saveShuoshuos();
-            if (item && item.boundBlockId) {
-                await this.deleteSiyuanBlock(item.boundBlockId);
-            }
+        const contentPreview = (item.content && typeof item.content === 'string')
+            ? (item.content.length > 50 ? item.content.substring(0, 50) + '...' : item.content)
+            : '（空内容）';
+        this.confirmAboveMobileShell("⚠️ 确认删除", `确定要删除这条笔记吗？\n\n${contentPreview}\n\n将移入回收站，可在回收站中还原或彻底删除。`, async () => {
+            const count = await this._softDeleteShuoshuos([id]);
             this.refreshMountedShuoshuoViews();
-            showMessage("笔记已删除");
+            if (count > 0) showMessage("已移入回收站");
         });
+    }
+
+    // ==================== 回收站（防误删） ====================
+
+    // 确保回收站数据已从存储加载
+    async _ensureRecycleBinLoaded() {
+        if (this._recycleBinLoaded) return;
+        try {
+            const data = await this.loadData(RECYCLE_BIN_STORAGE_NAME);
+            this._recycleBin = Array.isArray(data) ? data : [];
+        } catch (e) {
+            this._recycleBin = [];
+        }
+        this._recycleBinLoaded = true;
+    }
+
+    // 持久化回收站数据
+    async _saveRecycleBin() {
+        try {
+            await this.saveData(RECYCLE_BIN_STORAGE_NAME, this._recycleBin || []);
+        } catch (e) {
+            console.warn('保存回收站失败', e);
+            showMessage('回收站保存失败：' + e.message);
+        }
+    }
+
+    // 将若干笔记移入回收站（软删除）。返回成功移入的数量。
+    async _softDeleteShuoshuos(ids) {
+        await this._ensureRecycleBinLoaded();
+        const idSet = new Set(ids.map(id => String(id)));
+        const toBin = this.shuoshuos.filter(s => idSet.has(String(s.id)));
+        if (toBin.length === 0) return 0;
+        for (const note of toBin) {
+            // 深拷贝快照，避免后续引用被修改
+            const snapshot = JSON.parse(JSON.stringify(note));
+            if (!this._recycleBin.some(r => r.note && String(r.note.id) === String(note.id))) {
+                this._recycleBin.push({
+                    id: note.id,
+                    deletedAt: Date.now(),
+                    note: snapshot
+                });
+            }
+        }
+        // 从主列表移除（不直接删除思源块/图片，延迟到彻底删除时处理）
+        this.shuoshuos = this.shuoshuos.filter(s => !idSet.has(String(s.id)));
+        await this.saveShuoshuos();
+        await this._saveRecycleBin();
+        this._updateRecycleBinBadge();
+        return toBin.length;
+    }
+
+    // 从回收站还原一条笔记
+    async _restoreFromRecycleBin(recycleId) {
+        await this._ensureRecycleBinLoaded();
+        const idx = this._recycleBin.findIndex(r => String(r.id) === String(recycleId));
+        if (idx < 0) return false;
+        const entry = this._recycleBin[idx];
+        const note = entry.note;
+        if (!this.shuoshuos.some(s => String(s.id) === String(note.id))) {
+            this.shuoshuos.push(note);
+        }
+        this._recycleBin.splice(idx, 1);
+        await this.saveShuoshuos();
+        await this._saveRecycleBin();
+        this._updateRecycleBinBadge();
+        this.refreshMountedShuoshuoViews();
+        return true;
+    }
+
+    // 从回收站彻底删除一条（真正删除思源块 + 清理图片）
+    async _purgeFromRecycleBin(recycleId) {
+        await this._ensureRecycleBinLoaded();
+        const idx = this._recycleBin.findIndex(r => String(r.id) === String(recycleId));
+        if (idx < 0) return false;
+        const entry = this._recycleBin[idx];
+        await this._reallyDeleteNote(entry.note);
+        this._recycleBin.splice(idx, 1);
+        await this._saveRecycleBin();
+        this._updateRecycleBinBadge();
+        return true;
+    }
+
+    // 清空回收站（彻底删除全部）
+    async _emptyRecycleBin() {
+        await this._ensureRecycleBinLoaded();
+        for (const entry of (this._recycleBin || [])) {
+            await this._reallyDeleteNote(entry.note);
+        }
+        this._recycleBin = [];
+        await this._saveRecycleBin();
+        this._updateRecycleBinBadge();
+        return true;
+    }
+
+    // 真正删除一条笔记：删除绑定的思源块 + 清理本地图片资源
+    async _reallyDeleteNote(note) {
+        if (!note) return;
+        if (note.boundBlockId) {
+            try { await this.deleteSiyuanBlock(note.boundBlockId); } catch (e) {}
+        }
+        try {
+            const { images } = this.extractContentAndImages(note.content || '');
+            for (const img of images) {
+                if (img.url && (img.url.startsWith('/assets/') || img.url.startsWith('assets/'))) {
+                    await this.deletePluginImage(img.url);
+                }
+            }
+        } catch (e) {}
+    }
+
+    // 更新表格视图顶部回收站按钮的数量角标
+    _updateRecycleBinBadge() {
+        const btn = this.container && this.container.querySelector('#table-recycle-bin-btn');
+        if (!btn) return;
+        const count = (this._recycleBin && this._recycleBin.length) || 0;
+        let badge = btn.querySelector('.north-shuoshuo-recycle-bin-count');
+        if (count > 0) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'north-shuoshuo-recycle-bin-count';
+                btn.appendChild(badge);
+            }
+            badge.textContent = count > 99 ? '99+' : String(count);
+            btn.classList.add('has-items');
+        } else if (badge) {
+            badge.remove();
+            btn.classList.remove('has-items');
+        }
+    }
+
+    // 打开回收站弹窗
+    _showRecycleBinModal() {
+        const existing = document.querySelector('.lumina-recycle-bin-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'lumina-recycle-bin-overlay';
+        overlay.innerHTML = `
+            <div class="lumina-recycle-bin-modal" id="lumina-recycle-bin-modal">
+                <div class="lumina-recycle-bin-header">
+                    <div class="lumina-recycle-bin-title">
+                        <svg style="width:18px;height:18px;"><use xlink:href="#iconTrashcan"></use></svg>
+                        <span>回收站</span>
+                    </div>
+                    <div class="lumina-recycle-bin-header-actions">
+                        <button class="lumina-recycle-bin-action-empty" id="recycle-bin-empty-btn" title="清空回收站">清空</button>
+                        <button class="lumina-recycle-bin-action-close" id="recycle-bin-close-btn" title="关闭">×</button>
+                    </div>
+                </div>
+                <div class="lumina-recycle-bin-list" id="lumina-recycle-bin-list"></div>
+                <div class="lumina-recycle-bin-footer" id="lumina-recycle-bin-footer"></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const listEl = overlay.querySelector('#lumina-recycle-bin-list');
+        const footerEl = overlay.querySelector('#lumina-recycle-bin-footer');
+        const emptyBtn = overlay.querySelector('#recycle-bin-empty-btn');
+        const closeBtn = overlay.querySelector('#recycle-bin-close-btn');
+
+        // 内容预览：替换图片标记为[图片]、去掉标签，截断
+        const previewContent = (content) => {
+            let text = (content || '').toString();
+            text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, '[图片]');
+            text = text.replace(/#([^\s#]+)/g, '');
+            text = text.replace(/\s+/g, ' ').trim();
+            if (text.length > 100) text = text.substring(0, 100) + '...';
+            return text || '（空内容）';
+        };
+
+        const formatTime = (ts) => {
+            const d = new Date(ts);
+            const p = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+        };
+
+        const renderList = () => {
+            const items = (this._recycleBin || []).slice().sort((a, b) => b.deletedAt - a.deletedAt);
+            if (items.length === 0) {
+                listEl.innerHTML = `<div class="lumina-recycle-bin-empty">回收站是空的</div>`;
+            } else {
+                listEl.innerHTML = items.map(entry => {
+                    const note = entry.note || {};
+                    const tags = (note.tags && Array.isArray(note.tags)) ? note.tags : [];
+                    const tagsHtml = tags.map(t => `<span class="lumina-recycle-bin-tag">${this.escapeHtml(t)}</span>`).join('');
+                    const rid = this.escapeHtml(String(entry.id));
+                    return `
+                        <div class="lumina-recycle-bin-item" data-rid="${rid}">
+                            <div class="lumina-recycle-bin-item-main">
+                                <div class="lumina-recycle-bin-item-content">${this.escapeHtml(previewContent(note.content))}</div>
+                                <div class="lumina-recycle-bin-item-meta">
+                                    <span class="lumina-recycle-bin-item-time">删除于 ${formatTime(entry.deletedAt)}</span>
+                                    ${tagsHtml ? `<span class="lumina-recycle-bin-item-tags">${tagsHtml}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="lumina-recycle-bin-item-actions">
+                                <button class="lumina-recycle-bin-restore" data-rid="${rid}">还原</button>
+                                <button class="lumina-recycle-bin-purge" data-rid="${rid}">彻底删除</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            footerEl.textContent = `共 ${items.length} 条 · 「还原」可恢复，「彻底删除」不可恢复（将删除对应思源块及图片）`;
+            if (emptyBtn) emptyBtn.style.display = items.length > 0 ? '' : 'none';
+        };
+
+        // 关闭函数（提前定义，供确认前临时关闭弹窗使用）
+        let _keyHandlerAttached = false;
+        const close = () => {
+            overlay.remove();
+            if (_keyHandlerAttached) { document.removeEventListener('keydown', onKey); _keyHandlerAttached = false; }
+        };
+        const reopen = () => {
+            if (!document.body.contains(overlay)) document.body.appendChild(overlay);
+        };
+        const onKey = (e) => {
+            if (e.key === 'Escape') close();
+        };
+        if (!_keyHandlerAttached) { document.addEventListener('keydown', onKey); _keyHandlerAttached = true; }
+
+        // 列表内操作（事件委托）
+        listEl.addEventListener('click', (e) => {
+            const restoreBtn = e.target.closest('.lumina-recycle-bin-restore');
+            const purgeBtn = e.target.closest('.lumina-recycle-bin-purge');
+            if (restoreBtn) {
+                const rid = restoreBtn.dataset.rid;
+                this._restoreFromRecycleBin(rid).then((ok) => {
+                    if (ok) { showMessage('已还原'); renderList(); this._updateRecycleBinBadge(); }
+                });
+            } else if (purgeBtn) {
+                const rid = purgeBtn.dataset.rid;
+                // 先关闭弹窗遮罩，让 confirm() 能正常显示在最上层
+                close();
+                this.confirmAboveMobileShell('⚠️ 彻底删除', '确定要彻底删除这条笔记吗？此操作不可恢复。',
+                    async () => {
+                        const ok = await this._purgeFromRecycleBin(rid);
+                        if (ok) { showMessage('已彻底删除'); this._updateRecycleBinBadge(); }
+                        // 确认执行后不重开（列表可能为空）
+                    },
+                    () => {
+                        // 取消时重新打开弹窗
+                        reopen();
+                    }
+                );
+            }
+        });
+
+        // 清空回收站
+        if (emptyBtn) {
+            emptyBtn.addEventListener('click', () => {
+                if ((this._recycleBin || []).length === 0) return;
+                close();
+                this.confirmAboveMobileShell('⚠️ 清空回收站', '确定要彻底删除回收站中的全部笔记吗？此操作不可恢复。',
+                    async () => {
+                        await this._emptyRecycleBin();
+                        showMessage('回收站已清空');
+                        this._updateRecycleBinBadge();
+                    },
+                    () => {
+                        reopen();
+                    }
+                );
+            });
+        }
+
+        if (closeBtn) closeBtn.addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+        renderList();
     }
 
     uploadAvatar(role) {
@@ -23856,6 +24164,20 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // 朋友圈动态列表悬停边框变色开关（默认关闭，独立于说说视图）
+        const momentsHoverBorderSwitch = this.container.querySelector('#settings-moments-hover-border-switch');
+        if (momentsHoverBorderSwitch) {
+            momentsHoverBorderSwitch.replaceWith(momentsHoverBorderSwitch.cloneNode(true));
+            const newMomentsHoverBorderSwitch = this.container.querySelector('#settings-moments-hover-border-switch');
+            newMomentsHoverBorderSwitch.addEventListener('click', async () => {
+                newMomentsHoverBorderSwitch.classList.toggle('on');
+                this.momentsCardHoverBorder = newMomentsHoverBorderSwitch.classList.contains('on');
+                await this.saveConfig();
+                this.applyMomentsCardHoverBorder();
+                showMessage(this.momentsCardHoverBorder ? '已开启朋友圈悬停边框变色' : '已关闭朋友圈悬停边框变色');
+            });
+        }
+
         // 侧边栏整体滚动开关
         const sidebarFullScrollSwitch = this.container.querySelector('#settings-sidebar-full-scroll-switch');
         if (sidebarFullScrollSwitch) {
@@ -25572,6 +25894,8 @@ ipcRenderer.on('lumina-close', () => {
         const opts = (options && typeof options === 'object') ? options : {};
         return this._withSaveLock('shuoshuos', async () => {
             try {
+                // 先加载回收站数据，确保后续合并思源绑定块时能正确排除已软删除的项
+                await this._ensureRecycleBinLoaded();
                 // 1. 先从本地加载未绑定的说说
                 let data = await this.loadData(STORAGE_NAME);
                 const localShuoshuos = data || [];
@@ -25636,6 +25960,8 @@ ipcRenderer.on('lumina-close', () => {
 
                     // 添加思源中有但本地没有的新绑定块
                     for (const siyuan of boundFromSiyuan) {
+                        // 跳过已被移入回收站的块（软删除后其思源块尚未真正删除，避免重载时复活）
+                        if (this._recycleBin && this._recycleBin.some(r => r.note && r.note.boundBlockId === siyuan.boundBlockId)) continue;
                         if (!processedBoundIds.has(siyuan.boundBlockId) && !this._hasEquivalentLocalShuoshuo(siyuan, merged)) {
                             merged.push(siyuan);
                             processedBoundIds.add(siyuan.boundBlockId);
@@ -26327,6 +26653,7 @@ ipcRenderer.on('lumina-close', () => {
                 }
                 this.pinnedTags = Array.isArray(data.pinnedTags) ? data.pinnedTags : [];
                 this.navIcons = data.navIcons || {};
+                this.mobileNavIcons = data.mobileNavIcons || {}; // 移动端图标独立存储
                 this.navNames = data.navNames || {};
                 this.navHidden = data.navHidden || {};
                 // 左侧栏视图自定义排序（仅存储可排序视图的 key，设置视图恒定在底部不参与排序）
@@ -26343,6 +26670,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.compactMode = data.compactMode === true || data.compactMode === 'true' || data.compactMode === 1;
                 // 悬停边框变色：默认开启。配置中未显式设置（undefined）时回退为 true；已显式关闭的保持不变
                 this.noteCardHoverBorder = data.noteCardHoverBorder === undefined ? true : (data.noteCardHoverBorder === true || data.noteCardHoverBorder === 'true' || data.noteCardHoverBorder === 1);
+                this.momentsCardHoverBorder = data.momentsCardHoverBorder === undefined ? true : (data.momentsCardHoverBorder === true || data.momentsCardHoverBorder === 'true' || data.momentsCardHoverBorder === 1); // 默认开启
                 const parsedImgSingle = parseInt(data.imgSingleSize, 10);
                 this.imgSingleSize = (parsedImgSingle >= 10 && parsedImgSingle <= 100) ? parsedImgSingle : 100;
                 const parsedImgGrid2 = parseInt(data.imgGrid2Size, 10);
@@ -26451,6 +26779,7 @@ ipcRenderer.on('lumina-close', () => {
                     reviewConfig: this.reviewConfig,
                     tagIcons: this.tagIcons,
                     navIcons: this.navIcons,
+                    mobileNavIcons: this.mobileNavIcons,
                     navNames: this.navNames,
                     navHidden: this.navHidden,
                     navOrder: this.navOrder,
@@ -26468,6 +26797,7 @@ ipcRenderer.on('lumina-close', () => {
                     imgGrid4Size: this.imgGrid4Size,
                     imgMultiSize: this.imgMultiSize,
                     noteCardHoverBorder: this.noteCardHoverBorder,
+                    momentsCardHoverBorder: this.momentsCardHoverBorder,
                     lifeLogCompactMode: this.lifeLogCompactMode,
                     shuoshuoHeatmapType: this.shuoshuoHeatmapType,
                     sidebarFullScroll: this.sidebarFullScroll,
