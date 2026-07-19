@@ -2771,6 +2771,12 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
     flex-wrap: wrap;
     gap: 8px;
 }
+
+/* Lumina: Flomo 风格（文字在上、资源在下）时，资源块与上方文字块之间留出间距；不影响旧的图文混排 */
+.north-shuoshuo-note-content--flomo .north-shuoshuo-image-grid,
+.north-shuoshuo-note-content--flomo .north-shuoshuo-file-list {
+    margin-top: 8px;
+}
 .north-shuoshuo-file-item {
     display: flex;
     align-items: center;

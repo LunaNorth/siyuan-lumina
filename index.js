@@ -2869,6 +2869,32 @@ function insertText(text) {
     insertTextAtCursor(text, '');
 }
 
+function insertResourceText(resourceText) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const value = editor.value;
+
+    let prefix = '';
+    if (start > 0) {
+        const prevChar = value[start - 1];
+        if (prevChar !== '\n' && prevChar !== '\r') {
+            prefix = '\n';
+        }
+    }
+
+    let suffix = '';
+    if (end >= value.length) {
+        suffix = '\n';
+    } else {
+        const nextChar = value[end];
+        if (nextChar !== '\n' && nextChar !== '\r') {
+            suffix = '\n';
+        }
+    }
+
+    insertTextAtCursor(prefix + resourceText + suffix, '');
+}
+
 // 标签选择器
 document.getElementById('btn-tag').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2985,11 +3011,11 @@ document.getElementById('btn-image').addEventListener('click', () => {
                     if (newPath) {
                         const mediaPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
                         if (file.type.startsWith('image/')) {
-                            insertTextAtCursor(\`![图片](\${mediaPath})\n\`, '');
+                            insertResourceText(\`![图片](\${mediaPath})\`);
                         } else if (file.type.startsWith('video/')) {
-                            insertTextAtCursor(\`![视频](\${mediaPath})\n\`, '');
+                            insertResourceText(\`![视频](\${mediaPath})\`);
                         } else {
-                            insertTextAtCursor(\`[\${file.name}](\${mediaPath})\n\`, '');
+                            insertResourceText(\`[\${file.name}](\${mediaPath})\`);
                         }
                         editor.focus();
                     }
@@ -3166,7 +3192,7 @@ editor.addEventListener('paste', async (e) => {
                 const newPath = succMap[file.name];
                 if (newPath) {
                     const imgPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
-                    insertTextAtCursor('![图片](' + imgPath + ')', '');
+                    insertResourceText('![图片](' + imgPath + ')');
                 }
             }
         } catch (err) {}
@@ -7494,7 +7520,7 @@ ipcRenderer.on('lumina-close', () => {
                         <span class="north-shuoshuo-note-menu" data-id="${item.id}">${ICONS.moreH}</span>
                     </div>
                 </div>
-                ${this.renderNoteContent(item.content, options)}
+                ${this.renderNoteContent(item.content, { ...options, flomo: true })}
                 ${memoRelations}
             </div>
         `;
@@ -15681,8 +15707,35 @@ ipcRenderer.on('lumina-close', () => {
         const newPos = start + before.length + selected.length;
         input.setSelectionRange(newPos, newPos);
         
-        // 触发 input 事件更新发送按钮状?
+        // 触发 input 事件更新发送按钮状态
         input.dispatchEvent(new Event('input'));
+    }
+
+    // 在输入框光标处插入资源标记，并在前后按需补换行，避免资源与文字贴在一起
+    insertResourceText(input, resourceText) {
+        const start = input.selectionStart;
+        const end = input.selectionEnd;
+        const value = input.value;
+
+        let prefix = '';
+        if (start > 0) {
+            const prevChar = value[start - 1];
+            if (prevChar !== '\n' && prevChar !== '\r') {
+                prefix = '\n';
+            }
+        }
+
+        let suffix = '';
+        if (end >= value.length) {
+            suffix = '\n';
+        } else {
+            const nextChar = value[end];
+            if (nextChar !== '\n' && nextChar !== '\r') {
+                suffix = '\n';
+            }
+        }
+
+        this.insertText(input, prefix + resourceText + suffix, '');
     }
 
     // 处理 @ 快速引用输入
@@ -16377,11 +16430,11 @@ ipcRenderer.on('lumina-close', () => {
                         const mediaPath = await this._uploadToPublicDir(file);
                         if (mediaPath) {
                             if (file.type.startsWith('image/')) {
-                                this.insertText(input, `![图片](${mediaPath})\n`, '');
+                                this.insertResourceText(input, `![图片](${mediaPath})`);
                             } else if (file.type.startsWith('video/')) {
-                                this.insertText(input, `![视频](${mediaPath})\n`, '');
+                                this.insertResourceText(input, `![视频](${mediaPath})`);
                             } else {
-                                this.insertText(input, `[${file.name}](${mediaPath})\n`, '');
+                                this.insertResourceText(input, `[${file.name}](${mediaPath})`);
                             }
                         } else {
                             showMessage(`上传失败：${file.name}`);
@@ -16416,11 +16469,11 @@ ipcRenderer.on('lumina-close', () => {
                                     console.warn('备份文件失败:', mediaPath, e);
                                 }
                                 if (file.type.startsWith('image/')) {
-                                    this.insertText(input, `![图片](${mediaPath})\n`, '');
+                                    this.insertResourceText(input, `![图片](${mediaPath})`);
                                 } else if (file.type.startsWith('video/')) {
-                                    this.insertText(input, `![视频](${mediaPath})\n`, '');
+                                    this.insertResourceText(input, `![视频](${mediaPath})`);
                                 } else {
-                                    this.insertText(input, `[${file.name}](${mediaPath})\n`, '');
+                                    this.insertResourceText(input, `[${file.name}](${mediaPath})`);
                                 }
                             }
                         } else {
@@ -16469,11 +16522,11 @@ ipcRenderer.on('lumina-close', () => {
                         const filePath = await this._uploadToPublicDir(file);
                         if (filePath) {
                             if (file.type.startsWith('image/')) {
-                                this.insertText(input, `![图片](${filePath})\n`, '');
+                                this.insertResourceText(input, `![图片](${filePath})`);
                             } else if (file.type.startsWith('video/')) {
-                                this.insertText(input, `![视频](${filePath})\n`, '');
+                                this.insertResourceText(input, `![视频](${filePath})`);
                             } else {
-                                this.insertText(input, `[${file.name}](${filePath})\n`, '');
+                                this.insertResourceText(input, `[${file.name}](${filePath})`);
                             }
                         } else {
                             showMessage(`上传失败：${file.name}`);
@@ -16508,11 +16561,11 @@ ipcRenderer.on('lumina-close', () => {
                                     console.warn('备份文件失败:', filePath, e);
                                 }
                                 if (file.type.startsWith('image/')) {
-                                    this.insertText(input, `![图片](${filePath})\n`, '');
+                                    this.insertResourceText(input, `![图片](${filePath})`);
                                 } else if (file.type.startsWith('video/')) {
-                                    this.insertText(input, `![视频](${filePath})\n`, '');
+                                    this.insertResourceText(input, `![视频](${filePath})`);
                                 } else {
-                                    this.insertText(input, `[${file.name}](${filePath})\n`, '');
+                                    this.insertResourceText(input, `[${file.name}](${filePath})`);
                                 }
                             }
                         } else {
@@ -16561,9 +16614,9 @@ ipcRenderer.on('lumina-close', () => {
                     const mediaPath = await this._uploadToPublicDir(file);
                     if (mediaPath) {
                         if (file.type.startsWith('image/')) {
-                            this.insertText(input, `![图片](${mediaPath})`, '');
+                            this.insertResourceText(input, `![图片](${mediaPath})`);
                         } else {
-                            this.insertText(input, `![视频](${mediaPath})`, '');
+                            this.insertResourceText(input, `![视频](${mediaPath})`);
                         }
                         showMessage("插入成功");
                     } else {
@@ -16593,9 +16646,9 @@ ipcRenderer.on('lumina-close', () => {
                         if (newPath) {
                             const mediaPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
                             if (file.type.startsWith('image/')) {
-                                this.insertText(input, `![图片](${mediaPath})`, '');
+                                this.insertResourceText(input, `![图片](${mediaPath})`);
                             } else {
-                                this.insertText(input, `![视频](${mediaPath})`, '');
+                                this.insertResourceText(input, `![视频](${mediaPath})`);
                             }
                             showMessage("插入成功");
                         }
@@ -18587,6 +18640,40 @@ ipcRenderer.on('lumina-close', () => {
             });
         }
 
+        // Flomo 风格布局：文字统一在上，资源（图片/视频/文件）统一在下，与输入顺序脱钩
+        if (options.flomo) {
+            const textSegs = segments.filter(s => s.type === 'text' && s.value.trim() !== '');
+            const mediaSegs = segments.filter(s => s.type === 'image' || s.type === 'video');
+            const fileSegs = segments.filter(s => s.type === 'file');
+
+            const textValue = textSegs.map(s => s.value).join('\n');
+
+            let html = '<div class="north-shuoshuo-note-content north-shuoshuo-note-content--flomo">';
+            if (textValue.trim()) {
+                html += this.formatContent(textValue);
+            }
+            if (mediaSegs.length) {
+                html += this.renderImageGrid(mediaSegs.map(seg => ({
+                    alt: seg.alt,
+                    url: seg.url,
+                    isVideo: seg.type === 'video'
+                })));
+            }
+            if (fileSegs.length) {
+                html += this.renderFileList(fileSegs.map(seg => ({
+                    name: seg.name,
+                    url: seg.url
+                })));
+            }
+            html += '</div>';
+
+            const searchText = options.searchText || this._getSearchText();
+            if (searchText) {
+                html = this._highlightSearchText(html, searchText);
+            }
+            return html;
+        }
+
         // 合并相邻文字片段，统一交给 formatContent 渲染
         const merged = [];
         segments.forEach(seg => {
@@ -18727,6 +18814,10 @@ ipcRenderer.on('lumina-close', () => {
         const cleanPath = url.replace(/^\.\//, '').replace(/^\/?(assets\/.+)/, '/$1');
         if (cleanPath.startsWith('/assets/')) {
             return cleanPath;
+        }
+        // 公共目录路径：public/siyuan-lumina/xxx → /public/siyuan-lumina/xxx
+        if (url.startsWith('public/siyuan-lumina/') || url.startsWith('/public/siyuan-lumina/')) {
+            return url.startsWith('/') ? url : `/${url}`;
         }
         return url;
     }
@@ -19996,7 +20087,20 @@ ipcRenderer.on('lumina-close', () => {
 
         copyBtn.addEventListener('click', async () => {
             try {
-                // 优先直接复制原始图片数据（所有格式都走 fast path）
+                // 公共目录模式：复制图片引用链接，粘贴到其他文档时直接引用公共文件
+                // （不会被思源当作未引用资源清理，也不会重新落入 assets 目录）
+                if (this.storageMode === 'public') {
+                    const link = `![图片](${imgSrc})`;
+                    await navigator.clipboard.writeText(link);
+                    copyBtn.innerHTML = `${checkIcon} 已复制链接`;
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalCopyHTML;
+                        copyBtn.classList.remove('copied');
+                    }, 2000);
+                    return;
+                }
+                // 默认 assets 模式：优先直接复制原始图片数据（所有格式都走 fast path）
                 const resp = await fetch(imgSrc);
                 const blob = await resp.blob();
                 const mime = blob.type || 'image/png';
@@ -21498,7 +21602,17 @@ ipcRenderer.on('lumina-close', () => {
     // @returns {Promise<string|null>} 成功返回引用路径（如 "public/siyuan-lumina/xxx.png"），失败返回 null
     async _uploadToPublicDir(file, fileName) {
         try {
-            const actualName = fileName || file.name;
+            const baseName = fileName || file.name || 'file';
+            // 生成唯一文件名：剪贴板图片通常为 image.png，多张粘贴会互相覆盖；
+            // 统一追加 时间戳 + 随机串，保留原扩展名，既可读又不会重名
+            const dotIdx = baseName.lastIndexOf('.');
+            const ext = dotIdx > 0 ? baseName.slice(dotIdx) : '';
+            const stem = dotIdx > 0 ? baseName.slice(0, dotIdx) : baseName;
+            const d = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+            const rand = Math.random().toString(36).slice(2, 8);
+            const actualName = `${stem}-${ts}-${rand}${ext}`;
             const targetPath = `data/public/siyuan-lumina/${actualName}`;
 
             const token = window.siyuan?.config?.api?.token || '';
