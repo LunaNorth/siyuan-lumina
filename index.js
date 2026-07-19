@@ -577,6 +577,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.lifeLogCompactMode = false; // LifeLog 紧凑模式（默认关闭，独立于说说视图）
         this.shuoshuoHeatmapType = 'heatmap'; // 说说视图日期展示类型：'heatmap' 日历贡献图 / 'calendar' 月历视图
         this.sidebarFullScroll = false; // 侧边栏整体滚动模式（默认关闭，仅标签区独立滚动）
+        this.storageMode = 'assets'; // 资源存储位置：'assets' 思源资源目录（默认） / 'public' 公共目录 data/public/siyuan-lumina/
         this.mobileAddFloating = false; // 移动端「写说说」按钮悬浮显示（默认在顶部，不悬浮）
         this.mobileAddFloatPos = null;  // 悬浮按钮自定义位置 {left, top}（px），null 为默认右下角
         this.lifeLogAddFloating = false; // 移动端 LifeLog 视图「写 LifeLog」按钮悬浮显示（独立于说说视图）
@@ -5095,6 +5096,18 @@ ipcRenderer.on('lumina-close', () => {
                                         <p>开启后，启动思源笔记自动打开轻语标签页，并默认显示左侧栏排在第一位的视图</p>
                                     </div>
                                     <div class="north-shuoshuo-switch ${this.autoOpen === true ? 'on' : ''}" id="settings-auto-open-switch"></div>
+                                </div>
+                            </div>
+                            <div class="north-shuoshuo-section-card">
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info" style="flex:1; min-width:0; margin-right:12px;">
+                                        <h4 style="white-space:nowrap;">资源存储位置</h4>
+                                        <p>控制上传的图片与资源文件保存到思源 assets 目录还是 public 公共目录（脱离资源目录，不被清理）。</p>
+                                    </div>
+                                    <select id="storage-mode-select" class="north-shuoshuo-select-field" style="flex:0 0 auto; width:185px;">
+                                        <option value="assets"${this.storageMode !== 'public' ? ' selected' : ''}>思源资源目录(assets)</option>
+                                        <option value="public"${this.storageMode === 'public' ? ' selected' : ''}>公共目录(public)</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -11565,21 +11578,41 @@ ipcRenderer.on('lumina-close', () => {
                     if (targetMobileTab) targetMobileTab.classList.add('active');
 
                     await this.loadShuoshuos();
-                    this.renderNotes();
-                    // 目标说说可能超出第一页（默认50条），需扩展显示上限后重新渲染
-                    const _sortedForLocate = this._getFilteredAndSortedNotes();
-                    const _targetIdx = _sortedForLocate.findIndex(n => n.id === id);
-                    if (_targetIdx >= 0) {
-                        const _inputAtBottom = this.isInputAtBottom();
-                        // 输入框在底部时列表为升序、从末尾截取；在顶部时为降序、从头部截取
-                        const _needed = _inputAtBottom
-                            ? _sortedForLocate.length - _targetIdx
-                            : _targetIdx + 1;
-                        if (_needed > this._notesDisplayLimit) {
-                            this._notesDisplayLimit = Math.ceil(_needed / this._notesPageSize) * this._notesPageSize;
-                            this._renderNoteListIncremental(_sortedForLocate);
+
+                    // —— 修复：先按日期筛选，再定位内容 ——
+                    // 旧逻辑通过「把显示上限扩展到目标索引」来定位：当目标在很靠后（成百上千条）时，
+                    // 需一次性渲染巨量 DOM，scrollIntoView 在渲染完成前轮询超时，导致定位失败。
+                    // 新逻辑：将目标说说所在日期设为选中日期，列表只渲染该天的说说，
+                    // 目标必然落在该日窗口内（远小于 50 条分页上限），定位稳定可靠，与总量无关。
+                    const _targetNote = this.shuoshuos.find(n => n.id === id);
+                    if (_targetNote) {
+                        const _dateKey = this.formatDateKey(new Date(_targetNote.created));
+
+                        // 清除可能遮挡目标的其它筛选条件（标签/检索式/搜索），确保目标一定可见
+                        this.selectedTag = null;
+                        this.filterQuery = null;
+                        this.container.querySelectorAll('#shuoshuo-search-input, #shuoshuo-mobile-search-input').forEach(inp => {
+                            if (inp) inp.value = '';
+                        });
+                        // 同步左侧其它选中态，避免与日期选中态并存
+                        this.container.querySelectorAll('.north-shuoshuo-tag-tree-item').forEach(t => t.classList.remove('selected'));
+                        this.container.querySelectorAll('.north-shuoshuo-query-item').forEach(item => item.classList.remove('selected'));
+
+                        // 选中目标日期（触发按日筛选）
+                        this.selectedDate = _dateKey;
+
+                        // 月历视图：若目标日期不在当前显示月份，则切到该月份，保证高亮可见
+                        if (this.shuoshuoHeatmapType === 'calendar') {
+                            const _d = new Date(_targetNote.created);
+                            if (_d.getFullYear() !== this.calendarViewDate.getFullYear() ||
+                                _d.getMonth() !== this.calendarViewDate.getMonth()) {
+                                this.calendarViewDate = new Date(_d.getFullYear(), _d.getMonth(), 1);
+                            }
                         }
                     }
+
+                    this.renderNotes();
+
                     listEl.classList.add('gallery-exit');
                     setTimeout(() => listEl.classList.remove('gallery-exit'), 1000);
                     const checkInterval = setInterval(() => {
@@ -14525,6 +14558,92 @@ ipcRenderer.on('lumina-close', () => {
             mobileAddBtn.addEventListener('click', () => {
                 // 悬浮球刚拖动完，抑制这次点击，避免误触发写说说
                 if (mobileAddBtn._luminaJustDragged) { mobileAddBtn._luminaJustDragged = false; return; }
+
+                // —— 修复：LifeLog 视图（尤其是时间轴布局）下，+ 号应弹出 LifeLog 输入框 ——
+                // 时间轴布局中 renderLifeLog 会把 inputArea 设为 display:none，
+                // 直接 toggle mobile-visible 虽然能显示出来，但仍是说说模式的 UI 结构（工具栏图标等）。
+                // 这里根据当前视图提前做好对应的输入框准备工作。
+                const _isLifelogView = this.currentMainView === 'lifelog';
+                if (_isLifelogView) {
+                    // 确保输入区可见（时间轴模式下可能被 display:none 隐藏）
+                    inputArea.style.display = '';
+
+                    // 设置 LifeLog 输入框样式：缩小高度、隐藏通用工具栏、显示类型选择条
+                    const inputField = inputArea.querySelector('.north-shuoshuo-input-field');
+                    if (inputField) {
+                        inputField.style.minHeight = '30px';
+                        inputField.style.maxHeight = '';
+                        inputField.style.resize = 'none';
+                        inputField.setAttribute('rows', '1');
+                        inputField.style.height = '30px';
+                        requestAnimationFrame(() => {
+                            inputField.style.height = 'auto';
+                            inputField.style.height = Math.max(30, inputField.scrollHeight) + 'px';
+                        });
+                    }
+                    const toolbarLeft = inputArea.querySelector('.north-shuoshuo-toolbar-left');
+                    if (toolbarLeft) toolbarLeft.style.display = 'none';
+
+                    // 显示类型选择条（如果已有数据则渲染）
+                    const inputTypes = inputArea.querySelector('#lifelog-input-types');
+                    if (inputTypes) {
+                        inputTypes.style.display = '';
+                        if (!inputTypes.innerHTML.trim()) {
+                            const records = this.lifeLogRecords || [];
+                            const typeCount = {};
+                            records.forEach(r => { const t = r._lifeLogType || ''; if (t) typeCount[t] = (typeCount[t] || 0) + 1; });
+                            const types = Object.keys(typeCount).sort();
+                            let allClass = !this._lifelogSelectedType ? ' active' : '';
+                            let html = `<span class="north-shuoshuo-lifelog-input-type${allClass}" data-lifelog-input-type="" id="lifelog-type-toggle">全部</span>`;
+                            types.forEach(type => {
+                                const active = this._lifelogSelectedType === type ? ' active' : '';
+                                html += `<span class="north-shuoshuo-lifelog-input-type${active}" data-lifelog-input-type="${this.escapeHtml(type)}">${this.escapeHtml(type)}</span>`;
+                            });
+                            inputTypes.innerHTML = html;
+                        }
+                    }
+
+                    // 显示当前选中类型芯片
+                    if (this._lifelogCurrentInputType) {
+                        const toolbar = inputArea.querySelector('.north-shuoshuo-input-toolbar');
+                        let typeChip = inputArea.querySelector('#lifelog-current-type-chip');
+                        if (!typeChip && toolbar) {
+                            typeChip = document.createElement('span');
+                            typeChip.id = 'lifelog-current-type-chip';
+                            typeChip.className = 'north-shuoshuo-lifelog-current-type-chip';
+                            toolbar.insertBefore(typeChip, toolbar.firstChild);
+                        }
+                        if (typeChip) {
+                            typeChip.textContent = this._lifelogCurrentInputType;
+                            typeChip.style.display = 'inline-flex';
+                        }
+                    }
+
+                    const sendBtn = inputArea.querySelector('.north-shuoshuo-send-btn');
+                    if (sendBtn) sendBtn.style.marginLeft = 'auto';
+
+                    // 绑定类型选择点击事件（如果尚未绑定）
+                    this._bindLifeLogInputTypes(inputTypes);
+                } else {
+                    // 非 LifeLog 视图：恢复说说输入框样式
+                    const toolbarLeft = inputArea.querySelector('.north-shuoshuo-toolbar-left');
+                    if (toolbarLeft) toolbarLeft.style.display = '';
+                    const inputTypes = inputArea.querySelector('#lifelog-input-types');
+                    if (inputTypes) inputTypes.style.display = 'none';
+                    const typeChip = inputArea.querySelector('#lifelog-current-type-chip');
+                    if (typeChip) typeChip.style.display = 'none';
+                    const inputField = inputArea.querySelector('.north-shuoshuo-input-field');
+                    if (inputField) {
+                        inputField.style.minHeight = '';
+                        inputField.style.maxHeight = '';
+                        inputField.style.resize = '';
+                        inputField.setAttribute('rows', '3');
+                        inputField.style.height = '';
+                    }
+                    const sendBtn = inputArea.querySelector('.north-shuoshuo-send-btn');
+                    if (sendBtn) sendBtn.style.marginLeft = '';
+                }
+
                 const isVisible = inputArea.classList.toggle('mobile-visible');
                 if (isVisible) {
                     // 延迟聚焦，等动画开始后聚焦（避免键盘弹出打断动画）
@@ -16239,23 +16358,223 @@ ipcRenderer.on('lumina-close', () => {
         fileInput.multiple = true;
         fileInput.style.display = 'none';
         document.body.appendChild(fileInput);
-        
+
         fileInput.onchange = async () => {
             const files = fileInput.files;
             if (!files || files.length === 0) {
                 document.body.removeChild(fileInput);
                 return;
             }
-            
+
             try {
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
-                    
+
                     showMessage(`正在上传 (${i + 1}/${files.length})...`);
+
+                    if (this.storageMode === 'public') {
+                        // 公共目录模式：上传到 /data/public/siyuan-lumina/
+                        const mediaPath = await this._uploadToPublicDir(file);
+                        if (mediaPath) {
+                            if (file.type.startsWith('image/')) {
+                                this.insertText(input, `![图片](${mediaPath})\n`, '');
+                            } else if (file.type.startsWith('video/')) {
+                                this.insertText(input, `![视频](${mediaPath})\n`, '');
+                            } else {
+                                this.insertText(input, `[${file.name}](${mediaPath})\n`, '');
+                            }
+                        } else {
+                            showMessage(`上传失败：${file.name}`);
+                        }
+                    } else {
+                        // 默认 assets 模式
+                        const formData = new FormData();
+                        formData.append('assetsDirPath', '/assets/');
+                        formData.append('file[]', file);
+
+                        const token = window.siyuan?.config?.api?.token || '';
+                        const headers = {};
+                        if (token) {
+                            headers['Authorization'] = `Token ${token}`;
+                        }
+                        const response = await fetch('/api/asset/upload', {
+                            method: 'POST',
+                            body: formData,
+                            headers
+                        });
+                        const result = await response.json();
+                        if (result.code === 0) {
+                            const succMap = result.data.succMap;
+                            const originalName = file.name;
+                            const newPath = succMap[originalName];
+                            if (newPath) {
+                                const mediaPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                                // 备份到插件备份目录（防被思源"未引用资源"清理）
+                                try {
+                                    await this.backupAsset(mediaPath.replace('assets/', ''), file);
+                                } catch (e) {
+                                    console.warn('备份文件失败:', mediaPath, e);
+                                }
+                                if (file.type.startsWith('image/')) {
+                                    this.insertText(input, `![图片](${mediaPath})\n`, '');
+                                } else if (file.type.startsWith('video/')) {
+                                    this.insertText(input, `![视频](${mediaPath})\n`, '');
+                                } else {
+                                    this.insertText(input, `[${file.name}](${mediaPath})\n`, '');
+                                }
+                            }
+                        } else {
+                            showMessage(`上传失败：${file.name} ` + (result.msg || '未知错误'));
+                        }
+                    }
+                }
+                input.focus();
+                showMessage("上传完成");
+            } catch (e) {
+                console.error(e);
+                showMessage('上传失败：' + e.message);
+            } finally {
+                if (fileInput.parentNode) {
+                    document.body.removeChild(fileInput);
+                }
+            }
+        };
+
+        fileInput.click();
+    }
+
+    // 插入任意文件（非图片/视频的通用文件）
+    insertFile(input) {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.multiple = true;
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+
+        fileInput.onchange = async () => {
+            const files = fileInput.files;
+            if (!files || files.length === 0) {
+                document.body.removeChild(fileInput);
+                return;
+            }
+
+            try {
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+
+                    showMessage(`正在上传 (${i + 1}/${files.length})...`);
+
+                    if (this.storageMode === 'public') {
+                        // 公共目录模式
+                        const filePath = await this._uploadToPublicDir(file);
+                        if (filePath) {
+                            if (file.type.startsWith('image/')) {
+                                this.insertText(input, `![图片](${filePath})\n`, '');
+                            } else if (file.type.startsWith('video/')) {
+                                this.insertText(input, `![视频](${filePath})\n`, '');
+                            } else {
+                                this.insertText(input, `[${file.name}](${filePath})\n`, '');
+                            }
+                        } else {
+                            showMessage(`上传失败：${file.name}`);
+                        }
+                    } else {
+                        // 默认 assets 模式
+                        const formData = new FormData();
+                        formData.append('assetsDirPath', '/assets/');
+                        formData.append('file[]', file);
+
+                        const token = window.siyuan?.config?.api?.token || '';
+                        const headers = {};
+                        if (token) {
+                            headers['Authorization'] = `Token ${token}`;
+                        }
+                        const response = await fetch('/api/asset/upload', {
+                            method: 'POST',
+                            body: formData,
+                            headers
+                        });
+                        const result = await response.json();
+                        if (result.code === 0) {
+                            const succMap = result.data.succMap;
+                            const originalName = file.name;
+                            const newPath = succMap[originalName];
+                            if (newPath) {
+                                const filePath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+                                // 备份到插件备份目录（防被思源"未引用资源"清理），与 insertImage 保持一致
+                                try {
+                                    await this.backupAsset(filePath.replace('assets/', ''), file);
+                                } catch (e) {
+                                    console.warn('备份文件失败:', filePath, e);
+                                }
+                                if (file.type.startsWith('image/')) {
+                                    this.insertText(input, `![图片](${filePath})\n`, '');
+                                } else if (file.type.startsWith('video/')) {
+                                    this.insertText(input, `![视频](${filePath})\n`, '');
+                                } else {
+                                    this.insertText(input, `[${file.name}](${filePath})\n`, '');
+                                }
+                            }
+                        } else {
+                            showMessage(`上传失败：${file.name} ` + (result.msg || '未知错误'));
+                        }
+                    }
+                }
+                input.focus();
+                showMessage("上传完成");
+            } catch (e) {
+                console.error(e);
+                showMessage('上传失败：' + e.message);
+            } finally {
+                if (fileInput.parentNode) {
+                    document.body.removeChild(fileInput);
+                }
+            }
+        };
+
+        fileInput.click();
+    }
+
+    // 处理粘贴图片/视频
+    async handlePasteImage(e, input) {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        const mediaFiles = [];
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.startsWith('image/') || items[i].type.startsWith('video/')) {
+                const file = items[i].getAsFile();
+                if (file) mediaFiles.push(file);
+            }
+        }
+
+        if (mediaFiles.length === 0) return;
+
+        e.preventDefault();
+
+        for (const file of mediaFiles) {
+            try {
+                showMessage("正在上传...");
+
+                if (this.storageMode === 'public') {
+                    // 公共目录模式
+                    const mediaPath = await this._uploadToPublicDir(file);
+                    if (mediaPath) {
+                        if (file.type.startsWith('image/')) {
+                            this.insertText(input, `![图片](${mediaPath})`, '');
+                        } else {
+                            this.insertText(input, `![视频](${mediaPath})`, '');
+                        }
+                        showMessage("插入成功");
+                    } else {
+                        showMessage('上传失败：' + (file.name || '粘贴文件'));
+                    }
+                } else {
+                    // 默认 assets 模式
                     const formData = new FormData();
                     formData.append('assetsDirPath', '/assets/');
                     formData.append('file[]', file);
-                    
+
                     const token = window.siyuan?.config?.api?.token || '';
                     const headers = {};
                     if (token) {
@@ -16273,170 +16592,23 @@ ipcRenderer.on('lumina-close', () => {
                         const newPath = succMap[originalName];
                         if (newPath) {
                             const mediaPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
-                            // 备份到插件备份目录（防被思源"未引用资源"清理）
-                            try {
-                                await this.backupAsset(mediaPath.replace('assets/', ''), file);
-                            } catch (e) {
-                                console.warn('备份文件失败:', mediaPath, e);
-                            }
                             if (file.type.startsWith('image/')) {
-                                this.insertText(input, `![图片](${mediaPath})\n`, '');
-                            } else if (file.type.startsWith('video/')) {
-                                this.insertText(input, `![视频](${mediaPath})\n`, '');
+                                this.insertText(input, `![图片](${mediaPath})`, '');
                             } else {
-                                this.insertText(input, `[${file.name}](${mediaPath})\n`, '');
+                                this.insertText(input, `![视频](${mediaPath})`, '');
                             }
+                            showMessage("插入成功");
                         }
                     } else {
-                        showMessage(`上传失败：${file.name} ` + (result.msg || '未知错误'));
+                        showMessage('上传失败：' + (result.msg || '未知错误'));
                     }
-                }
-                input.focus();
-                showMessage("上传完成");
-            } catch (e) {
-                console.error(e);
-                showMessage('上传失败：' + e.message);
-            } finally {
-                if (fileInput.parentNode) {
-                    document.body.removeChild(fileInput);
-                }
-            }
-        };
-        
-        fileInput.click();
-    }
-
-    // 插入任意文件（非图片/视频的通用文件）
-    insertFile(input) {
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.multiple = true;
-        fileInput.style.display = 'none';
-        document.body.appendChild(fileInput);
-        
-        fileInput.onchange = async () => {
-            const files = fileInput.files;
-            if (!files || files.length === 0) {
-                document.body.removeChild(fileInput);
-                return;
-            }
-            
-            try {
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    
-                    showMessage(`正在上传 (${i + 1}/${files.length})...`);
-                    const formData = new FormData();
-                    formData.append('assetsDirPath', '/assets/');
-                    formData.append('file[]', file);
-                    
-                    const token = window.siyuan?.config?.api?.token || '';
-                    const headers = {};
-                    if (token) {
-                        headers['Authorization'] = `Token ${token}`;
-                    }
-                    const response = await fetch('/api/asset/upload', {
-                        method: 'POST',
-                        body: formData,
-                        headers
-                    });
-                    const result = await response.json();
-                    if (result.code === 0) {
-                        const succMap = result.data.succMap;
-                        const originalName = file.name;
-                        const newPath = succMap[originalName];
-                        if (newPath) {
-                            const filePath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
-                            // 备份到插件备份目录（防被思源"未引用资源"清理），与 insertImage 保持一致
-                            try {
-                                await this.backupAsset(filePath.replace('assets/', ''), file);
-                            } catch (e) {
-                                console.warn('备份文件失败:', filePath, e);
-                            }
-                            if (file.type.startsWith('image/')) {
-                                this.insertText(input, `![图片](${filePath})\n`, '');
-                            } else if (file.type.startsWith('video/')) {
-                                this.insertText(input, `![视频](${filePath})\n`, '');
-                            } else {
-                                this.insertText(input, `[${file.name}](${filePath})\n`, '');
-                            }
-                        }
-                    } else {
-                        showMessage(`上传失败：${file.name} ` + (result.msg || '未知错误'));
-                    }
-                }
-                input.focus();
-                showMessage("上传完成");
-            } catch (e) {
-                console.error(e);
-                showMessage('上传失败：' + e.message);
-            } finally {
-                if (fileInput.parentNode) {
-                    document.body.removeChild(fileInput);
-                }
-            }
-        };
-        
-        fileInput.click();
-    }
-
-    // 处理粘贴图片/视频
-    async handlePasteImage(e, input) {
-        const items = e.clipboardData?.items;
-        if (!items) return;
-        
-        const mediaFiles = [];
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].type.startsWith('image/') || items[i].type.startsWith('video/')) {
-                const file = items[i].getAsFile();
-                if (file) mediaFiles.push(file);
-            }
-        }
-        
-        if (mediaFiles.length === 0) return;
-        
-        e.preventDefault();
-        
-        for (const file of mediaFiles) {
-            try {
-                showMessage("正在上传...");
-                const formData = new FormData();
-                formData.append('assetsDirPath', '/assets/');
-                formData.append('file[]', file);
-                
-                const token = window.siyuan?.config?.api?.token || '';
-                const headers = {};
-                if (token) {
-                    headers['Authorization'] = `Token ${token}`;
-                }
-                const response = await fetch('/api/asset/upload', {
-                    method: 'POST',
-                    body: formData,
-                    headers
-                });
-                const result = await response.json();
-                if (result.code === 0) {
-                    const succMap = result.data.succMap;
-                    const originalName = file.name;
-                    const newPath = succMap[originalName];
-                    if (newPath) {
-                        const mediaPath = newPath.startsWith('/') ? newPath.substring(1) : newPath;
-                        if (file.type.startsWith('image/')) {
-                            this.insertText(input, `![图片](${mediaPath})`, '');
-                        } else {
-                            this.insertText(input, `![视频](${mediaPath})`, '');
-                        }
-                        showMessage("插入成功");
-                    }
-                } else {
-                    showMessage('上传失败：' + (result.msg || '未知错误'));
                 }
             } catch (err) {
                 console.error(err);
                 showMessage('上传失败：' + err.message);
             }
         }
-        
+
         input.focus();
     }
 
@@ -21320,14 +21492,67 @@ ipcRenderer.on('lumina-close', () => {
         }
     }
 
+    // 上传文件到 /data/public/siyuan-lumina/ 目录（脱离思源资源目录）
+    // @param {File|Blob} file - 文件对象
+    // @param {string} [fileName] - 可选文件名，不传则使用 file.name
+    // @returns {Promise<string|null>} 成功返回引用路径（如 "public/siyuan-lumina/xxx.png"），失败返回 null
+    async _uploadToPublicDir(file, fileName) {
+        try {
+            const actualName = fileName || file.name;
+            const targetPath = `data/public/siyuan-lumina/${actualName}`;
+
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = {};
+            if (token) headers['Authorization'] = `Token ${token}`;
+
+            // 确保公共目录存在
+            try {
+                const mkdirForm = new FormData();
+                mkdirForm.append('path', 'data/public/siyuan-lumina');
+                mkdirForm.append('isDir', 'true');
+                mkdirForm.append('modTime', Date.now().toString());
+                await fetch('/api/file/putFile', { method: 'POST', body: mkdirForm, headers });
+            } catch (mkdirErr) {
+                // 目录已存在时可能报错，忽略
+                console.warn('[轻语] 创建公共目录时提示:', mkdirErr.message);
+            }
+
+            // 上传文件
+            const uploadForm = new FormData();
+            uploadForm.append('path', targetPath);
+            uploadForm.append('file', file);
+            uploadForm.append('isDir', 'false');
+            uploadForm.append('modTime', Date.now().toString());
+
+            const resp = await fetch('/api/file/putFile', { method: 'POST', body: uploadForm, headers });
+            const result = await resp.json();
+            if (result.code === 0) {
+                // 返回引用路径：public/siyuan-lumina/xxx.png
+                return `public/siyuan-lumina/${actualName}`;
+            }
+            console.error('[轻语] 上传到公共目录失败:', result);
+            return null;
+        } catch (e) {
+            console.error('[轻语] 上传到公共目录异常:', e);
+            return null;
+        }
+    }
+
     // 上传图片到 assets/ 并备份到插件备份目录（避免被思源"未引用资源"清理）
     async uploadToPluginDir(base64Data, fileName) {
         try {
-            // Step 1: 上传到 data/assets/
+            // 将 base64 转为 File 对象
             const base64Response = await fetch(base64Data);
             const blob = await base64Response.blob();
             const file = new File([blob], fileName, { type: blob.type });
 
+            if (this.storageMode === 'public') {
+                // 公共目录模式：直接上传到 /data/public/siyuan-lumina/
+                const publicPath = await this._uploadToPublicDir(file, fileName);
+                return publicPath;
+            }
+
+            // 默认 assets 模式
             const uploadForm = new FormData();
             uploadForm.append('assetsDirPath', '/assets/');
             uploadForm.append('file[]', file);
@@ -21448,10 +21673,14 @@ ipcRenderer.on('lumina-close', () => {
         if (url.startsWith('assets/') || url.startsWith('/assets/')) {
             return url.startsWith('/') ? url : `/${url}`;
         }
+        // 公共目录路径：public/siyuan-lumina/xxx → /public/siyuan-lumina/xxx
+        if (url.startsWith('public/siyuan-lumina/') || url.startsWith('/public/siyuan-lumina/')) {
+            return url.startsWith('/') ? url : `/${url}`;
+        }
         return url;
     }
 
-    // 从所有数据中收集被引用的 assets 文件名
+    // 从所有数据中收集被引用的资源文件名（兼容 assets 和 public 两种模式）
     _collectReferencedAssetFiles() {
         const filenames = new Set();
         // 说说中的 Markdown 图片与文件附件引用
@@ -21459,16 +21688,19 @@ ipcRenderer.on('lumina-close', () => {
             const { images, files } = this.extractContentAndImages(s.content || '');
             for (const img of images) {
                 if (img.url) {
-                    const match = img.url.match(/\/?assets\/(.+)/);
-                    if (match) filenames.add(match[1]);
+                    const assetMatch = img.url.match(/\/?assets\/(.+)/);
+                    if (assetMatch) filenames.add(assetMatch[1]);
+                    const pubMatch = img.url.match(/\/?public\/siyuan-lumina\/(.+)/);
+                    if (pubMatch) filenames.add(`public:${pubMatch[1]}`);
                 }
             }
-            // 文件附件（非图片/视频的通用文件，如 pdf/doc/zip 等）同样需要纳入引用收集，
-            // 否则「思源清理未引用资源」后被删，_verifyAndRestoreAssets 不会从备份恢复，导致点击下载 404。
+            // 文件附件（非图片/视频的通用文件，如 pdf/doc/zip 等）同样需要纳入引用收集
             for (const f of files) {
                 if (f.url) {
-                    const match = f.url.match(/\/?assets\/(.+)/);
-                    if (match) filenames.add(match[1]);
+                    const assetMatch = f.url.match(/\/?assets\/(.+)/);
+                    if (assetMatch) filenames.add(assetMatch[1]);
+                    const pubMatch = f.url.match(/\/?public\/siyuan-lumina\/(.+)/);
+                    if (pubMatch) filenames.add(`public:${pubMatch[1]}`);
                 }
             }
         }
@@ -21476,8 +21708,10 @@ ipcRenderer.on('lumina-close', () => {
         for (const m of this.moments || []) {
             if (m.images) {
                 for (const img of m.images) {
-                    const match = img.match(/\/?assets\/(.+)/);
-                    if (match) filenames.add(match[1]);
+                    const assetMatch = img.match(/\/?assets\/(.+)/);
+                    if (assetMatch) filenames.add(assetMatch[1]);
+                    const pubMatch = img.match(/\/?public\/siyuan-lumina\/(.+)/);
+                    if (pubMatch) filenames.add(`public:${pubMatch}`);
                 }
             }
         }
@@ -21488,6 +21722,8 @@ ipcRenderer.on('lumina-close', () => {
                 if (val) {
                     const match = val.match(/\/?assets\/(.+)/);
                     if (match) filenames.add(match[1]);
+                    const pm = val.match(/\/?public\/siyuan-lumina\/(.+)/);
+                    if (pm) filenames.add(`public:${pm[1]}`);
                 }
             }
         }
@@ -21497,6 +21733,8 @@ ipcRenderer.on('lumina-close', () => {
             if (val) {
                 const match = val.match(/\/?assets\/(.+)/);
                 if (match) filenames.add(match[1]);
+                const pm = val.match(/\/?public\/siyuan-lumina\/(.+)/);
+                if (pm) filenames.add(`public:${pm[1]}`);
             }
         }
         return [...filenames];
@@ -23939,6 +24177,23 @@ ipcRenderer.on('lumina-close', () => {
                 await this.saveConfig();
                 this.refreshMountedShuoshuoViews();
                 showMessage(this.shuoshuoHeatmapType === 'calendar' ? '已切换为月历视图' : '已切换为日历贡献图');
+            });
+        }
+
+        // 资源存储位置选择
+        const storageModeSelect = this.container.querySelector('#storage-mode-select');
+        if (storageModeSelect) {
+            storageModeSelect.addEventListener('change', async () => {
+                const newMode = storageModeSelect.value === 'public' ? 'public' : 'assets';
+                if (newMode !== this.storageMode) {
+                    const modeLabel = newMode === 'public' ? '公共目录（脱离资源目录）' : '思源资源目录（默认）';
+                    const warnMsg = newMode === 'public'
+                        ? '切换后新上传的图片与资源文件将保存到 data/public/siyuan-lumina/，不再进入思源资源目录，已有的引用不受影响。'
+                        : '切换后新上传的图片与资源文件将回到思源资源目录（assets/），已有的引用不受影响。';
+                    showMessage(`已切换资源存储位置为：${modeLabel}\n${warnMsg}`);
+                    this.storageMode = newMode;
+                    await this.saveConfig();
+                }
             });
         }
 
@@ -26682,6 +26937,7 @@ ipcRenderer.on('lumina-close', () => {
                 this.lifeLogCompactMode = data.lifeLogCompactMode === true || data.lifeLogCompactMode === 'true' || data.lifeLogCompactMode === 1;
                 this.shuoshuoHeatmapType = (data.shuoshuoHeatmapType === 'calendar') ? 'calendar' : 'heatmap';
                 this.sidebarFullScroll = data.sidebarFullScroll === true || data.sidebarFullScroll === 'true' || data.sidebarFullScroll === 1;
+                this.storageMode = (data.storageMode === 'public') ? 'public' : 'assets';
                 this.mobileAddFloating = data.mobileAddFloating === true || data.mobileAddFloating === 'true' || data.mobileAddFloating === 1;
                 this.mobileAddFloatPos = (data.mobileAddFloatPos && typeof data.mobileAddFloatPos.left === 'number' && typeof data.mobileAddFloatPos.top === 'number') ? data.mobileAddFloatPos : null;
                 this.lifeLogAddFloating = data.lifeLogAddFloating === true || data.lifeLogAddFloating === 'true' || data.lifeLogAddFloating === 1;
@@ -26801,6 +27057,7 @@ ipcRenderer.on('lumina-close', () => {
                     lifeLogCompactMode: this.lifeLogCompactMode,
                     shuoshuoHeatmapType: this.shuoshuoHeatmapType,
                     sidebarFullScroll: this.sidebarFullScroll,
+                    storageMode: this.storageMode,
                     mobileAddFloating: this.mobileAddFloating,
                     mobileAddFloatPos: this.mobileAddFloatPos,
                     lifeLogAddFloating: this.lifeLogAddFloating,
@@ -27046,6 +27303,75 @@ ipcRenderer.on('lumina-close', () => {
         btn.addEventListener('mousedown', onStart);
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onEnd);
+    }
+
+    // 绑定 LifeLog 类型选择条的点击事件（可复用：renderLifeLog / 移动端 +号弹窗）
+    _bindLifeLogInputTypes(inputTypes) {
+        if (!inputTypes || inputTypes._luminaTypeBound) return;
+        inputTypes._luminaTypeBound = true;
+
+        const self = this;
+        const toggleBtn = inputTypes.querySelector('#lifelog-type-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', function(e) {
+                if (self._lifelogTypesExpanded && self._lifelogCurrentInputType) {
+                    self._lifelogCurrentInputType = '';
+                }
+                self._lifelogTypesExpanded = !self._lifelogTypesExpanded;
+                // 重新渲染类型选择条内容（展开/折叠切换）
+                const records = self.lifeLogRecords || [];
+                const typeCount = {};
+                records.forEach(r => { const t = r._lifeLogType || ''; if (t) typeCount[t] = (typeCount[t] || 0) + 1; });
+                const types = Object.keys(typeCount).sort();
+                const currentType = self._lifelogCurrentInputType || '';
+                const allClass = !currentType ? ' active' : '';
+                let html = `<span class="north-shuoshuo-lifelog-input-type${allClass}" data-lifelog-input-type="" id="lifelog-type-toggle">全部</span>`;
+                if (self._lifelogTypesExpanded) {
+                    html += types.map(type => {
+                        const active = type === currentType ? ' active' : '';
+                        return `<span class="north-shuoshuo-lifelog-input-type${active}" data-lifelog-input-type="${self.escapeHtml(type)}">${self.escapeHtml(type)}</span>`;
+                    }).join('');
+                }
+                inputTypes.innerHTML = html;
+                // 重新绑定新生成按钮的事件
+                self._bindLifeLogInputTypes(inputTypes);
+            });
+        }
+
+        // 其他类型按钮：仅设置新记录的类型（不筛选列表）
+        inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type:not(#lifelog-type-toggle)').forEach(item => {
+            item.addEventListener('click', function() {
+                const type = this.dataset.lifelogInputType;
+                if (type === self._lifelogCurrentInputType) {
+                    self._lifelogCurrentInputType = '';
+                } else {
+                    self._lifelogCurrentInputType = type || '';
+                }
+                inputTypes.querySelectorAll('.north-shuoshuo-lifelog-input-type').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.lifelogInputType === self._lifelogCurrentInputType);
+                });
+                // 更新类型芯片显示
+                const _inputArea = self.container?.querySelector('#shuoshuo-input-area');
+                const toolbar = _inputArea?.querySelector('.north-shuoshuo-input-toolbar') || self.container?.querySelector('.north-shuoshuo-input-toolbar');
+                let typeChip = _inputArea?.querySelector('#lifelog-current-type-chip') || self.container?.querySelector('#lifelog-current-type-chip');
+                if (self._lifelogCurrentInputType) {
+                    if (!typeChip && toolbar) {
+                        typeChip = document.createElement('span');
+                        typeChip.id = 'lifelog-current-type-chip';
+                        typeChip.className = 'north-shuoshuo-lifelog-current-type-chip';
+                        toolbar.insertBefore(typeChip, toolbar.firstChild);
+                    }
+                    if (typeChip) { typeChip.textContent = self._lifelogCurrentInputType; typeChip.style.display = 'inline-flex'; }
+                } else if (typeChip) {
+                    typeChip.style.display = 'none';
+                }
+                // 聚焦输入框
+                setTimeout(() => {
+                    const input = self.container?.querySelector('#shuoshuo-input');
+                    if (input) input.focus();
+                }, 0);
+            });
+        });
     }
 
     // 关闭移动端底部输入弹窗（面板先下滑、遮罩淡出）

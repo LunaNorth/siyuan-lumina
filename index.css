@@ -16910,6 +16910,44 @@ body.dark .north-shuoshuo-gallery-file-wrapper:hover,
     padding: 0 !important;
 }
 
+/* 移动端时间轴布局：压缩左侧留白，让卡片更宽更舒适 */
+@media (max-width: 768px) {
+    .north-shuoshuo-notes-list.lifelog-timeline-layout {
+        padding: 12px 10px 20px !important;
+    }
+
+    .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-left {
+        min-width: 36px;
+        max-width: 46px;
+        padding-right: 6px;
+    }
+
+    .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-time {
+        font-size: 13px;
+    }
+
+    .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-axis {
+        width: 14px;
+        padding-top: 10px;
+    }
+
+    .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-marker {
+        width: 9px;
+        height: 9px;
+    }
+
+    .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-card {
+        margin-left: 8px;
+        padding: 10px 12px;
+        border-radius: 10px;
+    }
+
+    .north-shuoshuo-notes-list.lifelog-timeline-layout .north-shuoshuo-date-group {
+        margin-left: 54px;
+        font-size: 13px;
+    }
+}
+
 /* ========== LifeLog 统计视图 ========== */
 .north-shuoshuo-lifelog-stats {
     padding: 16px 20px;
