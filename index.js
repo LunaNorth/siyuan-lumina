@@ -150,7 +150,6 @@ const ICONS = {
     grid: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z"/></svg>`,
     star: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`,
     starOutline: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>`,
-    random: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>`,
     setting: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L3.16 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>`,
     more: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`,
     edit: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`,
@@ -549,6 +548,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this.imgGrid4Size = 50;   // 四图（原 max-width:50%）
         this.imgMultiSize = 50;   // 多图（原 max-width:50%）
         this.enterToSubmit = false; // 输入框回车直接提交
+        this._pendingImages = []; // 主输入框待发布图片列表（独立于 textarea，textarea 只存纯文字）
         this.showSidebarDock = false; // 是否显示侧边栏 Dock（默认不显示）
         this.autoOpen = false; // 启动时自动打开轻语（持久化配置，默认关闭）
         this.showLifelogSidebarDock = false; // 是否显示 LifeLog 侧边栏 Dock
@@ -586,6 +586,7 @@ module.exports = class ShuoshuoPlugin extends Plugin {
         this._lifelogTypesExpanded = this.lifelogTypesDefaultExpanded; // LifeLog 类型折叠条是否展开
         this.lifeLogTimeMode = 'end'; // LifeLog 时间模式: 'end'=结束模式(默认) 'start'=开始模式
         this.lifeLogViewStyle = 'card'; // LifeLog 展示样式: 'card'=卡片布局(默认) 'timeline'=时间轴布局
+        this.lifeLogShowDurationInTimeline = false; // LifeLog 时间轴布局是否显示持续时间（默认不显示）
         this._lifelogTypeColorCache = new Map(); // 缓存 LifeLog 类型颜色（按 类型|主题 维度），避免每张卡片都触发 getComputedStyle 强制重排
         this._lifelogSelectedDate = null; // LifeLog 视图独立的选中日期（与说说 selectedDate 隔离，避免互相影响）
         this.galleryColumnCount = 3; // 拾光视图列数（默认3列）
@@ -3492,10 +3493,6 @@ ipcRenderer.on('lumina-close', () => {
                                 <span class="north-shuoshuo-menu-icon"><svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></span>
                                 <span class="north-shuoshuo-menu-text">本周记录</span>
                             </div>
-                            <div class="north-shuoshuo-menu-item" data-view="random">
-                                <span class="north-shuoshuo-menu-icon">${ICONS.random}</span>
-                                <span class="north-shuoshuo-menu-text">随机漫步</span>
-                            </div>
                         </div>
 
                         <div class="north-shuoshuo-query-section">
@@ -3583,6 +3580,7 @@ ipcRenderer.on('lumina-close', () => {
                                 <div class="north-shuoshuo-input-wrapper">
                                     <textarea class="north-shuoshuo-input-field" id="shuoshuo-input" placeholder="现在的想法是..." rows="3" enterkeyhint="${this.enterToSubmit ? 'done' : 'enter'}"></textarea>
                                 </div>
+                                <div class="north-shuoshuo-image-preview-bar" id="shuoshuo-image-preview-bar"></div>
                                 <div class="north-shuoshuo-input-toolbar">
                                     <div class="north-shuoshuo-toolbar-left">
                                         <span class="north-shuoshuo-toolbar-icon" id="toolbar-tag" title="标签"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconTag"></use></svg></span>
@@ -4906,6 +4904,13 @@ ipcRenderer.on('lumina-close', () => {
                                         <button class="north-shuoshuo-query-match-btn ${this.lifeLogTimeMode === 'start' ? 'active' : ''}" data-lifelog-time-mode="start" style="flex:0;white-space:nowrap;min-width:80px;">开始模式</button>
                                     </div>
                                 </div>
+                                <div class="north-shuoshuo-toggle-row">
+                                    <div class="north-shuoshuo-toggle-info">
+                                        <h4>时间轴显示持续时间</h4>
+                                        <p>开启后，时间轴布局中每条记录的范围行右侧显示该条记录持续的时长。</p>
+                                    </div>
+                                    <div class="north-shuoshuo-switch ${this.lifeLogShowDurationInTimeline ? 'on' : ''}" id="lifelog-settings-duration-switch"></div>
+                                </div>
                             </div>
                         </div>
 
@@ -5302,10 +5307,6 @@ ipcRenderer.on('lumina-close', () => {
                     break;
                 case 'review':
                     this.renderReview();
-                    this.renderTags();
-                    break;
-                case 'random':
-                    this.renderRandom();
                     this.renderTags();
                     break;
                 case 'moments':
@@ -7487,7 +7488,7 @@ ipcRenderer.on('lumina-close', () => {
                         <div class="lifelog-timeline-marker"></div>
                     </div>
                     <div class="lifelog-timeline-card">
-                        <div class="lifelog-timeline-range">${rangeStr}</div>
+                        <div class="lifelog-timeline-range">${rangeStr}${this.lifeLogShowDurationInTimeline && item._durationMs ? `<span class="lifelog-timeline-duration">${this._formatDuration(item._durationMs)}</span>` : ''}</div>
                         ${lifeLogType ? `<div class="lifelog-timeline-type"${typeStyle}>${this.escapeHtml(lifeLogType)}</div>` : ''}
                         <div class="lifelog-timeline-content">${this.renderNoteContent(item.content)}</div>
                     </div>
@@ -7709,29 +7710,44 @@ ipcRenderer.on('lumina-close', () => {
         `;
     }
 
-    // 渲染瀑布流布局（三列）
+    // 根据容器/视口宽度决定说说卡片瀑布流的列数：桌面三栏，移动端（≤768px）双栏
+    _getShuoshuoColumnCount() {
+        let width = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1200;
+        // 若列表容器已渲染，以其实际宽度为准，兼容桌面端窄侧栏场景
+        const listEl = this.container?.querySelector('#shuoshuo-notes-list');
+        if (listEl && listEl.clientWidth) width = listEl.clientWidth;
+        return width <= 768 ? 2 : 3;
+    }
+
+    // 渲染瀑布流布局（响应式列数：桌面三列 / 移动端双列）
     renderMasonryNotes(sorted, options = {}) {
-        // 创建三列
-        const columns = [[], [], []];
-        
-        // 将笔记分配到三列（简单轮询分配，确保每列数量均衡）
-        sorted.forEach((item, index) => {
-            const columnIndex = index % 3;
-            columns[columnIndex].push(item);
+        // 计算当前列数（桌面 3 / 移动端 2）
+        const colCount = this._getShuoshuoColumnCount();
+        const columns = Array.from({ length: colCount }, () => []);
+
+        // 按「最短列优先」贪心分配，使各列高度更均衡（瀑布流效果更自然）
+        const heights = new Array(colCount).fill(0);
+        sorted.forEach((item) => {
+            let target = 0;
+            for (let i = 1; i < colCount; i++) {
+                if (heights[i] < heights[target]) target = i;
+            }
+            columns[target].push(item);
+            // 估算高度：正文越长越高；含图片/文件预览额外加高
+            const content = item.content || '';
+            const len = content.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[[^\]]*\]\([^)]*\)/g, '').length;
+            let h = 60 + Math.min(len, 400) * 0.45;
+            if (/!\[[^\]]*\]\([^)]*\)/.test(content)) h += 120;
+            if (/\[[^\]]*\]\([^)]*\)/.test(content)) h += 40;
+            heights[target] += h;
         });
-        
-        // 渲染三列
-        return `
-            <div class="north-shuoshuo-masonry-column" data-column="0">
-                ${columns[0].map(item => this.renderNoteCard(item, options)).join('')}
+
+        // 渲染各列
+        return columns.map((col, i) => `
+            <div class="north-shuoshuo-masonry-column" data-column="${i}">
+                ${col.map(item => this.renderNoteCard(item, options)).join('')}
             </div>
-            <div class="north-shuoshuo-masonry-column" data-column="1">
-                ${columns[1].map(item => this.renderNoteCard(item, options)).join('')}
-            </div>
-            <div class="north-shuoshuo-masonry-column" data-column="2">
-                ${columns[2].map(item => this.renderNoteCard(item, options)).join('')}
-            </div>
-        `;
+        `).join('');
     }
 
     // 渲染每日回顾视图
@@ -7887,311 +7903,6 @@ ipcRenderer.on('lumina-close', () => {
 
     // 绑定回顾设置按钮事件
 
-
-    // 渲染随机漫步视图
-    renderRandom() {
-        const listEl = this.container.querySelector('#shuoshuo-notes-list');
-        if (!listEl) return;
-
-        // 隐藏输入区域，恢复侧边栏显示
-        const inputArea = this.container.querySelector('.north-shuoshuo-input-area');
-        if (inputArea) inputArea.style.display = 'none';
-        const sidebar = this.container.querySelector('.north-shuoshuo-flomo-sidebar');
-        if (sidebar) sidebar.style.display = '';
-        listEl.classList.remove('review-mode', 'card-layout', 'list-layout', 'table-layout', 'gallery-layout');
-
-        if (this.shuoshuos.length === 0) {
-            listEl.innerHTML = `
-                <div class="north-shuoshuo-random-bg">
-                    <div class="north-shuoshuo-random-empty">
-                        <div class="north-shuoshuo-random-empty-icon">🎲</div>
-                        <div class="north-shuoshuo-random-empty-text">还没有笔记</div>
-                        <div class="north-shuoshuo-random-empty-hint">添加一些笔记后，来这里发现惊喜</div>
-                    </div>
-                </div>
-            `;
-            return;
-        }
-
-        const total = this.shuoshuos.length;
-
-        listEl.innerHTML = `
-            <div class="north-shuoshuo-random-bg">
-                <div class="north-shuoshuo-review-card" id="memoCard" data-id="">
-                    <div class="north-shuoshuo-review-header">
-                        <div class="north-shuoshuo-header-left">
-                            <svg class="north-shuoshuo-icon-wander" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
-                                <circle cx="12" cy="10" r="3"/>
-                            </svg>
-                            <span class="north-shuoshuo-review-title">随机漫步</span>
-                        </div>
-                        <div class="north-shuoshuo-review-header-right">
-                            <span class="north-shuoshuo-review-date" id="memoDate"></span>
-                            <div class="north-shuoshuo-random-actions">
-                                <span class="north-shuoshuo-random-action-btn" data-action="edit" title="编辑">${ICONS.edit}</span>
-                                <span class="north-shuoshuo-random-action-btn" data-action="comment" title="批注">${ICONS.comment}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="north-shuoshuo-review-body">
-                        <div class="north-shuoshuo-review-content" id="memoContent"></div>
-                    </div>
-                    <div class="north-shuoshuo-random-relations" id="memoRelations"></div>
-                    <div class="north-shuoshuo-review-footer">
-                        <span class="north-shuoshuo-review-tag" id="memoTag"></span>
-                        <span class="north-shuoshuo-page-indicator">
-                            <span class="north-shuoshuo-page-current" id="memoPageCurrent"></span>
-                            <span style="margin: 0 3px; opacity: 0.5;">/</span>
-                            <span id="memoPageTotal"></span>
-                        </span>
-                    </div>
-                    <div class="north-shuoshuo-random-comment-box" id="memoCommentBox" style="display:none;">
-                        <div class="north-shuoshuo-random-comment-input-wrap">
-                            <textarea class="north-shuoshuo-random-comment-field" id="memoCommentInput" placeholder="写下批注..." rows="2"></textarea>
-                        </div>
-                        <div class="north-shuoshuo-random-comment-toolbar">
-                            <div class="north-shuoshuo-toolbar-left">
-                                <span class="north-shuoshuo-toolbar-icon" data-action="tag" title="标签"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconTag"></use></svg></span>
-                                <span class="north-shuoshuo-toolbar-icon" data-action="image" title="上传资源"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconImage"></use></svg></span>
-                                <span class="north-shuoshuo-toolbar-divider"></span>
-                                <span class="north-shuoshuo-toolbar-icon" data-action="ul" title="无序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconList"></use></svg></span>
-                                <span class="north-shuoshuo-toolbar-icon" data-action="ol" title="有序列表"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconOrderedList"></use></svg></span>
-                                <span class="north-shuoshuo-toolbar-icon" data-action="at" title="快速引用">${ICONS.at}</span>
-                            </div>
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <button class="north-shuoshuo-inline-edit-cancel" id="memoCommentCancel">取消</button>
-                                <button class="north-shuoshuo-send-btn north-shuoshuo-inline-save active" id="memoCommentSave">${ICONS.send}</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="north-shuoshuo-keyboard-hint">
-                    <span>点击卡片或</span>
-                    <kbd class="north-shuoshuo-kbd">Space</kbd>
-                    <span>换一条</span>
-                </div>
-            </div>
-        `;
-
-        const memoCard = listEl.querySelector('#memoCard');
-        const memoDate = listEl.querySelector('#memoDate');
-        const memoContent = listEl.querySelector('#memoContent');
-        const memoTag = listEl.querySelector('#memoTag');
-        const memoPageCurrent = listEl.querySelector('#memoPageCurrent');
-        const memoPageTotal = listEl.querySelector('#memoPageTotal');
-
-        // Fisher-Yates 洗牌：确保每条都被"漫步"到，不重复，全部走完再重新洗牌
-        let shuffled = [];
-        let index = 0;
-
-        const shuffle = (array) => {
-            const arr = [...array];
-            for (let i = arr.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [arr[i], arr[j]] = [arr[j], arr[i]];
-            }
-            return arr;
-        };
-
-        const renderNote = (note, currentNum) => {
-            memoCard.dataset.id = note.id;
-            memoDate.textContent = this.formatDate(note.created);
-            memoContent.innerHTML = this.renderNoteContent(note.content, { hideTags: true });
-            // 绑定块引用点击事件
-            memoContent.querySelectorAll('.north-shuoshuo-block-ref').forEach(ref => {
-                ref.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const blockId = ref.dataset.blockId;
-                    if (blockId) {
-                        this.openSiyuanBlockAndCloseMobileShell(blockId);
-                    }
-                });
-            });
-            // 渲染关联关系
-            const relationsContainer = memoCard.querySelector('#memoRelations');
-            if (relationsContainer) {
-                relationsContainer.innerHTML = this.renderMemoRelations(note.content);
-            }
-            const tags = note.tags || [];
-            if (tags.length > 0) {
-                memoTag.innerHTML = `${this.escapeHtml(tags[0])}`;
-                memoTag.style.display = 'inline-flex';
-            } else {
-                memoTag.innerHTML = '';
-                memoTag.style.display = 'none';
-            }
-            memoPageCurrent.textContent = currentNum;
-            memoPageTotal.textContent = total;
-            // 切换笔记时隐藏批注框
-            const commentBox = memoCard.querySelector('#memoCommentBox');
-            const commentInput = memoCard.querySelector('#memoCommentInput');
-            if (commentBox) commentBox.style.display = 'none';
-            if (commentInput) {
-                commentInput.value = '';
-                commentInput.style.height = 'auto';
-            }
-        };
-
-        const init = () => {
-            shuffled = shuffle(this.shuoshuos);
-            index = 0;
-            renderNote(shuffled[index], index + 1);
-        };
-
-        const next = () => {
-            index++;
-            if (index >= shuffled.length) {
-                shuffled = shuffle(this.shuoshuos);
-                index = 0;
-            }
-
-            // 动画：仅内容区淡出，更新后再淡入，卡片容器保持不动避免闪动
-            memoContent.style.transition = 'opacity 0.2s ease';
-            memoContent.style.opacity = '0';
-
-            setTimeout(() => {
-                renderNote(shuffled[index], index + 1);
-                memoContent.style.opacity = '1';
-            }, 200);
-        };
-
-        // 初始化
-        init();
-
-        // 编辑按钮
-        memoCard.querySelector('.north-shuoshuo-random-actions [data-action="edit"]').addEventListener('click', () => {
-            const id = memoCard.dataset.id;
-            if (id) this.editNote(id);
-        });
-
-        // 批注按钮
-        memoCard.querySelector('.north-shuoshuo-random-actions [data-action="comment"]').addEventListener('click', () => {
-            const commentBox = memoCard.querySelector('#memoCommentBox');
-            const commentInput = memoCard.querySelector('#memoCommentInput');
-            if (commentBox.style.display === 'none') {
-                commentBox.style.display = 'block';
-                commentInput.focus();
-            } else {
-                commentBox.style.display = 'none';
-            }
-        });
-
-        // 批注输入框
-        const commentInput = memoCard.querySelector('#memoCommentInput');
-        commentInput.addEventListener('input', () => {
-            commentInput.style.height = 'auto';
-            commentInput.style.height = Math.max(60, commentInput.scrollHeight) + 'px';
-            this.handleMentionInput(commentInput);
-        });
-        commentInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                memoCard.querySelector('#memoCommentSave').click();
-            }
-        });
-
-        // 批注工具栏
-        memoCard.querySelector('#memoCommentBox [data-action="tag"]').addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.showTagPicker(commentInput);
-        });
-        memoCard.querySelector('#memoCommentBox [data-action="image"]').addEventListener('click', () => {
-            this.insertImage(commentInput);
-        });
-        memoCard.querySelector('#memoCommentBox [data-action="ul"]').addEventListener('click', () => {
-            this.insertText(commentInput, '- ', '');
-            commentInput.focus();
-        });
-        memoCard.querySelector('#memoCommentBox [data-action="ol"]').addEventListener('click', () => {
-            const lines = commentInput.value.substring(0, commentInput.selectionStart).split('\n');
-            const currentLine = lines[lines.length - 1];
-            const match = currentLine.match(/^(\d+)\.\s/);
-            const num = match ? parseInt(match[1]) + 1 : 1;
-            this.insertText(commentInput, num + '. ', '');
-            commentInput.focus();
-        });
-        memoCard.querySelector('#memoCommentBox [data-action="at"]').addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.showMentionPicker(commentInput);
-        });
-
-        // 批注取消
-        memoCard.querySelector('#memoCommentCancel').addEventListener('click', () => {
-            const commentBox = memoCard.querySelector('#memoCommentBox');
-            commentBox.style.display = 'none';
-            commentInput.value = '';
-            commentInput.style.height = 'auto';
-        });
-
-        // 批注保存
-        memoCard.querySelector('#memoCommentSave').addEventListener('click', async () => {
-            const id = memoCard.dataset.id;
-            const text = commentInput.value.trim();
-            if (!text || !id) return;
-
-            const note = this.shuoshuos.find(s => s.id === id);
-            if (!note) return;
-
-            let preview = (note.content || '').replace(/\[MEMO:[^\]]+\]/g, '').trim();
-            preview = preview.split('\n')[0];
-            preview = preview.replace(/#[^\s\d][^\s]*(?:\/[^\s]+)*/g, '').trim().replace(/\s+/g, ' ');
-            preview = preview.substring(0, 60) + (preview.length > 60 ? '...' : '');
-
-            const fullContent = `${preview} [MEMO:${id}]\n${text}`;
-            const tags = this.extractTags(fullContent);
-            const shuoshuo = {
-                id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
-                content: fullContent,
-                tags: tags,
-                pinned: false,
-                archived: false,
-                created: Date.now(),
-                updated: Date.now()
-            };
-            this.shuoshuos.unshift(shuoshuo);
-            await this.saveShuoshuos();
-
-            const commentBox = memoCard.querySelector('#memoCommentBox');
-            commentBox.style.display = 'none';
-            commentInput.value = '';
-            commentInput.style.height = 'auto';
-            showMessage('批注已保存');
-        });
-
-        // 移动端（无键盘）：点击卡片主体切换下一条；编辑/批注/引用/链接等交互元素不触发
-        const isInteractiveTarget = (target) => target.closest(
-            '.north-shuoshuo-random-actions, #memoCommentBox, .north-shuoshuo-block-ref, a, .north-shuoshuo-toolbar-icon'
-        );
-        memoCard.addEventListener('click', (e) => {
-            if (isInteractiveTarget(e.target)) return;
-            next();
-        });
-
-        // 让“换一条”提示本身也可点击，移动端无需键盘也能切换
-        const hintEl = listEl.querySelector('.north-shuoshuo-keyboard-hint');
-        if (hintEl) {
-            hintEl.style.cursor = 'pointer';
-            hintEl.addEventListener('click', (e) => {
-                e.stopPropagation();
-                next();
-            });
-        }
-
-        // 键盘事件
-        if (this._randomKeyHandler) {
-            document.removeEventListener('keydown', this._randomKeyHandler);
-        }
-        this._randomKeyHandler = (e) => {
-            if (this.currentMainView !== 'random') return;
-            if (e.code === 'Space') {
-                e.preventDefault();
-                next();
-            }
-        };
-        document.addEventListener('keydown', this._randomKeyHandler);
-    }
 
     // 渲染表格视图
     renderTable() {
@@ -12402,7 +12113,6 @@ ipcRenderer.on('lumina-close', () => {
     }
 
 
-
 // 显示功能详情视图
     showFeatureView(feature) {
         const titles = {
@@ -14276,6 +13986,28 @@ ipcRenderer.on('lumina-close', () => {
         }
         this._suppressKeyboardToolbarOn(input);
 
+        // 说说卡片布局：窗口/容器宽度跨断点时重渲染，切换列数（桌面三栏 / 移动端双栏）
+        if (this._shuoshuoResizeHandler) {
+            window.removeEventListener('resize', this._shuoshuoResizeHandler);
+            this._shuoshuoResizeHandler = null;
+        }
+        this._lastShuoshuoColCount = this._getShuoshuoColumnCount();
+        let _shuoshuoResizeTimer = null;
+        this._shuoshuoResizeHandler = () => {
+            if (_shuoshuoResizeTimer) clearTimeout(_shuoshuoResizeTimer);
+            _shuoshuoResizeTimer = setTimeout(() => {
+                if (this.viewStyle !== 'card') return;
+                const listEl = this.container?.querySelector('#shuoshuo-notes-list');
+                if (!listEl || !listEl.classList.contains('card-layout')) return;
+                const newCount = this._getShuoshuoColumnCount();
+                if (newCount !== this._lastShuoshuoColCount) {
+                    this._lastShuoshuoColCount = newCount;
+                    this.renderNotes();
+                }
+            }, 200);
+        };
+        window.addEventListener('resize', this._shuoshuoResizeHandler);
+
         // 输入监听，控制发送按钮，并自动转换列表符?
         if (input && sendBtn) {
             const autoResize = () => {
@@ -14301,11 +14033,13 @@ ipcRenderer.on('lumina-close', () => {
                 } else {
                     sendBtn.classList.remove('active');
                 }
-                
+
                 requestAnimationFrame(autoResize);
-                
+
                 // 处理 @ 快速引用
                 this.handleMentionInput(input);
+                // 刷新图片预览栏
+                this._refreshImagePreviewBar(input);
             });
 
             // Enter 换行/提交，支持列表自动延?
@@ -15091,7 +14825,8 @@ ipcRenderer.on('lumina-close', () => {
         const input = target.querySelector('#shuoshuo-input');
         if (!input) return;
 
-        const text = input.value.trim();
+        // 使用预览栏排序后的内容：文字在上、资源在下
+        const text = this._getSubmitContent(input);
         if (!text) return;
 
         const saved = await this.addShuoshuo(text, target);
@@ -15103,6 +14838,10 @@ ipcRenderer.on('lumina-close', () => {
         if (sendBtn) sendBtn.classList.remove('active');
         const inputBox = target.querySelector('#shuoshuo-input-box');
         if (inputBox) inputBox.classList.remove('focused');
+
+        // 清空待发布图片列表 + 刷新预览栏
+        this._pendingImages = [];
+        this._refreshImagePreviewBar(input);
 
         // 移动端：提交成功后自动收起底部弹窗
         this._closeMobileInputSheet(target);
@@ -15585,7 +15324,6 @@ ipcRenderer.on('lumina-close', () => {
         }
 
 
-
         // 日历弹窗拖动
         const calendarHeader = this.container.querySelector('#shuoshuo-calendar-modal .lumina-moments-calendar-header');
         if (calendarHeader && calendarContent) {
@@ -15713,6 +15451,51 @@ ipcRenderer.on('lumina-close', () => {
 
     // 在输入框光标处插入资源标记，并在前后按需补换行，避免资源与文字贴在一起
     insertResourceText(input, resourceText) {
+        // 解析资源文本的类型和路径
+        const _parseResource = (text) => {
+            // 图片/视频: ![图片](path) 或 ![视频](path)
+            let m = text.match(/!\[(图片|视频)\]\(([^)]+)\)/);
+            if (m) return { type: m[1], path: m[2].trim(), raw: text };
+            // 文件: [文件名](assets/...)
+            m = text.match(/\[([^\]]*)\]\(([^)]+)\)/);
+            if (m) {
+                const name = m[1] || '';
+                const path = m[2].trim();
+                // 从路径或名称推断文件类型标签
+                const ext = (name || path).split('.').pop().toUpperCase() || '';
+                const typeLabel = this._getFileExtLabel(ext) || 'FILE';
+                return { type: '文件', path, name, ext, typeLabel, raw: text, displayName: name || path.split('/').pop() };
+            }
+            // 兜底
+            return { type: '未知', path: '', raw: text };
+        };
+
+        // 主输入框（#shuoshuo-input）：走预览栏模式
+        if (input && input.id === 'shuoshuo-input') {
+            const info = _parseResource(resourceText);
+            if (!this._pendingImages) this._pendingImages = [];
+            this._pendingImages.push(info);
+            this._refreshImagePreviewBar(input);
+            input.dispatchEvent(new Event('input'));
+            return;
+        }
+
+        // 内联编辑框（.north-shuoshuo-inline-edit-field）：同样走预览栏模式
+        if (input && input.classList.contains('north-shuoshuo-inline-edit-field')) {
+            const editBox = input.closest('.north-shuoshuo-inline-edit');
+            if (editBox) {
+                const info = _parseResource(resourceText);
+                let inlineImages = [];
+                try { inlineImages = JSON.parse(editBox.dataset.inlineEditImages || '[]'); } catch(e) { inlineImages = []; }
+                inlineImages.push(info);
+                editBox.dataset.inlineEditImages = JSON.stringify(inlineImages);
+                this._refreshImagePreviewBar(input);
+                input.dispatchEvent(new Event('input'));
+                return;
+            }
+        }
+
+        // 其他输入框（内联编辑等）：保持原逻辑不变
         const start = input.selectionStart;
         const end = input.selectionEnd;
         const value = input.value;
@@ -16665,6 +16448,257 @@ ipcRenderer.on('lumina-close', () => {
         input.focus();
     }
 
+    // ========== 图片预览栏（缩略图 + 拖拽排序） ==========
+    // _pendingImages: Array<{type, path, raw}> — 主输入框独立管理图片标记
+    // 内联编辑框：图片标记存于 editBox.dataset.inlineEditImages（JSON）
+    // textarea 只存纯文字
+
+    // 刷新图片预览栏（核心调度方法，同时支持主输入框和内联编辑）
+    _refreshImagePreviewBar(inputEl) {
+        if (!inputEl) return;
+        let previewBar;
+        let images;
+
+        if (inputEl.id === 'shuoshuo-input') {
+            // 主输入框：从 this._pendingImages 读取
+            previewBar = inputEl.closest('#shuoshuo-input-box')?.querySelector('#shuoshuo-image-preview-bar');
+            images = this._pendingImages || [];
+        } else if (inputEl.classList.contains('north-shuoshuo-inline-edit-field')) {
+            // 内联编辑框：从 editBox.dataset 读取
+            const editBox = inputEl.closest('.north-shuoshuo-inline-edit');
+            previewBar = editBox?.querySelector('#inline-image-preview-bar');
+            try { images = JSON.parse(editBox?.dataset?.inlineEditImages || '[]'); } catch(e) { images = []; }
+        } else {
+            return;
+        }
+
+        if (!previewBar) return;
+        if (images.length === 0) {
+            previewBar.innerHTML = '';
+            previewBar.classList.remove('has-images');
+            return;
+        }
+
+        previewBar.classList.add('has-images');
+        this._renderPreviewThumbnails(previewBar, images, inputEl);
+    }
+
+    // 绑定拖拽事件（图片/文件预览项共用）
+    _bindDragEvents(item, previewBar, idx, inputEl) {
+        item.addEventListener('dragstart', (e) => {
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(idx));
+            const dragImg = item.cloneNode(true);
+            dragImg.style.opacity = '0.6';
+            dragImg.style.width = item.offsetWidth + 'px';
+            dragImg.style.height = item.offsetHeight + 'px';
+            document.body.appendChild(dragImg);
+            e.dataTransfer.setDragImage(dragImg, dragImg.offsetWidth / 2, dragImg.offsetHeight / 2);
+            requestAnimationFrame(() => document.body.removeChild(dragImg));
+        });
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging');
+            previewBar.querySelectorAll('.north-shuoshuo-image-preview-item').forEach(el => el.classList.remove('drag-over'));
+        });
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        });
+        item.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            if (item !== previewBar.querySelector('.dragging')) {
+                item.classList.add('drag-over');
+            }
+        });
+        item.addEventListener('dragleave', () => {
+            item.classList.remove('drag-over');
+        });
+        item.addEventListener('drop', (e) => {
+            e.preventDefault();
+            item.classList.remove('drag-over');
+            const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+            const toIdx = parseInt(item.dataset.index, 10);
+            if (!isNaN(fromIdx) && !isNaN(toIdx) && fromIdx !== toIdx) {
+                this._reorderPreviewImages(inputEl, fromIdx, toIdx);
+            }
+        });
+    }
+
+    // 根据文件扩展名返回显示标签（最多4字符，大写）
+    _getFileExtLabel(ext) {
+        if (!ext || ext.length === 0) return null;
+        const upper = ext.toUpperCase();
+        const map = {
+            PDF: 'PDF', DOC: 'DOC', DOCX: 'DOCX',
+            XLS: 'XLSX', XLSX: 'XLSX',
+            PPT: 'PPT', PPTX: 'PPTX',
+            ZIP: 'ZIP', RAR: 'RAR', '7Z': '7Z',
+            TXT: 'TXT', MD: 'MD', CSV: 'CSV',
+            MP3: 'MP3', WAV: 'WAV', FLAC: 'FLAC',
+            MP4: 'MP4', AVI: 'AVI', MKV: 'MKV',
+            PNG: 'PNG', JPG: 'JPG', GIF: 'GIF', SVG: 'SVG',
+            PY: 'PY', JS: 'JS', TS: 'TS', HTML: 'HTML',
+            CSS: 'CSS', JSON: 'JSON'
+        };
+        return map[upper] || (upper.length <= 4 ? upper : upper.substring(0, 4));
+    }
+
+    // 渲染缩略图/文件卡片 DOM
+    _renderPreviewThumbnails(previewBar, images, inputEl) {
+        const frag = document.createDocumentFragment();
+
+        images.forEach((img, idx) => {
+            // === 文件类型：渲染为文件卡片 ===
+            if (img.type === '文件') {
+                const item = document.createElement('div');
+                item.className = 'north-shuoshuo-image-preview-item north-shuoshuo-file-preview-item';
+                item.dataset.index = String(idx);
+                item.dataset.path = img.path;
+                item.dataset.ext = (img.ext || '').toLowerCase();
+                item.draggable = true;
+
+                const displayName = this.escapeHtml(img.displayName || img.name || img.path.split('/').pop() || '未知文件');
+                const typeLabel = img.typeLabel || 'FILE';
+
+                item.innerHTML = `
+                    <span class="file-ext-badge">${this.escapeHtml(typeLabel)}</span>
+                    <span class="file-name">${displayName}</span>
+                    <button class="preview-delete-btn" title="删除">×</button>`;
+
+                const deleteBtn = item.querySelector('.preview-delete-btn');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._removePreviewImage(item, inputEl);
+                });
+
+                this._bindDragEvents(item, previewBar, idx, inputEl);
+                frag.appendChild(item);
+                return;
+            }
+
+            // === 图片/视频类型：渲染缩略图 ===
+            const item = document.createElement('div');
+            item.className = 'north-shuoshuo-image-preview-item';
+            item.dataset.index = String(idx);
+            item.dataset.path = img.path;
+            item.draggable = true;
+
+            let src = img.path;
+            if (src.startsWith('assets/') || src.startsWith('/assets/')) {
+                src = '/' + src.replace(/^\/+/, '');
+            }
+
+            if (img.type === '视频') {
+                item.innerHTML = `
+                    <video src="${this.escapeHtml(src)}" preload="metadata"></video>
+                    <span class="preview-video-play-icon"></span>
+                    <button class="preview-delete-btn" title="删除">×</button>`;
+            } else {
+                item.innerHTML = `
+                    <img src="${this.escapeHtml(src)}" alt="预览" loading="lazy" />
+                    <button class="preview-delete-btn" title="删除">×</button>`;
+            }
+
+            const deleteBtn = item.querySelector('.preview-delete-btn');
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._removePreviewImage(item, inputEl);
+            });
+
+            this._bindDragEvents(item, previewBar, idx, inputEl);
+            frag.appendChild(item);
+        });
+
+        // 添加按钮
+        const addBtn = document.createElement('button');
+        addBtn.className = 'north-shuoshuo-image-preview-add';
+        addBtn.title = '添加资源';
+        addBtn.innerHTML = '+';
+        addBtn.addEventListener('click', () => {
+            this.insertImage(inputEl);
+        });
+        frag.appendChild(addBtn);
+
+        previewBar.innerHTML = '';
+        previewBar.appendChild(frag);
+    }
+
+    // 删除一张预览图
+    _removePreviewImage(item, inputEl) {
+        const idx = parseInt(item.dataset.index, 10);
+        if (isNaN(idx)) return;
+
+        if (inputEl.id === 'shuoshuo-input') {
+            // 主输入框：从 _pendingImages 移除
+            if (this._pendingImages && idx >= 0 && idx < this._pendingImages.length) {
+                this._pendingImages.splice(idx, 1);
+            }
+        } else if (inputEl.classList.contains('north-shuoshuo-inline-edit-field')) {
+            // 内联编辑框：从 editBox.dataset 移除
+            const editBox = inputEl.closest('.north-shuoshuo-inline-edit');
+            if (editBox) {
+                let images = [];
+                try { images = JSON.parse(editBox.dataset.inlineEditImages || '[]'); } catch(e) {}
+                if (idx >= 0 && idx < images.length) {
+                    images.splice(idx, 1);
+                }
+                editBox.dataset.inlineEditImages = JSON.stringify(images);
+            }
+        }
+
+        inputEl.dispatchEvent(new Event('input'));
+        this._refreshImagePreviewBar(inputEl);
+        inputEl.focus();
+    }
+
+    // 拖拽重排图片顺序
+    _reorderPreviewImages(inputEl, fromIdx, toIdx) {
+        if (!inputEl || isNaN(fromIdx) || isNaN(toIdx)) return;
+
+        if (inputEl.id === 'shuoshuo-input') {
+            // 主输入框
+            if (!this._pendingImages || fromIdx < 0 || fromIdx >= this._pendingImages.length || toIdx < 0 || toIdx >= this._pendingImages.length) return;
+            const [moved] = this._pendingImages.splice(fromIdx, 1);
+            this._pendingImages.splice(toIdx, 0, moved);
+        } else if (inputEl.classList.contains('north-shuoshuo-inline-edit-field')) {
+            // 内联编辑框
+            const editBox = inputEl.closest('.north-shuoshuo-inline-edit');
+            if (!editBox) return;
+            let images = [];
+            try { images = JSON.parse(editBox.dataset.inlineEditImages || '[]'); } catch(e) {}
+            if (fromIdx < 0 || fromIdx >= images.length || toIdx < 0 || toIdx >= images.length) return;
+            const [moved] = images.splice(fromIdx, 1);
+            images.splice(toIdx, 0, moved);
+            editBox.dataset.inlineEditImages = JSON.stringify(images);
+        }
+
+        this._refreshImagePreviewBar(inputEl);
+    }
+
+    // 获取提交内容（textarea纯文字 + 预览栏资源标记，文字在上、资源在下）
+    _getSubmitContent(inputEl) {
+        if (!inputEl) return '';
+        const text = inputEl.value.trim();
+
+        let images;
+        if (inputEl.id === 'shuoshuo-input') {
+            images = this._pendingImages || [];
+        } else if (inputEl.classList.contains('north-shuoshuo-inline-edit-field')) {
+            const editBox = inputEl.closest('.north-shuoshuo-inline-edit');
+            try { images = JSON.parse(editBox?.dataset?.inlineEditImages || '[]'); } catch(e) { images = []; }
+        } else {
+            images = [];
+        }
+
+        if (!text && images.length === 0) return '';
+
+        const resourceLines = images.map(img => img.raw).join('\n');
+        if (!text) return resourceLines;
+        if (images.length === 0) return text;
+        return text + '\n\n' + resourceLines;
+    }
+
     // 渲染标签列表（支持层级显示）
     renderTags() {
         // 获取所有标签及数量
@@ -17614,7 +17648,7 @@ ipcRenderer.on('lumina-close', () => {
             const itemId = 'tag-' + Math.random().toString(36).substr(2, 9);
             
             // 构建左侧内容
-            const toggleBtn = `<span class="north-shuoshuo-tag-toggle" data-target="${hasChildren ? itemId : ''}">›</span>`;
+            const toggleBtn = `<span class="north-shuoshuo-tag-toggle" data-target="${hasChildren ? itemId : ''}"><svg class="icon"><use xlink:href="#iconRight"></use></svg></span>`;
             
             let html = `
                 <div class="north-shuoshuo-tag-tree-item ${level > 0 ? 'child' : ''} ${isPinned ? 'pinned' : ''} ${hasChildren ? 'has-children' : ''} ${!hasChildren ? 'leaf' : ''}" data-level="${level}" data-tag="${fullPath}">
@@ -18389,6 +18423,15 @@ ipcRenderer.on('lumina-close', () => {
         const hours = date.getHours().toString().padStart(2, '0');
         const minutes = date.getMinutes().toString().padStart(2, '0');
         return `${year}-${month}-${day} ${hours}:${minutes}`;
+    }
+
+    // 短日期格式（用于明信片）: 2021.07.10
+    formatShortDate(timestamp) {
+        const d = new Date(timestamp);
+        const y = d.getFullYear();
+        const m = (d.getMonth() + 1).toString().padStart(2, '0');
+        const dd = d.getDate().toString().padStart(2, '0');
+        return `${y}.${m}.${dd}`;
     }
 
     // 按日期分组笔记
@@ -20730,12 +20773,39 @@ ipcRenderer.on('lumina-close', () => {
 
         if (!contentEl || targetCard.querySelector('.north-shuoshuo-inline-edit')) return;
 
+        // 解析已有内容中的资源标记，分离纯文字和资源（图片/视频/文件）
+        const rawContent = item.content || '';
+        const inlineImages = [];
+        // 先匹配 ![图片]() / ! [视频]()
+        let cleanText = rawContent.replace(/!\[(图片|视频)\]\(([^)]+)\)/g, (_, type, path) => {
+            const p = path.trim();
+            inlineImages.push({ type, path: p, raw: _[0] });
+            return '';
+        });
+        // 再匹配 [文件名](assets/...) 文件链接
+        cleanText = cleanText.replace(/\[([^\]]*)\]\((assets\/[^)]+)\)/gi, (match, name, path) => {
+            const p = path.trim();
+            const n = name || '';
+            const ext = (n || p).split('.').pop().toUpperCase() || '';
+            const typeLabel = this._getFileExtLabel(ext) || 'FILE';
+            inlineImages.push({
+                type: '文件', path: p, name: n, ext,
+                typeLabel,
+                displayName: n || p.split('/').pop(),
+                raw: match.trim()
+            });
+            return '';
+        });
+        cleanText = cleanText.replace(/\n{2,}/g, '\n').trim();
+
         const editBox = document.createElement('div');
         editBox.className = 'north-shuoshuo-input-box north-shuoshuo-inline-edit';
+        editBox.dataset.inlineEditImages = JSON.stringify(inlineImages);
         editBox.innerHTML = `
             <div class="north-shuoshuo-input-wrapper">
-                <textarea class="north-shuoshuo-input-field north-shuoshuo-inline-edit-field" rows="3">${this.escapeHtml(item.content)}</textarea>
+                <textarea class="north-shuoshuo-input-field north-shuoshuo-inline-edit-field" rows="3">${this.escapeHtml(cleanText)}</textarea>
             </div>
+            <div class="north-shuoshuo-image-preview-bar" id="inline-image-preview-bar"></div>
             <div class="north-shuoshuo-input-toolbar">
                 <div class="north-shuoshuo-toolbar-left">
                     <span class="north-shuoshuo-toolbar-icon" data-action="tag" title="标签"><svg class="icon" style="width:16px;height:16px;"><use xlink:href="#iconTag"></use></svg></span>
@@ -20770,10 +20840,11 @@ ipcRenderer.on('lumina-close', () => {
             textarea.style.height = Math.max(80, textarea.scrollHeight) + 'px';
         };
 
-        // 输入监听（@ mention）
+        // 输入监听（@ mention + 预览栏刷新）
         textarea.addEventListener('input', () => {
             requestAnimationFrame(autoResize);
             this.handleMentionInput(textarea);
+            this._refreshImagePreviewBar(textarea);
         });
 
         // 粘贴图片（与主输入框一致）
@@ -20835,6 +20906,8 @@ ipcRenderer.on('lumina-close', () => {
         requestAnimationFrame(() => {
             autoResize();
             textarea.focus();
+            // 立即渲染预览栏（已有图片打开编辑时就显示，不需要等输入事件）
+            this._refreshImagePreviewBar(textarea);
         });
 
         const restore = () => {
@@ -20874,7 +20947,7 @@ ipcRenderer.on('lumina-close', () => {
         // 保存
         const saveBtn = editBox.querySelector('.north-shuoshuo-inline-save');
         saveBtn.addEventListener('click', async () => {
-            const newContent = textarea.value.trim();
+            const newContent = this._getSubmitContent(textarea);
             if (!newContent) {
                 showMessage("内容不能为空");
                 return;
@@ -23667,7 +23740,7 @@ ipcRenderer.on('lumina-close', () => {
         // 移动端：顶部 Header 和搜索栏只在说说/LifeLog 视图显示
         const mobileHeader = this.container.querySelector('.north-shuoshuo-mobile-header');
         const mobileSearchBar = this.container.querySelector('.north-shuoshuo-mobile-search-bar');
-        const isShuoshuoView = ['notes', 'week', 'review', 'random', 'lifelog'].includes(view);
+        const isShuoshuoView = ['notes', 'week', 'review', 'lifelog'].includes(view);
         if (mobileHeader) mobileHeader.style.display = (this.isMobile && isShuoshuoView) ? '' : 'none';
         if (mobileSearchBar) mobileSearchBar.classList.remove('show');
 
@@ -23714,7 +23787,7 @@ ipcRenderer.on('lumina-close', () => {
         sidebarRoot.querySelectorAll('.north-shuoshuo-sidebar .north-shuoshuo-nav-item').forEach(item => {
             item.classList.remove('active');
         });
-        const sidebarView = (view === 'review' || view === 'random' || view === 'week') ? 'notes' : view;
+        const sidebarView = (view === 'review' || view === 'week') ? 'notes' : view;
         // LifeLog 视图有独立的导航按钮，不需要映射
         const targetNav = navItem || sidebarRoot.querySelector(`.north-shuoshuo-sidebar .north-shuoshuo-nav-item[data-view="${sidebarView}"]`);
         if (targetNav) {
@@ -23734,7 +23807,7 @@ ipcRenderer.on('lumina-close', () => {
         this.container.querySelectorAll('.north-shuoshuo-mobile-tabbar .mobile-tab-item').forEach(item => {
             item.classList.remove('active');
         });
-        const sidebarViewMobile = (view === 'review' || view === 'random' || view === 'week') ? 'notes' : view;
+        const sidebarViewMobile = (view === 'review' || view === 'week') ? 'notes' : view;
         const targetMobileTab = this.container.querySelector(`.north-shuoshuo-mobile-tabbar .mobile-tab-item[data-view="${sidebarViewMobile}"]`);
         if (targetMobileTab) {
             targetMobileTab.classList.add('active');
@@ -23758,7 +23831,7 @@ ipcRenderer.on('lumina-close', () => {
 
         // 重要：切换到说说相关视图时，先从思源SQL加载最新绑定块数据
         // 确保思源中修改的内容能在说说视图中立即反映
-        const needsRefresh = ['notes', 'week', 'table', 'stats', 'review', 'random'];
+        const needsRefresh = ['notes', 'week', 'table', 'stats', 'review'];
         if (view === 'moments') {
             // 朋友圈视图独立渲染，不等待 loadShuoshuos，切换更丝滑
             if (flomoArea) flomoArea.style.display = 'flex';
@@ -23855,7 +23928,7 @@ ipcRenderer.on('lumina-close', () => {
             const notesList = this.container.querySelector('#shuoshuo-notes-list');
             if (notesList) notesList.style.padding = '';
             // 立即清空列表内容，避免旧视图残留导致闪烁
-            if (view === 'review' || view === 'random') {
+            if (view === 'review') {
                 const listEl = this.container.querySelector('#shuoshuo-notes-list');
                 if (listEl) listEl.innerHTML = '';
             }
@@ -23866,7 +23939,6 @@ ipcRenderer.on('lumina-close', () => {
                         case 'notes':
                         case 'week': this.renderNotes(); break;
                         case 'review': this.renderReview(); break;
-                        case 'random': this.renderRandom(); break;
                         case 'table': this.renderTable(); break;
                         case 'stats': this.renderStats(); break;
                     }
@@ -23923,10 +23995,6 @@ ipcRenderer.on('lumina-close', () => {
                     <div class="north-shuoshuo-menu-item" data-view="week">
                         <span class="north-shuoshuo-menu-icon"><svg class="north-shuoshuo-nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></span>
                         <span class="north-shuoshuo-menu-text">本周记录</span>
-                    </div>
-                    <div class="north-shuoshuo-menu-item" data-view="random">
-                        <span class="north-shuoshuo-menu-icon">${ICONS.random}</span>
-                        <span class="north-shuoshuo-menu-text">随机漫步</span>
                     </div>
                 `;
             }
@@ -24469,6 +24537,28 @@ ipcRenderer.on('lumina-close', () => {
                 this.lifelogTypesDefaultExpanded = newLifelogTypesExpandedSwitch.classList.contains('on');
                 await this.saveConfig();
                 showMessage(this.lifelogTypesDefaultExpanded ? 'LifeLog 类型筛选已设为默认展开' : 'LifeLog 类型筛选已设为默认折叠');
+            });
+        }
+
+        // LifeLog 时间轴显示持续时间开关
+        const lifelogDurationSwitch = this.container.querySelector('#lifelog-settings-duration-switch');
+        if (lifelogDurationSwitch) {
+            lifelogDurationSwitch.replaceWith(lifelogDurationSwitch.cloneNode(true));
+            const newLifelogDurationSwitch = this.container.querySelector('#lifelog-settings-duration-switch');
+            newLifelogDurationSwitch.addEventListener('click', async () => {
+                newLifelogDurationSwitch.classList.toggle('on');
+                this.lifeLogShowDurationInTimeline = newLifelogDurationSwitch.classList.contains('on');
+                await this.saveConfig();
+                if (this.currentMainView === 'lifelog') {
+                    this.renderLifeLog();
+                }
+                const dockContainers = this.getMountedLifeLogContainers();
+                dockContainers.forEach(c => {
+                    if (c.closest?.('.north-shuoshuo-lifelog-dock-view')) {
+                        this.renderLifeLogDockView();
+                    }
+                });
+                showMessage(this.lifeLogShowDurationInTimeline ? '时间轴布局已开启显示持续时间' : '时间轴布局已关闭显示持续时间');
             });
         }
 
@@ -26553,7 +26643,6 @@ ipcRenderer.on('lumina-close', () => {
         switch (viewType) {
             case 'notes': this.renderNotes(); break;
             case 'review': this.renderReview(); break;
-            case 'random': this.renderRandom(); break;
             case 'table': this.renderTable(); break;
             case 'stats': this.renderStats(); break;
             default: this.renderNotes(); break;
@@ -27061,6 +27150,7 @@ ipcRenderer.on('lumina-close', () => {
                   : true;
                 this.lifeLogTimeMode = (data.lifeLogTimeMode === 'end' || data.lifeLogTimeMode === 'start') ? data.lifeLogTimeMode : 'end';
                 this.lifeLogViewStyle = (data.lifeLogViewStyle === 'timeline') ? 'timeline' : 'card';
+                this.lifeLogShowDurationInTimeline = data.lifeLogShowDurationInTimeline === true || data.lifeLogShowDurationInTimeline === 'true' || data.lifeLogShowDurationInTimeline === 1;
                 this.galleryColumnCount = typeof data.galleryColumnCount === 'number' ? data.galleryColumnCount : 3;
                 this.bookshelfFontConfig = { ...DEFAULT_BOOKSHELF_FONT_CONFIG, ...(data.bookshelfFontConfig || {}) };
                 this.bookshelfSyncConfig = { ...DEFAULT_BOOKSHELF_SYNC_CONFIG, ...(data.bookshelfSyncConfig || {}) };
@@ -27179,6 +27269,7 @@ ipcRenderer.on('lumina-close', () => {
                     lifelogTypesDefaultExpanded: this.lifelogTypesDefaultExpanded,
                     lifeLogTimeMode: this.lifeLogTimeMode,
                     lifeLogViewStyle: this.lifeLogViewStyle,
+                    lifeLogShowDurationInTimeline: this.lifeLogShowDurationInTimeline,
                     galleryColumnCount: this.galleryColumnCount,
                     bookshelfFontConfig: this.bookshelfFontConfig,
                     bookshelfSyncConfig: this.bookshelfSyncConfig,
@@ -27262,7 +27353,7 @@ ipcRenderer.on('lumina-close', () => {
     applyCompactMode() {
         const containers = this.getMountedLuminaContainers();
         if (!containers.length && this.container) containers.push(this.container);
-        const shuoshuoFamily = ['notes', 'week', 'review', 'random', 'table', 'stats', 'gallery'];
+        const shuoshuoFamily = ['notes', 'week', 'review', 'table', 'stats', 'gallery'];
         containers.forEach(container => {
             if (!container) return;
             const view = this.getContainerMainView(container);
@@ -27309,7 +27400,7 @@ ipcRenderer.on('lumina-close', () => {
         if (!btn) return;
         const view = currentView || this.getContainerMainView(this.container) || 'notes';
         // 仅说说类视图（含 LifeLog）支持悬浮；统计/朋友圈/设置等视图顶部加号隐藏，不处理
-        const shuoshuoViews = ['notes', 'week', 'review', 'random', 'lifelog'];
+        const shuoshuoViews = ['notes', 'week', 'review', 'lifelog'];
         if (!shuoshuoViews.includes(view)) {
             btn.classList.remove('mobile-add-floating');
             btn.style.left = btn.style.top = btn.style.right = btn.style.bottom = '';
@@ -28013,7 +28104,6 @@ ipcRenderer.on('lumina-close', () => {
         const c = TYPE_COLORS[idx];
         return `background:${c.bg};color:${c.color}`;
     }
-
 
 
     // 应用主题模式

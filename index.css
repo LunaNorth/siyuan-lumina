@@ -1394,7 +1394,7 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
 .north-shuoshuo-tags-section .north-shuoshuo-section-title {
     font-size: 13px;
     color: var(--b3-theme-primary);
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     font-weight: 500;
     flex-shrink: 0;
 }
@@ -1403,10 +1403,10 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
 .north-shuoshuo-tags-list {
     display: flex;
     flex-direction: column;
+    gap: 2px;
     overflow-x: hidden;
     overflow-y: auto;
-    margin: 0 -12px;
-    padding: 0 12px 16px;
+    padding: 0 0 16px;
     flex: 1 1 auto;
     min-height: 0;
     overscroll-behavior: contain;
@@ -1418,15 +1418,12 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
     display: none;
 }
 
-/* 标签列表 hover 时，所有标签的箭头和右侧信息都显示 */
-.north-shuoshuo-tags-list:hover .north-shuoshuo-tag-toggle {
-    opacity: 1;
-}
+/* 标签列表 hover 时：右侧信息全部浮现（Flomo 行为），箭头仍按单条 hover 显示 */
 .north-shuoshuo-tags-list:hover .north-shuoshuo-tag-right {
     opacity: 1;
 }
 
-/* 标签树项 - 新的简洁样�?*/
+/* 标签树项 */
 .north-shuoshuo-tag-tree-item {
     display: flex;
     flex-direction: column;
@@ -1438,11 +1435,11 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
 .north-shuoshuo-tag-item-content {
     display: flex;
     align-items: center;
-    padding: 6px 10px 6px 20px;
+    padding: 6px 12px;
     cursor: pointer;
-    transition: background-color 0.12s ease;
+    transition: background-color 0.15s ease;
     position: relative;
-    min-height: 28px;
+    min-height: 32px;
     color: var(--b3-theme-on-surface);
     align-self: stretch;
     box-sizing: border-box;
@@ -1451,56 +1448,83 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
 .north-shuoshuo-tag-item-content:hover,
 .north-shuoshuo-tag-item-content.north-shuoshuo-tag-item-hovered {
     background-color: var(--b3-list-hover);
-    border-radius: 6px;
+    border-radius: 8px;
 }
 
-/* 展开/折叠箭头 */
+/*
+ * Flomo 风格展开/折叠箭头：
+ * - 默认完全隐藏，不占任何布局空间
+ * - hover 非叶子节点时：箭头浮现并**替换**标签图标（icon 隐藏）
+ * - 展开时旋转为向下箭头，持续替代图标位置
+ */
 .north-shuoshuo-tag-toggle {
+    position: absolute;
+    left: 12px;
+    top: 0;
+    bottom: 0;
+    margin: auto 0;
     width: 20px;
     height: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-    color: var(--b3-theme-on-surface-light);
-    font-size: 16px;
-    line-height: 1;
     user-select: none;
-    transition: transform 0.2s ease, opacity 0.15s ease;
+    transition: transform 0.25s ease, opacity 0.2s ease;
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: 4px;
     opacity: 0;
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    margin: auto 0;
+    z-index: 2;
 }
 
-.north-shuoshuo-tag-toggle:hover {
-    background: var(--b3-theme-background-light);
+.north-shuoshuo-tag-toggle svg.icon {
+    width: 16px;
+    height: 16px;
+    color: var(--b3-theme-on-surface-light);
+    transition: color 0.15s ease, transform 0.25s ease;
 }
 
-/* 展开状�?- 旋转90�?*/
+.north-shuoshuo-tag-toggle:hover svg.icon {
+    color: var(--b3-theme-primary);
+}
+
+/* hover 非叶子节点时：箭头淡入 + 图标淡出（平滑交叉渐变） */
+.north-shuoshuo-tag-tree-item:not(.leaf):hover > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    opacity: 1;
+}
+.north-shuoshuo-tag-tree-item:not(.leaf):hover > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-icon-wrapper {
+    opacity: 0;
+}
+
+/* 叶子节点：永远不显示箭头 */
+.north-shuoshuo-tag-tree-item.leaf > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    display: none !important;
+}
+
+/* 展开：箭头旋转朝下，图标淡出 */
 .north-shuoshuo-tag-tree-item.expanded > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
     transform: rotate(90deg);
+    opacity: 1;
 }
-
-/* 叶子节点（没有子标签）箭头不占位 */
-.north-shuoshuo-tag-tree-item.leaf > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
-    display: none;
+.north-shuoshuo-tag-tree-item.expanded > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-icon-wrapper {
+    opacity: 0;
 }
 
 .north-shuoshuo-tag-icon-wrapper {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-right: 5px;
+    margin-right: 10px;
     flex-shrink: 0;
     font-size: 14px;
     color: var(--b3-theme-on-surface-light);
+    transition: opacity 0.2s ease, color 0.15s ease;
+}
+
+/* 叶子标签 hover 时图标提亮反馈 */
+.north-shuoshuo-tag-tree-item.leaf:hover > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-icon-wrapper {
+    color: var(--b3-theme-primary);
 }
 
 .north-shuoshuo-tag-name {
@@ -1564,10 +1588,10 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
     opacity: 1;
 }
 
-/* 选中状�?*/
+/* 选中状态 */
 .north-shuoshuo-tag-tree-item.selected > .north-shuoshuo-tag-item-content {
     background-color: var(--b3-list-hover) !important;
-    border-radius: 6px;
+    border-radius: 8px;
 }
 
 .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-name,
@@ -1578,6 +1602,18 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
 .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-icon-wrapper,
 .north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-toggle {
     color: var(--b3-theme-primary);
+}
+
+.north-shuoshuo-tag-tree-item.selected .north-shuoshuo-tag-toggle svg.icon {
+    color: var(--b3-theme-primary);
+}
+
+/* 选中非叶子节点：图标保持隐藏，箭头保持显示 */
+.north-shuoshuo-tag-tree-item.selected:not(.leaf) > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-icon-wrapper {
+    opacity: 0;
+}
+.north-shuoshuo-tag-tree-item.selected:not(.leaf) > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    opacity: 1;
 }
 
 /* 置顶标签 */
@@ -1841,6 +1877,221 @@ body[theme-mode="dark"] .north-shuoshuo-calendar-cell.other-month {
 .north-shuoshuo-input-wrapper {
     position: relative;
     margin-bottom: 12px;
+}
+
+/* ========== 图片预览栏（输入框下方缩略图区） ========== */
+.north-shuoshuo-image-preview-bar {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 0 4px;
+    min-height: 0;
+}
+
+.north-shuoshuo-image-preview-bar.has-images {
+    display: flex;
+}
+
+.north-shuoshuo-image-preview-item {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: grab;
+    flex-shrink: 0;
+    border: none;
+    outline: 1px solid transparent;
+    outline-offset: -1px;
+    transition: outline-color 0.2s, transform 0.15s ease, box-shadow 0.2s, opacity 0.15s;
+    background: var(--b3-theme-surface);
+}
+
+.north-shuoshuo-image-preview-item:hover {
+    outline-color: var(--b3-theme-primary, #4a90d9);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.north-shuoshuo-image-preview-item:active {
+    cursor: grabbing;
+    transform: scale(0.96);
+}
+
+.north-shuoshuo-image-preview-item.dragging {
+    opacity: 0.5;
+    transform: scale(1.05);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    z-index: 10;
+}
+
+.north-shuoshuo-image-preview-item.drag-over {
+    outline-color: var(--b3-theme-primary, #4a90d9);
+    background: color-mix(in srgb, var(--b3-theme-primary) 10%, transparent);
+}
+
+.north-shuoshuo-image-preview-item img,
+.north-shuoshuo-image-preview-item video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+    /* 缩略图锐化：避免小尺寸下模糊 */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+}
+
+.north-shuoshuo-image-preview-item .preview-delete-btn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 13px;
+    line-height: 18px;
+    text-align: center;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s, background 0.2s;
+    z-index: 2;
+}
+
+.north-shuoshuo-image-preview-item:hover .preview-delete-btn {
+    opacity: 1;
+}
+
+.north-shuoshuo-image-preview-item .preview-delete-btn:hover {
+    background: rgba(220, 38, 38, 0.85);
+}
+
+/* 视频缩略图：居中播放按钮（与展示区样式一致） */
+.north-shuoshuo-image-preview-item .preview-video-play-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 28px;
+    height: 28px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.north-shuoshuo-image-preview-item .preview-video-play-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 55%;
+    transform: translate(-50%, -50%);
+    border-left: 9px solid #fff;
+    border-top: 5.5px solid transparent;
+    border-bottom: 5.5px solid transparent;
+}
+
+/* ========== 文件预览卡片（替换破图图标） ========== */
+.north-shuoshuo-file-preview-item {
+    width: auto;
+    min-width: 124px;
+    max-width: 220px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px 0 8px;
+    background: var(--b3-theme-surface);
+    overflow: hidden;
+}
+
+.north-shuoshuo-file-preview-item .file-ext-badge {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: #fff;
+    background: var(--b3-theme-primary, #4a90d9);
+    text-transform: uppercase;
+}
+
+.north-shuoshuo-file-preview-item .file-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.3;
+    color: var(--b3-theme-on-surface, #333);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 按扩展名着色，提升辨识度 */
+.north-shuoshuo-file-preview-item[data-ext="pdf"] .file-ext-badge { background: #e2483d; }
+.north-shuoshuo-file-preview-item[data-ext="doc"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="docx"] .file-ext-badge { background: #2b7cd3; }
+.north-shuoshuo-file-preview-item[data-ext="xls"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="xlsx"] .file-ext-badge { background: #1f9d55; }
+.north-shuoshuo-file-preview-item[data-ext="ppt"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="pptx"] .file-ext-badge { background: #e8842b; }
+.north-shuoshuo-file-preview-item[data-ext="zip"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="rar"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="7z"] .file-ext-badge { background: #8b5cf6; }
+.north-shuoshuo-file-preview-item[data-ext="png"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="jpg"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="jpeg"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="gif"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="svg"] .file-ext-badge { background: #0ea5a4; }
+.north-shuoshuo-file-preview-item[data-ext="mp3"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="wav"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="flac"] .file-ext-badge { background: #d6336c; }
+.north-shuoshuo-file-preview-item[data-ext="mp4"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="avi"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="mkv"] .file-ext-badge { background: #5b5bd6; }
+.north-shuoshuo-file-preview-item[data-ext="txt"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="md"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="csv"] .file-ext-badge { background: #6b7280; }
+.north-shuoshuo-file-preview-item[data-ext="py"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="js"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="ts"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="html"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="css"] .file-ext-badge,
+.north-shuoshuo-file-preview-item[data-ext="json"] .file-ext-badge { background: #374151; }
+
+/* 添加按钮 */
+.north-shuoshuo-image-preview-add {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    border: 1px dashed color-mix(in srgb, var(--b3-border-color) 70%, transparent);
+    background: transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 22px;
+    transition: all 0.2s;
+    padding: 0;
+}
+
+.north-shuoshuo-image-preview-add:hover {
+    border-color: var(--b3-theme-primary, #4a90d9);
+    color: var(--b3-theme-primary, #4a90d9);
+    background: color-mix(in srgb, var(--b3-theme-primary-lightest, rgba(74,144,217,0.06)) 100%, transparent);
 }
 
 .north-shuoshuo-search-bar {
@@ -3334,14 +3585,15 @@ body.dark .north-shuoshuo-image-item-video,
         order: -2;
     }
 
+    /* 移动端卡片布局保持双栏横向排列（列数由 JS 按宽度生成 2 个 .north-shuoshuo-masonry-column） */
     .north-shuoshuo-notes-list.card-layout {
-        flex-direction: column;
-        gap: 12px;
+        flex-direction: row;
+        gap: 10px;
         padding: 16px;
     }
-    
+
     .north-shuoshuo-masonry-column {
-        width: 100%;
+        width: auto;
     }
 }
 
@@ -3480,32 +3732,47 @@ body.dark .north-shuoshuo-image-item-video,
     max-height: 10000px;
 }
 
-/* 子标签项 */
-.north-shuoshuo-tag-children .north-shuoshuo-tag-tree-item > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
-    margin-left: 18px;
+/* 子标签项：箭头位置跟随层级缩进，与图标对齐 */
+.north-shuoshuo-tag-tree-item[data-level="0"] > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    left: 12px;
+}
+.north-shuoshuo-tag-tree-item[data-level="1"] > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    left: 28px;
+}
+.north-shuoshuo-tag-tree-item[data-level="2"] > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    left: 44px;
+}
+.north-shuoshuo-tag-tree-item[data-level="3"] > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    left: 60px;
+}
+.north-shuoshuo-tag-tree-item[data-level="4"] > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    left: 76px;
+}
+.north-shuoshuo-tag-tree-item[data-level="5"] > .north-shuoshuo-tag-item-content > .north-shuoshuo-tag-toggle {
+    left: 92px;
 }
 
-/* 根据层级设置缩进 */
+/* 根据层级设置缩进（level 0 与检索式对齐） */
 .north-shuoshuo-tag-tree-item[data-level="0"] > .north-shuoshuo-tag-item-content {
-    padding-left: 20px;
+    padding-left: 12px;
 }
 .north-shuoshuo-tag-tree-item[data-level="1"] > .north-shuoshuo-tag-item-content {
-    padding-left: 38px;
+    padding-left: 28px;
 }
 .north-shuoshuo-tag-tree-item[data-level="2"] > .north-shuoshuo-tag-item-content {
-    padding-left: 56px;
+    padding-left: 44px;
 }
 .north-shuoshuo-tag-tree-item[data-level="3"] > .north-shuoshuo-tag-item-content {
-    padding-left: 74px;
+    padding-left: 60px;
 }
 .north-shuoshuo-tag-tree-item[data-level="4"] > .north-shuoshuo-tag-item-content {
-    padding-left: 84px;
+    padding-left: 76px;
 }
 .north-shuoshuo-tag-tree-item[data-level="5"] > .north-shuoshuo-tag-item-content {
-    padding-left: 102px;
+    padding-left: 92px;
 }
 .north-shuoshuo-tag-tree-item[data-level="6"] > .north-shuoshuo-tag-item-content {
-    padding-left: 120px;
+    padding-left: 108px;
 }
 
 /* 子标签左侧横线（已移除） */
@@ -3626,7 +3893,6 @@ body.dark .north-shuoshuo-image-item-video,
 .north-shuoshuo-settings-section .north-shuoshuo-input-field {
     font-size: 16px !important;
 }
-
 
 
 .north-shuoshuo-page-header {
@@ -9919,530 +10185,6 @@ body.dark .north-shuoshuo-image-item-video,
 }
 
 
-
-
-/* =================== 随机漫步 - 方格纸便签风�?=================== */
-
-.north-shuoshuo-random-bg {
-    min-height: 100%;
-    background-color: #faf9f6;
-    background-image:
-        linear-gradient(rgba(200, 195, 185, 0.15) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(200, 195, 185, 0.15) 1px, transparent 1px);
-    background-size: 24px 24px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 80px 24px 40px;
-    /* 抵消父元�?#shuoshuo-notes-list �?padding，实现全�?*/
-    margin: -20px -30px;
-    /* 创建独立层叠上下文，防止内部 z-index 影响全局 */
-    isolation: isolate;
-}
-
-/* 卡片 */
-.north-shuoshuo-review-card {
-    width: 100%;
-    max-width: 760px;
-    background: #fefcf7;
-    border-radius: 2px;
-    box-shadow:
-        0 1px 2px rgba(0,0,0,0.05),
-        0 4px 12px rgba(0,0,0,0.08),
-        0 16px 48px rgba(0,0,0,0.06);
-    padding: 48px 48px 40px;
-    position: relative;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    display: flex;
-    flex-direction: column;
-}
-
-/* 顶部：漫步标�?+ 日期 */
-.north-shuoshuo-review-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 36px;
-    padding-bottom: 16px;
-    border-bottom: 1px dashed #e8e4dc;
-    flex-shrink: 0;
-}
-
-.north-shuoshuo-header-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.north-shuoshuo-icon-wander {
-    width: 16px;
-    height: 16px;
-    color: #c4b8a8;
-    stroke-width: 2;
-}
-
-.north-shuoshuo-review-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: #b8a99a;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-}
-
-.north-shuoshuo-review-date {
-    font-size: 13px;
-    color: #d4c8b8;
-    font-variant-numeric: tabular-nums;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-}
-
-/* 内容�?*/
-.north-shuoshuo-review-body {
-    padding: 8px 0 32px;
-    min-height: 120px;
-}
-
-.north-shuoshuo-review-content {
-    font-size: 16px;
-    line-height: 1.9;
-    color: #3a3a3a;
-    font-weight: 400;
-    letter-spacing: 0.04em;
-    word-wrap: break-word;
-    text-align: justify;
-}
-
-.north-shuoshuo-review-content .north-shuoshuo-note-content {
-    color: #3a3a3a;
-    margin-bottom: 0;
-    line-height: 1.9;
-    font-size: 16px;
-}
-
-.north-shuoshuo-review-content .north-shuoshuo-note-content h1,
-.north-shuoshuo-review-content .north-shuoshuo-note-content h2,
-.north-shuoshuo-review-content .north-shuoshuo-note-content h3,
-.north-shuoshuo-review-content .north-shuoshuo-note-content strong {
-    color: #2c2c2c;
-}
-
-.north-shuoshuo-review-content .north-shuoshuo-note-content a {
-    color: #0066cc;
-}
-
-.north-shuoshuo-review-content .north-shuoshuo-note-content code {
-    color: #c7254e;
-    background: rgba(199, 37, 78, 0.06);
-}
-
-.north-shuoshuo-review-content .north-shuoshuo-note-content blockquote {
-    border-left-color: rgba(0,0,0,0.1);
-    color: #555;
-}
-
-.north-shuoshuo-review-content .north-shuoshuo-tag {
-    background: rgba(0,102,204,0.08);
-    color: #0066cc;
-}
-
-.north-shuoshuo-review-content .north-shuoshuo-image-grid.single .north-shuoshuo-grid-img,
-.north-shuoshuo-review-content .north-shuoshuo-image-grid.multi img,
-.north-shuoshuo-review-content .north-shuoshuo-markdown-img {
-    max-height: 140px;
-    border-radius: 4px;
-}
-
-/* 底部：标�?+ 页码 */
-.north-shuoshuo-review-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-shrink: 0;
-    padding-top: 24px;
-    border-top: 1px dashed #e8e4dc;
-}
-
-/* 便签标签 */
-.north-shuoshuo-review-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 14px;
-    background: #f0f5f2;
-    border: 1px solid #d8e6df;
-    border-radius: 3px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #6b9b8a;
-    letter-spacing: 0.06em;
-    position: relative;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-}
-
-.north-shuoshuo-tag-dot {
-    width: 6px;
-    height: 6px;
-    background: #7ab8a8;
-    border-radius: 50%;
-    opacity: 0.7;
-    flex-shrink: 0;
-}
-
-.north-shuoshuo-page-indicator {
-    font-size: 13px;
-    color: #d4c8b8;
-    font-variant-numeric: tabular-nums;
-    font-weight: 500;
-    font-family: Georgia, serif;
-    letter-spacing: 0.02em;
-}
-
-.north-shuoshuo-page-current {
-    color: #a89888;
-    font-weight: 700;
-}
-
-/* 快捷键提�?*/
-.north-shuoshuo-keyboard-hint {
-    margin-top: 40px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 12px;
-    color: #c8c0b4;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-}
-
-.north-shuoshuo-kbd {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 32px;
-    padding: 4px 10px;
-    font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    color: #b8a99a;
-    background: rgba(255,255,255,0.6);
-    border: 1px solid #e0d8cc;
-    border-radius: 4px;
-    box-shadow: 0 1px 0 #d8d0c4;
-    cursor: default;
-    user-select: none;
-    letter-spacing: 0.04em;
-}
-
-/* 动画 */
-.north-shuoshuo-card-enter {
-    animation: north-shuoshuo-cardEnter 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes north-shuoshuo-cardEnter {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* 空状�?*/
-.north-shuoshuo-random-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 400px;
-    color: #666;
-}
-
-.north-shuoshuo-random-empty-icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-}
-
-.north-shuoshuo-random-empty-text {
-    font-size: 18px;
-    margin-bottom: 8px;
-    font-weight: 500;
-}
-
-.north-shuoshuo-random-empty-hint {
-    font-size: 13px;
-    color: #999;
-}
-
-/* 随机漫步卡片操作按钮 */
-.north-shuoshuo-review-header-right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.north-shuoshuo-random-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.north-shuoshuo-random-action-btn {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    border-radius: 6px;
-    color: #c4b8a8;
-    transition: all 0.2s;
-}
-
-.north-shuoshuo-random-action-btn:hover {
-    background: rgba(0,0,0,0.04);
-    color: #a89888;
-}
-
-.north-shuoshuo-random-action-btn svg {
-    width: 16px;
-    height: 16px;
-}
-
-/* 随机漫步批注输入�?*/
-.north-shuoshuo-random-comment-box {
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px dashed #e8e4dc;
-    animation: north-shuoshuo-commentFadeIn 0.25s ease;
-}
-
-@keyframes north-shuoshuo-commentFadeIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.north-shuoshuo-random-comment-input-wrap {
-    margin-bottom: 10px;
-}
-
-.north-shuoshuo-random-comment-field {
-    width: 100%;
-    min-height: 60px;
-    border: 1px solid #e8e4dc;
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: 14px;
-    line-height: 1.8;
-    font-family: inherit;
-    resize: vertical;
-    outline: none;
-    background: #fdfcfa;
-    color: #3a3a3a;
-    box-sizing: border-box;
-}
-
-.north-shuoshuo-random-comment-field:focus {
-    border-color: #c4b8a8;
-    box-shadow: 0 0 0 2px rgba(196, 184, 168, 0.15);
-}
-
-.north-shuoshuo-random-comment-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-/* 随机漫步关联关系 */
-.north-shuoshuo-random-relations {
-    margin-top: 8px;
-}
-
-.north-shuoshuo-random-relations .north-shuoshuo-memo-relations {
-    border-top: 1px dashed #e8e4dc;
-    margin-top: 0;
-    padding-top: 12px;
-}
-
-.north-shuoshuo-random-relations .north-shuoshuo-memo-relation-icon {
-    border-color: #c4b8a8;
-    color: #c4b8a8;
-}
-
-.north-shuoshuo-random-relations .north-shuoshuo-memo-relation-info {
-    color: #a89888;
-}
-
-/* ========== 随机漫步 - 适配主题 & 莫兰迪主�?========== */
-
-.theme-siyuan .north-shuoshuo-random-bg,
-.theme-morandi .north-shuoshuo-random-bg {
-    background-color: var(--b3-theme-background);
-    background-image:
-        linear-gradient(rgba(200, 195, 185, 0.12) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(200, 195, 185, 0.12) 1px, transparent 1px);
-}
-
-.theme-siyuan .north-shuoshuo-review-card,
-.theme-morandi .north-shuoshuo-review-card {
-    background: var(--b3-theme-surface);
-    box-shadow:
-        0 1px 2px rgba(0,0,0,0.05),
-        0 4px 12px rgba(0,0,0,0.08),
-        0 16px 48px rgba(0,0,0,0.06);
-}
-
-.theme-siyuan .north-shuoshuo-review-header,
-.theme-morandi .north-shuoshuo-review-header {
-    border-bottom-color: var(--b3-border-color);
-}
-
-.theme-siyuan .north-shuoshuo-review-title,
-.theme-morandi .north-shuoshuo-review-title {
-    color: var(--b3-theme-on-surface-light);
-}
-
-.theme-siyuan .north-shuoshuo-review-date,
-.theme-morandi .north-shuoshuo-review-date {
-    color: var(--b3-theme-on-surface-light);
-}
-
-.theme-siyuan .north-shuoshuo-review-content,
-.theme-morandi .north-shuoshuo-review-content {
-    color: var(--b3-theme-on-background);
-}
-
-.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content,
-.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content {
-    color: var(--b3-theme-on-background);
-}
-
-.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content h1,
-.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content h2,
-.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content h3,
-.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content strong,
-.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content h1,
-.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content h2,
-.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content h3,
-.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content strong {
-    color: var(--b3-theme-on-background);
-}
-
-.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content a,
-.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content a {
-    color: var(--b3-theme-primary);
-}
-
-.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-note-content blockquote,
-.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-note-content blockquote {
-    border-left-color: var(--b3-theme-primary-light);
-    color: var(--b3-theme-on-surface);
-}
-
-.theme-siyuan .north-shuoshuo-review-content .north-shuoshuo-tag,
-.theme-morandi .north-shuoshuo-review-content .north-shuoshuo-tag {
-    background: rgba(0,102,204,0.08);
-    color: #0066cc;
-}
-
-.theme-siyuan .north-shuoshuo-review-footer,
-.theme-morandi .north-shuoshuo-review-footer {
-    border-top-color: var(--b3-border-color);
-}
-
-.theme-siyuan .north-shuoshuo-review-tag,
-.theme-morandi .north-shuoshuo-review-tag {
-    background: var(--b3-theme-primary-lightest);
-    color: var(--b3-theme-primary);
-    border-color: var(--b3-theme-primary-lighter);
-}
-
-.theme-siyuan .north-shuoshuo-tag-dot,
-.theme-morandi .north-shuoshuo-tag-dot {
-    background: var(--b3-theme-primary);
-}
-
-.theme-siyuan .north-shuoshuo-page-indicator,
-.theme-morandi .north-shuoshuo-page-indicator {
-    color: var(--b3-theme-on-surface-light);
-}
-
-.theme-siyuan .north-shuoshuo-page-current,
-.theme-morandi .north-shuoshuo-page-current {
-    color: var(--b3-theme-on-surface);
-}
-
-.theme-siyuan .north-shuoshuo-keyboard-hint,
-.theme-morandi .north-shuoshuo-keyboard-hint {
-    color: var(--b3-theme-on-surface-light);
-}
-
-.theme-siyuan .north-shuoshuo-kbd,
-.theme-morandi .north-shuoshuo-kbd {
-    background: var(--b3-theme-surface-lighter);
-    border-color: var(--b3-border-color);
-    color: var(--b3-theme-on-surface);
-    box-shadow: 0 1px 0 var(--b3-border-color);
-}
-
-.theme-siyuan .north-shuoshuo-random-empty,
-.theme-morandi .north-shuoshuo-random-empty {
-    color: var(--b3-theme-on-surface);
-}
-
-.theme-siyuan .north-shuoshuo-random-empty-hint,
-.theme-morandi .north-shuoshuo-random-empty-hint {
-    color: var(--b3-theme-on-surface-light);
-}
-
-.theme-siyuan .north-shuoshuo-random-action-btn,
-.theme-morandi .north-shuoshuo-random-action-btn {
-    color: var(--b3-theme-on-surface-light);
-}
-
-.theme-siyuan .north-shuoshuo-random-action-btn:hover,
-.theme-morandi .north-shuoshuo-random-action-btn:hover {
-    background: var(--b3-list-hover);
-    color: var(--b3-theme-on-surface);
-}
-
-.theme-siyuan .north-shuoshuo-random-comment-box,
-.theme-morandi .north-shuoshuo-random-comment-box {
-    border-top-color: var(--b3-border-color);
-}
-
-.theme-siyuan .north-shuoshuo-random-comment-field,
-.theme-morandi .north-shuoshuo-random-comment-field {
-    background: var(--b3-theme-background);
-    border-color: var(--b3-border-color);
-    color: var(--b3-theme-on-background);
-}
-
-.theme-siyuan .north-shuoshuo-random-comment-field:focus,
-.theme-morandi .north-shuoshuo-random-comment-field:focus {
-    border-color: var(--b3-theme-primary);
-    box-shadow: 0 0 0 2px var(--b3-theme-primary-lightest);
-}
-
-.theme-siyuan .north-shuoshuo-random-relations .north-shuoshuo-memo-relations,
-.theme-morandi .north-shuoshuo-random-relations .north-shuoshuo-memo-relations {
-    border-top-color: var(--b3-border-color);
-}
-
-.theme-siyuan .north-shuoshuo-random-relations .north-shuoshuo-memo-relation-icon,
-.theme-morandi .north-shuoshuo-random-relations .north-shuoshuo-memo-relation-icon {
-    border-color: var(--b3-theme-on-surface-light);
-    color: var(--b3-theme-on-surface-light);
-}
-
-.theme-siyuan .north-shuoshuo-random-relations .north-shuoshuo-memo-relation-info,
-.theme-morandi .north-shuoshuo-random-relations .north-shuoshuo-memo-relation-info {
-    color: var(--b3-theme-on-surface-light);
-}
-
-@media (max-width: 768px) {
-    .north-shuoshuo-review-card {
-        padding: 40px 28px 32px;
-    }
-}
-
-
 /* ========================================
    快速记录浮�?- 主题适配
    ======================================== */
@@ -12426,7 +12168,6 @@ body.dark .north-shuoshuo-image-item-video,
 }
 
 
-
 .lumina-moments-cover-user {
     position: absolute;
     bottom: -20px;
@@ -13861,7 +13602,6 @@ body.dark .north-shuoshuo-image-item-video,
         min-width: 70px;
     }
 }
-
 
 
 /* ===== 密码输入框眼切换 ===== */
@@ -16853,10 +16593,22 @@ body.dark .north-shuoshuo-gallery-file-wrapper:hover,
 }
 
 .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 12px;
     color: var(--b3-theme-on-surface);
     margin-bottom: 6px;
     font-variant-numeric: tabular-nums;
+}
+
+.north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-duration {
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
 }
 
 .north-shuoshuo-notes-list.lifelog-timeline-layout .lifelog-timeline-type {
