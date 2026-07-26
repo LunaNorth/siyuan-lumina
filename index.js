@@ -757,8 +757,8 @@ module.exports = class ShuoshuoPlugin extends Plugin {
 
         // ===== 思源 transaction 事件：实时同步块内容到属性 =====
         // 思源每次编辑操作都会触发 transaction 自定义事件
-        // 注意：doOperations 中的 updateBlock 操作的 data 字段已经包含了最新 kramdown 内容，
-        // 可以直接使用，无需再调用 getBlockKramdown API，减少一次网络往返
+        // transaction 中 update 操作的 data 是 BlockDOM，不是 kramdown；
+        // 同步属性时统一通过 getBlockKramdown 获取完整块内容。
         this._transactionHandler = (e) => {
             try {
                 const doOperations = this._collectTransactionOperations(e?.detail);
@@ -778,8 +778,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                 const blocksToSync = new Set();
                 // 收集可能需要异步查询的块ID
                 const needQueryIds = [];
-                // 收集从事件中直接获取到的 kramdown 内容（key: blockId, value: kramdown）
-                const eventKramdowns = {};
                 let shouldRefreshLifeLog = false;
                 let sawLifeLogAttrChange = false;
                 let sawLuminaAttrChange = false;
@@ -798,11 +796,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     }
                     if (!op.id) continue;
                     
-                    // 如果操作是 updateBlock 且包含 data（kramdown 内容），保存下来
-                    if (action === 'update' && op.data && typeof op.data === 'string') {
-                        eventKramdowns[op.id] = op.data;
-                    }
-                    
                     // 情况1：直接操作的是绑定的块
                     if (this._isBoundBlockId(op.id)) {
                         blocksToSync.add(op.id);
@@ -812,10 +805,6 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     // 情况2：操作的是绑定块的子元素（如列表项）
                     // 检查 parentId 是否是绑定的块
                     if (op.parentId && this._isBoundBlockId(op.parentId)) {
-                        // 从子操作的 data 中提取 kramdown 存入父块
-                        if (action === 'update' && op.data && typeof op.data === 'string') {
-                            eventKramdowns[op.parentId] = op.data;
-                        }
                         blocksToSync.add(op.parentId);
                         continue;
                     }
@@ -830,9 +819,9 @@ module.exports = class ShuoshuoPlugin extends Plugin {
                     if (op.nextId) needQueryIds.push(op.nextId);
                 }
                 
-                // 先同步已确认的绑定块（传入事件中提取的 kramdown 以跳过 API 调用）
+                // 先同步已确认的绑定块
                 blocksToSync.forEach(blockId => {
-                    this._debouncedSyncBoundAttr(blockId, eventKramdowns[blockId]);
+                    this._debouncedSyncBoundAttr(blockId);
                 });
                 
                 // 异步查询其他可能的绑定块（处理列表项插入等情况）
@@ -14950,9 +14939,12 @@ ipcRenderer.on('lumina-close', () => {
     rebuildContentWithNewPureContent(oldContent, newPureContent) {
         if (!oldContent) return newPureContent || '';
 
-        // 辅助函数：规范化行内空白，但保留换行结构
+        // 辅助函数：仅清理行尾空白和首尾空行，保留 Markdown 缩进与空行结构
         const normalizeSpaces = (text) => {
-            return text.split('\n').map(line => line.replace(/\s+/g, ' ').trim()).join('\n').trim();
+            const lines = String(text || '').split('\n').map(line => line.replace(/[ \t]+$/g, ''));
+            while (lines.length > 0 && !lines[0].trim()) lines.shift();
+            while (lines.length > 0 && !lines[lines.length - 1].trim()) lines.pop();
+            return lines.join('\n');
         };
 
         newPureContent = normalizeSpaces(newPureContent || '');
@@ -15008,7 +15000,7 @@ ipcRenderer.on('lumina-close', () => {
         placeholders.forEach(p => {
             oldPureInTemplate = oldPureInTemplate.replace(new RegExp(p.ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'g'), ' ');
         });
-        oldPureInTemplate = normalizeSpaces(oldPureInTemplate);
+        oldPureInTemplate = normalizeSpaces(oldPureInTemplate).trim();
 
         let newTemplate;
         if (oldPureInTemplate && template.includes(oldPureInTemplate)) {
@@ -15046,6 +15038,12 @@ ipcRenderer.on('lumina-close', () => {
         // 恢复占位符为标签和类型
         let result = newTemplate;
         // 按占位符编号从大到小替换，避免短编号被长编号包含时误匹配
+        // Keep placeholders separated from content so "#tagtext" is not parsed as one tag.
+        placeholders.forEach(p => {
+            const escapedPh = p.ph.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+            result = result.replace(new RegExp('(' + escapedPh + ')(?=[\w\/\u4e00-\u9fa5-])', 'g'), '$1 ');
+            result = result.replace(new RegExp('([\w\/\u4e00-\u9fa5-])(' + escapedPh + ')', 'g'), '$1 $2');
+        });
         const sortedPh = [...placeholders].sort((a, b) => b.ph.localeCompare(a.ph));
         sortedPh.forEach(p => {
             result = result.replace(new RegExp(p.ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), p.value);
@@ -17711,10 +17709,7 @@ ipcRenderer.on('lumina-close', () => {
             // });
             // contentWithoutTags = contentWithoutTags.replace(/\s*#\s*$/g, '').trim();
 
-            // 将内容按行分割
-            const lines = pureContent.split('\n').map(line => line.trim());
-
-            if (lines.length === 0 || (lines.length === 1 && !lines[0])) return;
+            if (!pureContent.trim()) return;
 
             // 始终使用标准格式：引用块格式 > [!NOTE] ✏️ 日期 时间 标签
             const dateStr = this.formatDateTimeAttr(timestamp).split(' ')[0];
@@ -17724,8 +17719,7 @@ ipcRenderer.on('lumina-close', () => {
             const originalLines = contentWithoutTags.split('\n');
             for (let i = 0; i < originalLines.length; i++) {
                 const line = originalLines[i];
-                const trimmedLine = line.trim();
-                diaryContent += '\n> ' + trimmedLine;
+                diaryContent += '\n> ' + line;
             }
 
             diaryContent = diaryContent + ' ';
@@ -20777,9 +20771,9 @@ ipcRenderer.on('lumina-close', () => {
         const rawContent = item.content || '';
         const inlineImages = [];
         // 先匹配 ![图片]() / ! [视频]()
-        let cleanText = rawContent.replace(/!\[(图片|视频)\]\(([^)]+)\)/g, (_, type, path) => {
+        let cleanText = rawContent.replace(/!\[(图片|视频)\]\(([^)]+)\)/g, (match, type, path) => {
             const p = path.trim();
-            inlineImages.push({ type, path: p, raw: _[0] });
+            inlineImages.push({ type, path: p, raw: match });
             return '';
         });
         // 再匹配 [文件名](assets/...) 文件链接
@@ -21530,7 +21524,7 @@ ipcRenderer.on('lumina-close', () => {
                 updateContent = `> [!NOTE] ${emoji} ${dateStr} ${timePart}${tags.length > 0 ? ' ' + tags.join(' ') : ''}`;
                 // 保持引述块连续，不添加额外的空行分隔
                 for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i].trim();
+                    const line = lines[i];
                     updateContent += '\n> ' + line;
                 }
             } else if (tags.length > 0) {
@@ -21555,6 +21549,7 @@ ipcRenderer.on('lumina-close', () => {
             const updateResult = await updateResponse.json();
             if (updateResult.code !== 0) {
                 // console.warn('[轻语] 更新绑定块内容失败:', updateResult.msg);
+                return false;
             }
 
             // 5. 更新自定义属性（属性中保存纯内容、标签、LifeLog 类型）
@@ -22989,7 +22984,7 @@ ipcRenderer.on('lumina-close', () => {
     }
 
     // 防抖：将绑定块的当前内容同步到 custom-lumina-content 属性
-    _debouncedSyncBoundAttr(blockId, kramdown) {
+    _debouncedSyncBoundAttr(blockId) {
         if (!blockId) return;
         if (!this._syncAttrTimer) this._syncAttrTimer = {};
         if (this._syncAttrTimer[blockId]) {
@@ -22997,82 +22992,63 @@ ipcRenderer.on('lumina-close', () => {
         }
         this._syncAttrTimer[blockId] = setTimeout(async () => {
             delete this._syncAttrTimer[blockId];
-            await this._syncBoundBlockAttr(blockId, kramdown);
+            await this._syncBoundBlockAttr(blockId);
         }, 600);
     }
 
     // 将绑定块的当前内容同步到 custom-lumina-content 属性
-    async _syncBoundBlockAttr(blockId, preKramdown) {
+    async _syncBoundBlockAttr(blockId) {
         try {
-            let kramdown = preKramdown || '';
-            // 如果没传入预提取的 kramdown（来自 transaction 事件），使用 API 获取
-            if (!kramdown) {
-                const kramdownResponse = await fetch('/api/block/getBlockKramdown', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: blockId })
-                });
-                const kramdownResult = await kramdownResponse.json();
-                if (kramdownResult.code !== 0 || !kramdownResult.data) {
-                    try {
-                        const sqlResponse = await fetch('/api/query/sql', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ stmt: `SELECT id FROM blocks WHERE id = '${blockId}' LIMIT 1` })
-                        });
-                        const sqlResult = await sqlResponse.json();
-                        if (sqlResult.code === 0 && (!sqlResult.data || sqlResult.data.length === 0)) {
-                            const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
-                            if (index !== -1) {
-                                this.shuoshuos.splice(index, 1);
-                                await this.saveShuoshuos();
-                                this.refreshMountedShuoshuoViews();
-                            }
+            const kramdownResponse = await fetch('/api/block/getBlockKramdown', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: blockId })
+            });
+            const kramdownResult = await kramdownResponse.json();
+            if (kramdownResult.code !== 0 || !kramdownResult.data) {
+                try {
+                    const sqlResponse = await fetch('/api/query/sql', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ stmt: `SELECT id FROM blocks WHERE id = '${blockId}' LIMIT 1` })
+                    });
+                    const sqlResult = await sqlResponse.json();
+                    if (sqlResult.code === 0 && (!sqlResult.data || sqlResult.data.length === 0)) {
+                        const index = this.shuoshuos.findIndex(s => s.boundBlockId === blockId);
+                        if (index !== -1) {
+                            this.shuoshuos.splice(index, 1);
+                            await this.saveShuoshuos();
+                            this.refreshMountedShuoshuoViews();
                         }
-                    } catch (e) {}
-                    return;
-                }
-                kramdown = kramdownResult.data.kramdown || '';
+                    }
+                } catch (e) {}
+                return;
             }
+            const kramdown = kramdownResult.data.kramdown || '';
             // console.log('[轻语] 父块kramdown:', JSON.stringify(kramdown));
 
             // 2. 从 kramdown 中提取纯文本内容
             //    kramdown 格式: 可能包含属性行 {: key="val"}，后面跟实际内容
             //    并且可能有 id/updated 等思源自带属性
             //    列表项格式: "1. {: id=\"...\" updated=\"...\"}内容" 或 "- {: id=\"...\"}内容"
-            let lines = kramdown.split('\n');
-            let blockContent = '';
-
-            // 处理每一行：移除内联属性 {: ...}，并跳过纯属性行
+            // 处理每一行：移除思源 IAL 和最外层 callout 引用标记，同时保留 Markdown 结构
             const contentLines = [];
-            for (const line of lines) {
-                let trimmed = line.trim();
-                // 跳过空行和以 {: 开头的纯属性行
-                if (!trimmed || trimmed.startsWith('{:')) continue;
-                
-                // 移除引用块标记（> 开头的行），提取纯内容
-                // 处理格式：> [!NOTE] ✏️ 2026-4-30 21:42 或 > 内容
-                if (trimmed.startsWith('>')) {
-                    // 移除开头的 > 和可能的空格
-                    trimmed = trimmed.substring(1).trim();
-                    // 跳过引用块标题行（包含 [!NOTE]）
-                    if (trimmed.includes('[!NOTE]')) continue;
+            for (const sourceLine of kramdown.split('\n')) {
+                if (/^\s*\{:[^}]*\}\s*$/.test(sourceLine)) continue;
+
+                let cleanedLine = sourceLine;
+                const quoteMatch = cleanedLine.match(/^(\s*)>\s?(.*)$/);
+                if (quoteMatch) {
+                    cleanedLine = quoteMatch[1] + quoteMatch[2];
                 }
-                
-                // 移除行内的属性标记 {: id="..." updated="..."}
-                // 处理列表项中的内联属性，如: "1. {: id=\"...\"}内容" 或 "- {: id=\"...\"}内容"
-                // 注意：只移除 {:...} 本身，不移除前面的空格，避免误删列表标记后的空格
-                let cleanedLine = trimmed.replace(/\{:([^}]+)\}/g, '').trim();
-                
-                // 清理后如果只剩下列表标记（如"- "、"1. "），也跳过
-                if (!cleanedLine || /^\d+\.\s*$|^[-*+]\s*$/.test(cleanedLine)) continue;
-                
-                if (cleanedLine) {
-                    contentLines.push(cleanedLine);
-                }
+                cleanedLine = cleanedLine.replace(/\{:[^}]*\}/g, '').replace(/[ \t]+$/g, '');
+                if (quoteMatch && /^\s*\[!NOTE\]/.test(cleanedLine)) continue;
+                contentLines.push(cleanedLine);
             }
-            
-            blockContent = contentLines.join('\n').trim();
+
+            while (contentLines.length > 0 && !contentLines[0].trim()) contentLines.shift();
+            while (contentLines.length > 0 && !contentLines[contentLines.length - 1].trim()) contentLines.pop();
+            let blockContent = contentLines.join('\n');
 
             // 3. 如果块内容是空的但有子块（如列表块），尝试获取子块内容
             //    思源笔记的列表块（NodeList）的 kramdown 可能不包含子列表项内容
@@ -23157,7 +23133,7 @@ ipcRenderer.on('lumina-close', () => {
                 // 处理子段落在 blockquote 内时 kramdown 不带 > 前缀的情况：
                 // 原始内容可能是 "[!NOTE] ✏️ 2026-6-7 00:17 内容" 或 "NOTE ✏️ 2026-6-7 00:17 内容"
                 // 统一清理为纯内容
-                blockContent = blockContent.replace(/^\[?!?NOTE\]?\s*✏️\s*\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}\s*/, '').trim();
+                blockContent = blockContent.replace(/^\[?!?NOTE\]?\s*✏️\s*\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}\s*/, '');
 
                 let currentType = attrs['custom-lumina-type'] || '';
                 currentType = this.extractType(this.shuoshuos[index].content);
