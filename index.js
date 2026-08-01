@@ -2891,10 +2891,8 @@ const SIDEBAR_VIEWS = [
                         const _avatar = plugin && plugin._getPluginSetting ? plugin._getPluginSetting('avatar') : '';
                         const _avatarSrc = _avatar || DEFAULT_AVATAR;
                         const _avatarFinal = _resolveMediaUrl(_avatarSrc);
-                        const _nick = plugin && plugin._getPluginSetting ? plugin._getPluginSetting('nickname') : '';
-                        const _nickFinal = _nick || '月亮';
-                        const _sig = plugin && plugin._getPluginSetting ? plugin._getPluginSetting('signature') : '';
-                        const _sigFinal = _sig || '言念君子，温其如玉';
+                        const _nickFinal = plugin && plugin._getProfileNickname ? plugin._getProfileNickname() : '月亮';
+                        const _sigFinal = plugin && plugin._getProfileSignature ? plugin._getProfileSignature() : '言念君子，温其如玉';
                         return '<div class="north-breeze-profile">' +
                             '<div class="north-breeze-profile-avatar" style="background-image:url(\'' + plugin._esc(_avatarFinal) + '\')"></div>' +
                             '<div class="north-breeze-profile-info">' +
@@ -3064,10 +3062,8 @@ const SIDEBAR_VIEWS = [
                         const _avatar = plugin && plugin._getPluginSetting ? plugin._getPluginSetting('avatar') : '';
                         const _avatarSrc = _avatar || DEFAULT_AVATAR;
                         const _avatarFinal = _resolveMediaUrl(_avatarSrc);
-                        const _nick = plugin && plugin._getPluginSetting ? plugin._getPluginSetting('nickname') : '';
-                        const _nickFinal = _nick || '月亮';
-                        const _sig = plugin && plugin._getPluginSetting ? plugin._getPluginSetting('signature') : '';
-                        const _sigFinal = _sig || '言念君子，温其如玉';
+                        const _nickFinal = plugin && plugin._getProfileNickname ? plugin._getProfileNickname() : '月亮';
+                        const _sigFinal = plugin && plugin._getProfileSignature ? plugin._getProfileSignature() : '言念君子，温其如玉';
                         return '<div class="north-lifelog-profile">' +
                             '<div class="north-lifelog-profile-avatar" style="background-image:url(\'' + plugin._esc(_avatarFinal) + '\')"></div>' +
                             '<div class="north-lifelog-profile-info">' +
@@ -3408,7 +3404,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             /* 编辑：打开清风编辑器并填入内容 */
                             if (this.activeViewId !== 'notes') this.switchView('notes');
                             setTimeout(() => {
-                                this._editBreezeNote(note);
+                                /* 走模块级 editBreezeNote（Tab 实例上并没有 _editBreezeNote 方法） */
+                                editBreezeNote(note.id, plugin.data[RECORDS_STORAGE] || {}, plugin);
                             }, 200);
                         } else if (action === 'delete') {
                             /* 删除（带确认提示） */
@@ -3946,8 +3943,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                        （与 _renderBreezeSubView 的 else 分支保持一致，否则从设置返回/首次打开会回退成平铺） */
                                     const viewStyle = this._getSetting('breezeViewStyle') || 'tile';
                                     const dateBottom = !!this._getSetting('breezeTitleDateBottom');
-                                    const footerLabel = this._getSetting('nickname') || '月亮';
-                                    const footerSignature = this._getSetting('breezeFooterShowSignature') ? (this._getSetting('signature') || '') : '';
+                                    const footerLabel = plugin._getProfileNickname();
+                                    const footerSignature = this._getSetting('breezeFooterShowSignature') ? plugin._getProfileSignature() : '';
                                     /* 分页：与 _renderBreezeSubView 同步——仅开启且超出一页时生效 */
                                     const paginationOn = !!this._getSetting('breezePaginationEnabled');
                                     const pageSz = Number(this._getSetting('breezePageSize')) || 20;
@@ -5420,8 +5417,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         /* 展示样式：卡片布局走三栏瀑布流 buildBreezeMasonry，时序/底栏走单列 buildBreezeNotes */
                         const viewStyle = this._getSetting('breezeViewStyle') || 'tile';
                         const dateBottom = !!this._getSetting('breezeTitleDateBottom');
-                        const footerLabel = this._getSetting('nickname') || '月亮';
-                        const footerSignature = this._getSetting('breezeFooterShowSignature') ? (this._getSetting('signature') || '') : '';
+                        const footerLabel = plugin._getProfileNickname();
+                        const footerSignature = this._getSetting('breezeFooterShowSignature') ? plugin._getProfileSignature() : '';
                         if (total === 0) {
                             const hint = this.breezeSearchFilter
                                 ? '没有找到与"' + plugin._esc(this.breezeSearchFilter) + '"匹配的笔记'
@@ -5707,7 +5704,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const notesHtml = this._buildBreezeReviewNotes(picked);
                     /* 签名优先取「控制设置 → 每日回顾签名」breezeReviewSignature，留空回退到「行为 → 默认签名」 */
                     const reviewSig = (this._getSetting('breezeReviewSignature') || '').trim();
-                    const reviewSignature = reviewSig || this._getSetting('signature') || '言念君子，温其如玉';
+                    const reviewSignature = reviewSig || plugin._getProfileSignature();
                     listEl.innerHTML = `
                         <div class="north-breeze-review-header-bar">
                             <div class="north-breeze-review-header-left">
@@ -5747,7 +5744,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (notes.length === 0) {
                         return '<div class="north-breeze-empty">没有可显示的笔记～</div>';
                     }
-                    return buildBreezeNotes(notes, this.breezeSearchFilter, !!this._getSetting('breezeTitleDateBottom'), this._getSetting('breezeViewStyle') || 'tile', this._getSetting('nickname') || '月亮', this._getSetting('breezeFooterShowSignature') ? (this._getSetting('signature') || '') : '');
+                    return buildBreezeNotes(notes, this.breezeSearchFilter, !!this._getSetting('breezeTitleDateBottom'), this._getSetting('breezeViewStyle') || 'tile', plugin._getProfileNickname(), this._getSetting('breezeFooterShowSignature') ? plugin._getProfileSignature() : '');
                 };
 
                 /* 本周记录（筛选本周内的笔记，按日期分组；顶部加轻语同款 header-bar） */
@@ -5765,7 +5762,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     /* 顶部 header-bar：左 iconCalendar + "本周 · 共 N 条"、中签名、右空（参考轻语 line 1183-1196）
                        签名优先取「控制设置 → 本周记录签名」breezeWeekSignature，留空时回退到「行为 → 默认签名」signature */
                     const weekSig = (this._getSetting('breezeWeekSignature') || '').trim();
-                    const signature = weekSig || this._getSetting('signature') || '言念君子，温其如玉';
+                    const signature = weekSig || plugin._getProfileSignature();
                     const headerHtml = '<div class="north-breeze-week-header-bar">' +
                         '<div class="north-breeze-week-header-left">' +
                             '<svg class="north-breeze-week-header-icon"><use xlink:href="#iconCalendar"></use></svg>' +
@@ -6309,6 +6306,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const DOCK_KEYS = ['breezeHoverBorder','breezeDockCompact','breezeFontSize','breezeImgSizeSingle','breezeImgSizeDouble','breezeImgSizeFour','breezeImgSizeMulti','breezeLongNoteCollapse'];
                     if (DOCK_KEYS.indexOf(key) >= 0 && plugin._applyBreezeDockAppearance) {
                         plugin._applyBreezeDockAppearance();
+                    }
+                    /* 昵称 / 个性签名：改完立刻同步到朋友圈封面、动态列表、清风/LifeLog 资料卡 */
+                    if (key === 'nickname' || key === 'signature') {
+                        plugin._applyProfileText && plugin._applyProfileText();
                     }
                     // 滚动阻尼：切换时即时生效（无需重刷视图）
                     if (key === 'breezeScrollDamping') {
@@ -7407,7 +7408,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const cat = this._settingsSchema[this.activeSettingsCategory];
                     const itemMatches = (it) => !filter || (it.title || "").toLowerCase().includes(filter) || (it.desc || "").toLowerCase().includes(filter);
                     const renderItems = (items) => (items || []).filter(itemMatches).map(it => {
-                        const val = this._getSetting(it.key);
+                        let val = this._getSetting(it.key);
+                        /* 昵称/签名：与朋友圈保持同一取值口径（未在设置里改过时回落到朋友圈 config），
+                           避免设置里显示默认值、朋友圈显示旧值的割裂 */
+                        if (it.key === 'nickname') val = plugin._getProfileNickname();
+                        else if (it.key === 'signature') val = plugin._getProfileSignature();
                         let ctrl = "";
                         if (it.type === "toggle") {
                             const on = !!val;
@@ -7501,9 +7506,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         }
 
                         else if (it.type === "avatar") {
-                            let avatarUrl = val || DEFAULT_AVATAR;
-                            if (avatarUrl.startsWith('assets/')) avatarUrl = '/' + avatarUrl;
-                            const resolvedUrl = avatarUrl;
+                            const resolvedUrl = plugin._resolveImageUrl(val || DEFAULT_AVATAR);
                             return `<div class="north-luna-settings-avatar-card">
                                 <div class="north-luna-settings-avatar-row">
                                     <img class="north-luna-settings-avatar-img" src="${plugin._esc(resolvedUrl)}" alt="头像">
@@ -7931,21 +7934,24 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             setDocName('');
                         });
                     });
-                    /* 异步加载存储路径的头像 */
-                    const avatarImg = body.querySelector(".north-luna-settings-avatar-img");
-                    
                 };
                 /* 同步更新侧边栏头像 + 朋友圈封面头像（设置中改头像时调用） */
                 this._applyAvatar = (url) => {
+                    /* 注意：此处 this 是 Tab 实例，_resolveImageUrl 属于插件类，必须走 plugin. */
                     const finalUrl = url || DEFAULT_AVATAR;
-                    const displaySrc = finalUrl;
-                    this.container && this.container.querySelectorAll(".north-luna-avatar img").forEach(img => {
-                        img.src = this._resolveImageUrl(displaySrc);
+                    const resolved = (plugin && typeof plugin._resolveImageUrl === "function")
+                        ? plugin._resolveImageUrl(finalUrl)
+                        : _resolveMediaUrl(finalUrl);
+                    /* 全局更新：Tab / Dock / 移动端抽屉里的头像一起刷新 */
+                    document.querySelectorAll(".north-luna-avatar img").forEach(img => {
+                        img.src = resolved;
                     });
-                    const coverAvatar = this.container && this.container.querySelector("#momentsCoverAvatar");
-                    if (coverAvatar) {
-                        coverAvatar.src = this._resolveImageUrl(displaySrc);
-                    }
+                    document.querySelectorAll(".north-luna-settings-avatar-img").forEach(img => {
+                        img.src = resolved;
+                    });
+                    document.querySelectorAll("#momentsCoverAvatar").forEach(el => {
+                        el.src = resolved;
+                    });
                 };
 
                 /* 打开编辑昵称/签名的弹窗 */
@@ -7994,20 +8000,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     modal.querySelector("#northLunaProfileSave").addEventListener("click", () => {
                         const nick = modal.querySelector("#northLunaProfileNick").value.trim();
                         const sig = modal.querySelector("#northLunaProfileSig").value.trim();
+                        /* _setSetting 内部已统一回写朋友圈 config 并实时刷新各处 DOM */
                         this._setSetting("nickname", nick);
                         this._setSetting("signature", sig);
-                        // 同步更新朋友圈配置（用最新昵称/签名渲染封面）
-                        plugin.data[MOMENTS_STORAGE] = plugin.data[MOMENTS_STORAGE] || { config: {}, items: [] };
-                        plugin.data[MOMENTS_STORAGE].config = plugin.data[MOMENTS_STORAGE].config || {};
-                        plugin.data[MOMENTS_STORAGE].config.nickname = nick;
-                        plugin.data[MOMENTS_STORAGE].config.signature = sig;
-                        plugin.saveMoments();
                         // 重新渲染设置页（昵称/签名显示更新）
                         const body = this.container && this.container.querySelector(".north-luna-main-body");
-                        if (body) this._renderSettingsView(body);
-                        // 如果朋友圈页正打开着，也刷新一下
-                        this._viewDomCache = {};
-                        if (plugin.renderMoments && this.activeViewId === "globe") this.renderMain();
+                        if (body && this.activeViewId === "settings") this._renderSettingsView(body);
                         modal.classList.remove("active");
                         showMessage("已保存");
                     });
@@ -10095,7 +10093,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     document.body.appendChild(overlay);
                     const editTextarea = overlay.querySelector('#lifelog-edit-content');
                     if (editTextarea) {
-                        this._suppressKeyboardToolbarOn(editTextarea);
+                        plugin._suppressKeyboardToolbarOn && plugin._suppressKeyboardToolbarOn(editTextarea);
                         setTimeout(() => editTextarea.focus(), 50);
                     }
                     const close = () => { try { overlay.remove(); } catch (e) {} };
@@ -10203,7 +10201,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         modal.style.display = '';
                         setTimeout(() => {
                             if (!modalTextarea._kbSuppressed) {
-                                this._suppressKeyboardToolbarOn(modalTextarea);
+                                plugin._suppressKeyboardToolbarOn && plugin._suppressKeyboardToolbarOn(modalTextarea);
                                 modalTextarea._kbSuppressed = true;
                             }
                             modalTextarea.focus();
@@ -10576,6 +10574,70 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this.data[SETTINGS_STORAGE].settings = this.data[SETTINGS_STORAGE].settings || {};
         this.data[SETTINGS_STORAGE].settings[key] = val;
         this.saveData(SETTINGS_STORAGE, this.data[SETTINGS_STORAGE]).catch(() => {});
+        /* 昵称/签名走 plugin 级写入时（如移动端）同样实时同步 */
+        if (key === 'nickname' || key === 'signature') this._applyProfileText();
+    }
+
+    /* ===== 昵称 / 个性签名：统一取值口径 =====
+       设置项（settings）为唯一真源，朋友圈 config 只作为旧数据回退，避免两处不同步。 */
+    _resolveProfileField(key, fallback) {
+        const s = ((this.data[SETTINGS_STORAGE] || {}).settings || {});
+        const cfg = (this.momentsData && this.momentsData.config) || {};
+        /* 设置里出现过该字段（含被清空）→ 以设置为准；从未设置过 → 回退旧的朋友圈 config */
+        const raw = (s[key] !== undefined && s[key] !== null) ? s[key] : cfg[key];
+        const v = String(raw == null ? '' : raw).trim();
+        return v || fallback;
+    }
+    _getProfileNickname() {
+        return this._resolveProfileField('nickname', '月亮');
+    }
+    _getProfileSignature() {
+        return this._resolveProfileField('signature', '言念君子，温其如玉');
+    }
+
+    /* 昵称/签名变更后的实时同步：回写朋友圈 config + 直接改 DOM 文本，
+       无需重渲染整页（避免朋友圈列表滚动位置丢失）。Tab / Dock / 移动端一并更新。 */
+    _applyProfileText() {
+        const nickname = this._getProfileNickname();
+        const signature = this._getProfileSignature();
+        /* 回写朋友圈 config，保持导出数据与设置一致。
+           注意：momentsData 是只读 getter，必须直接写 this.data[MOMENTS_STORAGE]。 */
+        try {
+            const md = this.data[MOMENTS_STORAGE] = this.data[MOMENTS_STORAGE] || { config: {}, items: [] };
+            md.config = md.config || {};
+            if (md.config.nickname !== nickname || md.config.signature !== signature) {
+                md.config.nickname = nickname;
+                md.config.signature = signature;
+                this.saveMoments && this.saveMoments();
+            }
+        } catch (e) { /* ignore */ }
+        const setText = (sel, text) => {
+            document.querySelectorAll(sel).forEach(el => { el.textContent = text; });
+        };
+        /* 朋友圈：封面昵称 / 签名 / 每条动态的昵称 / 锁屏昵称 */
+        setText('.north-luna-moments-cover-name', nickname);
+        setText('.north-luna-moments-signature-text', signature);
+        setText('.north-luna-moments-item-name', nickname);
+        setText('.north-luna-moments-lock-name', nickname);
+        /* 清风 / LifeLog 移动端个人资料卡 */
+        setText('.north-breeze-profile-name', nickname);
+        setText('.north-breeze-profile-signature', signature);
+        setText('.north-lifelog-profile-name', nickname);
+        setText('.north-lifelog-profile-signature', signature);
+        /* 清风底栏卡片的「昵称 | 签名」 */
+        const showSig = this._getPluginSetting('breezeFooterShowSignature');
+        const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const footerHtml = showSig
+            ? esc(nickname) + ' <span style="opacity:0.55;margin:0 2px;">|</span> ' + esc(signature)
+            : esc(nickname);
+        document.querySelectorAll('.north-breeze-footer-bar-label').forEach(el => { el.innerHTML = footerHtml; });
+        /* 周报 / 回顾头部签名：仅在未单独配置专属签名时才跟随全局签名 */
+        if (!(this._getPluginSetting('breezeWeekSignature') || '').trim()) {
+            setText('.north-breeze-week-signature', signature);
+        }
+        if (!(this._getPluginSetting('breezeReviewSignature') || '').trim()) {
+            setText('.north-breeze-review-signature', signature);
+        }
     }
 
     /* ===== 侧边栏/移动端标签栏通用 helper（Plugin 级别，Tab 和 Dock 均可调用） ===== */
@@ -12193,12 +12255,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     /* 卡片渲染：时序/底栏模式按日期分组，卡片模式走双栏瀑布流 */
                     const viewStyle = plugin._getPluginSetting('breezeViewStyle') || 'tile';
                     const dateBottom = !!plugin._getPluginSetting('breezeTitleDateBottom');
-                    const footerLabel = plugin._getPluginSetting('nickname') || '月亮';
-                    const footerSig = plugin._getPluginSetting('breezeFooterShowSignature') ? (plugin._getPluginSetting('signature') || '') : '';
+                    const footerLabel = plugin._getProfileNickname();
+                    const footerSig = plugin._getPluginSetting('breezeFooterShowSignature') ? plugin._getProfileSignature() : '';
                     /* 本周记录 / 每日回顾顶部 header-bar（参考 PC 端 _renderBreezeWeek / _renderBreezeReviewNotes） */
                     let subViewHeader = '';
                     if (subView === 'week') {
-                        const weekSig = (plugin._getPluginSetting('breezeWeekSignature') || '').trim() || plugin._getPluginSetting('signature') || '言念君子，温其如玉';
+                        const weekSig = (plugin._getPluginSetting('breezeWeekSignature') || '').trim() || plugin._getProfileSignature();
                         subViewHeader = '<div class="north-breeze-week-header-bar">' +
                             '<div class="north-breeze-week-header-left">' +
                             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M16 3h3v3h-3zM8 3h3v3H8zM5 8h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8zM12 12v4"/></svg>' +
@@ -12270,7 +12332,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             picked.forEach(n => { rec.breezeReviewHistory[n.id] = now; });
                             plugin.saveData(RECORDS_STORAGE, rec).catch(() => {});
                         }
-                        const reviewSig = (plugin._getPluginSetting('breezeReviewSignature') || '').trim() || plugin._getPluginSetting('signature') || '言念君子，温其如玉';
+                        const reviewSig = (plugin._getPluginSetting('breezeReviewSignature') || '').trim() || plugin._getProfileSignature();
                         const headerHtml = '<div class="north-breeze-review-header-bar">' +
                             '<div class="north-breeze-review-header-left">' +
                             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M16 3h3v3h-3zM8 3h3v3H8zM5 8h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8zM12 12v4"/></svg>' +
@@ -12856,8 +12918,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         /* 展示样式：卡片布局走双栏瀑布流，时序/底栏走单列日期分组 */
         const viewStyle = this._getPluginSetting('breezeViewStyle') || 'tile';
         const dateBottom = !!this._getPluginSetting('breezeTitleDateBottom');
-        const footerLabel = this._getPluginSetting('nickname') || '月亮';
-        const footerSignature = this._getPluginSetting('breezeFooterShowSignature') ? (this._getPluginSetting('signature') || '') : '';
+        const footerLabel = this._getProfileNickname();
+        const footerSignature = this._getPluginSetting('breezeFooterShowSignature') ? this._getProfileSignature() : '';
         if (viewStyle === 'card') {
             listEl.innerHTML = this._buildBreezeDockMasonry(notes, dateBottom, viewStyle, footerLabel, footerSignature);
         } else {
@@ -15928,8 +15990,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!lockEnabled || !lockPasscode) {
             this._momentsUnlocked = false;
         }
-        const nickname = cfg.nickname || '月亮';
-        const signature = cfg.signature || '言念君子，温其如玉';
+        /* 昵称/签名统一以设置项为准（设置里改完即可实时反映） */
+        const nickname = this._getProfileNickname();
+        const signature = this._getProfileSignature();
         const cover = cfg.cover || null;
         const coverPosition = cfg.coverPosition || 50;
 
@@ -16161,8 +16224,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const lockBg = (settings.momentsLockBg || '').trim();
         const bgStyle = lockBg ? ` style="background-image:url(${this._esc(lockBg)})"` : '';
         const cfg = this.momentsData.config || {};
-        const nickname = cfg.nickname || '月亮';
-        const avatarSrc = ((this.data[SETTINGS_STORAGE] || {}).settings || {}).avatar || cfg.avatar || DEFAULT_AVATAR;
+        const nickname = this._getProfileNickname();
+        const avatarSrc = this._resolveImageUrl(((this.data[SETTINGS_STORAGE] || {}).settings || {}).avatar || cfg.avatar || DEFAULT_AVATAR);
         /* 顶部时间 + 日期（macOS 风格） */
         const now = new Date();
         const p2 = n => String(n).padStart(2, '0');
@@ -16236,6 +16299,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
     }
 
     renderMomentItem(m, nickname) {
+        /* 昵称实时读取：懒加载后续分片时也能拿到最新值，不用外层闭包里的旧快照 */
+        nickname = this._getProfileNickname();
         const dateStr = this.formatMomentDate(m.created);
         // 头像：用户设置优先，否则用默认头像
         const userAvatar = ((this.data[SETTINGS_STORAGE] || {}).settings || {}).avatar;
@@ -18749,8 +18814,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!container) return;
         const listEl = container.querySelector('#momentsList');
         if (!listEl) return;
-        const cfg = this.momentsData.config || {};
-        const nickname = cfg.nickname || '月亮';
+        const nickname = this._getProfileNickname();
         // 应用心情筛选（仅当 filter 非空时过滤；刷新后保持）
         const allItems = this.momentsData.items || [];
         const filtered = this.momentsMoodFilter

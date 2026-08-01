@@ -1,6 +1,9 @@
+  <!-- 顶部标题 -->
+  <div style="text-align: center; padding: 0 0 24px;">
+    <div style="color: var(--b3-theme-on-surface-light); font-size: 12px;       margin-top:15px;letter-spacing: 0.2em; text-transform: uppercase;">如果你也喜欢记录-那么现在就可以开始了!</div>
+  </div>
 
-
-<div style="display: flex; gap: 10px; align-items: center; justify-content: flex-start; margin: .5em 0; flex-wrap: wrap;">
+  <div style="display: flex; gap: 10px; align-items: center; justify-content: flex-start; margin: .5em 0; flex-wrap: wrap;">
   <!-- 按钮1：绿色 - 感谢您的支持 -->
   <a href="https://testingcf.jsdelivr.net/gh/LunaNorth/north-img/images/20260519195219305.png" 
       target="_blank" rel="noopener noreferrer"
@@ -58,16 +61,21 @@
 </div>
 
 
+</br>
+
 
 
   <!-- 顶部标题 -->
   <div style="text-align: center; padding: 0 0 24px;">
-    <div style="color: var(--b3-theme-on-surface-light); font-size: 12px;       margin-top:15px;letter-spacing: 0.2em; text-transform: uppercase;">如果你也喜欢记录-那么现在就可以开始了!</div>
+    <div style="color: var(--b3-theme-on-surface-light); font-size: 12px;       margin-top:15px;letter-spacing: 0.2em; text-transform: uppercase;"><span>
+      如未检测到旧数据，请在 <strong style="font-weight: 600;">设置 → 数据同步 → 数据导入</strong> 中点下 <strong style="font-weight: 600;">导入</strong>
+    </span></div>
   </div>
+
 
 ## 更新日志
 
-### v1.9.7
+### v1.9.7 ~ v1.9.8
 - 【重大】重构插件
 
 ### v1.9.6
