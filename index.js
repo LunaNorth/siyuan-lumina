@@ -11419,6 +11419,42 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (this.isMobile) this.applyMobileAddFloating(ctx, viewId);
     }
 
+    async addBreezeNote(input = {}) {
+        const content = String(input.content || '').trim();
+        if (!content) throw new Error('记录内容为空');
+
+        const timestamp = Number(input.timestamp || Date.now());
+        const date = new Date(Number.isFinite(timestamp) ? timestamp : Date.now());
+        const p2 = n => String(n).padStart(2, '0');
+        const time = `${date.getFullYear()}-${p2(date.getMonth() + 1)}-${p2(date.getDate())} ${p2(date.getHours())}:${p2(date.getMinutes())}`;
+        const note = {
+            id: `b_${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+            time,
+            content,
+            images: Array.isArray(input.images) ? input.images.slice() : [],
+            files: Array.isArray(input.files) ? input.files.slice() : []
+        };
+        const title = String(input.title || '').trim();
+        if (title) note.title = title;
+
+        const storage = this.data[RECORDS_STORAGE] || { breezeNotes: [], tagMeta: {}, breezeReviewHistory: {} };
+        const notes = Array.isArray(storage.breezeNotes) ? storage.breezeNotes : (storage.breezeNotes = []);
+        this.data[RECORDS_STORAGE] = storage;
+        notes.unshift(note);
+        try {
+            await this.saveData(RECORDS_STORAGE, storage);
+        } catch (e) {
+            const index = notes.findIndex(item => item && item.id === note.id);
+            if (index >= 0) notes.splice(index, 1);
+            throw e;
+        }
+
+        try { this._refreshActiveBreezeView(this._siyuTab); } catch (e) {}
+        try { this._refreshActiveBreezeView(this._lunaDockCtx); } catch (e) {}
+        try { this._refreshBreezeDockList(); } catch (e) {}
+        return note;
+    }
+
     /* ===== 多端同步：从磁盘重新读取清风数据（lumina-records） =====
        移动端在清风视图写入的内容经思源同步落盘后，PC 端通过本方法重新读取最新数据，
        使移动端新内容在 PC 端生效。对齐轻语「说说」视图：reopen / refresh / switch 即重载。 */
