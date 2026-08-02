@@ -2969,6 +2969,7 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     .north-luna-moments-item {
         width: 100%;
         box-sizing: border-box;
+        border: var(--mom-mobile-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
     }
 
     /* 移动端朋友圈字体大小 */

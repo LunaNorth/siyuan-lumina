@@ -6272,6 +6272,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'momentsCoverToolMoodFilter', title: '心情', desc: '移动端朋友圈封面工具栏：显示/隐藏「心情」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolDelete', title: '删除', desc: '移动端朋友圈封面工具栏：显示/隐藏「删除」按钮', default: true }
                         ]},
+                        { title: '移动端朋友圈外观', items: [
+                            { type: 'toggle', key: 'momMobileShowBorder', title: '显示卡片边框', desc: '移动端朋友圈：显示/隐藏动态卡片边框', default: true }
+                        ]},
                         { title: '控制设置', items: [
                             { type: 'slider', key: 'mobileSidebarIconSize', title: '底部标签栏图标大小', desc: '自定义移动端底部标签栏图标的显示尺寸，默认 21px（即当前大小）。', default: 21, min: 14, max: 40, step: 1 },
                             { type: 'mobile_sidebar_icons' }
@@ -7836,6 +7839,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             if (inp.dataset.key === 'lifelogDockCompact') {
                                 const dockEl = this.plugin && this.plugin._lifeLogDockEl;
                                 if (dockEl) dockEl.classList.toggle('north-lifelog-dock-compact', inp.checked);
+                            }
+                            if (inp.dataset.key === 'momMobileShowBorder') {
+                                const momentsContainer = this.container && this.container.querySelector(".north-luna-moments-container");
+                                if (momentsContainer) momentsContainer.style.setProperty("--mom-mobile-item-border", inp.checked ? '' : 'none');
                             }
                         });
                     });
@@ -16296,7 +16303,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const initialFontSize = settingsAll.momentsFontSize || 16;
 
         body.innerHTML = `
-            <div class="north-luna-moments-container" style="--moments-font-size: ${initialFontSize}px;">
+            <div class="north-luna-moments-container" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder !== false ? '' : '--mom-mobile-item-border: none;'}">
                 <div class="north-luna-moments-main" id="momentsMainPage">
                     <div class="north-luna-moments-nav" id="momentsNavBar">
                         <div class="north-luna-moments-nav-left"></div>
