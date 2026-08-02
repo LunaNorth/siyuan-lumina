@@ -2973,7 +2973,7 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 
     /* 移动端朋友圈字体大小 */
     .north-luna-moments-container .north-luna-moments-item-text {
-        font-size: var(--moments-mobile-font-size, var(--b3-font-size-editor, 14.5px)) !important;
+        font-size: var(--moments-font-size, var(--b3-font-size-editor, 14.5px)) !important;
     }
 
     /* 移动端朋友圈头像缩小 */
@@ -3877,11 +3877,22 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     gap: 18px;
 }
 .north-luna-moments-calendar-photo-month-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 14px;
     font-weight: 600;
     color: var(--b3-theme-on-background);
     margin: 4px 0 8px 4px;
     letter-spacing: 0.3px;
+}
+.north-luna-moments-calendar-photo-month-title .month-title-count {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--b3-theme-on-surface-light);
+    padding: 2px 7px;
+    border-radius: 10px;
+    line-height: 1.2;
 }
 .north-luna-moments-calendar-photo-grid {
     display: flex;
@@ -10531,6 +10542,8 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 /* 移动端 LifeLog 记录/统计 切换条与统计面板：默认隐藏，仅移动端 LifeLog 子视图激活时显示（PC 端永不出现，零影响） */
 .north-lifelog-subtabs { display: none; }
 .north-lifelog-mobile-stats { display: none; }
+/* LifeLog 顶栏：只保留「记录/统计」切换条，隐藏冗余的 LifeLog 标题文字（不依赖媒体查询，平板/横屏等更宽视口同样生效） */
+.north-luna-container[data-active-view="lifelog"] .mobile-header-title-text { display: none !important; }
 
 /* LifeLog 日历月份选择器：PC 端隐藏，移动端显示 */
 #lifelogCalMonth { display: none; }
@@ -10651,7 +10664,7 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     }
     /* ===== 移动端 LifeLog 月份日历 ===== */
     .north-luna-container #lifelogCalMonth {
-        display: inline-block;
+        display: none;
         border: none;
         background: transparent;
         font-size: 13px;
@@ -10732,6 +10745,35 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     }
     .north-luna-container .mobile-lifelog-calendar-day:active {
         transform: scale(0.95);
+    }
+    /* 移动端 LifeLog 日历：整年月份可滚动，隐藏月份下拉选择器 */
+    #lifelogCalMonth { display: none; }
+    .mobile-lifelog-calendar-year {
+        padding: 4px 8px 12px;
+    }
+    .mobile-lifelog-calendar-month-section {
+        margin-bottom: 18px;
+    }
+    .mobile-lifelog-calendar-month-section:last-child {
+        margin-bottom: 0;
+    }
+    .mobile-lifelog-calendar-month-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--b3-theme-on-background);
+        margin: 4px 0 8px 4px;
+        letter-spacing: 0.3px;
+    }
+    .mobile-lifelog-calendar-month-title .month-title-count {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--b3-theme-on-surface-light);
+        padding: 2px 7px;
+        border-radius: 10px;
+        line-height: 1.2;
     }
 }
 

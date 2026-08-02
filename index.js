@@ -4323,7 +4323,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const yearSel = this.container.querySelector('#breezeCalYear');
                     const body = this.container.querySelector('#breezeCalBody');
                     if (btn) btn.addEventListener('click', () => { if (!plugin.isMobile) this._openBreezeCalendar(); });
-                    if (overlay) overlay.addEventListener('click', () => this._closeBreezeCalendar());
+                    if (overlay) {
+                        overlay.addEventListener('click', (ev) => {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            ev.stopImmediatePropagation();
+                            this._closeBreezeCalendar();
+                        }, true);
+                    }
                     if (closeBtn) closeBtn.addEventListener('click', () => this._closeBreezeCalendar());
                     if (yearSel) yearSel.addEventListener('change', () => this._renderBreezeCalendarBody(parseInt(yearSel.value, 10)));
                     if (body) body.addEventListener('click', (e) => {
@@ -6608,6 +6615,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (!listEl) return;
                     const self = this;
                     const esc = (s) => plugin._esc ? plugin._esc(s) : String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                    const dragSvg = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>';
                     const views = [...plugin._getMobileSortableViews()];
                     let h = '';
                     views.forEach(v => {
@@ -6615,8 +6623,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const name = plugin._getMobileSidebarViewName(v.id);
                         const hidden = plugin._isMobileNavViewHidden(v.id);
                         const hiddenStyle = hidden ? 'opacity:0.5;' : '';
-                        h += '<div class="north-luna-settings-item" data-view="' + esc(v.id) + '"' + (hidden ? ' data-hidden="1"' : '') + ' style="' + hiddenStyle + 'padding-top:10px;padding-bottom:10px;">'
+                        h += '<div class="north-luna-settings-item" data-view="' + esc(v.id) + '"' + (hidden ? ' data-hidden="1"' : '') + ' data-sortable="1" draggable="true" style="' + hiddenStyle + 'padding-top:10px;padding-bottom:10px;">'
                             +   '<div class="north-luna-settings-item-text" style="display:flex;align-items:center;gap:8px;">'
+                            +     '<span class="north-luna-sidebar-icon-drag" style="flex:0 0 auto;width:14px;display:flex;align-items:center;justify-content:center;color:var(--b3-theme-on-surface-light);opacity:0.5;cursor:grab;">' + dragSvg + '</span>'
                             +     '<span class="north-luna-sidebar-icon-preview" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:0 0 16px;color:var(--b3-theme-on-background);overflow:hidden;"><span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;">' + iconHtml + '</span></span>'
                             +     '<span class="north-luna-settings-item-title" style="font-size:13px;font-weight:500;margin:0;">' + esc(name) + '</span>'
                             +     (hidden ? '<span style="font-size:11px;color:var(--b3-theme-on-surface-light);">（已隐藏）</span>' : '')
@@ -6630,6 +6639,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             + '</div>';
                     });
                     listEl.innerHTML = h;
+
+                    // 绑定移动端拖拽排序
+                    self._bindMobileSidebarIconDrag(listEl);
 
                     listEl.querySelectorAll('[data-view]').forEach(row => {
                         const viewId = row.dataset.view;
@@ -6738,6 +6750,40 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     });
                 };
 
+                this._bindMobileSidebarIconDrag = (listEl) => {
+                    if (!listEl) return;
+                    const self = this;
+                    let draggingEl = null;
+                    const getOrder = () => Array.from(listEl.querySelectorAll('[data-sortable="1"]')).map(el => el.dataset.view);
+                    listEl.querySelectorAll('[data-sortable="1"]').forEach(row => {
+                        row.addEventListener('dragstart', (e) => {
+                            draggingEl = row;
+                            row.style.opacity = '0.4';
+                            row.style.outline = '2px dashed ' + getComputedStyle(row).getPropertyValue('--b3-theme-primary');
+                            row.style.outlineOffset = '-2px';
+                            try { e.dataTransfer.effectAllowed = 'move'; } catch(err) {}
+                        });
+                        row.addEventListener('dragend', () => {
+                            if (draggingEl) { draggingEl.style.opacity = ''; draggingEl.style.outline = ''; draggingEl.style.outlineOffset = ''; }
+                            const order = getOrder();
+                            draggingEl = null;
+                            if (!plugin.data[SETTINGS_STORAGE].mobileNavOrder) plugin.data[SETTINGS_STORAGE].mobileNavOrder = [];
+                            plugin.data[SETTINGS_STORAGE].mobileNavOrder = [...new Set(order)];
+                            plugin.saveData(SETTINGS_STORAGE, plugin.data[SETTINGS_STORAGE]);
+                            self._applyMobileSidebarNavOrder();
+                        });
+                        row.addEventListener('dragover', (e) => {
+                            e.preventDefault();
+                            if (!draggingEl || draggingEl === row) return;
+                            try { e.dataTransfer.dropEffect = 'move'; } catch(err) {}
+                            const rect = row.getBoundingClientRect();
+                            const before = (e.clientY - rect.top) < rect.height / 2;
+                            if (before) listEl.insertBefore(draggingEl, row);
+                            else listEl.insertBefore(draggingEl, row.nextSibling);
+                        });
+                    });
+                };
+
                 // ===== 真实左侧栏实时联动（设置改动即时反映到 .north-luna-nav-item）=====
                 this._getFirstVisibleSidebarView = () => plugin._getFirstVisibleSidebarView();
 
@@ -6800,6 +6846,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const mobileBtn = mobileWrap.querySelector('.mobile-tab-item[data-view="' + id + '"]');
                             if (mobileBtn) mobileWrap.appendChild(mobileBtn);
                         }
+                    });
+                };
+
+                // 移动端底部标签栏排序生效（仅按 mobileNavOrder 重排移动端标签栏）
+                plugin._applyMobileSidebarNavOrder = () => {
+                    const tab = plugin._siyuTab;
+                    if (!tab || !tab.container) return;
+                    const mobileWrap = tab.container.querySelector('.north-luna-mobile-tabbar');
+                    if (!mobileWrap) return;
+                    const ordered = plugin._getMobileSortableViews().map(v => v.id);
+                    ordered.forEach(id => {
+                        const mobileBtn = mobileWrap.querySelector('.mobile-tab-item[data-view="' + id + '"]');
+                        if (mobileBtn) mobileWrap.appendChild(mobileBtn);
                     });
                 };
 
@@ -6908,6 +6967,116 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         plugin.data[SETTINGS_STORAGE].navOrder = [];
                         plugin.saveData(SETTINGS_STORAGE, plugin.data[SETTINGS_STORAGE]).catch(() => {});
                         self._applySidebarNavOrder();
+                        if (typeof onChange === 'function') onChange();
+                        renderList();
+                    });
+                };
+
+                // 移动端底部标签栏排序弹窗（1:1 复刻 _showSidebarOrderEditor，数据层用 mobileNavOrder）
+                this._showMobileSidebarOrderEditor = (onChange) => {
+                    const self = this;
+                    const esc = (s) => plugin._esc ? plugin._esc(s) : String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                    const modal = document.createElement('div');
+                    modal.className = 'north-luna-nav-order-modal';
+                    modal.innerHTML = `
+                        <div class="north-luna-nav-order-overlay"></div>
+                        <div class="north-luna-nav-order-content">
+                            <div class="north-luna-nav-order-title">自定义视图排序</div>
+                            <div class="north-luna-nav-order-hint">拖动条目或使用上下按钮调整移动端底部标签栏视图顺序</div>
+                            <div class="north-luna-nav-order-list"></div>
+                            <div class="north-luna-nav-order-actions">
+                                <button class="north-luna-settings-btn north-luna-nav-order-reset">恢复默认</button>
+                                <button class="north-luna-settings-btn north-luna-nav-order-close" style="background:var(--b3-theme-primary);color:#fff;border:none;">完成</button>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+                    const listWrap = modal.querySelector('.north-luna-nav-order-list');
+
+                    const commit = () => {
+                        const keys = Array.from(listWrap.querySelectorAll('.north-luna-nav-order-item')).map(el => el.dataset.view);
+                        plugin.data[SETTINGS_STORAGE] = plugin.data[SETTINGS_STORAGE] || {};
+                        const valid = new Set(plugin._getMobileSortableViews().map(v => v.id));
+                        const cleaned = [];
+                        keys.forEach(k => { if (valid.has(k) && !cleaned.includes(k)) cleaned.push(k); });
+                        valid.forEach(k => { if (!cleaned.includes(k)) cleaned.push(k); });
+                        plugin.data[SETTINGS_STORAGE].mobileNavOrder = cleaned;
+                        plugin.saveData(SETTINGS_STORAGE, plugin.data[SETTINGS_STORAGE]).catch(() => {});
+                        if (typeof onChange === 'function') onChange();
+                    };
+
+                    const renderList = () => {
+                        const views = plugin._getMobileSortableViews();
+                        listWrap.innerHTML = views.map((v, i) => {
+                            const name = plugin._getMobileSidebarViewName(v.id);
+                            const iconHtml = plugin._getMobileSidebarIconHtml(v.id);
+                            const isHidden = plugin._isMobileNavViewHidden(v.id);
+                            return `
+                                <div class="north-luna-nav-order-item" data-view="${esc(v.id)}" draggable="true">
+                                    <span class="north-luna-nav-order-grip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>
+                                    <span class="north-luna-nav-order-icon">${iconHtml}</span>
+                                    <span class="north-luna-nav-order-name">${esc(name)}${isHidden ? ' <em class="north-luna-nav-order-hidden">（已隐藏）</em>' : ''}</span>
+                                    <span class="north-luna-nav-order-btns">
+                                        <button class="north-luna-nav-order-move" data-move="up" title="上移"${i === 0 ? ' disabled' : ''}>
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                                        </button>
+                                        <button class="north-luna-nav-order-move" data-move="down" title="下移"${i === views.length - 1 ? ' disabled' : ''}>
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </button>
+                                    </span>
+                                </div>
+                            `;
+                        }).join('');
+                        bindItems();
+                    };
+
+                    let draggingEl = null;
+                    const bindItems = () => {
+                        listWrap.querySelectorAll('.north-luna-nav-order-item').forEach(item => {
+                            item.addEventListener('dragstart', (e) => {
+                                draggingEl = item;
+                                item.classList.add('dragging');
+                                try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', item.dataset.view); } catch (err) {}
+                            });
+                            item.addEventListener('dragend', () => {
+                                if (draggingEl) draggingEl.classList.remove('dragging');
+                                draggingEl = null;
+                                commit();
+                                renderList();
+                            });
+                            item.addEventListener('dragover', (e) => {
+                                e.preventDefault();
+                                if (!draggingEl || draggingEl === item) return;
+                                const rect = item.getBoundingClientRect();
+                                const before = (e.clientY - rect.top) < rect.height / 2;
+                                if (before) listWrap.insertBefore(draggingEl, item);
+                                else listWrap.insertBefore(draggingEl, item.nextSibling);
+                            });
+                            item.querySelectorAll('.north-luna-nav-order-move').forEach(btn => {
+                                btn.addEventListener('click', () => {
+                                    const dir = btn.dataset.move;
+                                    if (dir === 'up' && item.previousElementSibling) {
+                                        listWrap.insertBefore(item, item.previousElementSibling);
+                                    } else if (dir === 'down' && item.nextElementSibling) {
+                                        listWrap.insertBefore(item.nextElementSibling, item);
+                                    }
+                                    commit();
+                                    renderList();
+                                });
+                            });
+                        });
+                    };
+
+                    renderList();
+
+                    const closeModal = () => modal.remove();
+                    modal.querySelector('.north-luna-nav-order-close').addEventListener('click', closeModal);
+                    modal.querySelector('.north-luna-nav-order-overlay').addEventListener('click', closeModal);
+                    modal.querySelector('.north-luna-nav-order-reset').addEventListener('click', () => {
+                        plugin.data[SETTINGS_STORAGE] = plugin.data[SETTINGS_STORAGE] || {};
+                        plugin.data[SETTINGS_STORAGE].mobileNavOrder = [];
+                        plugin.saveData(SETTINGS_STORAGE, plugin.data[SETTINGS_STORAGE]).catch(() => {});
+                        plugin._applyMobileSidebarNavOrder();
                         if (typeof onChange === 'function') onChange();
                         renderList();
                     });
@@ -7497,7 +7666,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             return `<div class="north-luna-settings-item" style="padding-bottom:10px;">
                                 <div class="north-luna-settings-item-text">
                                     <div class="north-luna-settings-item-title">底部标签栏图标</div>
-                                    <div class="north-luna-settings-item-desc">自定义移动端底部标签栏（清风 / 统计 / LifeLog / 朋友圈）各视图的图标、昵称与显示状态。此设置仅作用于移动端，不影响 PC 端侧栏。</div>
+                                    <div class="north-luna-settings-item-desc">自定义移动端底部标签栏（清风 / 统计 / LifeLog / 朋友圈）各视图的图标、昵称与显示状态。可直接拖动下方条目调整顺序，或点击「自定义视图排序」。此设置仅作用于移动端，不影响 PC 端侧栏。</div>
+                                </div>
+                                <div class="north-luna-settings-item-ctrl">
+                                    <button class="north-luna-settings-btn north-luna-mobile-sidebar-order-btn">自定义视图排序</button>
                                 </div>
                             </div>
                             <div id="mobile-sidebar-icons-custom-list"></div>`;
@@ -7567,6 +7739,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 const list = body.querySelector('#sidebar-icons-custom-list');
                                 if (list) this._renderSidebarIcons(list);
                                 this._applySidebarNavOrder();
+                            });
+                        });
+                    }
+                    // 移动端「自定义视图排序」按钮：打开排序弹窗，排序变化后刷新预览列表与真实标签栏
+                    const mobileOrderBtn = body.querySelector('.north-luna-mobile-sidebar-order-btn');
+                    if (mobileOrderBtn) {
+                        mobileOrderBtn.addEventListener('click', () => {
+                            this._showMobileSidebarOrderEditor(() => {
+                                const list = body.querySelector('#mobile-sidebar-icons-custom-list');
+                                if (list) this._renderMobileSidebarIcons(list);
+                                plugin._applyMobileSidebarNavOrder();
                             });
                         });
                     }
@@ -9303,14 +9486,33 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const isMobile = window.innerWidth <= 768;
 
                     if (isMobile && month !== null) {
-                        /* ===== 移动端：月份日历视图 ===== */
+                        /* ===== 移动端：整年月份日历（可滚动，约显示两个月，对齐清风日历体验） ===== */
                         const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
                         const total = records.filter(r => {
                             const d = new Date(r.created);
                             return !isNaN(d) && d.getFullYear() === targetYear;
                         }).length;
-                        if (calCount) calCount.textContent = total + ' 条记录';
-                        calBody.innerHTML = `<div class="mobile-lifelog-calendar-grid">${this._generateLifeLogMobileMonthCalendar(targetYear, month)}</div>`;
+                        if (calCount) calCount.textContent = '总共 ' + total + ' 条记录';
+                        /* 统计每月记录数 */
+                        const monthCounts = new Array(12).fill(0);
+                        records.forEach(r => {
+                            const d = new Date(r.created);
+                            if (!isNaN(d) && d.getFullYear() === targetYear) monthCounts[d.getMonth()]++;
+                        });
+                        let yearHtml = '';
+                        for (let m = 0; m < 12; m++) {
+                            const sectionTitle = `${targetYear}年${monthNames[m]}`;
+                            const monthCount = monthCounts[m] || 0;
+                            const monthGrid = this._generateLifeLogMobileMonthCalendar(targetYear, m);
+                            yearHtml += `<div class="mobile-lifelog-calendar-month-section" data-month="${sectionTitle}">
+                                <div class="mobile-lifelog-calendar-month-title">
+                                    <span class="month-title-text">${sectionTitle}</span>
+                                    <span class="month-title-count">${monthCount}条记录</span>
+                                </div>
+                                ${monthGrid}
+                            </div>`;
+                        }
+                        calBody.innerHTML = `<div class="mobile-lifelog-calendar-year">${yearHtml}</div>`;
                         /* 绑定点击 */
                         calBody.querySelectorAll('.mobile-lifelog-calendar-day[data-date]').forEach(cell => {
                             cell.addEventListener('click', () => {
@@ -9326,6 +9528,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 this._renderLifeLogTimeline(body, (body.querySelector('#lifelogSearchInput') || {}).value.trim());
                             });
                         });
+                        /* 滚动到选中月/当前月 */
+                        const today = new Date();
+                        const targetMonth = (month !== null) ? month : ((today.getFullYear() === targetYear) ? today.getMonth() : 0);
+                        const targetTitle = `${targetYear}年${monthNames[targetMonth]}`;
+                        setTimeout(() => {
+                            const section = calBody.querySelector(`.mobile-lifelog-calendar-month-section[data-month="${targetTitle}"]`);
+                            if (section) { section.scrollIntoView({ behavior: 'auto', block: 'start' }); calBody.scrollTop -= 12; }
+                        }, 0);
                         return;
                     }
 
@@ -9346,7 +9556,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         dayCounts[key] = (dayCounts[key] || 0) + 1;
                         total++;
                     });
-                    if (calCount) calCount.textContent = total + ' 条记录';
+                    if (calCount) calCount.textContent = '总共 ' + total + ' 条记录';
                     /* 生成周列 */
                     let columnsHtml = '';
                     for (let week = 0; week < weeks; week++) {
@@ -9457,7 +9667,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._queryLifeLogRecords = async () => {
                     const records = [];
                     const pageSize = 2000;
-                    const maxScan = 10000;
+                    const maxScan = 1000000;
                     let scanned = 0;
                     let lastDate = '';
                     let lastTime = '';
@@ -10364,17 +10574,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             hash = type.charCodeAt(i) + ((hash << 5) - hash);
                         }
                         const hue = Math.abs(hash % 360);
-                        color = `hsl(${hue}, 75%, 42%)`;
+                        color = `hsl(${hue}, ${mode === 'dark' ? 100 : 75}%, ${mode === 'dark' ? 60 : 42}%)`;
                     } else {
-                        /* 从 LifeLog 插件 CSS 读取到的颜色如果太亮，自动调深 */
-                        color = this._clampLifelogLightness(color, 39);
+                        /* 从 LifeLog 插件 CSS 读取到的颜色如果太亮，自动调深。
+                           明亮模式保持 39% 不变；暗色模式提亮到 50%。 */
+                        color = this._clampLifelogLightness(color, mode === 'dark' ? 60 : 39, null);
                     }
                     this._lifelogTypeColorCache.set(cacheKey, color);
                     return color;
                 };
 
-                /* 将任意 CSS 颜色转 HSL 后，如果 lightness > maxL，降为 maxL */
-                this._clampLifelogLightness = (color, maxL) => {
+                /* 将任意 CSS 颜色转 HSL 后，如果 lightness > maxL，降为 maxL；暗色模式下饱和度 > maxS 降为 maxS */
+                this._clampLifelogLightness = (color, maxL, maxS) => {
                     /* 解析到 HSL */
                     let h, s, l;
                     const hslMatch = color.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i);
@@ -10406,6 +10617,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         h = Math.round(h * 360); s = Math.round(s * 100); l = Math.round(l * 100);
                     }
                     if (l > maxL) l = maxL;
+                    if (maxS != null && s > maxS) s = maxS;
                     return `hsl(${h}, ${s}%, ${l}%)`;
                 };
 
@@ -11046,11 +11258,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         originalParent.appendChild(modal);
                     }
                 };
-                /* 绑定一次性关闭事件（overlay / close 按钮） */
+                /* 绑定一次性关闭事件（overlay / close 按钮）
+                   注意：必须用 stopPropagation/stopImmediatePropagation 阻止事件冒泡，
+                   否则点击遮罩关闭弹窗时，事件会冒泡到 document.body，被思源移动端识别为
+                   "点击插件外部" 而直接返回/退出轻语界面（LifeLog 日历已做同样处理）。 */
                 if (!modal._mobileCloseBound) {
                     modal._mobileCloseBound = true;
                     const overlay = modal.querySelector('#breezeCalendarOverlay');
-                    if (overlay) overlay.addEventListener('click', closeAndRestore);
+                    if (overlay) {
+                        overlay.addEventListener('click', (ev) => {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            ev.stopImmediatePropagation();
+                            closeAndRestore();
+                        }, true);
+                    }
                     const closeBtn = modal.querySelector('#breezeCalClose');
                     if (closeBtn) closeBtn.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); closeAndRestore(); });
                 }
@@ -11060,9 +11282,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     content.style.left = ''; content.style.top = '';
                     content.style.margin = ''; content.style.position = ''; content.style.transform = '';
                     content.classList.remove('dragging');
-                    content.style.maxWidth = '420px';
-                    content.style.width = 'auto';
-                    content.style.maxHeight = '60vh';
+                    /* 移动端：统一左右留白（约屏宽 4%）。
+                       弹窗已被移到 document.body，原 CSS（.north-luna-container .north-luna-moments-calendar-content
+                       的 width:92%!important）因选择器不命中而失效，这里用内联样式兜底，
+                       避免 width:auto 在不同机型/日历样式下出现"有的沾满、有的留空"的差异。 */
+                    const _calStyle = ((plugin.data[SETTINGS_STORAGE] || {}).settings || {}).breezeCalendarStyle || 'photo';
+                    const _calMaxW = _calStyle === 'photo' ? '420px' : '560px';
+                    content.style.setProperty('max-width', _calMaxW, 'important');
+                    content.style.setProperty('width', '92%', 'important');
+                    content.style.setProperty('max-height', '70vh', 'important');
                 }
                 /* 填充年份选择器 */
                 const calendarYear = modal.querySelector('#breezeCalYear');
@@ -11141,8 +11369,27 @@ module.exports = class NorthLunaPlugin extends Plugin {
         ctx.container.querySelectorAll('.north-luna-mobile-tabbar .mobile-tab-item').forEach(el => {
             el.classList.toggle('active', el.dataset.view === viewId);
         });
-        const mobileTitle = ctx.container.querySelector('#luna-mobile-title');
-        if (mobileTitle) mobileTitle.textContent = this._getSidebarViewName(viewId);
+        /* 仅更新标题文字（.mobile-header-title-text），切勿覆盖 #luna-mobile-title 的 textContent，
+           否则会删除内部嵌套的 LifeLog「记录/统计」切换条（#lifelogSubtabs），导致移动端 LifeLog 看不到切换条 */
+        const mobileTitleText = ctx.container.querySelector('#luna-mobile-title .mobile-header-title-text');
+        if (mobileTitleText) {
+            mobileTitleText.textContent = this._getSidebarViewName(viewId);
+        } else {
+            const mobileTitle = ctx.container.querySelector('#luna-mobile-title');
+            if (mobileTitle) mobileTitle.textContent = this._getSidebarViewName(viewId);
+        }
+        /* 移动端 LifeLog：切换至该视图时重置为「记录」子视图并同步切换条高亮，
+           确保「记录/统计」切换条在每次进入 LifeLog 都正确显示 */
+        if (viewId === 'lifelog') {
+            const _lunaC = ctx.container.querySelector('.north-luna-container');
+            if (_lunaC) _lunaC.dataset.lifelogSubview = 'records';
+            const _subtabs = ctx.container.querySelector('#lifelogSubtabs');
+            if (_subtabs) {
+                _subtabs.querySelectorAll('.north-lifelog-subtab').forEach(b => {
+                    b.classList.toggle('active', (b.dataset.subview || 'records') === 'records');
+                });
+            }
+        }
         ctx.renderMain();
         /* 多端同步：切换到清风数据视图时，先从磁盘重新读取最新数据再刷新，
            使移动端写入经思源同步后的内容能在 PC/移动端立即显示（对齐轻语说说视图：切换即重载） */
@@ -11952,8 +12199,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 ctx.container.querySelectorAll('.north-luna-nav-item, .mobile-tab-item').forEach(el => {
                     el.classList.toggle('active', el.dataset.view === fallbackId);
                 });
-                const mobileTitle = ctx.container.querySelector('#luna-mobile-title');
-                if (mobileTitle) mobileTitle.textContent = plugin._getSidebarViewName(fallbackId);
+                const mobileTitleText = ctx.container.querySelector('#luna-mobile-title .mobile-header-title-text');
+                if (mobileTitleText) {
+                    mobileTitleText.textContent = plugin._getSidebarViewName(fallbackId);
+                } else {
+                    const mobileTitle = ctx.container.querySelector('#luna-mobile-title');
+                    if (mobileTitle) mobileTitle.textContent = plugin._getSidebarViewName(fallbackId);
+                }
                 plugin._renderMainDirect(ctx);
                 return;
             }
@@ -12638,10 +12890,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const notes = this.data[RECORDS_STORAGE].breezeNotes || [];
         const dayCounts = {};
         const dayAllImgs = {};
+        const monthCounts = new Array(12).fill(0);
         let totalCount = 0;
         notes.forEach(n => {
             const t = new Date(String(n.time).replace(/-/g, '/'));
             if (isNaN(t) || t.getFullYear() !== targetYear) return;
+            monthCounts[t.getMonth()]++;
             const key = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
             dayCounts[key] = (dayCounts[key] || 0) + 1; totalCount++;
             const imgs = (breezeGetNoteParts(n).images || []).filter(p => p && breezeIsImageUrl(p));
@@ -12702,8 +12956,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
                 grid += `<div class="north-luna-moments-calendar-photo-row">${rowCells}</div>`;
             }
+            const monthCount = monthCounts[m] || 0;
             return `<div class="north-luna-moments-calendar-photo-month">
-                <div class="north-luna-moments-calendar-photo-month-title">${targetYear}年${monthNames[m]}</div>
+                <div class="north-luna-moments-calendar-photo-month-title" data-month="${targetYear}年${monthNames[m]}">
+                    <span class="month-title-text">${targetYear}年${monthNames[m]}</span>
+                    <span class="month-title-count">${monthCount}条记录</span>
+                </div>
                 <div class="north-luna-moments-calendar-photo-grid">${grid}</div>
             </div>`;
         };
@@ -12716,7 +12974,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const targetTitle = `${today.getFullYear()}年${today.getMonth() + 1}月`;
             setTimeout(() => {
                 calendarBody.querySelectorAll('.north-luna-moments-calendar-photo-month-title').forEach(t => {
-                    if (t.textContent.trim() === targetTitle) { t.scrollIntoView({ behavior: 'auto', block: 'start' }); calendarBody.scrollTop -= 12; }
+                    if (t.dataset.month === targetTitle) { t.scrollIntoView({ behavior: 'auto', block: 'start' }); calendarBody.scrollTop -= 12; }
                 });
             }, 0);
         }
@@ -13873,13 +14131,33 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const isMobile = window.innerWidth <= 768;
 
             if (isMobile && month !== null) {
-                /* ===== 移动端：月份日历视图 ===== */
+                /* ===== 移动端：整年月份日历（可滚动，约显示两个月，对齐清风日历体验） ===== */
                 const total = records.filter(r => {
                     const d = new Date(r.created);
                     return !isNaN(d) && d.getFullYear() === targetYear;
                 }).length;
-                if (calCount) calCount.textContent = total + ' 条记录';
-                calBody.innerHTML = `<div class="mobile-lifelog-calendar-grid">${this._generateLifeLogMobileMonthCalendar(targetYear, month)}</div>`;
+                if (calCount) calCount.textContent = '总共 ' + total + ' 条记录';
+                /* 统计每月记录数 */
+                const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+                const monthCounts = new Array(12).fill(0);
+                records.forEach(r => {
+                    const d = new Date(r.created);
+                    if (!isNaN(d) && d.getFullYear() === targetYear) monthCounts[d.getMonth()]++;
+                });
+                let yearHtml = '';
+                for (let m = 0; m < 12; m++) {
+                    const sectionTitle = `${targetYear}年${monthNames[m]}`;
+                    const monthCount = monthCounts[m] || 0;
+                    const monthGrid = this._generateLifeLogMobileMonthCalendar(targetYear, m);
+                    yearHtml += `<div class="mobile-lifelog-calendar-month-section" data-month="${sectionTitle}">
+                        <div class="mobile-lifelog-calendar-month-title">
+                            <span class="month-title-text">${sectionTitle}</span>
+                            <span class="month-title-count">${monthCount}条记录</span>
+                        </div>
+                        ${monthGrid}
+                    </div>`;
+                }
+                calBody.innerHTML = `<div class="mobile-lifelog-calendar-year">${yearHtml}</div>`;
                 /* 绑定点击 */
                 calBody.querySelectorAll('.mobile-lifelog-calendar-day[data-date]').forEach(cell => {
                     cell.addEventListener('click', () => {
@@ -13895,6 +14173,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this._renderLifeLogTimeline(body, (body.querySelector('#lifelogSearchInput') || {}).value.trim());
                     });
                 });
+                /* 滚动到选中月/当前月 */
+                const today = new Date();
+                const targetMonth = (month !== null) ? month : ((today.getFullYear() === targetYear) ? today.getMonth() : 0);
+                const targetTitle = `${targetYear}年${monthNames[targetMonth]}`;
+                setTimeout(() => {
+                    const section = calBody.querySelector(`.mobile-lifelog-calendar-month-section[data-month="${targetTitle}"]`);
+                    if (section) { section.scrollIntoView({ behavior: 'auto', block: 'start' }); calBody.scrollTop -= 12; }
+                }, 0);
                 return;
             }
 
@@ -13915,7 +14201,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 dayCounts[key] = (dayCounts[key] || 0) + 1;
                 total++;
             });
-            if (calCount) calCount.textContent = total + ' 条记录';
+            if (calCount) calCount.textContent = '总共 ' + total + ' 条记录';
             /* 生成周列 */
             let columnsHtml = '';
             for (let week = 0; week < weeks; week++) {
@@ -14026,7 +14312,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this._queryLifeLogRecords = async () => {
             const records = [];
             const pageSize = 2000;
-            const maxScan = 10000;
+            const maxScan = 1000000;
             let scanned = 0;
             let lastDate = '';
             let lastTime = '';
@@ -15131,17 +15417,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     hash = type.charCodeAt(i) + ((hash << 5) - hash);
                 }
                 const hue = Math.abs(hash % 360);
-                color = `hsl(${hue}, 75%, 42%)`;
+                /* 暗色模式提亮到 50%，明亮模式保持 42% 不变 */
+                color = `hsl(${hue}, ${mode === 'dark' ? 100 : 75}%, ${mode === 'dark' ? 60 : 42}%)`;
             } else {
-                /* 从 LifeLog 插件 CSS 读取到的颜色如果太亮，自动调深 */
-                color = this._clampLifelogLightness(color, 39);
+                /* 从 LifeLog 插件 CSS 读取到的颜色如果太亮，自动调深。
+                   明亮模式保持 39% 不变；暗色模式提亮到 50%。 */
+                color = this._clampLifelogLightness(color, mode === 'dark' ? 60 : 39, null);
             }
             this._lifelogTypeColorCache.set(cacheKey, color);
             return color;
         };
         
-        /* 将任意 CSS 颜色转 HSL 后，如果 lightness > maxL，降为 maxL */
-        this._clampLifelogLightness = (color, maxL) => {
+        /* 将任意 CSS 颜色转 HSL 后，如果 lightness > maxL，降为 maxL；暗色模式下饱和度 > maxS 降为 maxS */
+        this._clampLifelogLightness = (color, maxL, maxS) => {
             /* 解析到 HSL */
             let h, s, l;
             const hslMatch = color.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i);
@@ -15173,6 +15461,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 h = Math.round(h * 360); s = Math.round(s * 100); l = Math.round(l * 100);
             }
             if (l > maxL) l = maxL;
+            if (maxS != null && s > maxS) s = maxS;
             return `hsl(${h}, ${s}%, ${l}%)`;
         };
         
@@ -15462,8 +15751,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
             return;
         }
         const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        /* 类型颜色：1:1 复刻 _getLifeLogTypeColorLight */
-        const _clampLightness = (color, maxL) => {
+        /* 类型颜色：1:1 复刻 _getLifeLogTypeColorLight；暗色模式下饱和度 > maxS 降为 maxS */
+        const _clampLightness = (color, maxL, maxS) => {
             let h, s, l;
             const m = color.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i);
             if (m) { h = +m[1]; s = +m[2]; l = +m[3]; }
@@ -15488,13 +15777,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
             }
             if (l > maxL) l = maxL;
+            if (maxS != null && s > maxS) s = maxS;
             return `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
         };
         const typeColorCache = new Map();
         const getTypeColor = (type) => {
             if (!type) return '';
-            if (typeColorCache.has(type)) return typeColorCache.get(type);
-            /* 1:1 复刻 _getLifeLogTypeColorLight：CSS 变量 → clampLightness(39) → hash hsl(75%/42%) */
+            const mode = document.documentElement.getAttribute('data-theme-mode') || 'light';
+            const ck = type + '|' + mode;
+            if (typeColorCache.has(ck)) return typeColorCache.get(ck);
+            /* 1:1 复刻 _getLifeLogTypeColorLight：CSS 变量 → clampLightness → hash。
+               暗色模式提亮到 50%，明亮模式保持 39%/42% 不变。 */
             const temp = document.createElement('div');
             temp.setAttribute('data-type', 'NodeParagraph');
             temp.setAttribute('custom-lifelog-type', type);
@@ -15503,14 +15796,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
             let color = getComputedStyle(temp).getPropertyValue('--en-lifelog-border-color').trim();
             document.body.removeChild(temp);
             if (color) {
-                color = _clampLightness(color, 39);
+                color = _clampLightness(color, mode === 'dark' ? 60 : 39, null);
             } else {
                 let hash = 0;
                 for (let i = 0; i < type.length; i++) hash = type.charCodeAt(i) + ((hash << 5) - hash);
                 const hue = Math.abs(hash % 360);
-                color = `hsl(${hue}, 75%, 42%)`;
+                color = `hsl(${hue}, ${mode === 'dark' ? 100 : 75}%, ${mode === 'dark' ? 60 : 42}%)`;
             }
-            typeColorCache.set(type, color);
+            typeColorCache.set(ck, color);
             return color;
         };
         /* 按日期分组，同组按时间倒序 */
@@ -15602,9 +15895,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const openPick = () => {
             const types = getTypes();
             if (types.length === 0) { _selType = '记录'; openInput(); return; }
+            const _pickMode = document.documentElement.getAttribute('data-theme-mode') || 'light';
             pickTypes.innerHTML = types.map(t => {
                 const esc = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                /* 1:1 复刻 _getLifeLogTypeColorLight：CSS 变量 → clampLightness(39) → hash */
+                /* 1:1 复刻 _getLifeLogTypeColorLight：CSS 变量 → clampLightness → hash。
+                   暗色模式提亮到 50%，明亮模式保持 39%/42% 不变。 */
+                const mode = _pickMode;
                 const temp = document.createElement('div');
                 temp.setAttribute('data-type', 'NodeParagraph');
                 temp.setAttribute('custom-lifelog-type', t);
@@ -15639,13 +15935,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             }
                         }
                     }
-                    if (l > 39) l = 39;
+                    if (l > (mode === 'dark' ? 60 : 39)) l = (mode === 'dark' ? 60 : 39);
                     color = `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
                 } else {
                     let hash = 0;
                     for (let i = 0; i < t.length; i++) hash = t.charCodeAt(i) + ((hash << 5) - hash);
                     const hue = Math.abs(hash % 360);
-                    color = `hsl(${hue}, 75%, 42%)`;
+                    color = `hsl(${hue}, ${mode === 'dark' ? 100 : 75}%, ${mode === 'dark' ? 60 : 42}%)`;
                 }
                 return `<button class="north-lifelog-pick-type-chip" style="color:${color}">${esc}</button>`;
             }).join('');
