@@ -3710,12 +3710,19 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     justify-content: center;
     background-color: rgba(0, 0, 0, 0.5);
 }
-.north-luna-moments-calendar-modal.active { display: flex !important; }
+.north-luna-moments-calendar-modal.active {
+    display: flex !important;
+    /* 移动端：阻止触控事件穿透到底层视图，同时防止思源的返回手势误触发 */
+    touch-action: none;
+    overscroll-behavior: contain;
+}
 
 .north-luna-moments-calendar-overlay {
     position: absolute;
     inset: 0;
     z-index: 100;
+    /* 移动端：确保遮罩层拦截所有触控事件，防止穿透操作底层视图 */
+    touch-action: none;
 }
 .north-luna-moments-calendar-content {
     position: relative;
@@ -3732,6 +3739,9 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     display: flex;
     flex-direction: column;
     transition: box-shadow 0.2s ease, transform 0.2s ease;
+    /* 移动端：内容区允许垂直滚动但阻止水平手势和滚动链 */
+    touch-action: pan-y;
+    overscroll-behavior: contain;
 }
 .north-luna-moments-calendar-content.dragging {
     transition: none;

@@ -1200,7 +1200,7 @@ function editBreezeNote(id, storage, plugin) {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = 'image/*,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+    fileInput.accept = 'image/*,.heic,.heif,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
     fileInput.style.display = 'none';
     editBox.appendChild(fileInput);
 
@@ -1247,7 +1247,7 @@ function editBreezeNote(id, storage, plugin) {
                 const ext = (f.type && f.type.split('/')[1]) ? f.type.split('/')[1].replace('jpeg', 'jpg') : 'png';
                 name = 'screenshot-' + ts + '.' + ext;
             }
-            const file = (name && name !== f.name) ? new File([f], name, { type: f.type || 'image/png' }) : f;
+            const file = (name && name !== f.name) ? new File([f], name, { type: f.type || plugin._mimeFromName(name) || 'image/png' }) : f;
             const path = await plugin._uploadResource(file, { assetsDirPath: 'assets/' });
             if (!path) continue;
             const ext = (name.split('.').pop() || '').toLowerCase();
@@ -4438,6 +4438,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         refreshPreviewBar();
                         updateState();
                         requestAnimationFrame(autoResizeInput);
+                        /* 自动同步思源日记：提交后 1s 防抖，仅在「清风设置 → 控制设置 → 自动同步思源日记」开启时生效 */
+                        if (plugin._getPluginSetting('autoSyncBreeze')) {
+                            clearTimeout(this._breezeAutoSyncTimer);
+                            this._breezeAutoSyncTimer = setTimeout(() => {
+                                plugin._syncToDailyNote({
+                                    content: note.content,
+                                    images: note.images,
+                                    files: note.files,
+                                    time: note.time,
+                                    source: 'breeze'
+                                }).catch(() => {});
+                            }, 1000);
+                        }
                     };
 
                     /* 根据「回车直接提交」设置初始化移动端键盘提示（enterkeyhint）：
@@ -4879,7 +4892,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const fileInput = document.createElement('input');
                     fileInput.type = 'file';
                     fileInput.multiple = true; // 支持一次选择多个（对齐轻语）
-                    fileInput.accept = 'image/*,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+                    fileInput.accept = 'image/*,.heic,.heif,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
                     fileInput.style.display = 'none';
                     this.container.appendChild(fileInput);
 
@@ -4929,7 +4942,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 const ext = (f.type && f.type.split('/')[1]) ? f.type.split('/')[1].replace('jpeg', 'jpg') : 'png';
                                 name = 'screenshot-' + ts + '.' + ext;
                             }
-                            const file = (name && name !== f.name) ? new File([f], name, { type: f.type || 'image/png' }) : f;
+                            const file = (name && name !== f.name) ? new File([f], name, { type: f.type || plugin._mimeFromName(name) || 'image/png' }) : f;
                             const path = await plugin._uploadResource(file, { assetsDirPath: 'assets/' });
                             if (!path) continue;
                             const ext = (name.split('.').pop() || '').toLowerCase();
@@ -6120,6 +6133,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'breezeScrollDamping', title: '滚动阻尼', desc: '开启后页面滚动更加丝滑，滚轮停止后内容还会惯性滑行一小段。', default: false },
                             { type: 'toggle', key: 'breezePaginationEnabled', title: '笔记分页', desc: '开启后，清风全部笔记视图将按设定条数分页，底部显示页码导航。默认关闭。', default: false },
                             { type: 'slider', key: 'breezePageSize', title: '每页笔记条数', desc: '分页开启时生效，决定每页显示的笔记数量。', default: 20, min: 10, max: 50, step: 2 },
+                            { type: 'toggle', key: 'autoSyncBreeze', title: '自动同步思源日记', desc: '开启后，发布清风笔记时会自动同步写入思源日记（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
                             { type: 'toggle', key: 'breezeDockEnabled', title: '启用清风侧边栏', desc: '开启后在思源右侧边栏显示精简版清风面板。需要刷新思源笔记或重新打开思源笔记后才能生效。', default: false },
                             { type: 'toggle', key: 'breezeEnterToSubmit', title: '回车直接提交', desc: '开启后，主输入框按 Enter 直接发布；Shift+Enter 仍然换行。关闭后只能点发送按钮提交。', default: false },
                             { type: 'toggle', key: 'breezeSidebarFullScroll', title: '左侧面板整体滚动', desc: '开启后，左侧面板作为一个整体上下滚动，而非仅标签区独立滚动。', default: false },
@@ -6203,7 +6217,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 { value: 'dailynote', label: '每日日记' },
                                 { value: 'doc', label: '指定文档' }
                             ]},
-                            { type: 'doc', key: 'dailyNoteDocId', nameKey: 'dailyNoteDocName', title: '指定文档', desc: '仅同步目标为「指定文档」时生效。点击「选择文档」从工作区树中选取，或手动粘贴文档块 ID。内容会按日期分组建标题后插入。', default: '' }
+                            { type: 'doc', key: 'dailyNoteDocId', nameKey: 'dailyNoteDocName', title: '指定文档', desc: '仅同步目标为「指定文档」时生效。点击「选择文档」从工作区树中选取，或手动粘贴文档块 ID。内容会按日期分组建标题后插入。', default: '' },
+                            { type: 'toggle', key: 'syncJumpToDoc', title: '同步后跳转到文档', desc: '开启后，手动或自动同步日记后会跳转到对应文档。关闭则后台静默写入，不打断当前操作。默认开启。', default: true }
                         ]},
                         { title: '同步模板', items: [
                             { type: 'select', key: 'dailyNoteSyncMode', title: '同步模式', desc: '选择「插入今日日记」时用哪种方式构造内容。Callout 类型：使用思源原生 Callout 块（> [!类型]）；自定义模板：使用下方模板，支持占位符替换', default: 'callout', options: [
@@ -6273,7 +6288,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'momentsCoverToolDelete', title: '删除', desc: '移动端朋友圈封面工具栏：显示/隐藏「删除」按钮', default: true }
                         ]},
                         { title: '移动端朋友圈外观', items: [
-                            { type: 'toggle', key: 'momMobileShowBorder', title: '显示卡片边框', desc: '移动端朋友圈：显示/隐藏动态卡片边框', default: true }
+                            { type: 'toggle', key: 'momMobileShowBorder', title: '显示卡片边框', desc: '移动端朋友圈：显示/隐藏动态卡片边框', default: false }
                         ]},
                         { title: '控制设置', items: [
                             { type: 'slider', key: 'mobileSidebarIconSize', title: '底部标签栏图标大小', desc: '自定义移动端底部标签栏图标的显示尺寸，默认 21px（即当前大小）。', default: 21, min: 14, max: 40, step: 1 },
@@ -11256,7 +11271,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (modal.parentElement !== document.body) {
                     document.body.appendChild(modal);
                 }
-                /* 关闭函数：移除 active 并将 modal 移回原父容器 */
+                /* 关闭函数：移除 active 并将 modal 移回原父容器，同时恢复 body 滚动 */
                 const closeAndRestore = () => {
                     modal.classList.remove('active');
                     const content = modal.querySelector('.north-luna-moments-calendar-content');
@@ -11264,7 +11279,43 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (originalParent && modal.parentElement !== originalParent) {
                         originalParent.appendChild(modal);
                     }
+                    /* 恢复 body 滚动 */
+                    document.body.style.overflow = modal._savedBodyOverflow || '';
+                    document.body.style.position = modal._savedBodyPosition || '';
+                    document.body.style.top = modal._savedBodyTop || '';
+                    document.body.style.width = modal._savedBodyWidth || '';
+                    if (modal._savedScrollY !== undefined) {
+                        window.scrollTo(0, modal._savedScrollY);
+                    }
                 };
+                /* 弹窗激活时锁定 body 滚动，防止底层视图被操作（仅移动端生效） */
+                if (plugin.isMobile && !modal.classList.contains('active')) {
+                    modal._savedBodyOverflow = document.body.style.overflow;
+                    modal._savedBodyPosition = document.body.style.position;
+                    modal._savedBodyTop = document.body.style.top;
+                    modal._savedBodyWidth = document.body.style.width;
+                    modal._savedScrollY = window.scrollY;
+                    document.body.style.overflow = 'hidden';
+                    document.body.style.position = 'fixed';
+                    document.body.style.top = `-${modal._savedScrollY}px`;
+                    document.body.style.width = '100%';
+                }
+                /* 绑定弹窗 touchmove 拦截：防止触控事件穿透到底层视图，同时阻止思源"返回"手势误判
+                   注意：弹窗内容区域（content）允许垂直滚动，因此只拦截 overlay 层的 touchmove */
+                if (!modal._mobileTouchBound) {
+                    modal._mobileTouchBound = true;
+                    modal.addEventListener('touchmove', (ev) => {
+                        // 如果触摸目标在内容区域内允许垂直滚动，则不阻止
+                        const content = modal.querySelector('.north-luna-moments-calendar-content');
+                        if (content && content.contains(ev.target)) {
+                            // 允许内容区域内的垂直滚动（CSS touch-action: pan-y 已处理水平方向）
+                            return;
+                        }
+                        // 触摸在 overlay 遮罩区域，阻止所有触控行为
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                    }, { passive: false });
+                }
                 /* 绑定一次性关闭事件（overlay / close 按钮）
                    注意：必须用 stopPropagation/stopImmediatePropagation 阻止事件冒泡，
                    否则点击遮罩关闭弹窗时，事件会冒泡到 document.body，被思源移动端识别为
@@ -11838,7 +11889,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.multiple = true;
-        fileInput.accept = 'image/*,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+        fileInput.accept = 'image/*,.heic,.heif,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
         fileInput.style.display = 'none';
         inputArea.appendChild(fileInput);
         fileInput.onchange = async () => {
@@ -13403,6 +13454,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
             refreshPreviewBar();
             updateState();
             requestAnimationFrame(autoResize);
+            /* 自动同步思源日记：提交后 1s 防抖 */
+            if (plugin._getPluginSetting('autoSyncBreeze')) {
+                clearTimeout(plugin._breezeDockAutoSyncTimer);
+                plugin._breezeDockAutoSyncTimer = setTimeout(() => {
+                    plugin._syncToDailyNote({
+                        content: note.content,
+                        images: note.images,
+                        files: note.files,
+                        time: note.time,
+                        source: 'breeze'
+                    }).catch(() => {});
+                }, 1000);
+            }
         };
 
         input.addEventListener('input', () => { updateState(); requestAnimationFrame(autoResize); });
@@ -13587,7 +13651,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.multiple = true;
-        fileInput.accept = 'image/*,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+        fileInput.accept = 'image/*,.heic,.heif,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
         fileInput.style.display = 'none';
         root.appendChild(fileInput);
         fileInput.onchange = async () => {
@@ -13633,7 +13697,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const ext = (f.type && f.type.split('/')[1]) ? f.type.split('/')[1].replace('jpeg', 'jpg') : 'png';
                     name = 'screenshot-' + ts + '.' + ext;
                 }
-                const file = (name && name !== f.name) ? new File([f], name, { type: f.type || 'image/png' }) : f;
+                const file = (name && name !== f.name) ? new File([f], name, { type: f.type || plugin._mimeFromName(name) || 'image/png' }) : f;
                 const path = await plugin._uploadResource(file, { assetsDirPath: 'assets/' });
                 if (!path) continue;
                 const ext = (name.split('.').pop() || '').toLowerCase();
@@ -16438,7 +16502,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             </div>
                         </div>
                     </div>
-                    <input type="file" id="momentsPublishImageInput" class="north-luna-moments-file-input" accept="image/*,video/*,audio/*,.pdf,.txt,.md,.markdown,.json,.csv,.zip,.docx,.xlsx,.pptx" multiple>
+                    <input type="file" id="momentsPublishImageInput" class="north-luna-moments-file-input" accept="image/*,.heic,.heif,video/*,audio/*,.pdf,.txt,.md,.markdown,.json,.csv,.zip,.docx,.xlsx,.pptx" multiple>
                 </div>
 
                 <!-- 封面链接弹窗 -->
@@ -16703,7 +16767,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const resolved = this._resolveImageUrl(src);
         const resolvedEsc = this._esc(resolved);
         if (kind === 'image') {
-            return `<img class="north-luna-moments-grid-img" src="${resolvedEsc}" data-kind="image" alt="media" loading="lazy" decoding="async">`;
+            return `<img class="north-luna-moments-grid-img" src="${resolvedEsc}" data-src-original="${this._esc(src)}" data-kind="image" alt="media" loading="lazy" decoding="async">`;
         }
         if (kind === 'video') {
             return `<div class="north-luna-moments-video-wrapper">
@@ -16929,10 +16993,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (!checkJson || checkJson.code !== 0 || !checkJson.data || checkJson.data.length === 0) throw new Error('指定的文档不存在，请检查文档块 ID');
             const blockId = await this._appendToDocWithDateGroup(docId, markdown, timeStr);
             if (!blockId) throw new Error('插入指定文档失败：未知错误');
-            if (this.app && typeof openTab === 'function') {
+            if (settings.syncJumpToDoc !== false && this.app && typeof openTab === 'function') {
                 try { openTab({ app: this.app, doc: { id: docId, action: ['cb-get-hl'] } }); } catch (e) { console.warn('[清风] 打开指定文档失败:', e); }
             }
-            return { targetId: docId, message: '已插入指定文档（按日期分组），已打开文档 ✅' };
+            return { targetId: docId, message: '已插入指定文档（按日期分组）' + (settings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
         }
         // 同步目标：每日日记
         const notebookId = settings.dailyNotebookId || '';
@@ -16957,13 +17021,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
         }
         if (!targetId && result.data && typeof result.data === 'object' && result.data.id) targetId = result.data.id;
         else if (!targetId && typeof result.data === 'string') targetId = result.data;
-        if (targetId && this.app && typeof openTab === 'function') {
+        if (settings.syncJumpToDoc !== false && targetId && this.app && typeof openTab === 'function') {
             try {
                 await fetch('/api/notebook/openNotebook', { method: 'POST', headers: authHeaders, body: JSON.stringify({ notebook: notebookId }) }).catch(() => {});
                 openTab({ app: this.app, doc: { id: targetId, action: ['cb-get-hl'] } });
             } catch (e) { console.warn('[清风] 打开今日日记文档失败:', e); }
         }
-        return { targetId, message: '已插入今日日记，已打开文档 ✅' };
+        return { targetId, message: '已插入今日日记' + (settings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
     }
 
     /* 向指定文档按日期分组追加内容（移植自轻语 appendToDocWithDateGroup）。
@@ -17024,8 +17088,33 @@ module.exports = class NorthLunaPlugin extends Plugin {
          - 思源内核要求 multipart/form-data，且字段名必须叫 file[]
          - 需带 Token 认证，取 window.siyuan.config.api.token
          - 不手动设置 Content-Type，由浏览器自动填充 multipart 边界 */
+    /* 将 HEIC/HEIF 文件转为 JPEG（浏览器端 createImageBitmap + canvas 转码）。
+       成功返回新的 JPEG File，失败返回原 File（静默降级）。 */
+    async _heicToJpeg(file) {
+        if (!file || !(file instanceof File)) return file;
+        const ext = (file.name.split('.').pop() || '').toLowerCase();
+        if (ext !== 'heic' && ext !== 'heif') return file;
+        try {
+            const bitmap = await createImageBitmap(file);
+            const canvas = document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(bitmap, 0, 0);
+            bitmap.close();
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+            const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
+            return new File([blob], newName, { type: 'image/jpeg', lastModified: file.lastModified });
+        } catch (e) {
+            console.warn('[HEIC转JPEG失败] ' + file.name, e.message);
+            return file;
+        }
+    }
+
     async _uploadResource(file, opts = {}) {
         if (!file) return null;
+        // HEIC/HEIF → JPEG 转码：浏览器无法直接解码 HEIC，上传时转为 JPEG 确保后续展示正常
+        file = await this._heicToJpeg(file);
         // 资源存储位置：assets（默认，思源资源目录）/ public（公共目录 public/siyuan-lumina/）。对标轻语 storageMode。
         const _rs = (this.data[SETTINGS_STORAGE] && this.data[SETTINGS_STORAGE].settings && this.data[SETTINGS_STORAGE].settings.resourceStorage) || 'assets';
         if (_rs === 'public') {
@@ -17328,10 +17417,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (copied > 0) console.log(`[轻语] 备份回填完成: ${copied}/${toBackup.length}`);
     }
 
-    /* 根据文件名后缀判断文件类型，用于渲染分流 */
+    /* 根据文件名后缀判断文件类型，用于渲染分流。
+       注意：会去掉 URL 后的查询参数/锚点，避免 xxx.heic?v=1 被误判。 */
     _fileKindFromName(name) {
-        const ext = (String(name).split('.').pop() || '').toLowerCase();
-        if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return 'image';
+        let clean = String(name).split(/[?#]/)[0] || '';
+        const ext = (clean.split('.').pop() || '').toLowerCase();
+        if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'tif', 'tiff', 'ico', 'heic', 'heif'].includes(ext)) return 'image';
         if (['mp4', 'webm', 'ogg', 'mov', 'm4v'].includes(ext)) return 'video';
         if (['mp3', 'wav', 'm4a', 'aac', 'flac'].includes(ext)) return 'audio';
         if (ext === 'pdf') return 'pdf';
@@ -17344,11 +17435,32 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return seg[seg.length - 1] || 'file';
     }
 
+    /* 图片解码失败时保留资源可见性：显示扩展名卡片并允许下载原文件。
+       这对部分 Chromium/Electron 环境无法解码 HEIC/HEIF 时尤其重要。 */
+    _replaceFailedMomentImage(img) {
+        if (!img || img.dataset.fallbackApplied === '1') return;
+        img.dataset.fallbackApplied = '1';
+        const src = img.getAttribute('data-src-original') || img.getAttribute('src') || '';
+        const name = this._fileNameFromPath(src);
+        const ext = name && name.includes('.') ? name.split('.').pop().toUpperCase() : 'FILE';
+        const extColor = breezeFileExtColor(ext);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'north-luna-moments-grid-wide';
+        wrapper.innerHTML = `<a class="north-breeze-note-file" href="${this._esc(this._resolveImageUrl(src))}" download="${this._esc(name)}" target="_blank" rel="noopener"><span class="north-breeze-file-badge" style="background:${this._esc(extColor)}">${this._esc(ext)}</span><span class="north-breeze-file-name" title="${this._esc(name)}">${this._esc(name)}</span></a>`;
+        img.replaceWith(wrapper);
+    }
+
+    /* 根据文件名后缀返回 MIME 类型。用于 Windows 等系统无法提供正确 MIME 时的兜底。
+       支持 HEIC/HEIF/AVIF 等扩展名。 */
     _mimeFromName(name) {
+        let clean = String(name).split(/[?#]/)[0] || '';
+        const ext = (clean.split('.').pop() || '').toLowerCase();
         const map = {
             png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
-            webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
-            mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', ogg: 'video/ogg',
+            webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', avif: 'image/avif',
+            tif: 'image/tiff', tiff: 'image/tiff', ico: 'image/x-icon',
+            heic: 'image/heic', heif: 'image/heif',
+            mp4: 'video/mp4', webm: 'video/webm', ogg: 'video/ogg', mov: 'video/quicktime', m4v: 'video/x-m4v',
             mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac',
             pdf: 'application/pdf',
             txt: 'text/plain', md: 'text/markdown', markdown: 'text/markdown', json: 'application/json',
@@ -17356,7 +17468,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
             css: 'text/css', html: 'text/html', htm: 'text/html', xml: 'application/xml',
             yml: 'text/yaml', yaml: 'text/yaml', ini: 'text/plain', sh: 'text/plain', py: 'text/plain'
         };
-        const ext = (String(name).split('.').pop() || '').toLowerCase();
         return map[ext] || '';
     }
 
@@ -18047,14 +18158,16 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const addBtn = container.querySelector('#momentsPublishAdd');
         const imageInput = container.querySelector('#momentsPublishImageInput');
         addBtn.addEventListener('click', () => imageInput.click());
-        imageInput.addEventListener('change', () => {
+        imageInput.addEventListener('change', async () => {
             const files = Array.from(imageInput.files || []);
-            files.forEach(f => {
-                const objectUrl = URL.createObjectURL(f);
+            for (const f of files) {
+                // HEIC/HEIF → JPEG 转码：预览和最终上传都需要浏览器可解码的格式
+                const converted = await this._heicToJpeg(f);
+                const objectUrl = URL.createObjectURL(converted);
                 publishImages.push(objectUrl);
-                publishFiles.push(f);
-                this._refreshPublishImages(container, publishImages, publishFiles);
-            });
+                publishFiles.push(converted);
+            }
+            this._refreshPublishImages(container, publishImages, publishFiles);
             imageInput.value = '';
         });
 
@@ -18251,6 +18364,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (calendarOverlay) calendarOverlay.addEventListener('click', () => calendarModal.classList.remove('active'));
         if (calendarClose) calendarClose.addEventListener('click', () => calendarModal.classList.remove('active'));
 
+        /* HEIC/HEIF 等格式若在当前内核中无法解码，降级为可下载文件卡片，避免出现空白占位。 */
+        container.addEventListener('error', (e) => {
+            const img = e.target && e.target.closest ? e.target.closest('.north-luna-moments-grid-img[data-src-original]') : null;
+            if (img) this._replaceFailedMomentImage(img);
+        }, true);
+
         /* ===== 列表项交互（更多/删除/编辑/图片预览） ===== */
         container.addEventListener('click', (e) => {
             /* 图片/视频点击预览：复用清风 _handleMediaClick → showMomentsMediaPreview（与清风共用同一查看器） */
@@ -18356,6 +18475,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
             }
         });
+
         });
     }
 
