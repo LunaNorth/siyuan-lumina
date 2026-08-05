@@ -223,8 +223,10 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin) {
                 break;
             }
             case 'edit':
-                // 卡片内联编辑（复刻轻语）：把卡片内容区就地替换为编辑框
-                editBreezeNote(id, storage, plugin);
+                // 统一编辑模式：使用主输入框编辑（不再弹内联编辑框）
+                if (plugin && plugin._siyuTab && plugin._siyuTab._loadNoteForEdit) {
+                    plugin._siyuTab._loadNoteForEdit(id, note);
+                }
                 break;
             case 'copy':
                 // 复制：文字 → 空行 → 资源 Markdown，去 leading / 对齐思源路径
@@ -876,7 +878,10 @@ function addBreezeNoteToMoments(id, storage, plugin) {
         images: images,
         link: link,
         created: created,
-        createdAt: created, // 后发表的永远在最前；这里用原时间，使其落在对应日期位置
+        createdAt: created,
+        liked: false,
+        comments: [],
+        pinned: false,
     };
 
     plugin.data[MOMENTS_STORAGE] = plugin.data[MOMENTS_STORAGE] || { config: {}, items: [] };
@@ -897,444 +902,6 @@ function addBreezeNoteToMoments(id, storage, plugin) {
     }
 }
 
-/* 编辑笔记：卡片内联编辑（复刻轻语 editNote 思路）
-   - 不弹独立窗口，直接把卡片内容区替换成与主输入框同构的编辑框（复用 .north-breeze-input-box）
-   - 预填 content 纯文字到 textarea；原 images/files 显示在预览栏（可删 / 可继续加）
-   - 工具栏（标签/图片/任务/无序/有序）与主输入框一致
-   - 保存：按 id 原地更新 note.content / images / files，保留 id/time/pinned 不变
-   - 关闭：取消 / ESC */
-function editBreezeNote(id, storage, plugin) {
-    const note = ((storage || {}).breezeNotes || []).find((n) => n.id === id);
-    if (!note) return;
-
-    // 守卫：先清理并还原任何已存在的旧内联编辑框（避免多卡片同时编辑导致内容残留隐藏）
-    document.querySelectorAll('.north-breeze-inline-edit').forEach((box) => {
-        const cardEl = box.parentElement;
-        if (cardEl) {
-            const c = cardEl.querySelector('.north-breeze-note-content');
-            if (c) c.style.display = '';
-            const ex = cardEl.querySelector('.north-breeze-note-expand');
-            if (ex) ex.style.display = '';
-        }
-        box.remove();
-    });
-
-    const card = document.querySelector('.north-breeze-note-card[data-id="' + breezeEsc(id) + '"]');
-    if (!card) return;
-    const contentEl = card.querySelector('.north-breeze-note-content');
-    const expandEl = card.querySelector('.north-breeze-note-expand');
-    if (!contentEl || card.querySelector('.north-breeze-inline-edit')) return;
-
-    const parts = breezeGetNoteParts(note);
-    // 编辑态资源（原地增删，保存时回写）；用对象引用便于预览栏删除定位
-    const editImages = (parts.images || []).map((p) => ({ type: '图片', path: p, raw: p, name: String(p).split('/').pop(), ext: (String(p).split('.').pop() || '').toLowerCase() }));
-    const editFiles = (parts.files || []).map((f) => ({ type: '文件', path: f.path, raw: f.path, name: f.name || (f.path || '').split('/').pop(), ext: (String(f.path || '').split('.').pop() || '').toLowerCase() }));
-
-    const editBox = document.createElement('div');
-    editBox.className = 'north-breeze-input-box north-breeze-inline-edit';
-    editBox.innerHTML =
-        '<div class="north-breeze-input-wrapper">' +
-            '<textarea class="north-breeze-input-field north-breeze-inline-field" rows="3">' + breezeEsc(parts.text) + '</textarea>' +
-            '<div class="north-breeze-image-preview-bar" id="breeze-inline-preview"></div>' +
-        '</div>' +
-        '<div class="north-breeze-input-toolbar">' +
-            '<div class="north-breeze-toolbar-left">' +
-                '<span class="north-breeze-toolbar-icon" data-action="tag" title="标签"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconTag"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="image" title="上传资源"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconImage"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="task" title="任务列表"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconCheck"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="ul" title="无序列表"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconList"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="ol" title="有序列表"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconOrderedList"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="color" title="字体颜色"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconFont"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="bold" title="粗体"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconBold"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="strike" title="删除线"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconStrike"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="mark" title="高亮"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconMark"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="code" title="行级代码"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconInlineCode"></use></svg></span>' +
-                '<span class="north-breeze-toolbar-icon" data-action="flomo" title="Flomo 同步"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconRiffCard"></use></svg></span>' +
-            '</div>' +
-            '<div style="display:flex;align-items:center;gap:8px;">' +
-                '<button class="north-breeze-inline-cancel">取消</button>' +
-                '<button class="north-breeze-send-btn north-breeze-inline-save active"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>' +
-            '</div>' +
-        '</div>';
-
-    // 隐藏原内容 & 展开按钮，插入编辑框（与轻语 insertBefore 同思路）
-    contentEl.style.display = 'none';
-    if (expandEl) expandEl.style.display = 'none';
-    if (contentEl.nextSibling) card.insertBefore(editBox, contentEl.nextSibling);
-    else card.appendChild(editBox);
-
-    const textarea = editBox.querySelector('.north-breeze-inline-field');
-    const previewBar = editBox.querySelector('#breeze-inline-preview');
-
-    const autoResize = () => {
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.max(80, textarea.scrollHeight) + 'px';
-    };
-    requestAnimationFrame(autoResize);
-
-    // 预览栏渲染（复用插件图片加载能力）
-    const renderPreview = () => {
-        if (!previewBar) return;
-        if (editImages.length + editFiles.length === 0) {
-            previewBar.innerHTML = '';
-            previewBar.classList.remove('has-images');
-            // 空状态也渲染 + 按钮，保证无资源时仍有上传入口
-            const addBtn0 = document.createElement('button');
-            addBtn0.className = 'north-breeze-preview-add';
-            addBtn0.title = '添加资源';
-            addBtn0.textContent = '+';
-            addBtn0.addEventListener('click', () => { if (fileInput) fileInput.click(); });
-            previewBar.appendChild(addBtn0);
-            return;
-        }
-        previewBar.classList.add('has-images');
-        const frag = document.createDocumentFragment();
-        const ordered = editImages.concat(editFiles);
-        ordered.forEach((img, flatIdx) => {
-            const isFile = img.type === '文件';
-            const isVideo = img.type === '视频';
-            const item = document.createElement('div');
-            item.className = 'north-breeze-preview-item' + (isFile ? ' north-breeze-file-preview-item' : '') + (isVideo ? ' north-breeze-video-preview-item' : '');
-            item.dataset.path = img.path;
-            item.dataset.flatIdx = String(flatIdx);
-            item.draggable = true;
-            if (isFile) {
-                const extLabel = (img.ext || '').toUpperCase() || 'FILE';
-                item.innerHTML =
-                    '<span class="breeze-file-ext-badge">' + breezeEsc(extLabel) + '</span>' +
-                    '<span class="breeze-file-name">' + breezeEsc(img.name || '未知') + '</span>' +
-                    '<button class="breeze-preview-delete-btn" title="删除">&times;</button>';
-            } else if (isVideo) {
-                item.innerHTML =
-                    '<video src="' + breezeEsc(img.raw) + '" preload="metadata" muted></video>' +
-                    '<span class="breeze-preview-video-icon"></span>' +
-                    '<button class="breeze-preview-delete-btn" title="删除">&times;</button>';
-            } else {
-                item.innerHTML =
-                    '<img src="' + breezeEsc(img.raw) + '" alt="预览" loading="lazy" decoding="async" fetchpriority="low">' +
-                    '<button class="breeze-preview-delete-btn" title="删除">&times;</button>';
-                
-            }
-            item.querySelector('.breeze-preview-delete-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                const arr = isFile ? editFiles : editImages;
-                const i = arr.indexOf(img);
-                if (i >= 0) arr.splice(i, 1);
-                renderPreview();
-            });
-
-            /* 拖拽排序（与主输入框 / 轻语一致） */
-            item.addEventListener('dragstart', (e) => {
-                item.classList.add('dragging');
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', String(flatIdx));
-            });
-            item.addEventListener('dragend', () => {
-                item.classList.remove('dragging');
-                previewBar.querySelectorAll('.north-breeze-preview-item').forEach(el => el.classList.remove('drag-over'));
-            });
-            item.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
-            item.addEventListener('dragenter', (e) => {
-                e.preventDefault();
-                if (item !== previewBar.querySelector('.dragging')) item.classList.add('drag-over');
-            });
-            item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
-            item.addEventListener('drop', (e) => {
-                e.preventDefault();
-                item.classList.remove('drag-over');
-                const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
-                if (!isNaN(fromIdx) && fromIdx !== flatIdx) {
-                    reorderPreview(fromIdx, flatIdx);
-                }
-            });
-
-            frag.appendChild(item);
-        });
-        const addBtn = document.createElement('button');
-        addBtn.className = 'north-breeze-preview-add';
-        addBtn.title = '添加资源';
-        addBtn.textContent = '+';
-        addBtn.addEventListener('click', () => { if (fileInput) fileInput.click(); });
-        frag.appendChild(addBtn);
-        previewBar.innerHTML = '';
-        previewBar.appendChild(frag);
-    };
-
-    /* 跨 editImages/editFiles 两数组的统一拖拽重排：
-       按当前拼接顺序 ordered 取出源，插入目标位置；再按新顺序回写两个数组（保持元素对象引用不变） */
-    const reorderPreview = (fromFlat, toFlat) => {
-        const ordered = editImages.concat(editFiles);
-        if (fromFlat < 0 || toFlat < 0 || fromFlat >= ordered.length || toFlat > ordered.length || fromFlat === toFlat) return;
-        const [moved] = ordered.splice(fromFlat, 1);
-        // 允许 drop 在末尾：toFlat 来自 dataset.flatIdx 不会超，但保留 +1 余量
-        const insertAt = Math.min(toFlat, ordered.length);
-        ordered.splice(insertAt, 0, moved);
-        editImages.splice(0, editImages.length, ...ordered.filter((x) => x.type === '图片'));
-        editFiles.splice(0, editFiles.length, ...ordered.filter((x) => x.type === '文件'));
-        renderPreview();
-    };
-    renderPreview();
-
-    // 工具栏插入辅助
-    const insertAtCursor = (before, after) => {
-        const s = textarea.selectionStart, e = textarea.selectionEnd;
-        const v = textarea.value;
-        const sel = v.substring(s, e);
-        textarea.value = v.substring(0, s) + before + sel + after + v.substring(e);
-        const np = s + before.length + sel.length;
-        textarea.focus();
-        textarea.setSelectionRange(np, np);
-        autoResize();
-    };
-    const insertAtLineStart = (text) => {
-        const s = textarea.selectionStart;
-        const ls = textarea.value.substring(0, s).lastIndexOf('\n') + 1;
-        textarea.setSelectionRange(ls, ls);
-        insertAtCursor(text, '');
-    };
-
-    // 工具栏：标签 / 图片 / 任务 / 无序 / 有序
-    const tagBtn = editBox.querySelector('[data-action="tag"]');
-    if (tagBtn) tagBtn.addEventListener('click', () => breezeShowTagPicker(tagBtn, textarea, plugin));
-    const taskBtn = editBox.querySelector('[data-action="task"]');
-    if (taskBtn) taskBtn.addEventListener('click', () => insertAtLineStart('- [ ] '));
-    const ulBtn = editBox.querySelector('[data-action="ul"]');
-    if (ulBtn) ulBtn.addEventListener('click', () => insertAtLineStart('- '));
-    const olBtn = editBox.querySelector('[data-action="ol"]');
-    if (olBtn) olBtn.addEventListener('click', () => {
-        const s = textarea.selectionStart;
-        const cur = textarea.value.substring(0, s).substring(textarea.value.substring(0, s).lastIndexOf('\n') + 1);
-        const m = cur.match(/^(\d+)\.\s/);
-        const num = m ? parseInt(m[1], 10) + 1 : 1;
-        insertAtLineStart(num + '. ');
-    });
-    // 格式按钮：粗体、删除线、高亮、行级代码、字体颜色
-    const inlineColorBtn = editBox.querySelector('[data-action="color"]');
-    const inlineBoldBtn = editBox.querySelector('[data-action="bold"]');
-    const inlineStrikeBtn = editBox.querySelector('[data-action="strike"]');
-    const inlineMarkBtn = editBox.querySelector('[data-action="mark"]');
-    const inlineCodeBtn = editBox.querySelector('[data-action="code"]');
-    if (inlineBoldBtn) inlineBoldBtn.addEventListener('click', () => insertAtCursor('**', '**'));
-    if (inlineStrikeBtn) inlineStrikeBtn.addEventListener('click', () => insertAtCursor('~~', '~~'));
-    if (inlineMarkBtn) inlineMarkBtn.addEventListener('click', () => insertAtCursor('==', '=='));
-    if (inlineCodeBtn) inlineCodeBtn.addEventListener('click', () => insertAtCursor('`', '`'));
-    /* 颜色按钮 — 完整色板弹窗（与主输入框一致） */
-    const INLINE_COLOR_COUNT = 13;
-    const buildInlineColorPopHtml = () => {
-        const fontItems = Array.from({ length: INLINE_COLOR_COUNT }, (_, i) => i + 1).map(n =>
-            '<span class="north-breeze-color-swatch north-breeze-color-font" data-type="font" data-n="' + n + '" style="color: var(--b3-font-color' + n + ')">A</span>'
-        ).join('');
-        const bgItems = Array.from({ length: INLINE_COLOR_COUNT }, (_, i) => i + 1).map(n =>
-            '<span class="north-breeze-color-swatch north-breeze-color-bg" data-type="bg" data-n="' + n + '" style="background: var(--b3-font-background' + n + ')"></span>'
-        ).join('');
-        return '<div class="north-breeze-color-section">' +
-            '<div class="north-breeze-color-section-label">字体颜色</div>' +
-            '<div class="north-breeze-color-grid">' + fontItems + '</div>' +
-        '</div>' +
-        '<div class="north-breeze-color-section">' +
-            '<div class="north-breeze-color-section-label">背景颜色</div>' +
-            '<div class="north-breeze-color-grid">' + bgItems + '</div>' +
-        '</div>';
-    };
-    const insertColorAtCursor = (before, after) => {
-        const s = textarea.selectionStart, e = textarea.selectionEnd;
-        const v = textarea.value;
-        const sel = v.substring(s, e);
-        textarea.value = v.substring(0, s) + before + sel + after + v.substring(e);
-        const textStart = s + before.length;
-        const textEnd = textStart + sel.length;
-        textarea.focus();
-        textarea.setSelectionRange(textStart, textEnd);
-        autoResize();
-    };
-    if (inlineColorBtn) {
-        let inlineColorPop = null;
-        const closeInlineColorPop = () => { if (inlineColorPop) { inlineColorPop.remove(); inlineColorPop = null; } };
-        inlineColorBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (inlineColorPop) { closeInlineColorPop(); return; }
-            /* 内联编辑所在卡片 .north-breeze-note-card 有 overflow:hidden，
-               用 position:fixed + 按钮 getBoundingClientRect 定位让弹窗浮出 */
-            inlineColorPop = document.createElement('div');
-            inlineColorPop.className = 'north-breeze-color-pop north-breeze-color-pop-fixed';
-            inlineColorPop.innerHTML = buildInlineColorPopHtml();
-            const rect = inlineColorBtn.getBoundingClientRect();
-            inlineColorPop.style.position = 'fixed';
-            inlineColorPop.style.top = (rect.bottom + 8) + 'px';
-            // 居中对齐按钮，超出屏幕则贴左边/右边
-            const popWidth = 280;
-            let leftPos = rect.left + rect.width / 2 - popWidth / 2;
-            leftPos = Math.max(8, Math.min(leftPos, window.innerWidth - popWidth - 8));
-            inlineColorPop.style.left = leftPos + 'px';
-            inlineColorPop.style.transform = 'none';
-            document.body.appendChild(inlineColorPop);
-            inlineColorPop.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                const sw = ev.target.closest('.north-breeze-color-swatch');
-                if (!sw) return;
-                const n = sw.dataset.n;
-                if (sw.dataset.type === 'font') {
-                    insertColorAtCursor('[color=var(--b3-font-color' + n + ')]', '[/color]');
-                } else {
-                    insertColorAtCursor('[bg=var(--b3-font-background' + n + ')]', '[/bg]');
-                }
-            });
-            document.addEventListener('click', closeInlineColorPop, { once: true });
-        });
-    }
-    // 内联编辑工具栏可见性控制：与主输入框一致
-    const INLINE_TOOLBAR_KEYS = ['tag','image','task','ul','ol','color','bold','strike','mark','code'];
-    const applyInlineToolbarVisibility = () => {
-        INLINE_TOOLBAR_KEYS.forEach(k => {
-            const visible = plugin._getPluginSetting('breezeToolbar' + k.charAt(0).toUpperCase() + k.slice(1)) !== false;
-            const btn = editBox.querySelector('[data-action="' + k + '"]');
-            if (btn) btn.style.display = visible ? '' : 'none';
-        });
-    };
-    applyInlineToolbarVisibility();
-    // 图片/文件按钮：触发 fileInput 走上传逻辑（与 composer 一致）
-    const imgBtn = editBox.querySelector('[data-action="image"]');
-    if (imgBtn) imgBtn.addEventListener('click', () => { if (fileInput) fileInput.click(); });
-
-    // 文件选择 & 上传（复用插件上传能力）
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.multiple = true;
-    fileInput.accept = 'image/*,.heic,.heif,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
-    fileInput.style.display = 'none';
-    editBox.appendChild(fileInput);
-
-    // 文件选择 → 上传到思源 assets 目录 → 进入编辑态资源数组（images/files 分离，与保存结构一致）
-    fileInput.onchange = async () => {
-        const files = Array.from(fileInput.files || []);
-        if (!files.length) return;
-        showMessage('上传资源中…');
-        for (const f of files) {
-            const path = await plugin._uploadResource(f, { assetsDirPath: 'assets/' });
-            if (!path) continue;
-            const ext = (f.name.split('.').pop() || '').toLowerCase();
-            const kind = plugin._fileKindFromName(f.name);
-            const isImg = kind === 'image';
-            const isVideo = kind === 'video';
-            const item = { type: isImg ? '图片' : (isVideo ? '视频' : '文件'), path: path, raw: path, name: f.name, ext: ext };
-            if (isImg || isVideo) editImages.push(item); else editFiles.push(item);
-        }
-        fileInput.value = '';
-        renderPreview();
-    };
-
-    // 粘贴图片：从外部复制的图片直接进入编辑态资源（复用上传流程，与文件选择同路径）
-    // 纯文字粘贴不拦截，交给浏览器默认处理
-    textarea.addEventListener('paste', async (ev) => {
-        const items = ev.clipboardData && ev.clipboardData.items;
-        if (!items) return;
-        const files = [];
-        for (let i = 0; i < items.length; i++) {
-            const it = items[i];
-            if (it.kind !== 'file') continue;
-            const f = it.getAsFile();
-            if (f) files.push(f);
-        }
-        if (!files.length) return; // 纯文字粘贴：交给浏览器默认处理，不拦截
-        ev.preventDefault();
-        showMessage('上传资源中…');
-        const ts = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
-        for (const f of files) {
-            const isImg = (f.type && f.type.startsWith('image/')) || plugin._fileKindFromName(f.name) === 'image';
-            const isVideo = (f.type && f.type.startsWith('video/')) || plugin._fileKindFromName(f.name) === 'video';
-            let name = f.name;
-            if (isImg && (!name || name === 'image' || /^image\.(png|jpe?g|gif|webp|bmp)$/i.test(name))) {
-                const ext = (f.type && f.type.split('/')[1]) ? f.type.split('/')[1].replace('jpeg', 'jpg') : 'png';
-                name = 'screenshot-' + ts + '.' + ext;
-            }
-            const file = (name && name !== f.name) ? new File([f], name, { type: f.type || plugin._mimeFromName(name) || 'image/png' }) : f;
-            const path = await plugin._uploadResource(file, { assetsDirPath: 'assets/' });
-            if (!path) continue;
-            const ext = (name.split('.').pop() || '').toLowerCase();
-            const item = { type: isImg ? '图片' : (isVideo ? '视频' : '文件'), path: path, raw: path, name: name, ext: ext };
-            if (isImg || isVideo) editImages.push(item); else editFiles.push(item);
-        }
-        renderPreview();
-    });
-
-    // Enter 续行（与主输入框一致，编辑列表项也顺手）
-    textarea.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
-            const s = textarea.selectionStart, end = textarea.selectionEnd;
-            const v = textarea.value;
-            const before = v.substring(0, s);
-            const after = v.substring(end);
-            const lineStart = before.lastIndexOf('\n') + 1;
-            const prevLine = before.substring(lineStart);
-            const mTask = prevLine.match(/^(\s*)([-*+])\s+\[([ xX])\]\s+(.*)$/);
-            const mUl = prevLine.match(/^(\s*)([-*+])\s+(.*)$/);
-            const mOl = prevLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
-            const isEmptyTask = !!prevLine.match(/^(\s*)([-*+])\s+\[([ xX])\]\s*$/);
-            const isEmptyUl = !!prevLine.match(/^(\s*)([-*+])\s*$/);
-            const isEmptyOl = !!prevLine.match(/^(\s*)(\d+)\.\s*$/);
-            if (isEmptyTask || isEmptyUl || isEmptyOl) {
-                e.preventDefault();
-                textarea.value = before.substring(0, lineStart) + '\n' + after;
-                const np = lineStart + 1;
-                textarea.focus();
-                textarea.setSelectionRange(np, np);
-                autoResize();
-                return;
-            }
-            let prefix = '';
-            if (mTask) prefix = mTask[1] + mTask[2] + ' [ ] ';
-            else if (mUl) prefix = mUl[1] + mUl[2] + ' ';
-            else if (mOl) prefix = mOl[1] + (parseInt(mOl[2], 10) + 1) + '. ';
-            if (prefix) {
-                e.preventDefault();
-                const ins = '\n' + prefix;
-                textarea.value = before + ins + after;
-                const np = before.length + ins.length;
-                textarea.focus();
-                textarea.setSelectionRange(np, np);
-                autoResize();
-                return;
-            }
-        }
-    });
-    textarea.addEventListener('input', () => requestAnimationFrame(autoResize));
-
-    const restore = () => {
-        editBox.remove();
-        contentEl.style.display = '';
-        if (expandEl) expandEl.style.display = '';
-        document.removeEventListener('keydown', onKey, true);
-    };
-
-    // 取消
-    editBox.querySelector('.north-breeze-inline-cancel').addEventListener('click', restore);
-
-    // ESC 关闭
-    const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); restore(); } };
-    document.addEventListener('keydown', onKey, true);
-
-    // 保存：原地更新原 note（保留 id/time/pinned）
-    editBox.querySelector('.north-breeze-inline-save').addEventListener('click', () => {
-        const target = ((storage || {}).breezeNotes || []).find((n) => n.id === id);
-        if (!target) { restore(); return; }
-        target.content = textarea.value;
-        target.images = editImages.map((i) => i.path);
-        target.files = editFiles.map((f) => ({ name: f.name, path: f.path }));
-        if (plugin && plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
-        document.removeEventListener('keydown', onKey, true);
-        if (plugin && plugin._siyuTab && typeof plugin._siyuTab.render === 'function') plugin._siyuTab.render();
-        // 同步刷新 Dock 面板
-        if (plugin && plugin._breezeNotifyDockChanged) plugin._breezeNotifyDockChanged();
-        showMessage('已保存');
-    });
-
-    // 自动聚焦正文末尾
-    requestAnimationFrame(() => {
-        textarea.focus();
-        const len = textarea.value.length;
-        textarea.setSelectionRange(len, len);
-    });
-}
 /* 提取笔记正文中的 #标签（与轻语 extractTags 同源）：只匹配开头 #，后面跟着
    中英文字符 / 数字 / 下划线 / 斜杠 / 连字符；后接空白 / 换行 / 字符串结束 / 中文标点；
    负向先行 (?!#) 排除 #A#B 这种环绕写法；支持多级标签 父/子 用 / 分隔 */
@@ -2588,10 +2155,11 @@ function breezeRenderFileList(files) {
     let html = '<div class="north-breeze-file-list">';
     files.forEach((f) => {
         const path = (f && f.path) || '';
+        const cleanPath = path.replace(/^\//, '');
         const name = (f && f.name) || (path ? path.split('/').pop() : 'FILE');
         const ext = name && name.includes('.') ? name.split('.').pop().toUpperCase() : 'FILE';
         const extColor = breezeFileExtColor(ext);
-        html += '<div class="north-breeze-note-file" data-kind="other" data-ext="' + breezeEsc(ext) + '">' +
+        html += '<div class="north-breeze-note-file" data-kind="other" data-ext="' + breezeEsc(ext) + '" data-src="' + breezeEsc(cleanPath) + '">' +
             '<span class="north-breeze-file-badge" style="background:' + extColor + '">' + breezeEsc(ext) + '</span>' +
             '<span class="north-breeze-file-name" title="' + breezeEsc(name) + '">' + breezeEsc(name) + '</span>' +
             '</div>';
@@ -3401,11 +2969,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const action = e.target.dataset.action;
                         menu.remove();
                         if (action === 'edit') {
-                            /* 编辑：打开清风编辑器并填入内容 */
+                            /* 统一编辑模式：切换到清风视图，用主输入框编辑 */
                             if (this.activeViewId !== 'notes') this.switchView('notes');
                             setTimeout(() => {
-                                /* 走模块级 editBreezeNote（Tab 实例上并没有 _editBreezeNote 方法） */
-                                editBreezeNote(note.id, plugin.data[RECORDS_STORAGE] || {}, plugin);
+                                if (plugin && plugin._siyuTab && plugin._siyuTab._loadNoteForEdit) {
+                                    plugin._siyuTab._loadNoteForEdit(note.id, note);
+                                }
                             }, 200);
                         } else if (action === 'delete') {
                             /* 删除（带确认提示） */
@@ -4006,6 +3575,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             if (this.container) {
                                 const fs = Number(this._getSetting('breezeFontSize')) || 16;
                                 this.container.style.setProperty('--breeze-font-size', fs + 'px');
+                                const lh = Number(this._getSetting('breezeLineHeight')) || 2.0;
+                                this.container.style.setProperty('--breeze-line-height', String(lh));
+                                const ls = Number(this._getSetting('breezeLetterSpacing')) || 0;
+                                this.container.style.setProperty('--breeze-letter-spacing', ls + 'px');
                             }
                             this._bindBreezeInput();
                             /* 绑定清风侧栏搜索框（关键词过滤，与标签/日期筛选叠加） */
@@ -4417,15 +3990,48 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             if (img.type === '图片' || img.type === '视频') images.push(img.path);
                             else files.push({ name: img.name, path: img.path });
                         });
-                        const now = new Date();
-                        const p2 = n => String(n).padStart(2, '0');
-                        const time = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes());
-                        const note = { id: 'b_' + Date.now(), time: time, content: text, images: images, files: files };
-                        if (title) note.title = title;
-                        const notes = getNotes();
-                        notes.unshift(note);
-                        plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]).catch(() => {});
-                        // 用 _renderBreezeSubView 代替直渲列表：会尊重当前标签筛选条件
+                        /* 编辑模式：更新现有笔记而非新建 */
+                        if (this._editingNoteId) {
+                            const notes = getNotes();
+                            const target = notes.find(n => n.id === this._editingNoteId);
+                            if (target) {
+                                target.content = text;
+                                target.images = images;
+                                target.files = files;
+                                if (title) target.title = title; else delete target.title;
+                                plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]).catch(() => {});
+                                showMessage('已保存');
+                            }
+                            /* 退出编辑模式 */
+                            this._editingNoteId = null;
+                            box.classList.remove('editing');
+                            sendBtn.title = '发送';
+                            if (this._breezeCancelBtn) { this._breezeCancelBtn.style.display = 'none'; }
+                        } else {
+                            /* 新建笔记 */
+                            const now = new Date();
+                            const p2 = n => String(n).padStart(2, '0');
+                            const time = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes());
+                            const note = { id: 'b_' + Date.now(), time: time, content: text, images: images, files: files };
+                            if (title) note.title = title;
+                            const notes = getNotes();
+                            notes.unshift(note);
+                            plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]).catch(() => {});
+                            /* 自动同步思源笔记文档：提交后 1s 防抖，仅在「清风设置 → 控制设置 → 自动同步思源笔记文档」开启时生效 */
+                            if (plugin._getPluginSetting('autoSyncBreeze')) {
+                                clearTimeout(this._breezeAutoSyncTimer);
+                                this._breezeAutoSyncTimer = setTimeout(() => {
+                                    plugin._syncToDailyNote({
+                                        content: note.content,
+                                        images: note.images,
+                                        files: note.files,
+                                        time: note.time,
+                                        source: 'breeze'
+                                    }).catch(() => {});
+                                }, 1000);
+                            }
+                        }
+                        /* 共通的清理与刷新 */
                         this._renderBreezeSubView();
                         // 同步刷新侧栏标签树与统计
                         this._renderBreezeTagList();
@@ -4438,19 +4044,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         refreshPreviewBar();
                         updateState();
                         requestAnimationFrame(autoResizeInput);
-                        /* 自动同步思源日记：提交后 1s 防抖，仅在「清风设置 → 控制设置 → 自动同步思源日记」开启时生效 */
-                        if (plugin._getPluginSetting('autoSyncBreeze')) {
-                            clearTimeout(this._breezeAutoSyncTimer);
-                            this._breezeAutoSyncTimer = setTimeout(() => {
-                                plugin._syncToDailyNote({
-                                    content: note.content,
-                                    images: note.images,
-                                    files: note.files,
-                                    time: note.time,
-                                    source: 'breeze'
-                                }).catch(() => {});
-                            }, 1000);
-                        }
                     };
 
                     /* 根据「回车直接提交」设置初始化移动端键盘提示（enterkeyhint）：
@@ -4957,6 +4550,84 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         list.addEventListener('click', (e) => plugin._handleMediaClick(e, '.north-breeze-note-card'));
                     }
                     updateState();
+
+                    /* ===== 统一编辑模式：点击编辑时把笔记加载到主输入框（共用同一个输入框，无内联编辑） ===== */
+                    this._editingNoteId = null;
+                    this._breezeCancelBtn = null;
+
+                    this._loadNoteForEdit = (id, note) => {
+                        if (!input || !note) return;
+                        this._editingNoteId = id;
+                        input.value = note.content || '';
+                        if (titleInput) {
+                            if (note.title) {
+                                titleInput.value = note.title;
+                                titleInput.style.display = '';
+                                if (titleBtn) titleBtn.classList.add('active');
+                            } else {
+                                titleInput.value = '';
+                                titleInput.style.display = 'none';
+                                if (titleBtn) titleBtn.classList.remove('active');
+                            }
+                        }
+                        /* 加载已有资源到预览栏 */
+                        pendingImages = [];
+                        (note.images || []).forEach(img => {
+                            const name = String(img).split('/').pop();
+                            const ext = (name.split('.').pop() || '').toLowerCase();
+                            const kind = plugin._fileKindFromName(name);
+                            const isVideo = kind === 'video';
+                            pendingImages.push({ type: isVideo ? '视频' : '图片', path: img, raw: img, name: name, ext: ext });
+                        });
+                        (note.files || []).forEach(f => {
+                            const name = f.name || (f.path || '').split('/').pop();
+                            const ext = (name.split('.').pop() || '').toLowerCase();
+                            pendingImages.push({ type: '文件', path: f.path, raw: f.path, name: name, ext: ext });
+                        });
+                        refreshPreviewBar();
+                        /* 显示编辑态 UI：取消按钮 + 发送按钮变色 */
+                        box.classList.add('editing');
+                        sendBtn.title = '保存修改';
+                        /* 创建/复用取消编辑按钮 */
+                        if (!this._breezeCancelBtn) {
+                            const cancelEl = document.createElement('button');
+                            cancelEl.className = 'north-breeze-cancel-btn';
+                            cancelEl.textContent = '取消';
+                            cancelEl.title = '取消编辑';
+                            this._breezeCancelBtn = cancelEl;
+                            /* 把发送按钮和取消按钮包进一个 flex 容器，确保两者紧挨在一起 */
+                            if (!sendBtn.parentElement.classList.contains('north-breeze-input-actions')) {
+                                const wrap = document.createElement('div');
+                                wrap.className = 'north-breeze-input-actions';
+                                sendBtn.parentElement.insertBefore(wrap, sendBtn);
+                                wrap.appendChild(sendBtn);
+                            }
+                            /* 把取消按钮插入到发送按钮之前，保证发送按钮在右侧 */
+                            sendBtn.parentElement.insertBefore(cancelEl, sendBtn);
+                        }
+                        if (this._breezeCancelBtn) {
+                            this._breezeCancelBtn.removeEventListener('click', this._cancelEdit);
+                            this._breezeCancelBtn.addEventListener('click', this._cancelEdit, { once: true });
+                            this._breezeCancelBtn.style.display = '';
+                        }
+                        updateState();
+                        requestAnimationFrame(autoResizeInput);
+                        input.focus();
+                        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    };
+
+                    this._cancelEdit = () => {
+                        this._editingNoteId = null;
+                        input.value = '';
+                        if (titleInput) { titleInput.value = ''; titleInput.style.display = 'none'; if (titleBtn) titleBtn.classList.remove('active'); }
+                        pendingImages = [];
+                        refreshPreviewBar();
+                        box.classList.remove('editing');
+                        sendBtn.title = '发送';
+                        if (this._breezeCancelBtn) this._breezeCancelBtn.style.display = 'none';
+                        updateState();
+                        requestAnimationFrame(autoResizeInput);
+                    };
                 };
 
                 /* 清风视图：根据本地数据更新左侧统计（笔记数 / 标签数 / 天数） */
@@ -5824,13 +5495,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             items.push({ id: n.id, type: 'file', src: f.path, name: f.name, created: time, text: n.content || '', tags: breezeExtractTags(n.content || ''), source: 'breeze' });
                         });
                     });
-                    // 朋友圈中的图片/视频（同样按扩展名区分）
-                    moments.forEach(m => {
-                        (m.images || []).forEach(img => {
-                            const kind = plugin._fileKindFromName(img);
-                            items.push({ id: m.id, type: kind === 'video' ? 'video' : 'image', src: img, created: m.createdAt || m.created, text: m.text || '', tags: [], source: 'moments' });
+                    // 朋友圈中的图片/视频（根据设置决定是否收集）
+                    if (!plugin._getPluginSetting('galleryHideMoments')) {
+                        moments.forEach(m => {
+                            (m.images || []).forEach(img => {
+                                const kind = plugin._fileKindFromName(img);
+                                items.push({ id: m.id, type: kind === 'video' ? 'video' : 'image', src: img, created: m.createdAt || m.created, text: m.text || '', tags: [], source: 'moments' });
+                            });
                         });
-                    });
+                    }
                     items.sort((a, b) => (new Date(b.created).getTime() || 0) - (new Date(a.created).getTime() || 0));
                     return items;
                 };
@@ -6127,13 +5800,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 { value: '12', label: '12 行' },
                                 { value: '20', label: '20 行' }
                             ]},
-                            { type: 'slider', key: 'breezeFontSize', title: '自定义字体大小', desc: '字号默认为 16，影响清风动态内容显示', default: 16, min: 10, max: 24, step: 1 }
+                            { type: 'slider', key: 'breezeFontSize', title: '自定义字体大小', desc: '字号默认为 16，影响清风动态内容显示', default: 16, min: 10, max: 24, step: 1 },
+                            { type: 'slider', key: 'breezeLineHeight', title: '行间距', desc: '正文行高，默认 2.0。数值越大行距越宽', default: 2.0, min: 1.2, max: 3.0, step: 0.1 },
+                            { type: 'slider', key: 'breezeLetterSpacing', title: '字间距', desc: '字间距，默认 0。单位 px，数值越大字越分散', default: 0, min: 0, max: 3, step: 0.1 }
                         ]},
                         { title: '控制设置', items: [
                             { type: 'toggle', key: 'breezeScrollDamping', title: '滚动阻尼', desc: '开启后页面滚动更加丝滑，滚轮停止后内容还会惯性滑行一小段。', default: false },
                             { type: 'toggle', key: 'breezePaginationEnabled', title: '笔记分页', desc: '开启后，清风全部笔记视图将按设定条数分页，底部显示页码导航。默认关闭。', default: false },
                             { type: 'slider', key: 'breezePageSize', title: '每页笔记条数', desc: '分页开启时生效，决定每页显示的笔记数量。', default: 20, min: 10, max: 50, step: 2 },
-                            { type: 'toggle', key: 'autoSyncBreeze', title: '自动同步思源日记', desc: '开启后，发布清风笔记时会自动同步写入思源日记（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
+                            { type: 'toggle', key: 'autoSyncBreeze', title: '自动同步思源笔记文档', desc: '开启后，发布清风笔记时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
                             { type: 'toggle', key: 'breezeDockEnabled', title: '启用清风侧边栏', desc: '开启后在思源右侧边栏显示精简版清风面板。需要刷新思源笔记或重新打开思源笔记后才能生效。', default: false },
                             { type: 'toggle', key: 'breezeEnterToSubmit', title: '回车直接提交', desc: '开启后，主输入框按 Enter 直接发布；Shift+Enter 仍然换行。关闭后只能点发送按钮提交。', default: false },
                             { type: 'toggle', key: 'breezeSidebarFullScroll', title: '左侧面板整体滚动', desc: '开启后，左侧面板作为一个整体上下滚动，而非仅标签区独立滚动。', default: false },
@@ -6203,6 +5878,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 { value: 'heatmap', label: '热力图' },
                                 { value: 'photo', label: '记忆拼图' }
                             ] }
+                        ]},
+                        { title: '控制设置', items: [
+                            { type: 'toggle', key: 'autoSyncMoments', title: '自动同步思源笔记文档', desc: '开启后，发布朋友圈动态时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
+                            { type: 'toggle', key: 'galleryHideMoments', title: '在明月中隐藏朋友圈资源', desc: '开启后，朋友圈中添加的图片/视频/文件不会出现在明月（拾光）视图中。默认关闭。', default: false },
                         ]},
                         { title: '锁屏保护', items: [
                             { type: 'toggle', key: 'momentsLockEnabled', title: '启用锁屏', desc: '开启后进入朋友圈需要输入密码才能查看', default: false },
@@ -7605,10 +7284,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const on = !!val;
                             ctrl = `<label class="north-luna-switch"><input type="checkbox" data-key="${it.key}" data-type="toggle" ${on ? "checked" : ""}><span class="north-luna-switch-slider"></span></label>`;
                         } else if (it.type === "input") {
-                            const t = it.inputType || "text";
-                            const min = it.min !== undefined ? `min="${it.min}"` : "";
-                            const max = it.max !== undefined ? `max="${it.max}"` : "";
-                            ctrl = `<input type="${t}" class="north-luna-settings-input" data-key="${it.key}" data-type="input" value="${plugin._esc(String(val ?? ""))}" ${min} ${max}>`;
+                            /* 锁屏密码：仅显示状态，点「修改密码」弹窗验证 */
+                            if (it.key === 'momentsLockPasscode') {
+                                const has = val && String(val).trim();
+                                ctrl = `<div class="north-luna-settings-passcode-wrap">
+                                    <span class="north-luna-settings-passcode-status">${has ? '已设置' : '未设置'}</span>
+                                    <button type="button" class="north-luna-settings-btn north-luna-settings-passcode-btn" data-action="changePasscode">${has ? '修改密码' : '设置密码'}</button>
+                                </div>`;
+                            } else {
+                                const t = it.inputType || "text";
+                                const min = it.min !== undefined ? `min="${it.min}"` : "";
+                                const max = it.max !== undefined ? `max="${it.max}"` : "";
+                                ctrl = `<input type="${t}" class="north-luna-settings-input" data-key="${it.key}" data-type="input" value="${plugin._esc(String(val ?? ""))}" ${min} ${max}>`;
+                            }
                         } else if (it.type === "textarea") {
                             ctrl = `<textarea class="north-luna-settings-textarea" data-key="${it.key}" data-type="textarea" rows="${it.rows || 5}" placeholder="${plugin._esc(it.placeholder || '')}">${plugin._esc(String(val ?? ""))}</textarea>`;
                         } else if (it.type === "slider") {
@@ -7616,7 +7304,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const max = it.max !== undefined ? it.max : 24;
                             const step = it.step !== undefined ? it.step : 1;
                             const cur = (val !== undefined && val !== null) ? val : (it.default !== undefined ? it.default : min);
-                            const v = Number(cur) || 16;
+                            const v = isNaN(Number(cur)) ? 16 : Number(cur);
                             ctrl = `<div class="north-luna-settings-slider-wrap">
                                 <div class="north-luna-settings-slider-tooltip" style="display:none">${v}</div>
                                 <input type="range" class="north-luna-settings-slider" data-key="${it.key}" data-type="slider" min="${min}" max="${max}" step="${step}" value="${v}">
@@ -7899,6 +7587,22 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 if (list) list.style.setProperty("--breeze-font-size", fsVal);
                                 if (this.container) this.container.style.setProperty("--breeze-font-size", fsVal);
                                 /* 同步 Dock 侧边栏字号（写到 Dock 根容器，卡片正文经继承生效） */
+                                if (this.plugin && this.plugin._applyBreezeDockAppearance) this.plugin._applyBreezeDockAppearance();
+                            }
+                            if (inp.dataset.key === 'breezeLineHeight') {
+                                const lhVal = inp.value;
+                                const list = this.container && this.container.querySelector("#breeze-notes-list");
+                                if (list) list.style.setProperty("--breeze-line-height", lhVal);
+                                if (this.container) this.container.style.setProperty("--breeze-line-height", lhVal);
+                                /* 同步 Dock 侧边栏行高 */
+                                if (this.plugin && this.plugin._applyBreezeDockAppearance) this.plugin._applyBreezeDockAppearance();
+                            }
+                            if (inp.dataset.key === 'breezeLetterSpacing') {
+                                const lsVal = inp.value + "px";
+                                const list = this.container && this.container.querySelector("#breeze-notes-list");
+                                if (list) list.style.setProperty("--breeze-letter-spacing", lsVal);
+                                if (this.container) this.container.style.setProperty("--breeze-letter-spacing", lsVal);
+                                /* 同步 Dock 侧边栏字间距 */
                                 if (this.plugin && this.plugin._applyBreezeDockAppearance) this.plugin._applyBreezeDockAppearance();
                             }
                             /* 实时应用到清风侧边栏宽度（同时清掉 collapsed 状态） */
@@ -8301,7 +8005,65 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this._importLuminaData();
                     } else if (action === "quickOpenLumina") {
                         this._showQuickOpenLuminaGuide();
+                    } else if (action === "changePasscode") {
+                        this._showChangePasscodeModal();
                     }
+                };
+
+                this._showChangePasscodeModal = () => {
+                    document.querySelectorAll('.north-luna-passcode-modal').forEach(m => m.remove());
+                    const curPwd = (this._getSetting('momentsLockPasscode') || '').trim();
+                    const modal = document.createElement('div');
+                    modal.className = 'north-luna-passcode-modal';
+                    modal.innerHTML =
+                        '<div class="north-luna-passcode-mask"></div>' +
+                        '<div class="north-luna-passcode-dialog">' +
+                            '<div class="north-luna-passcode-title">' + (curPwd ? '修改锁屏密码' : '设置锁屏密码') + '</div>' +
+                            (curPwd ? '<div class="north-luna-passcode-field"><input type="password" class="north-luna-passcode-input" id="passcodeOld" placeholder="请输入旧密码" maxlength="20"></div>' : '') +
+                            '<div class="north-luna-passcode-field"><input type="password" class="north-luna-passcode-input" id="passcodeNew" placeholder="请输入新密码" maxlength="20"></div>' +
+                            '<div class="north-luna-passcode-field"><input type="password" class="north-luna-passcode-input" id="passcodeConfirm" placeholder="确认新密码" maxlength="20"></div>' +
+                            '<div class="north-luna-passcode-actions">' +
+                                '<button class="north-luna-passcode-cancel">取消</button>' +
+                                '<button class="north-luna-passcode-ok">确认</button>' +
+                            '</div>' +
+                        '</div>';
+                    document.body.appendChild(modal);
+                    const mask = modal.querySelector('.north-luna-passcode-mask');
+                    const oldInput = modal.querySelector('#passcodeOld');
+                    const newInput = modal.querySelector('#passcodeNew');
+                    const confirmInput = modal.querySelector('#passcodeConfirm');
+                    const focusFirst = oldInput || newInput;
+                    if (focusFirst) setTimeout(() => focusFirst.focus(), 150);
+                    const close = () => modal.remove();
+                    mask.addEventListener('click', close);
+                    modal.querySelector('.north-luna-passcode-cancel').addEventListener('click', close);
+                    modal.querySelector('.north-luna-passcode-ok').addEventListener('click', () => {
+                        if (curPwd && oldInput && oldInput.value !== curPwd) {
+                            if (typeof showMessage === 'function') showMessage('旧密码错误');
+                            return;
+                        }
+                        const np = newInput.value.trim();
+                        if (!np) {
+                            if (typeof showMessage === 'function') showMessage('新密码不能为空');
+                            return;
+                        }
+                        if (np !== confirmInput.value) {
+                            if (typeof showMessage === 'function') showMessage('两次输入的新密码不一致');
+                            return;
+                        }
+                        const storage = plugin.data[SETTINGS_STORAGE] || {};
+                        storage.settings = storage.settings || {};
+                        storage.settings.momentsLockPasscode = np;
+                        plugin.saveData(SETTINGS_STORAGE, storage).then(() => {
+                            if (typeof showMessage === 'function') showMessage('密码已修改');
+                            close();
+                            /* 刷新设置视图 */
+                            this._viewDomCache = {};
+                            this.renderMain();
+                        }).catch(() => {
+                            if (typeof showMessage === 'function') showMessage('保存失败');
+                        });
+                    });
                 };
 
                 this._showQuickOpenLuminaGuide = () => {
@@ -12866,6 +12628,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (list) {
                     const fs = Number(plugin._getPluginSetting('breezeFontSize')) || 16;
                     list.style.setProperty('--breeze-font-size', fs + 'px');
+                    const lh = Number(plugin._getPluginSetting('breezeLineHeight')) || 2.0;
+                    list.style.setProperty('--breeze-line-height', String(lh));
+                    const ls = Number(plugin._getPluginSetting('breezeLetterSpacing')) || 0;
+                    list.style.setProperty('--breeze-letter-spacing', ls + 'px');
                     /* bool 型设置用 !== false 判读：default:true 的从未保存 → undefined → 仍按 true 生效 */
                     if (plugin._getPluginSetting('breezeCompact')) list.classList.add('breeze-compact');
                     list.classList.toggle('breeze-hover-border', plugin._getPluginSetting('breezeHoverBorder') !== false);
@@ -13127,6 +12893,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         /* 字号：写到 Dock 根容器，卡片正文经继承拿到 --breeze-font-size */
         const fs = Number(this._getPluginSetting('breezeFontSize')) || 16;
         dockRoot.style.setProperty('--breeze-font-size', fs + 'px');
+        const lh = Number(this._getPluginSetting('breezeLineHeight')) || 2.0;
+        dockRoot.style.setProperty('--breeze-line-height', String(lh));
+        const ls = Number(this._getPluginSetting('breezeLetterSpacing')) || 0;
+        dockRoot.style.setProperty('--breeze-letter-spacing', ls + 'px');
         /* 图片大小 + 长笔记折叠：复用 tab 实例方法（含 schema 默认值回退与行高测量） */
         if (this._siyuTab) {
             if (this._siyuTab._applyBreezeImageSize) this._siyuTab._applyBreezeImageSize(dockList);
@@ -13454,7 +13224,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             refreshPreviewBar();
             updateState();
             requestAnimationFrame(autoResize);
-            /* 自动同步思源日记：提交后 1s 防抖 */
+            /* 自动同步思源笔记文档：提交后 1s 防抖 */
             if (plugin._getPluginSetting('autoSyncBreeze')) {
                 clearTimeout(plugin._breezeDockAutoSyncTimer);
                 plugin._breezeDockAutoSyncTimer = setTimeout(() => {
@@ -16372,10 +16142,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const arr = [...(items || [])];
         const idx = new Map(arr.map((m, i) => [m, i]));
         return arr.sort((a, b) => {
+            /* 置顶动态永远在最前 */
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
             const ka = a.createdAt || a.created || 0;
             const kb = b.createdAt || b.created || 0;
             if (kb !== ka) return kb - ka;
-            return (idx.get(b) || 0) - (idx.get(a) || 0); // 同序时后插入（索引靠后）的排前面
+            return (idx.get(b) || 0) - (idx.get(a) || 0);
         });
     }
 
@@ -16481,7 +16254,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     </button>
                                     <div class="north-luna-moments-weather-dropdown" id="momentsWeatherDropdown" style="display:none"></div>
                                 </div>
-                                <input type="text" class="north-luna-moments-publish-location-input" id="momentsPublishMood" placeholder="心情" maxlength="20" autocomplete="off">
+                                <div class="north-luna-moments-publish-weather-wrap">
+                                    <input type="text" class="north-luna-moments-publish-location-input north-luna-weather-input" id="momentsPublishMood" placeholder="心情" maxlength="20" autocomplete="off">
+                                    <button type="button" class="north-luna-weather-arrow" id="momentsMoodArrow" title="常用心情">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                    </button>
+                                    <div class="north-luna-moments-weather-dropdown" id="momentsMoodDropdown" style="display:none"></div>
+                                </div>
                                 <input type="text" class="north-luna-moments-publish-location-input" id="momentsPublishLocation" placeholder="地点...">
                                 <div class="north-luna-moments-publish-emoji-btn" id="momentsPublishLinkToggle">
                                     <span>添加链接</span>
@@ -16735,6 +16514,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         return `
             <div class="north-luna-moments-item" data-mid="${m.id}">
+                ${m.pinned ? `<span class="north-luna-moments-pin-badge" title="已置顶">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconPin"></use></svg>
+                </span>` : ''}
                 <img class="north-luna-moments-item-avatar" src="${this._esc(avatarSrc)}"${avatarRawAttr} alt="avatar" loading="lazy" decoding="async">
                 <div class="north-luna-moments-item-content">
                     <div class="north-luna-moments-item-name">${this._esc(nickname)}</div>
@@ -16743,8 +16525,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     <div class="north-luna-moments-item-meta">
                         ${metaHtml}
                         <div class="north-luna-moments-item-actions">
+                            ${m.liked ? `<span class="north-luna-moments-liked-indicator" data-mid="${m.id}">
+                                <svg viewBox="0 0 24 24" width="15" height="15"><path fill="#e74c3c" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+                            </span>` : ''}
                             <div class="north-luna-moments-more-btn" data-mid="${m.id}"></div>
                             <div class="north-luna-moments-action-popup" data-mid="${m.id}">
+                                <div class="north-luna-moments-action-popup-btn like-btn${m.liked ? ' liked' : ''}" data-mid="${m.id}">
+                                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="${m.liked ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' : 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z'}"></path></svg>${m.liked ? '取消点赞' : '点赞'}
+                                </div>
+                                <div class="north-luna-moments-action-popup-btn pin-btn" data-mid="${m.id}">
+                                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconPin"></use></svg>${m.pinned ? '取消置顶' : '置顶'}
+                                </div>
+                                <div class="north-luna-moments-action-popup-btn comment-btn" data-mid="${m.id}">
+                                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconMark"></use></svg>评论
+                                </div>
                                 <div class="north-luna-moments-action-popup-btn sync-btn" data-mid="${m.id}">
                                     <svg class="sync-icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconCloud"></use></svg>同步
                                 </div>
@@ -16755,6 +16549,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconEdit"></use></svg>修改
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                    <div class="north-luna-moments-comment-panel" data-mid="${m.id}">
+                        ${(m.comments || []).map(c => `<div class="north-luna-moments-comment-item" data-cid="${this._esc(c.id)}">
+                            <span class="north-luna-moments-comment-text"><strong>${this._esc(nickname)}：</strong>${this._esc(c.text)}</span>
+                            <span class="north-luna-moments-comment-time">${(c.time || '').slice(11, 16)}</span>
+                            <span class="north-luna-moments-comment-del" data-cid="${this._esc(c.id)}">✕</span>
+                        </div>`).join('')}
+                        <div class="north-luna-moments-comment-input-row" style="display:none">
+                            <input type="text" class="north-luna-moments-comment-input" placeholder="写评论..." maxlength="200">
+                            <button class="north-luna-moments-comment-send" data-mid="${m.id}">发送</button>
                         </div>
                     </div>
                 </div>
@@ -16787,7 +16592,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const name = this._fileNameFromPath(src);
         const ext = name && name.includes('.') ? name.split('.').pop().toUpperCase() : 'FILE';
         const extColor = breezeFileExtColor(ext);
-        return `<div class="north-luna-moments-grid-wide"><a class="north-breeze-note-file" href="${resolvedEsc}" download="${this._esc(name)}" target="_blank" rel="noopener"><span class="north-breeze-file-badge" style="background:${this._esc(extColor)}">${this._esc(ext)}</span><span class="north-breeze-file-name" title="${this._esc(name)}">${this._esc(name)}</span></a></div>`;
+        return `<div class="north-luna-moments-grid-wide"><div class="north-breeze-note-file" data-kind="other" data-src="${this._esc(src)}"><span class="north-breeze-file-badge" style="background:${this._esc(extColor)}">${this._esc(ext)}</span><span class="north-breeze-file-name" title="${this._esc(name)}">${this._esc(name)}</span></div></div>`;
     }
 
     /* 懒加载渲染朋友圈列表条目：
@@ -17490,6 +17295,37 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const mediaEl = e.target.closest('[data-kind]');
         if (!mediaEl) return;
         const kind = mediaEl.getAttribute('data-kind');
+        /* 文件：弹出下载选项，避免误触 */
+        if (kind === 'other') {
+            e.stopPropagation();
+            const src = mediaEl.getAttribute('data-src');
+            if (!src) return;
+            const url = this._resolveImageUrl(src);
+            const name = (mediaEl.querySelector('.north-breeze-file-name') || {}).textContent || 'file';
+            /* 关闭已有浮窗 */
+            document.querySelectorAll('.north-luna-file-action-popup').forEach(p => p.remove());
+            const popup = document.createElement('div');
+            popup.className = 'north-luna-file-action-popup';
+            popup.innerHTML =
+                '<button class="north-luna-file-action-btn download">下载文件</button>';
+            const rect = mediaEl.getBoundingClientRect();
+            popup.style.cssText = 'position:fixed;z-index:9999;display:flex;gap:6px;background:var(--b3-theme-background);border:1px solid var(--b3-border-color);border-radius:8px;padding:6px 8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);';
+            popup.style.top = (rect.bottom + 4) + 'px';
+            popup.style.left = Math.min(rect.left, window.innerWidth - 200) + 'px';
+            document.body.appendChild(popup);
+            popup.querySelector('.download').addEventListener('click', () => {
+                popup.remove();
+                const a = document.createElement('a');
+                a.href = url; a.download = name; a.style.display = 'none';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                if (typeof showMessage === 'function') showMessage('已开始下载');
+            });
+            const closePopup = (ev) => {
+                if (!popup.contains(ev.target)) { popup.remove(); document.removeEventListener('click', closePopup); }
+            };
+            setTimeout(() => document.addEventListener('click', closePopup), 0);
+            return;
+        }
         if (kind !== 'image' && kind !== 'video') return;
         e.stopPropagation();
         const src = mediaEl.src || mediaEl.getAttribute('data-src');
@@ -18205,11 +18041,37 @@ module.exports = class NorthLunaPlugin extends Plugin {
             closeWeatherDropdown();
             weatherInput.focus();
         });
+        /* 心情下拉预设（与天气同模式） */
+        const MOOD_OPTIONS = ['😊 开心', '😢 难过', '😤 生气', '😰 焦虑', '😌 平静', '🤩 兴奋', '😴 疲惫', '🤔 思考', '🥰 幸福', '😎 酷', '🤗 温暖', '😭 崩溃', '🥳 庆祝', '😋 满足', '😱 震惊', '🥱 无聊', '🤯 崩溃', '😇 感恩'];
+        const moodInput = container.querySelector('#momentsPublishMood');
+        const moodArrow = container.querySelector('#momentsMoodArrow');
+        const moodDropdown = container.querySelector('#momentsMoodDropdown');
+        const buildMoodDropdown = () => {
+            moodDropdown.innerHTML = MOOD_OPTIONS.map(o =>
+                '<div class="north-luna-weather-dropdown-item">' + o + '</div>'
+            ).join('');
+            moodDropdown.style.display = 'block';
+        };
+        const closeMoodDropdown = () => { moodDropdown.style.display = 'none'; };
+        moodInput.addEventListener('input', () => { publishMood = moodInput.value; });
+        moodArrow.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (moodDropdown.style.display === 'block') { closeMoodDropdown(); return; }
+            buildMoodDropdown();
+        });
+        moodDropdown.addEventListener('mousedown', (e) => {
+            const item = e.target.closest('.north-luna-weather-dropdown-item');
+            if (!item) return;
+            e.preventDefault();
+            moodInput.value = item.textContent;
+            publishMood = item.textContent;
+            closeMoodDropdown();
+            moodInput.focus();
+        });
         document.addEventListener('click', (e) => {
             if (!weatherArrow.contains(e.target) && !weatherDropdown.contains(e.target)) closeWeatherDropdown();
+            if (!moodArrow.contains(e.target) && !moodDropdown.contains(e.target)) closeMoodDropdown();
         });
-        const moodInput = container.querySelector('#momentsPublishMood');
-        moodInput.addEventListener('input', () => { publishMood = moodInput.value; });
         const dateInput = container.querySelector('#momentsPublishDate');
         dateInput.addEventListener('change', () => { publishDate = dateInput.value; });
         const locationInput = container.querySelector('#momentsPublishLocation');
@@ -18248,6 +18110,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 weather: publishWeather, mood: publishMood, location: publishLocation,
                 created: publishDate ? new Date(publishDate).getTime() : Date.now(),
                 createdAt: Date.now(), // 真实发表时刻，单独用于排序（后发表的永远在最前）
+                liked: false,
+                comments: [],
+                pinned: false,
             };
             this.data[MOMENTS_STORAGE].items = this.data[MOMENTS_STORAGE].items || [];
             if (editingId) {
@@ -18256,6 +18121,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const orig = this.data[MOMENTS_STORAGE].items[idx];
                     // 编辑时保留首次发表时刻，不抢占置顶
                     momentData.createdAt = orig.createdAt || orig.created || Date.now();
+                    // 保留点赞状态、已有评论、置顶状态
+                    momentData.liked = orig.liked || false;
+                    momentData.comments = orig.comments || [];
+                    momentData.pinned = orig.pinned || false;
                     this.data[MOMENTS_STORAGE].items[idx] = Object.assign({}, orig, momentData);
                 }
             } else {
@@ -18263,11 +18132,29 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this.data[MOMENTS_STORAGE].items.push(momentData);
             }
             this.saveMoments().then(() => {
+                const isNew = !editingId;
                 showMessage(editingId ? '已保存' : '已发表');
                 main.style.visibility = '';
                 pub.classList.remove('active');
                 editingId = null;
                 this.refreshMomentsList(body);
+                /* 自动同步思源笔记文档：发布后 1s 防抖，仅新建时生效（编辑不触发） */
+                if (isNew && this._getPluginSetting('autoSyncMoments')) {
+                    clearTimeout(this._momentsAutoSyncTimer);
+                    const ts = momentData.created ? new Date(momentData.created).toISOString().replace('T', ' ').slice(0, 19) : '';
+                    this._momentsAutoSyncTimer = setTimeout(() => {
+                        this._syncToDailyNote({
+                            content: momentData.text || '',
+                            images: momentData.images || [],
+                            files: [],
+                            time: ts,
+                            mood: momentData.mood || '',
+                            weather: momentData.weather || '',
+                            location: momentData.location || '',
+                            source: 'moments'
+                        }).catch(() => {});
+                    }, 1000);
+                }
             }).catch(e => showMessage('保存失败'));
         });
 
@@ -18372,15 +18259,145 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         /* ===== 列表项交互（更多/删除/编辑/图片预览） ===== */
         container.addEventListener('click', (e) => {
+            /* 点赞按钮（位于 ··· 弹窗内） */
+            const likeBtn = e.target.closest('.north-luna-moments-action-popup-btn.like-btn');
+            if (likeBtn) {
+                e.stopPropagation();
+                const mid = likeBtn.dataset.mid;
+                const items = (this.data[MOMENTS_STORAGE] || {}).items || [];
+                const m = items.find(x => String(x.id) === String(mid));
+                if (!m) return;
+                m.liked = !m.liked;
+                likeBtn.classList.toggle('liked', m.liked);
+                /* 更新 SVG heart path 与按钮文案 */
+                const svgPath = likeBtn.querySelector('svg path');
+                if (svgPath) {
+                    svgPath.setAttribute('d', m.liked
+                        ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'
+                        : 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z');
+                }
+                /* 重置按钮的纯文本节点为新文案，保留 svg */
+                const textNodes = Array.from(likeBtn.childNodes).filter(n => n.nodeType === 3);
+                if (textNodes.length) textNodes[textNodes.length - 1].nodeValue = m.liked ? '取消点赞' : '点赞';
+                /* 同步卡片 meta 行的点赞红心指示器：增删 */
+                const card = container.querySelector('.north-luna-moments-item[data-mid="' + this._esc(String(mid)) + '"]');
+                if (card) {
+                    let indicator = card.querySelector('.north-luna-moments-liked-indicator');
+                    if (m.liked && !indicator) {
+                        indicator = document.createElement('span');
+                        indicator.className = 'north-luna-moments-liked-indicator';
+                        indicator.dataset.mid = mid;
+                        indicator.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="#e74c3c" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>';
+                        const actions = card.querySelector('.north-luna-moments-item-actions');
+                        if (actions) actions.insertBefore(indicator, actions.firstChild);
+                    } else if (!m.liked && indicator) {
+                        indicator.remove();
+                    }
+                }
+                this.saveMoments().catch(() => {});
+                return;
+            }
             /* 图片/视频点击预览：复用清风 _handleMediaClick → showMomentsMediaPreview（与清风共用同一查看器） */
             const mediaEl = e.target.closest('[data-kind]');
             if (mediaEl) {
                 const mk = mediaEl.getAttribute('data-kind');
-                if (mk === 'image' || mk === 'video') {
+                if (mk === 'image' || mk === 'video' || mk === 'other') {
                     e.stopPropagation();
                     this._handleMediaClick(e, '.north-luna-moments-item');
 
                 }
+            }
+            /* 评论按钮（弹窗内）：展开/收起评论输入框 */
+            const commentBtn = e.target.closest('.north-luna-moments-action-popup-btn.comment-btn');
+            if (commentBtn) {
+                e.stopPropagation();
+                const mid = commentBtn.dataset.mid;
+                const panel = container.querySelector('.north-luna-moments-comment-panel[data-mid="' + this._esc(String(mid)) + '"]');
+                if (panel) {
+                    /* 先关掉所有其他面板的输入框 */
+                    container.querySelectorAll('.north-luna-moments-comment-input-row').forEach(r => r.style.display = 'none');
+                    const inputRow = panel.querySelector('.north-luna-moments-comment-input-row');
+                    if (inputRow) {
+                        const wasOpen = inputRow.style.display !== 'none';
+                        inputRow.style.display = wasOpen ? 'none' : 'flex';
+                        if (!wasOpen) {
+                            const input = inputRow.querySelector('.north-luna-moments-comment-input');
+                            if (input) setTimeout(() => input.focus(), 100);
+                        }
+                    }
+                }
+                return;
+            }
+            /* 发送评论 */
+            const sendCommentBtn = e.target.closest('.north-luna-moments-comment-send');
+            if (sendCommentBtn) {
+                e.stopPropagation();
+                const panel = sendCommentBtn.closest('.north-luna-moments-comment-panel');
+                const inputRow = sendCommentBtn.closest('.north-luna-moments-comment-input-row');
+                const input = inputRow ? inputRow.querySelector('.north-luna-moments-comment-input') : null;
+                if (!input || !input.value.trim()) return;
+                const mid = sendCommentBtn.dataset.mid;
+                const items = (this.data[MOMENTS_STORAGE] || {}).items || [];
+                const m = items.find(x => String(x.id) === String(mid));
+                if (!m) return;
+                m.comments = m.comments || [];
+                const now = new Date();
+                const p2 = n => String(n).padStart(2, '0');
+                const time = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
+                const cid = 'c_' + Date.now();
+                const nickname = this._getProfileNickname();
+                const text = input.value.trim();
+                m.comments.push({ id: cid, text: text, time: time });
+                /* 插入新评论 DOM 到输入框上方 */
+                const item = document.createElement('div');
+                item.className = 'north-luna-moments-comment-item';
+                item.dataset.cid = cid;
+                item.innerHTML = '<span class="north-luna-moments-comment-text"><strong>' + this._esc(nickname) + '：</strong>' + this._esc(text) + '</span>' +
+                    '<span class="north-luna-moments-comment-time">' + time.slice(11, 16) + '</span>' +
+                    '<span class="north-luna-moments-comment-del" data-cid="' + cid + '">✕</span>';
+                if (inputRow) panel.insertBefore(item, inputRow);
+                input.value = '';
+                /* 发送后隐藏输入框 */
+                if (inputRow) inputRow.style.display = 'none';
+                this.saveMoments().catch(() => {});
+                return;
+            }
+            /* 删除单条评论（带二次确认） */
+            const delComment = e.target.closest('.north-luna-moments-comment-del');
+            if (delComment) {
+                e.stopPropagation();
+                const cid = delComment.dataset.cid;
+                const panel = delComment.closest('.north-luna-moments-comment-panel');
+                const mid = panel ? panel.dataset.mid : null;
+                if (!mid) return;
+                const doDelete = () => {
+                    const items = (this.data[MOMENTS_STORAGE] || {}).items || [];
+                    const m = items.find(x => String(x.id) === String(mid));
+                    if (!m) return;
+                    m.comments = (m.comments || []).filter(c => c.id !== cid);
+                    delComment.parentElement.remove();
+                    this.saveMoments().catch(() => {});
+                };
+                if (typeof confirm === 'function') {
+                    confirm('删除评论', '确定要删除这条评论吗？', doDelete);
+                } else {
+                    doDelete();
+                }
+                return;
+            }
+            /* 置顶/取消置顶（弹窗内） */
+            const pinBtn = e.target.closest('.north-luna-moments-action-popup-btn.pin-btn');
+            if (pinBtn) {
+                e.stopPropagation();
+                const mid = pinBtn.dataset.mid;
+                const items = (this.data[MOMENTS_STORAGE] || {}).items || [];
+                const m = items.find(x => String(x.id) === String(mid));
+                if (!m) return;
+                m.pinned = !m.pinned;
+                this.saveMoments().catch(() => {});
+                /* 刷新列表以应用新的排序 */
+                this.refreshMomentsList(body);
+                return;
             }
             const moreBtn = e.target.closest('.north-luna-moments-more-btn');
             if (moreBtn) {
@@ -18465,6 +18482,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 openPublishPage(m);
                 return;
             }
+        /* 评论输入框：回车发送 */
+        container.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || e.isComposing) return;
+            const input = e.target.closest('.north-luna-moments-comment-input');
+            if (!input) return;
+            e.preventDefault();
+            const sendBtn = input.parentElement.querySelector('.north-luna-moments-comment-send');
+            if (sendBtn) sendBtn.click();
+        });
         // 链接卡片点击打开
         container.addEventListener('click', (e) => {
             const linkCard = e.target.closest('.north-luna-moments-link-card[data-link-url]');
