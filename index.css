@@ -1580,8 +1580,11 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 .north-luna-moments-comment-panel {
     margin-top: 8px;
     padding: 8px 0 0;
-    border-top: 1px solid rgba(128, 128, 128, 0.08);
     animation: moments-likes-fade-in 0.2s ease;
+}
+/* 仅在存在评论时才显示顶部分隔线 */
+.north-luna-moments-comment-panel:has(.north-luna-moments-comment-item) {
+    border-top: 1px solid rgba(128, 128, 128, 0.08);
 }
 .north-luna-moments-comment-item {
     display: flex;
@@ -1745,6 +1748,11 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 
 .north-luna-moments-action-popup-btn:last-child {
     border-right: none;
+}
+
+/* 行容器：PC 端透明（display:contents），移动端在 @media 中改为 display:flex 让两行布局生效 */
+.north-luna-moments-action-popup-row {
+    display: contents;
 }
 
 .north-luna-moments-action-popup-btn:active {
@@ -3150,6 +3158,52 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
         height: 4px;
     }
 
+    /* 移动端朋友圈弹出菜单：两行布局（第一行：点赞 置顶 评论  第二行：同步 删除 修改）
+       用 .is-mobile 类选择器而非 @media，避免 SiYuan 移动端的 WebView 视口宽度不可靠 */
+    .north-luna-container.is-mobile .north-luna-moments-action-popup {
+        width: auto;  /* 不写死，根据内容自适应，避免取消点赞变长时撑爆 */
+        min-width: 198px;
+        right: 0;
+        top: 100%;
+        transform: none;
+        flex-direction: column;
+        border-radius: 8px;
+        z-index: 6;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+        border: 1px solid var(--moments-action-popup-border);
+        overflow: hidden;
+    }
+    /* 行容器在移动端可见，每行容纳 3 个按钮 */
+    .north-luna-container.is-mobile .north-luna-moments-action-popup-row {
+        display: flex;
+        flex-wrap: nowrap;
+    }
+    .north-luna-container.is-mobile .north-luna-moments-action-popup-btn {
+        flex: 1 1 0;
+        min-width: 0;
+        justify-content: center;
+        padding: 10px 10px;
+        font-size: 13px;
+        box-sizing: border-box;
+        border-right: none;
+        gap: 4px;
+    }
+    .north-luna-container.is-mobile .north-luna-moments-action-popup-btn svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+    }
+    /* 两行之间的横线分隔 */
+    .north-luna-container.is-mobile .north-luna-moments-action-popup-row:first-child {
+        border-bottom: 1px solid color-mix(in srgb, var(--moments-action-popup-border) 40%, transparent);
+    }
+    /* 菜单展开时移除卡片 paint containment + 提升层级，防止弹出菜单被卡片剪切或下一张卡片遮挡 */
+    .north-luna-container.is-mobile .north-luna-moments-item.popup-open {
+        z-index: 100;
+        contain: layout style !important;  /* 去掉 paint 剪切，保留布局/样式隔离 */
+        content-visibility: visible !important;
+    }
+
     /* ---------- 抽屉遮罩层 ---------- */
     .north-luna-drawer-overlay {
         position: fixed;
@@ -4456,6 +4510,352 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 
 .north-luna-settings-input:focus {
     border-color: var(--b3-theme-primary, #5b8def);
+}
+
+/* 导出时间范围选择器 */
+.north-luna-export-mode-select {
+    padding: 5px 10px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 70%, transparent);
+    border-radius: 6px;
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-surface);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+
+.north-luna-export-mode-select:focus {
+    border-color: var(--b3-theme-primary, #5b8def);
+}
+
+.north-luna-export-fields {
+    padding: 0 18px 12px 18px;
+}
+
+.north-luna-export-field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--b3-border-color) 15%, transparent);
+}
+
+.north-luna-export-field-label {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.north-luna-export-date-input,
+.north-luna-export-days-input {
+    padding: 5px 10px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 70%, transparent);
+    border-radius: 6px;
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-surface);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.north-luna-export-date-input:focus,
+.north-luna-export-days-input:focus {
+    border-color: var(--b3-theme-primary, #5b8def);
+}
+
+.north-luna-export-date-input {
+    width: 150px;
+}
+
+.north-luna-export-days-input {
+    width: 64px;
+    text-align: center;
+}
+
+/* 导出时间范围弹窗 */
+.north-luna-export-tr-modal {
+    position: fixed; inset: 0; z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+}
+.north-luna-export-tr-mask {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.45);
+}
+.north-luna-export-tr-dialog {
+    position: relative;
+    background: var(--b3-theme-background);
+    border-radius: 12px;
+    padding: 24px;
+    min-width: 360px;
+    max-width: 420px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.north-luna-export-tr-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+    margin-bottom: 18px;
+}
+/* 模式选择器 */
+.north-luna-export-tr-mode {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.north-luna-export-tr-mode-item {
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 14px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 70%, transparent);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+    transition: all 0.15s ease;
+    user-select: none;
+}
+.north-luna-export-tr-mode-item input[type="radio"] { display: none; }
+.north-luna-export-tr-mode-item:hover {
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+.north-luna-export-tr-mode-item.active {
+    border-color: var(--b3-theme-primary);
+    background: color-mix(in srgb, var(--b3-theme-primary) 12%, transparent);
+    color: var(--b3-theme-primary);
+    font-weight: 500;
+}
+/* 字段区域 */
+.north-luna-export-tr-fields { margin-bottom: 20px; }
+.north-luna-export-tr-field {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px;
+    background: var(--b3-theme-surface);
+    border-radius: 8px;
+}
+.north-luna-export-tr-field-label {
+    font-size: 13px; color: var(--b3-theme-on-surface);
+    white-space: nowrap; flex-shrink: 0;
+}
+.north-luna-export-tr-input {
+    padding: 6px 10px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 70%, transparent);
+    border-radius: 6px;
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-surface);
+    font-size: 13px; font-family: inherit; outline: none;
+    transition: border-color 0.15s ease;
+}
+.north-luna-export-tr-input:focus {
+    border-color: var(--b3-theme-primary);
+}
+#exportTrDays { width: 64px; text-align: center; }
+#exportTrDate, #exportTrFrom, #exportTrTo { width: 140px; }
+/* 操作按钮 */
+.north-luna-export-tr-actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+}
+.north-luna-export-tr-cancel {
+    padding: 6px 16px;
+    border: 1px solid var(--b3-border-color);
+    background: transparent;
+    color: var(--b3-theme-on-surface);
+    border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.north-luna-export-tr-ok {
+    padding: 6px 16px;
+    border: none;
+    background: var(--b3-theme-primary);
+    color: #fff;
+    border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+
+/* 自定义日期触发按钮（替代原生的 <input type="date">） */
+.north-luna-date-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 150px;
+    padding: 6px 12px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 70%, transparent);
+    border-radius: 6px;
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-surface);
+    font-size: 13px; font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+.north-luna-date-trigger:hover {
+    border-color: var(--b3-theme-primary);
+}
+.north-luna-date-trigger:focus {
+    border-color: var(--b3-theme-primary);
+    outline: none;
+}
+.north-luna-date-trigger-icon {
+    width: 14px;
+    height: 14px;
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+.north-luna-date-trigger-text {
+    flex: 1;
+    text-align: left;
+}
+
+/* 自定义日历弹窗（Apple 风格 · 精致小巧） */
+.north-luna-datepicker-popup {
+    position: fixed;
+    z-index: 11000;
+    width: 256px;
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 10px;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.16);
+    padding: 10px 12px;
+    user-select: none;
+}
+/* 头部：‹ 2026 年 8 月 › */
+.north-luna-datepicker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.north-luna-datepicker-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+    flex: 1;
+    text-align: center;
+}
+.north-luna-datepicker-nav {
+    width: 24px; height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.12s ease;
+}
+.north-luna-datepicker-nav:hover {
+    background: color-mix(in srgb, var(--b3-theme-primary) 12%, transparent);
+    color: var(--b3-theme-primary);
+}
+/* 快捷芯片：今日 / 本周开始 / 本周末 / 本月第一天 */
+.north-luna-datepicker-quickchips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+.north-luna-datepicker-chip {
+    padding: 3px 9px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 50%, transparent);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--b3-theme-on-surface);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.north-luna-datepicker-chip:hover {
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+    background: color-mix(in srgb, var(--b3-theme-primary) 8%, transparent);
+}
+/* 工具栏：清除按钮 */
+.north-luna-datepicker-toolbar {
+    display: flex;
+    margin-bottom: 6px;
+}
+.north-luna-datepicker-clear {
+    padding: 3px 10px;
+    border: none;
+    background: color-mix(in srgb, var(--b3-theme-primary) 10%, transparent);
+    color: var(--b3-theme-primary);
+    border-radius: 11px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.north-luna-datepicker-clear:hover {
+    background: color-mix(in srgb, var(--b3-theme-primary) 18%, transparent);
+}
+/* 星期表头 */
+.north-luna-datepicker-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    margin-bottom: 2px;
+}
+.north-luna-datepicker-weekdays span {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--b3-theme-on-surface-light);
+    padding: 3px 0;
+}
+/* 日期网格 */
+.north-luna-datepicker-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+}
+.north-luna-datepicker-cell {
+    aspect-ratio: 1 / 1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.1s ease;
+}
+.north-luna-datepicker-cell.other-month {
+    color: var(--b3-theme-on-surface-light);
+    opacity: 0.3;
+}
+.north-luna-datepicker-cell:hover {
+    background: color-mix(in srgb, var(--b3-theme-primary) 12%, transparent);
+    color: var(--b3-theme-primary);
+}
+/* 今天：仅主题色文字（无圆圈） */
+.north-luna-datepicker-cell.today {
+    color: var(--b3-theme-primary);
+    font-weight: 600;
+}
+/* 选中：浅背景（无圆圈） */
+.north-luna-datepicker-cell.selected {
+    background: color-mix(in srgb, var(--b3-theme-primary) 18%, transparent);
+    color: var(--b3-theme-primary);
+    font-weight: 600;
+}
+/* 今天+选中：填充背景 */
+.north-luna-datepicker-cell.selected.today {
+    background: var(--b3-theme-primary);
+    color: #fff;
+}
+/* 底部操作 */
+.north-luna-datepicker-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+}
+.north-luna-datepicker-btn {
+    padding: 3px 10px;
+    border: none;
+    background: transparent;
+    color: var(--b3-theme-primary);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.north-luna-datepicker-btn:hover {
+    background: color-mix(in srgb, var(--b3-theme-primary) 12%, transparent);
 }
 
 .north-luna-settings-textarea {

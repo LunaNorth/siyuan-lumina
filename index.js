@@ -5978,6 +5978,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         { title: '常规', items: [
                             { type: 'toggle', key: 'autoOpen', title: '启动时打开轻语', desc: '开启后，启动思源笔记自动打开轻语标签页', default: false }
                         ]},
+                        { title: '数据导出', items: [
+                            { type: 'select', key: 'exportFormat', title: '导出格式', desc: '选择导出文件的格式', default: 'md', options: [
+                                { value: 'md', label: 'Markdown (.md)' },
+                                { value: 'docx', label: 'Word (.docx)' }
+                            ]},
+                            { type: 'export_timerange', title: '导出时间范围', desc: '选择要导出的数据时间范围，仅在点击下方导出按钮时生效' },
+                            { type: 'button', key: 'exportBreeze', action: 'exportBreeze', title: '导出清风数据', desc: '将清风笔记导出为所选格式的文件', buttonText: '导出清风数据' },
+                            { type: 'button', key: 'exportMomentsData', action: 'exportMomentsData', title: '导出朋友圈数据', desc: '将朋友圈动态导出为所选格式的文件', buttonText: '导出朋友圈数据' }
+                        ]},
                         { title: '资源存储模式', items: [
                             { type: 'select', key: 'resourceStorage', title: '存储位置', desc: '控制上传的图片与资源文件保存到思源 assets 资源目录，还是公共目录 public/siyuan-lumina/。公共目录脱离 assets 资源目录，不会被思源「未引用资源清理」删除。切换后只影响新上传的资源，已有引用不受影响。', default: 'assets', options: [{ value: 'assets', label: '思源资源目录 (assets)' }, { value: 'public', label: '公共目录 (public/siyuan-lumina/)' }] }
                         ]},
@@ -5998,7 +6007,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const it = allItems.find(i => i.key === key);
                         if (it) return s[key] !== undefined ? s[key] : it.default;
                     }
-                    return undefined;
+                    return s[key];
                 };
                 this._setSetting = (key, val) => {
                     plugin.data[SETTINGS_STORAGE] = plugin.data[SETTINGS_STORAGE] || {};
@@ -7346,6 +7355,25 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 <span class="north-luna-settings-color-value">${v || '跟随主题'}</span>
                                 <input type="color" class="north-luna-settings-color-picker" data-key="${it.key}" data-type="color" value="${plugin._esc(v)}">
                             </div>`;
+                        } else if (it.type === "export_timerange") {
+                            // 获取当前时间范围摘要用于按钮显示
+                            const mode = this._getSetting('exportTimeMode') || 'all';
+                            let summary = '全部数据';
+                            if (mode === 'recent') {
+                                const days = parseInt(this._getSetting('exportRecentDays')) || 7;
+                                summary = `最近 ${days} 天`;
+                            } else if (mode === 'single') {
+                                const d = this._getSetting('exportSingleDate') || '';
+                                summary = d || '全部数据';
+                            } else if (mode === 'range') {
+                                const from = this._getSetting('exportDateFrom') || '';
+                                const to = this._getSetting('exportDateTo') || '';
+                                if (from && to) summary = `${from} ~ ${to}`;
+                                else if (from) summary = `${from} 起`;
+                                else if (to) summary = `至 ${to}`;
+                                else summary = '全部数据';
+                            }
+                            ctrl = `<button class="north-luna-settings-btn" data-action="exportTimerange">导出时间范围：${plugin._esc(summary)}</button>`;
                         } else if (it.type === "button") {
                             const danger = it.danger ? " north-luna-settings-btn-danger" : "";
                             ctrl = `<button class="north-luna-settings-btn${danger}" data-action="${it.action}">${it.buttonText || "执行"}</button>`;
@@ -8007,6 +8035,238 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this._showQuickOpenLuminaGuide();
                     } else if (action === "changePasscode") {
                         this._showChangePasscodeModal();
+                    } else if (action === "exportTimerange") {
+                        this._showExportTimeRangeModal();
+                    } else if (action === "exportBreeze" || action === "exportMomentsData") {
+                        const format = this._getSetting('exportFormat') || 'md';
+                        const isBreeze = action === "exportBreeze";
+                        const title = isBreeze ? '清风笔记' : '朋友圈动态';
+                        const fnBase = isBreeze ? 'siyuan-lumina-breeze' : 'siyuan-lumina-moments';
+                        const date = new Date().toISOString().slice(0, 10);
+                        showMessage('正在准备导出...');
+                        // 辅助：将图片 URL 转为 base64（用 fetch 而非 Image，避免加载卡死）
+                        const imgToBase64 = async (imgUrl) => {
+                            if (!imgUrl) return null;
+                            try {
+                                const resp = await fetch(imgUrl);
+                                if (!resp.ok) return null;
+                                const blob = await resp.blob();
+                                // 缩小到 800px
+                                return new Promise((resolve) => {
+                                    const img = new Image();
+                                    img.onload = () => {
+                                        const cv = document.createElement('canvas');
+                                        const maxW = 800;
+                                        let w = img.naturalWidth, h = img.naturalHeight;
+                                        if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+                                        cv.width = w; cv.height = h;
+                                        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+                                        resolve(cv.toDataURL('image/jpeg', 0.85));
+                                    };
+                                    img.onerror = () => resolve(null);
+                                    img.src = URL.createObjectURL(blob);
+                                });
+                            } catch (e) { return null; }
+                        };
+                        /* 导出时间范围过滤 */
+                        const filterByExportTimeRange = (data, getTimeFn) => {
+                            const mode = this._getSetting('exportTimeMode') || 'all';
+                            if (mode === 'all') return data;
+                            if (mode === 'recent') {
+                                const days = parseInt(this._getSetting('exportRecentDays')) || 7;
+                                const cutoff = new Date();
+                                cutoff.setHours(0, 0, 0, 0);
+                                cutoff.setDate(cutoff.getDate() - (days - 1));
+                                return data.filter(item => { const t = getTimeFn(item); return t && t >= cutoff; });
+                            }
+                            if (mode === 'single') {
+                                const dateStr = this._getSetting('exportSingleDate') || '';
+                                if (!dateStr) return data;
+                                const start = new Date(dateStr + 'T00:00:00');
+                                const end = new Date(dateStr + 'T23:59:59');
+                                return data.filter(item => { const t = getTimeFn(item); return t && t >= start && t <= end; });
+                            }
+                            if (mode === 'range') {
+                                const fromStr = this._getSetting('exportDateFrom') || '';
+                                const toStr = this._getSetting('exportDateTo') || '';
+                                const start = fromStr ? new Date(fromStr + 'T00:00:00') : null;
+                                const end = toStr ? new Date(toStr + 'T23:59:59') : null;
+                                return data.filter(item => {
+                                    const t = getTimeFn(item);
+                                    if (!t) return false;
+                                    if (start && t < start) return false;
+                                    if (end && t > end) return false;
+                                    return true;
+                                });
+                            }
+                            return data;
+                        };
+                        /* 解析清风笔记时间字符串 → Date（"2024-01-15 10:30" → 安全解析） */
+                        const parseBreezeTime = (timeStr) => {
+                            if (!timeStr) return null;
+                            try { return new Date(String(timeStr).replace(' ', 'T')); }
+                            catch { return null; }
+                        };
+                        // 构建数据收集 + 加载图片
+                        (async () => {
+                            const items = []; // { time, text, tags, mood, weather, location, images, imgDataUrls }
+                            if (isBreeze) {
+                                const allNotes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
+                                if (!allNotes.length) { showMessage('暂无清风笔记数据'); return; }
+                                const notes = filterByExportTimeRange(allNotes, n => parseBreezeTime(n.time));
+                                if (!notes.length) { showMessage('所选时间范围内无清风笔记数据'); return; }
+                                notes.forEach(note => {
+                                    if (!note.content && !note.time) return;
+                                    items.push({
+                                        time: note.time, text: note.content || '',
+                                        tags: note.tags || [],
+                                        images: (note.images || []).map(p => plugin._resolveImageUrl(p))
+                                    });
+                                });
+                            } else {
+                                const allMoments = plugin.momentsData.items || [];
+                                if (!allMoments.length) { showMessage('暂无朋友圈数据'); return; }
+                                const moments = filterByExportTimeRange(allMoments, m => m.created ? new Date(m.created) : null);
+                                if (!moments.length) { showMessage('所选时间范围内无朋友圈数据'); return; }
+                                moments.forEach(m => {
+                                    if (!m.text && !m.created) return;
+                                    items.push({
+                                        time: new Date(m.created || Date.now()).toLocaleString('zh-CN'),
+                                        text: m.text || '',
+                                        mood: m.mood, weather: m.weather, location: m.location,
+                                        images: (m.images || []).map(p => plugin._resolveImageUrl(p))
+                                    });
+                                });
+                            }
+                            if (!items.length) { showMessage('无有效数据可导出'); return; }
+                            // 加载所有图片（先收集所有 URL，去重后并行加载）
+                            const allUrls = new Set();
+                            items.forEach(it => it.images.forEach(u => { if (u) allUrls.add(u); }));
+                            const urlMap = new Map();
+                            await Promise.all(Array.from(allUrls).map(async (u) => {
+                                const b64 = await imgToBase64(u);
+                                if (b64) urlMap.set(u, b64);
+                            }));
+                            // 填充每个 item 的 base64 图片
+                            items.forEach(it => {
+                                it.imgDataUrls = it.images.map(u => urlMap.get(u) || null).filter(Boolean);
+                            });
+                            // 构建 MD 和 HTML 内容
+                            let md = `# ${title}\n\n`;
+                            let htmlContent = '';
+                            const imgFiles = []; // { name, b64 } 给 MD 的 ZIP 用
+                            let imgIdx = 0;
+                            items.forEach((it, i) => {
+                                if (i > 0) { md += '\n---\n\n'; htmlContent += '<hr>\n'; }
+                                md += `## ${it.time}\n\n${it.text}\n\n`;
+                                htmlContent += `<h2>${plugin._esc(it.time)}</h2>\n`;
+                                htmlContent += `<div class="content">${plugin._esc(it.text).replace(/\n/g,'<br>\n')}</div>\n`;
+                                // 标签
+                                if (it.tags && it.tags.length) {
+                                    const ts = it.tags.map(t => '#' + t).join(' ');
+                                    md += ts + '\n';
+                                    htmlContent += `<div class="tags">${plugin._esc(ts)}</div>\n`;
+                                }
+                                // 心情/天气/地点
+                                if (!isBreeze) {
+                                    const meta = [];
+                                    if (it.mood) meta.push(it.mood);
+                                    if (it.weather) meta.push(it.weather);
+                                    if (it.location) meta.push('📍 ' + it.location);
+                                    if (meta.length) {
+                                        md += meta.join(' · ') + '\n';
+                                        htmlContent += `<div class="meta">${plugin._esc(meta.join(' · '))}</div>\n`;
+                                    }
+                                }
+                                // 图片
+                                it.imgDataUrls.forEach((b64) => {
+                                    imgIdx++;
+                                    const name = `img-${String(imgIdx).padStart(3,'0')}.jpg`;
+                                    md += `\n![图片${imgIdx}](assets/${name})\n`;
+                                    htmlContent += `<div style="margin:8px 0"><img src="${b64}" alt="图片${imgIdx}" style="max-width:100%;border-radius:4px;"></div>\n`;
+                                    imgFiles.push({ name, b64 });
+                                });
+                            });
+                            if (format === 'md') {
+                                /* 无图片时直接下载 MD，无需加载 JSZip */
+                                if (imgFiles.length === 0) {
+                                    const blob = new Blob(['\ufeff' + md], { type: 'text/markdown;charset=utf-8' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url; a.download = `${fnBase}-${date}.md`; a.click();
+                                    setTimeout(() => URL.revokeObjectURL(url), 5000);
+                                    showMessage(`已导出为 Markdown (${items.length} 条)`);
+                                } else {
+                                    /* 有图片时打包成 ZIP：MD 文件 + assets/ 目录中的图片 */
+                                    const loadJSZip = () => new Promise((resolve, reject) => {
+                                        if (window.JSZip) { resolve(window.JSZip); return; }
+                                        /* 多 CDN 备选，bootcdn 国内更稳定 */
+                                        const cdnUrls = [
+                                            'https://cdn.bootcdn.net/ajax/libs/jszip/3.10.1/jszip.min.js',
+                                            'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
+                                        ];
+                                        let idx = 0;
+                                        const tryLoad = () => {
+                                            if (idx >= cdnUrls.length) { reject(new Error('cdn')); return; }
+                                            const s = document.createElement('script');
+                                            s.src = cdnUrls[idx];
+                                            s.onload = () => {
+                                                if (window.JSZip) resolve(window.JSZip);
+                                                else { idx++; tryLoad(); }
+                                            };
+                                            s.onerror = () => { idx++; tryLoad(); };
+                                            document.head.appendChild(s);
+                                        };
+                                        tryLoad();
+                                        /* 超时保护：15 秒未加载完成则降级为纯 MD */
+                                        setTimeout(() => reject(new Error('timeout')), 15000);
+                                    });
+                                    try {
+                                        const JSZip = await loadJSZip();
+                                        const zip = new JSZip();
+                                        zip.file(`${fnBase}-${date}.md`, '\ufeff' + md);
+                                        const assetsFolder = zip.folder('assets');
+                                        imgFiles.forEach(f => {
+                                            const base64Data = f.b64.split(',')[1] || f.b64;
+                                            assetsFolder.file(f.name, base64Data, { base64: true });
+                                        });
+                                        const zipBlob = await zip.generateAsync({ type: 'blob' });
+                                        const url = URL.createObjectURL(zipBlob);
+                                        const a = document.createElement('a');
+                                        a.href = url; a.download = `${fnBase}-${date}.zip`; a.click();
+                                        setTimeout(() => URL.revokeObjectURL(url), 5000);
+                                        showMessage(`已导出为 ZIP (${items.length} 条, ${imgFiles.length} 张图)`);
+                                    } catch (e) {
+                                        /* JSZip 加载失败/超时降级为纯 MD 文本（图片引用保留但不含图片文件） */
+                                        console.warn('[轻语] JSZip 加载失败，降级为纯 MD:', e && e.message);
+                                        const blob = new Blob(['\ufeff' + md], { type: 'text/markdown;charset=utf-8' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url; a.download = `${fnBase}-${date}.md`; a.click();
+                                        setTimeout(() => URL.revokeObjectURL(url), 5000);
+                                        showMessage(`已导出为 Markdown (${items.length} 条, 图片引用已保留)`);
+                                    }
+                                }
+                            } else if (format === 'docx') {
+                                const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + title + '</title>'
+                                    + '<style>body{font-family:"Microsoft YaHei",sans-serif;max-width:800px;margin:0 auto;padding:20px;line-height:1.8;}'
+                                    + 'h1{color:#333;border-bottom:2px solid #ddd;padding-bottom:10px;}'
+                                    + 'h2{color:#555;margin-top:24px;}hr{border:none;border-top:1px dashed #ccc;margin:16px 0;}'
+                                    + '.content{margin:8px 0;white-space:pre-wrap;}'
+                                    + '.tags{color:#e67e22;font-size:14px;margin:4px 0;}'
+                                    + '.meta{color:#999;font-size:13px;margin:4px 0;}'
+                                    + 'img{max-width:100%;border-radius:4px;}</style></head><body><h1>' + title + '</h1>' + htmlContent + '</body></html>';
+                                const blob = new Blob(['\ufeff' + html], { type: 'application/msword;charset=utf-8' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url; a.download = `${fnBase}-${date}.doc`; a.click();
+                                setTimeout(() => URL.revokeObjectURL(url), 5000);
+                                showMessage(`已导出为 Word (${items.length} 条)`);
+                            }
+                        })().catch((e) => {
+                            showMessage('导出失败：' + (e && e.message ? e.message : '未知错误'));
+                            console.error('[轻语] 导出异常:', e);
+                        });
                     }
                 };
 
@@ -8063,6 +8323,314 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         }).catch(() => {
                             if (typeof showMessage === 'function') showMessage('保存失败');
                         });
+                    });
+                };
+
+                /* 通用自定义日期选择器（Apple 风格）
+                 * opts: { anchor, value, onChange }
+                 *   - anchor: 触发元素（弹窗会定位在其下方）
+                 *   - value: 'YYYY-MM-DD' 或 ''
+                 *   - onChange: 选中/清除时的回调 (newValue) => void
+                 */
+                this._showDatePicker = (opts) => {
+                    const { anchor, value, onChange } = opts;
+                    // 清理已存在的弹窗
+                    document.querySelectorAll('.north-luna-datepicker-popup').forEach(p => p.remove());
+
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    // 工具：日期转 YYYY-MM-DD（本地时间，不用 toISOString 避免 UTC 偏移）
+                    const fmt = (d) => {
+                        const y = d.getFullYear();
+                        const m = String(d.getMonth() + 1).padStart(2, '0');
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        return `${y}-${m}-${dd}`;
+                    };
+                    const todayStr = fmt(today);
+                    // 快捷日期计算
+                    const thisWeekStart = () => {
+                        const d = new Date(today);
+                        const dow = d.getDay() || 7; // 周一=1 ... 周日=7
+                        d.setDate(d.getDate() - (dow - 1));
+                        return d;
+                    };
+                    const thisWeekEnd = () => {
+                        const d = new Date(today);
+                        const dow = d.getDay() || 7;
+                        d.setDate(d.getDate() + (7 - dow));
+                        return d;
+                    };
+                    const monthStart = () => new Date(today.getFullYear(), today.getMonth(), 1);
+
+                    // 初始视图年月
+                    let viewYear, viewMonth;
+                    if (value) {
+                        const d = new Date(value + 'T00:00:00');
+                        viewYear = d.getFullYear();
+                        viewMonth = d.getMonth();
+                    } else {
+                        viewYear = today.getFullYear();
+                        viewMonth = today.getMonth();
+                    }
+                    let selected = value || '';
+
+                    const popup = document.createElement('div');
+                    popup.className = 'north-luna-datepicker-popup';
+                    popup.innerHTML =
+                        '<div class="north-luna-datepicker-header">' +
+                            '<button class="north-luna-datepicker-nav" data-action="prev" type="button">‹</button>' +
+                            '<div class="north-luna-datepicker-title">' + viewYear + ' 年 ' + (viewMonth + 1) + ' 月</div>' +
+                            '<button class="north-luna-datepicker-nav" data-action="next" type="button">›</button>' +
+                        '</div>' +
+                        '<div class="north-luna-datepicker-quickchips">' +
+                            '<button class="north-luna-datepicker-chip" data-quick="today" type="button">今日</button>' +
+                            '<button class="north-luna-datepicker-chip" data-quick="weekstart" type="button">本周开始</button>' +
+                            '<button class="north-luna-datepicker-chip" data-quick="weekend" type="button">本周末</button>' +
+                            '<button class="north-luna-datepicker-chip" data-quick="monthstart" type="button">本月第一天</button>' +
+                        '</div>' +
+                        '<div class="north-luna-datepicker-toolbar">' +
+                            '<button class="north-luna-datepicker-clear" data-action="clear" type="button">清除</button>' +
+                        '</div>' +
+                        '<div class="north-luna-datepicker-weekdays">' +
+                            '<span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>' +
+                        '</div>' +
+                        '<div class="north-luna-datepicker-grid"></div>' +
+                        '<div class="north-luna-datepicker-actions">' +
+                            '<button class="north-luna-datepicker-btn" data-action="todayjump" type="button">今天</button>' +
+                        '</div>';
+                    document.body.appendChild(popup);
+
+                    // 定位弹窗（紧贴 anchor 下方，超出视口则调整）
+                    const rect = anchor.getBoundingClientRect();
+                    const popupWidth = 256;
+                    let left = rect.left;
+                    let top = rect.bottom + 4;
+                    if (left + popupWidth > window.innerWidth - 8) left = window.innerWidth - popupWidth - 8;
+                    if (left < 8) left = 8;
+                    if (top + 380 > window.innerHeight) top = rect.top - 384;
+                    popup.style.left = left + 'px';
+                    popup.style.top = top + 'px';
+
+                    const titleEl = popup.querySelector('.north-luna-datepicker-title');
+                    const grid = popup.querySelector('.north-luna-datepicker-grid');
+
+                    const renderCalendar = () => {
+                        titleEl.textContent = viewYear + ' 年 ' + (viewMonth + 1) + ' 月';
+                        const firstDay = new Date(viewYear, viewMonth, 1);
+                        const startDayOfWeek = firstDay.getDay();
+                        grid.innerHTML = '';
+                        for (let i = 0; i < 42; i++) {
+                            const dayOffset = i - startDayOfWeek;
+                            const cellDate = new Date(viewYear, viewMonth, dayOffset + 1);
+                            const dateStr = fmt(cellDate);
+                            const cell = document.createElement('div');
+                            cell.className = 'north-luna-datepicker-cell';
+                            if (cellDate.getMonth() !== viewMonth) cell.classList.add('other-month');
+                            if (dateStr === todayStr) cell.classList.add('today');
+                            if (dateStr === selected) cell.classList.add('selected');
+                            cell.textContent = String(cellDate.getDate());
+                            cell.dataset.date = dateStr;
+                            cell.addEventListener('click', () => {
+                                selected = dateStr;
+                                popup.remove();
+                                document.removeEventListener('click', onClickOutside, true);
+                                if (onChange) onChange(selected);
+                            });
+                            grid.appendChild(cell);
+                        }
+                    };
+
+                    // 切换月份
+                    popup.querySelector('[data-action="prev"]').addEventListener('click', () => {
+                        viewMonth--;
+                        if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+                        renderCalendar();
+                    });
+                    popup.querySelector('[data-action="next"]').addEventListener('click', () => {
+                        viewMonth++;
+                        if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+                        renderCalendar();
+                    });
+
+                    // 快捷芯片
+                    const quickActions = {
+                        today: () => fmt(today),
+                        weekstart: () => fmt(thisWeekStart()),
+                        weekend: () => fmt(thisWeekEnd()),
+                        monthstart: () => fmt(monthStart())
+                    };
+                    popup.querySelectorAll('[data-quick]').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const v = quickActions[btn.dataset.quick]();
+                            popup.remove();
+                            document.removeEventListener('click', onClickOutside, true);
+                            if (onChange) onChange(v);
+                        });
+                    });
+
+                    // 清除 / 今天
+                    popup.querySelector('[data-action="clear"]').addEventListener('click', () => {
+                        popup.remove();
+                        document.removeEventListener('click', onClickOutside, true);
+                        if (onChange) onChange('');
+                    });
+                    popup.querySelector('[data-action="todayjump"]').addEventListener('click', () => {
+                        popup.remove();
+                        document.removeEventListener('click', onClickOutside, true);
+                        if (onChange) onChange(todayStr);
+                    });
+
+                    // 阻止弹窗内点击冒泡触发关闭
+                    popup.addEventListener('click', (e) => e.stopPropagation());
+
+                    // 外部点击关闭
+                    const onClickOutside = (e) => {
+                        if (!popup.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) {
+                            popup.remove();
+                            document.removeEventListener('click', onClickOutside, true);
+                        }
+                    };
+                    setTimeout(() => document.addEventListener('click', onClickOutside, true), 0);
+
+                    renderCalendar();
+                };
+
+                this._showExportTimeRangeModal = () => {
+                    document.querySelectorAll('.north-luna-export-tr-modal').forEach(m => m.remove());
+                    const mode = this._getSetting('exportTimeMode') || 'all';
+                    const recentDays = this._getSetting('exportRecentDays') || 7;
+                    const singleDate = this._getSetting('exportSingleDate') || '';
+                    const dateFrom = this._getSetting('exportDateFrom') || '';
+                    const dateTo = this._getSetting('exportDateTo') || '';
+                    const _t = new Date();
+                    const today = _t.getFullYear() + '-' + String(_t.getMonth() + 1).padStart(2, '0') + '-' + String(_t.getDate()).padStart(2, '0');
+
+                    const modal = document.createElement('div');
+                    modal.className = 'north-luna-export-tr-modal';
+                    modal.innerHTML =
+                        '<div class="north-luna-export-tr-mask"></div>' +
+                        '<div class="north-luna-export-tr-dialog">' +
+                            '<div class="north-luna-export-tr-title">导出时间范围</div>' +
+                            '<div class="north-luna-export-tr-mode">' +
+                                `<label class="north-luna-export-tr-mode-item${mode === 'all' ? ' active' : ''}">` +
+                                    '<input type="radio" name="exportTrMode" value="all"' + (mode === 'all' ? ' checked' : '') + '>' +
+                                    '<span>全部数据</span></label>' +
+                                `<label class="north-luna-export-tr-mode-item${mode === 'recent' ? ' active' : ''}">` +
+                                    '<input type="radio" name="exportTrMode" value="recent"' + (mode === 'recent' ? ' checked' : '') + '>' +
+                                    '<span>最近 N 天</span></label>' +
+                                `<label class="north-luna-export-tr-mode-item${mode === 'single' ? ' active' : ''}">` +
+                                    '<input type="radio" name="exportTrMode" value="single"' + (mode === 'single' ? ' checked' : '') + '>' +
+                                    '<span>指定日期</span></label>' +
+                                `<label class="north-luna-export-tr-mode-item${mode === 'range' ? ' active' : ''}">` +
+                                    '<input type="radio" name="exportTrMode" value="range"' + (mode === 'range' ? ' checked' : '') + '>' +
+                                    '<span>日期范围</span></label>' +
+                            '</div>' +
+                            '<div class="north-luna-export-tr-fields">' +
+                                '<div class="north-luna-export-tr-field" data-show="recent"' + (mode === 'recent' ? '' : ' style="display:none"') + '>' +
+                                    '<span class="north-luna-export-tr-field-label">最近</span>' +
+                                    '<input type="number" class="north-luna-export-tr-input" id="exportTrDays" value="' + recentDays + '" min="1" max="3650">' +
+                                    '<span class="north-luna-export-tr-field-label">天内的数据</span>' +
+                                '</div>' +
+                                '<div class="north-luna-export-tr-field" data-show="single"' + (mode === 'single' ? '' : ' style="display:none"') + '>' +
+                                    '<span class="north-luna-export-tr-field-label">日期</span>' +
+                                    '<button type="button" class="north-luna-date-trigger" id="exportTrDate" data-value="' + plugin._esc(singleDate) + '" data-max="' + today + '">' +
+                                        '<svg class="icon north-luna-date-trigger-icon"><use xlink:href="#iconCalendar"></use></svg>' +
+                                        '<span class="north-luna-date-trigger-text">' + (singleDate ? plugin._esc(singleDate) : '选择日期') + '</span>' +
+                                    '</button>' +
+                                '</div>' +
+                                '<div class="north-luna-export-tr-field" data-show="range"' + (mode === 'range' ? '' : ' style="display:none"') + '>' +
+                                    '<span class="north-luna-export-tr-field-label">从</span>' +
+                                    '<button type="button" class="north-luna-date-trigger" id="exportTrFrom" data-value="' + plugin._esc(dateFrom) + '" data-max="' + today + '">' +
+                                        '<svg class="icon north-luna-date-trigger-icon"><use xlink:href="#iconCalendar"></use></svg>' +
+                                        '<span class="north-luna-date-trigger-text">' + (dateFrom ? plugin._esc(dateFrom) : '选择日期') + '</span>' +
+                                    '</button>' +
+                                    '<span class="north-luna-export-tr-field-label">到</span>' +
+                                    '<button type="button" class="north-luna-date-trigger" id="exportTrTo" data-value="' + plugin._esc(dateTo) + '" data-max="' + today + '">' +
+                                        '<svg class="icon north-luna-date-trigger-icon"><use xlink:href="#iconCalendar"></use></svg>' +
+                                        '<span class="north-luna-date-trigger-text">' + (dateTo ? plugin._esc(dateTo) : '选择日期') + '</span>' +
+                                    '</button>' +
+                                '</div>' +
+                            '</div>' +
+                            '<div class="north-luna-export-tr-actions">' +
+                                '<button class="north-luna-export-tr-cancel">取消</button>' +
+                                '<button class="north-luna-export-tr-ok">确认</button>' +
+                            '</div>' +
+                        '</div>';
+                    document.body.appendChild(modal);
+
+                    const mask = modal.querySelector('.north-luna-export-tr-mask');
+                    const close = () => modal.remove();
+                    mask.addEventListener('click', close);
+                    modal.querySelector('.north-luna-export-tr-cancel').addEventListener('click', close);
+
+                    // 模式切换：更新 radio active 状态 + 显示/隐藏对应字段
+                    modal.querySelectorAll('input[name="exportTrMode"]').forEach(radio => {
+                        radio.addEventListener('change', () => {
+                            const v = radio.value;
+                            // 更新 active 样式
+                            modal.querySelectorAll('.north-luna-export-tr-mode-item').forEach(l => {
+                                l.classList.toggle('active', l.querySelector('input').value === v);
+                            });
+                            // 显示/隐藏对应字段
+                            modal.querySelectorAll('.north-luna-export-tr-field').forEach(f => {
+                                f.style.display = f.dataset.show === v ? '' : 'none';
+                            });
+                        });
+                    });
+
+                    // 自定义日期选择器触发按钮
+                    modal.querySelectorAll('.north-luna-date-trigger').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            this._showDatePicker({
+                                anchor: btn,
+                                value: btn.dataset.value || '',
+                                maxDate: btn.dataset.max || null,
+                                onChange: (newVal) => {
+                                    btn.dataset.value = newVal;
+                                    const textEl = btn.querySelector('.north-luna-date-trigger-text');
+                                    if (textEl) textEl.textContent = newVal || '选择日期';
+                                }
+                            });
+                        });
+                    });
+
+                    // 确认按钮
+                    modal.querySelector('.north-luna-export-tr-ok').addEventListener('click', () => {
+                        const newMode = modal.querySelector('input[name="exportTrMode"]:checked');
+                        if (!newMode) { close(); return; }
+                        const m = newMode.value;
+                        this._setSetting('exportTimeMode', m);
+                        if (m === 'recent') {
+                            const days = parseInt(modal.querySelector('#exportTrDays').value) || 7;
+                            this._setSetting('exportRecentDays', Math.max(1, Math.min(3650, days)));
+                        } else if (m === 'single') {
+                            this._setSetting('exportSingleDate', modal.querySelector('#exportTrDate').dataset.value || '');
+                        } else if (m === 'range') {
+                            this._setSetting('exportDateFrom', modal.querySelector('#exportTrFrom').dataset.value || '');
+                            this._setSetting('exportDateTo', modal.querySelector('#exportTrTo').dataset.value || '');
+                        }
+                        close();
+                        // 直接更新按钮文字，避免 renderMain() 导致视图跳转
+                        const btn = document.querySelector('.north-luna-settings-btn[data-action="exportTimerange"]');
+                        if (btn) {
+                            let summary = '全部数据';
+                            if (m === 'recent') {
+                                const days = parseInt(this._getSetting('exportRecentDays')) || 7;
+                                summary = `最近 ${days} 天`;
+                            } else if (m === 'single') {
+                                const d = this._getSetting('exportSingleDate') || '';
+                                summary = d || '全部数据';
+                            } else if (m === 'range') {
+                                const from = this._getSetting('exportDateFrom') || '';
+                                const to = this._getSetting('exportDateTo') || '';
+                                if (from && to) summary = `${from} ~ ${to}`;
+                                else if (from) summary = `${from} 起`;
+                                else if (to) summary = `至 ${to}`;
+                                else summary = '全部数据';
+                            }
+                            btn.textContent = `导出时间范围：${summary}`;
+                        }
                     });
                 };
 
@@ -10763,7 +11331,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         }
         ctx._previousContainer = target;
         target.innerHTML = `
-            <div class="north-luna-container" data-active-view="${ctx.activeViewId}">
+            <div class="north-luna-container${plugin.isMobile ? ' is-mobile' : ''}" data-active-view="${ctx.activeViewId}">
                 <div class="north-luna-sidebar">
                     <div class="north-luna-avatar" title="点击更换头像">
                         ${(() => { const avatarVal = ctx._getSetting ? ctx._getSetting("avatar") : plugin._getPluginSetting("avatar"); let displaySrc = avatarVal || DEFAULT_AVATAR; if (displaySrc.startsWith('assets/')) displaySrc = '/' + displaySrc; return '<img class="north-luna-avatar-img" src="' + plugin._esc(displaySrc) + '" alt="头像">'; })()}
@@ -16530,23 +17098,27 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             </span>` : ''}
                             <div class="north-luna-moments-more-btn" data-mid="${m.id}"></div>
                             <div class="north-luna-moments-action-popup" data-mid="${m.id}">
-                                <div class="north-luna-moments-action-popup-btn like-btn${m.liked ? ' liked' : ''}" data-mid="${m.id}">
-                                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="${m.liked ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' : 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z'}"></path></svg>${m.liked ? '取消点赞' : '点赞'}
+                                <div class="north-luna-moments-action-popup-row">
+                                    <div class="north-luna-moments-action-popup-btn like-btn${m.liked ? ' liked' : ''}" data-mid="${m.id}">
+                                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="${m.liked ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' : 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z'}"></path></svg>${m.liked ? '取赞' : '点赞'}
+                                    </div>
+                                    <div class="north-luna-moments-action-popup-btn pin-btn" data-mid="${m.id}">
+                                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconPin"></use></svg>${m.pinned ? '取消置顶' : '置顶'}
+                                    </div>
+                                    <div class="north-luna-moments-action-popup-btn comment-btn" data-mid="${m.id}">
+                                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconMark"></use></svg>评论
+                                    </div>
                                 </div>
-                                <div class="north-luna-moments-action-popup-btn pin-btn" data-mid="${m.id}">
-                                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconPin"></use></svg>${m.pinned ? '取消置顶' : '置顶'}
-                                </div>
-                                <div class="north-luna-moments-action-popup-btn comment-btn" data-mid="${m.id}">
-                                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconMark"></use></svg>评论
-                                </div>
-                                <div class="north-luna-moments-action-popup-btn sync-btn" data-mid="${m.id}">
-                                    <svg class="sync-icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconCloud"></use></svg>同步
-                                </div>
-                                <div class="north-luna-moments-action-popup-btn delete-btn" data-mid="${m.id}">
-                                    <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconTrashcan"></use></svg>删除
-                                </div>
-                                <div class="north-luna-moments-action-popup-btn edit-btn" data-mid="${m.id}">
-                                    <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconEdit"></use></svg>修改
+                                <div class="north-luna-moments-action-popup-row">
+                                    <div class="north-luna-moments-action-popup-btn sync-btn" data-mid="${m.id}">
+                                        <svg class="sync-icon" style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconCloud"></use></svg>同步
+                                    </div>
+                                    <div class="north-luna-moments-action-popup-btn delete-btn" data-mid="${m.id}">
+                                        <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconTrashcan"></use></svg>删除
+                                    </div>
+                                    <div class="north-luna-moments-action-popup-btn edit-btn" data-mid="${m.id}">
+                                        <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconEdit"></use></svg>修改
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -18278,7 +18850,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
                 /* 重置按钮的纯文本节点为新文案，保留 svg */
                 const textNodes = Array.from(likeBtn.childNodes).filter(n => n.nodeType === 3);
-                if (textNodes.length) textNodes[textNodes.length - 1].nodeValue = m.liked ? '取消点赞' : '点赞';
+                if (textNodes.length) textNodes[textNodes.length - 1].nodeValue = m.liked ? '取赞' : '点赞';
                 /* 同步卡片 meta 行的点赞红心指示器：增删 */
                 const card = container.querySelector('.north-luna-moments-item[data-mid="' + this._esc(String(mid)) + '"]');
                 if (card) {
@@ -18406,12 +18978,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (popup) {
                     const wasVisible = popup.style.display === 'flex';
                     container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.style.display = 'none');
-                    popup.style.display = wasVisible ? 'none' : 'flex';
+                    // 清除所有卡片上的 popup-open 类
+                    container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(c => c.classList.remove('popup-open'));
+                    if (!wasVisible) {
+                        popup.style.display = 'flex';
+                        // 提升当前卡片层级，防止菜单被下一张卡片遮挡
+                        const card = moreBtn.closest('.north-luna-moments-item');
+                        if (card) card.classList.add('popup-open');
+                    }
                 }
                 return;
             }
             if (!e.target.closest('.north-luna-moments-action-popup')) {
                 container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.style.display = 'none');
+                container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(c => c.classList.remove('popup-open'));
             }
             const syncBtn = e.target.closest('.north-luna-moments-action-popup-btn.sync-btn');
             if (syncBtn) {
@@ -18443,6 +19023,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 syncBtn.dataset.syncing = '';
                                 const popup = syncBtn.closest('.north-luna-moments-action-popup');
                                 if (popup) popup.style.display = 'none';
+                                const card = syncBtn.closest('.north-luna-moments-item');
+                                if (card) card.classList.remove('popup-open');
                             }, 1500);
                             return;
                         }
@@ -18479,6 +19061,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const m = (this.data[MOMENTS_STORAGE].items || []).find(x => x.id === mid);
                 if (!m) return;
                 container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.style.display = 'none');
+                container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(c => c.classList.remove('popup-open'));
                 openPublishPage(m);
                 return;
             }
