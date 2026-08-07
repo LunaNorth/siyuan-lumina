@@ -356,6 +356,22 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin) {
                 // 分享 → 生成卡片图片
                 shareBreezeNoteImage(id, storage, plugin);
                 break;
+            case 'archive':
+                // 切换归档状态
+                if (note) {
+                    note.archived = !note.archived;
+                    plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
+                    // 刷新视图：优先走 _renderBreezeSubView，没有则走 renderMain
+                    if (plugin._siyuTab && plugin._siyuTab._renderBreezeSubView) {
+                        try { plugin._siyuTab._renderBreezeSubView(); } catch(e) {}
+                        if (plugin._siyuTab._renderBreezeTagList) {
+                            try { plugin._siyuTab._renderBreezeTagList(); } catch(e) {}
+                        }
+                    } else {
+                        try { plugin.renderMain(); } catch(e) {}
+                    }
+                }
+                break;
             default:
                 // eslint-disable-next-line no-console
                 console.log('[清风] 笔记菜单点击:', action, '(id=' + id + ')，功能稍后实现');
@@ -1601,9 +1617,9 @@ function renderBreezeTable(tab) {
         filtered = filtered.filter(n => breezeExtractTags(n.content || '').some(t => t === filterTag));
     }
     if (filterArchived === 'archived') {
-        filtered = filtered.filter(n => (tab._tableArchived || new Set()).has(n.id));
+        filtered = filtered.filter(n => !!n.archived);
     } else if (filterArchived === 'not-archived') {
-        filtered = filtered.filter(n => !(tab._tableArchived || new Set()).has(n.id));
+        filtered = filtered.filter(n => !n.archived);
     }
 
     /* 排序 */
@@ -1636,7 +1652,6 @@ function renderBreezeTable(tab) {
 
     /* 初始化 */
     if (!tab._tableChecked) tab._tableChecked = new Set();
-    if (!tab._tableArchived) tab._tableArchived = new Set();
 
     /* 格式化时间 */
     const fmtTime = (t) => {
@@ -1657,7 +1672,7 @@ function renderBreezeTable(tab) {
         const content = (note.content || '').replace(/<[^>]*>/g, '').replace(tagStripRe, '').replace(/\s+/g, ' ').trim();
         const displayContent = content.length > 60 ? content.slice(0, 60) + '…' : content;
         const checked = tab._tableChecked.has(note.id);
-        const archived = tab._tableArchived.has(note.id);
+        const archived = !!note.archived;
         const tagsHtml = tags.map(t => `<span class="north-breeze-table-tag-pill" data-tag="${breezeEscapeHtml(t)}" style="${breezeTableTagStyle(tab, t)}">${breezeEscapeHtml(t)}</span>`).join('');
         const archiveHtml = archived
             ? '<span class="north-breeze-table-archive-badge archived">已归档</span>'
@@ -1677,10 +1692,10 @@ function renderBreezeTable(tab) {
             <td class="north-breeze-table-cell north-breeze-table-actions-cell">
                 <div class="north-breeze-table-row-actions">
                     <button class="north-breeze-table-action-btn archive${archived ? ' unarchive' : ''}" data-id="${breezeEscapeHtml(note.id)}" title="${archived ? '取消归档' : '归档'}">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconUpload"></use></svg>
                     </button>
                     <button class="north-breeze-table-action-btn delete" data-id="${breezeEscapeHtml(note.id)}" title="删除">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                        <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconTrashcan"></use></svg>
                     </button>
                 </div>
             </td>
@@ -2377,15 +2392,17 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
         if (hasTitle) {
             return '<div class="north-breeze-note-card has-title footer-style" data-id="' + breezeEsc(it.id) + '">' +
                 '<div class="north-breeze-note-header">' +
-                '<span class="north-breeze-note-title-in-header">' + breezeEsc(it.title) + '</span>' +
-                (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>置顶</span>' : '') +
-                '<div class="north-breeze-note-actions">' +
-                '<span class="north-breeze-note-menu" data-id="' + breezeEsc(it.id) + '">' + moreSvg + '</span>' +
-                '</div></div>' +
-                '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
-                '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
-                footerHtml +
-                '</div>';
+            '<span class="north-breeze-note-title-in-header">' + breezeEsc(it.title) + '</span>' +
+            (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>置顶</span>' : '') +
+            (it.archived ? '<span class="north-breeze-note-archived-badge">已归档</span>' : '') +
+            (it.archived ? '<span class="north-breeze-note-archived-badge">已归档</span>' : '') +
+            '<div class="north-breeze-note-actions">' +
+            '<span class="north-breeze-note-menu" data-id="' + breezeEsc(it.id) + '">' + moreSvg + '</span>' +
+            '</div></div>' +
+            '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
+            '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
+            footerHtml +
+            '</div>';
         }
         return '<div class="north-breeze-note-card footer-style" data-id="' + breezeEsc(it.id) + '">' +
             (it.pinned && showPinnedBadge ? '<div style="text-align:right;margin-bottom:4px;"><span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>置顶</span></div>' : '') +
@@ -2400,6 +2417,7 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
             '<div class="north-breeze-note-header">' +
             '<span class="north-breeze-note-title-in-header">' + breezeEsc(it.title) + '</span>' +
             (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>置顶</span>' : '') +
+            (it.archived ? '<span class="north-breeze-note-archived-badge">已归档</span>' : '') +
             '<div class="north-breeze-note-actions">' +
             '<span class="north-breeze-note-menu" data-id="' + breezeEsc(it.id) + '">' + moreSvg + '</span>' +
             '</div></div>' +
@@ -2851,6 +2869,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         // 朋友圈临时筛选状态（不持久化，刷新视图后重置）
         this.momentsMoodFilter = null;
+        this.momentsCategoryFilter = null;
 
         const plugin = this;
         PLUGIN_REF = this;
@@ -3378,8 +3397,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     on ? this._tableChecked.add(id) : this._tableChecked.delete(id);
                 };
                 this._toggleTableArchive = (id) => {
-                    if (!this._tableArchived) this._tableArchived = new Set();
-                    this._tableArchived.has(id) ? this._tableArchived.delete(id) : this._tableArchived.add(id);
+                    const s = this.plugin.data[RECORDS_STORAGE] || {};
+                    const note = (s.breezeNotes || []).find(n => n.id === id);
+                    if (!note) return;
+                    note.archived = !note.archived;
+                    this.plugin.saveData(RECORDS_STORAGE, s).catch(() => {});
                 };
                 this._deleteTableNote = (id) => {
                     const s = this.plugin.data[RECORDS_STORAGE] || {};
@@ -5051,6 +5073,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     });
                 };
 
+                /*                 };
+
                 /* 搜索匹配：笔记正文（不区分大小写子串）或任意标签命中即算匹配。
                    q 为用户输入（保留原始大小写），内部统一小写比较。 */
                 function breezeMatchSearch(note, q) {
@@ -5068,6 +5092,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const list = this.container.querySelector('#breeze-notes-list');
                     if (!list) return;
                     let notes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
+                    // 归档笔记默认不显示在清风主视图中（表格视图可单独筛选查看）
+                    notes = notes.filter(n => !n.archived);
                     if (this.breezeTagFilter) {
                         const sel = this.breezeTagFilter;
                         const prefix = sel + '/';
@@ -5341,7 +5367,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const dailyCount = Number(this._getSetting('breezeReviewDailyCount')) || 8;
                     const timeRange = this._getSetting('breezeReviewTimeRange') || 'all';
                     const weighted = this._getSetting('breezeReviewWeighted') === true;
-                    let filtered = all.slice();
+                    let filtered = all.filter(n => !n.archived);
                     // 关键词搜索（与列表搜索一致：正文或标签命中）
                     if (this.breezeSearchFilter) {
                         filtered = filtered.filter(n => breezeMatchSearch(n, this.breezeSearchFilter));
@@ -5447,7 +5473,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const dow = now.getDay();
                     const monday = new Date(now); monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1)); monday.setHours(0, 0, 0, 0);
                     const sunday = new Date(monday); sunday.setDate(monday.getDate() + 7);
-                    const wk = all.filter(n => { const t = new Date(n.time); return t >= monday && t < sunday; });
+                    const wk = all.filter(n => { const t = new Date(n.time); return t >= monday && t < sunday; }).filter(n => !n.archived);
                     /* 关键词搜索（与列表搜索一致：正文或标签命中） */
                     if (this.breezeSearchFilter) {
                         wk = wk.filter(n => breezeMatchSearch(n, this.breezeSearchFilter));
@@ -5913,7 +5939,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 { value: 'WARNING', label: 'Warning' },
                                 { value: 'CAUTION', label: 'Caution' }
                             ]},
-                            { type: 'template', key: 'dailyNoteCustomTemplate', title: '同步模板', desc: '仅在同步模式为「自定义模板」时生效。点击按钮打开编辑器，可点选「年/月/日/时/分/秒」与分隔符自由组合日期时间。清风与朋友圈共用此模板。可用占位符：{{date}} 日期 / {{time}} 时间 / {{datetime}} 完整时间 / {{year}} 年 / {{month}} 月 / {{day}} 日 / {{hour}} 时 / {{minute}} 分 / {{second}} 秒 / {{tags}} 标签 / {{content}} 正文 / {{resources}} 图片与附件 / {{comments}} 评论 / {{mood}} 心情 / {{weather}} 天气 / {{location}} 地点（后三者仅朋友圈同步时有值，清风同步时为空）', default: '' }
+                            { type: 'template', key: 'dailyNoteCustomTemplate', title: '同步模板', desc: '仅在同步模式为「自定义模板」时生效。点击按钮打开编辑器，可点选「年/月/日/时/分/秒」与分隔符自由组合日期时间。清风与朋友圈共用此模板。可用占位符：{{date}} 日期 / {{time}} 时间 / {{datetime}} 完整时间 / {{year}} 年 / {{month}} 月 / {{day}} 日 / {{hour}} 时 / {{minute}} 分 / {{second}} 秒 / {{tags}} 标签 / {{content}} 正文 / {{resources}} 图片与附件 / {{comments}} 评论 / {{mood}} 心情 / {{weather}} 天气 / {{category}} 分类 / {{location}} 地点（后四者仅朋友圈同步时有值，清风同步时为空）', default: '' }
                         ]},
                         { title: '数据导入', items: [
                             { type: 'button', action: 'importLumina', title: '导入轻语数据', desc: '从轻语（siyuan-lumina）插件导入说说（清风笔记）和朋友圈动态。导入时自动转换数据格式：轻语说说的图片从正文 markdown 分离为独立字段、时间戳转为时间字符串；轻语朋友圈字段一一映射。已存在的同 ID 数据会跳过，不会覆盖当前数据。', buttonText: '导入' }
@@ -5966,6 +5992,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'momentsCoverToolDrag', title: '拖动', desc: '移动端朋友圈封面工具栏：显示/隐藏「拖动」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolCalendar', title: '日历', desc: '移动端朋友圈封面工具栏：显示/隐藏「日历」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolMoodFilter', title: '心情', desc: '移动端朋友圈封面工具栏：显示/隐藏「心情」按钮', default: true },
+                            { type: 'toggle', key: 'momentsCoverToolCategoryFilter', title: '分类', desc: '移动端朋友圈封面工具栏：显示/隐藏「分类」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolDelete', title: '删除', desc: '移动端朋友圈封面工具栏：显示/隐藏「删除」按钮', default: true }
                         ]},
                         { title: '移动端朋友圈外观', items: [
@@ -7019,11 +7046,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 /* 同步模板编辑器弹窗：点击设置项按钮后弹出，内置模板预设下拉 + 自定义模板 textarea */
                 this._showTemplateEditor = (key, title) => {
                     const DAILY_NOTE_TEMPLATE_PRESETS = {
-                        simple: '{{date}} {{time}} {{tags}} {{mood}} {{weather}} {{location}}\n\n{{content}}\n\n{{resources}}\n\n{{comments}}',
-                        heading: '## {{date}} {{time}} {{tags}} {{mood}} {{weather}} {{location}}\n\n{{content}}\n\n{{resources}}\n\n{{comments}}',
-                        list: '- **{{date}} {{time}} {{tags}} {{mood}} {{weather}} {{location}}**\n  - {{content}}\n  - {{resources}}\n  - {{comments}}',
-                        quote: '> {{date}} {{time}} {{tags}} {{mood}} {{weather}} {{location}}\n> {{content}}\n> {{resources}}\n> {{comments}}',
-                        code: '{{date}} {{time}} {{tags}} {{mood}} {{weather}} {{location}}\n\n```text\n{{content}}\n{{resources}}\n{{comments}}\n```'
+                        simple: '{{date}} {{time}} {{tags}} {{mood}} {{weather}} {{category}} {{location}}\n\n{{content}}\n\n{{resources}}\n\n{{comments}}',
+                        heading: '## {{date}} {{time}} {{tags}} {{mood}} {{weather}} {{category}} {{location}}\n\n{{content}}\n\n{{resources}}\n\n{{comments}}',
+                        list: '- **{{date}} {{time}} {{tags}} {{mood}} {{weather}} {{category}} {{location}}**\n  - {{content}}\n  - {{resources}}\n  - {{comments}}',
+                        quote: '> {{date}} {{time}} {{tags}} {{mood}} {{weather}} {{category}} {{location}}\n> {{content}}\n> {{resources}}\n> {{comments}}',
+                        code: '{{date}} {{time}} {{tags}} {{mood}} {{weather}} {{category}} {{location}}\n\n```text\n{{content}}\n{{resources}}\n{{comments}}\n```'
                     };
                     const PRESET_OPTIONS = [
                         { value: '', label: '请选择' },
@@ -7084,6 +7111,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                             <button type="button" class="north-luna-template-editor-chip" data-ins="{{comments}}">评论</button>
                                             <button type="button" class="north-luna-template-editor-chip" data-ins="{{mood}}">心情</button>
                                             <button type="button" class="north-luna-template-editor-chip" data-ins="{{weather}}">天气</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{category}}">分类</button>
                                             <button type="button" class="north-luna-template-editor-chip" data-ins="{{location}}">地点</button>
                                         </div>
                                         <div class="north-luna-template-editor-dt-preview" title="当前时间预览"></div>
@@ -8147,7 +8175,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     items.push({
                                         time: new Date(m.created || Date.now()).toLocaleString('zh-CN'),
                                         text: m.text || '',
-                                        mood: m.mood, weather: m.weather, location: m.location,
+                                        mood: m.mood, weather: m.weather, category: m.category, location: m.location,
                                         images: (m.images || []).map(p => plugin._resolveImageUrl(p)),
                                         comments: m.comments || [],
                                         commentNickname: exportNickname
@@ -8188,6 +8216,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     const meta = [];
                                     if (it.mood) meta.push(it.mood);
                                     if (it.weather) meta.push(it.weather);
+                                    if (it.category) meta.push(it.category);
                                     if (it.location) meta.push('📍 ' + it.location);
                                     if (meta.length) {
                                         md += meta.join(' · ') + '\n';
@@ -9537,6 +9566,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     date: m.date || '',
                                     weather: m.weather || '',
                                     mood: m.mood || '',
+                                    category: m.category || '',
                                     location: m.location || '',
                                     link: m.link || null,
                                     likes: Array.isArray(m.likes) ? m.likes : [],
@@ -12689,6 +12719,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 /* 渲染清风笔记列表（卡片/瀑布流 + 热力图 + 统计 + 标签） */
                 const list = body.querySelector('#breeze-notes-list');
                 const allNotes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
+                const visibleNotes = allNotes.filter(n => !n.archived); // 归档笔记默认隐藏
                 /* 渲染热力图格子 */
                 const grid = body.querySelector('#breeze-heatmap-grid');
                 if (grid) grid.innerHTML = buildBreezeHeatmap(allNotes);
@@ -12891,7 +12922,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     /* 子视图：全部笔记(all) / 每日回顾(review) / 本周记录(week) */
                     const subView = ctx._mobileBreezeSubView || 'all';
                     const q = (ctx.breezeMobileSearch || '').trim().toLowerCase();
-                    let notes = allNotes;
+                    let notes = visibleNotes;
                     /* 本周记录：筛选本周内的笔记 */
                     if (subView === 'week') {
                         const now = new Date();
@@ -12999,7 +13030,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const N = Number(plugin._getPluginSetting('breezeReviewDailyCount')) || 8;
                         const weighted = plugin._getPluginSetting('breezeReviewWeighted') === true;
                         const picked = (() => {
-                            let pool = allNotes.slice();
+                            let pool = allNotes.slice().filter(n => !n.archived);
                             if (q) pool = pool.filter(n => breezeMatchSearch(n, q));
                             if (plugin._mobileBreezeDateFilter) pool = pool.filter(n => (n.time || '').slice(0, 10) === plugin._mobileBreezeDateFilter);
                             /* 时间范围过滤（对齐 PC 端 _getBreezeReviewNotes：breezeReviewTimeRange） */
@@ -16729,6 +16760,22 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
     }
 
+    _formatCommentTime(timeStr) {
+        // timeStr 格式: "2026-08-07 08:40:00"
+        if (!timeStr) return '';
+        const today = new Date();
+        const p2 = n => String(n).padStart(2, '0');
+        const todayStr = today.getFullYear() + '-' + p2(today.getMonth() + 1) + '-' + p2(today.getDate());
+        const datePart = timeStr.slice(0, 10); // "2026-08-07"
+        const timePart = timeStr.slice(11, 16); // "08:40"
+        if (datePart === todayStr) {
+            // 今天的评论 → 只显示时间
+            return timePart;
+        }
+        // 非今天的评论 → 显示 "MM-DD HH:MM"
+        return datePart.slice(5) + ' ' + timePart; // "08-07 08:40"
+    }
+
     formatDateKey(d) {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
@@ -16812,6 +16859,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
     _switchToPinnedView(body) {
         this._momentsViewMode = 'pinned';
         this.momentsMoodFilter = null;
+        this.momentsCategoryFilter = null;
         this.refreshMomentsList(body);
     }
 
@@ -16879,6 +16927,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             <button class="north-luna-moments-cover-tool" id="momentsMoodFilterBtn" data-act="mood-filter" type="button" title="按心情筛选朋友圈">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconEmoji"></use></svg><span>心情</span>
                             </button>
+                            <button class="north-luna-moments-cover-tool" id="momentsCategoryFilterBtn" data-act="category-filter" type="button" title="按分类筛选朋友圈">
+                                <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconRiffCard"></use></svg><span>分类</span>
+                            </button>
                             ${(lockEnabled && lockPasscode) ? `<button class="north-luna-moments-cover-tool" id="momentsLockToolBtn" data-act="lock" type="button" title="重新锁屏">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconLock"></use></svg><span>锁屏</span>
                             </button>` : ''}
@@ -16929,6 +16980,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                     </button>
                                     <div class="north-luna-moments-weather-dropdown" id="momentsMoodDropdown" style="display:none"></div>
+                                </div>
+                                <div class="north-luna-moments-publish-weather-wrap">
+                                    <input type="text" class="north-luna-moments-publish-location-input north-luna-weather-input" id="momentsPublishCategory" placeholder="分类" maxlength="20" autocomplete="off">
+                                    <button type="button" class="north-luna-weather-arrow" id="momentsCategoryArrow" title="选择分类">
+                                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                    </button>
+                                    <div class="north-luna-moments-weather-dropdown" id="momentsCategoryDropdown" style="display:none"></div>
                                 </div>
                                 <input type="text" class="north-luna-moments-publish-location-input" id="momentsPublishLocation" placeholder="地点...">
                                 <div class="north-luna-moments-publish-emoji-btn" id="momentsPublishLinkToggle">
@@ -17023,6 +17081,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             { act: 'drag', key: 'momentsCoverToolDrag', def: true },
             { act: 'calendar', key: 'momentsCoverToolCalendar', def: true },
             { act: 'mood-filter', key: 'momentsCoverToolMoodFilter', def: true },
+            { act: 'category-filter', key: 'momentsCoverToolCategoryFilter', def: true },
             { act: 'delete', key: 'momentsCoverToolDelete', def: true }
         ];
         COVER_TOOL_KEYS.forEach(({ act, key, def }) => {
@@ -17172,6 +17231,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const metaParts = [];
         if (m.weather) metaParts.push(`<span class="north-luna-moments-meta-item">${m.weather}</span>`);
         if (m.mood) metaParts.push(`<span class="north-luna-moments-meta-item">${m.mood}</span>`);
+        if (m.category) metaParts.push(`<span class="north-luna-moments-meta-item">${this._esc(m.category)}</span>`);
         if (m.location) metaParts.push(`<span class="north-luna-moments-meta-item">${this._esc(m.location)}</span>`);
         metaParts.push(`<span class="north-luna-moments-meta-item">${dateStr}</span>`);
         const metaHtml = `<span class="north-luna-moments-meta-tags">${metaParts.join('')}</span>`;
@@ -17223,7 +17283,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         ${(m.comments || []).map(c => `<div class="north-luna-moments-comment-item" data-cid="${this._esc(c.id)}">
                             <div class="north-luna-moments-comment-display">
                                 <span class="north-luna-moments-comment-text"><strong>${this._esc(nickname)}：</strong>${this._esc(c.text)}</span>
-                                <span class="north-luna-moments-comment-time">${(c.time || '').slice(11, 16)}</span>
+                                <span class="north-luna-moments-comment-time">${this._formatCommentTime(c.time)}</span>
                                 <span class="north-luna-moments-comment-edit" data-cid="${this._esc(c.id)}"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconEdit"></use></svg></span>
                                 <span class="north-luna-moments-comment-del" data-cid="${this._esc(c.id)}"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconClose"></use></svg></span>
                             </div>
@@ -17441,12 +17501,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const metaParts = [];
         if (data.weather) metaParts.push(data.weather);
         if (data.mood) metaParts.push(data.mood);
+        if (data.category) metaParts.push(data.category);
         if (data.location) metaParts.push(data.location);
         const metaStr = metaParts.join(' · ');
         const quote = (s) => (s || '').split('\n').map(l => '> ' + l).join('\n');
         // 兼容旧数据：syncMode 未设置时，若填了自定义模板则视为 custom，否则 callout
         const syncMode = settings.dailyNoteSyncMode || ((settings.dailyNoteCustomTemplate || '').trim() ? 'custom' : 'callout');
-        // 自定义模板共用：清风与朋友圈均使用 dailyNoteCustomTemplate（朋友圈同步时 {{mood}}/{{weather}}/{{location}} 有值，清风为空）
+        // 自定义模板共用：清风与朋友圈均使用 dailyNoteCustomTemplate（朋友圈同步时 {{mood}}/{{weather}}/{{category}}/{{location}} 有值，清风为空）
         const customTplRaw = (settings.dailyNoteCustomTemplate || '').trim();
         if (syncMode === 'custom' && customTplRaw) {
             return customTplRaw
@@ -17465,6 +17526,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 .replace(/\{\{comments\}\}/g, commentsStr)
                 .replace(/\{\{mood\}\}/g, data.mood || '')
                 .replace(/\{\{weather\}\}/g, data.weather || '')
+                .replace(/\{\{category\}\}/g, data.category || '')
                 .replace(/\{\{location\}\}/g, data.location || '')
                 .replace(/[ \t]{2,}/g, ' ')
                 .replace(/[ \t]+\n/g, '\n');
@@ -18482,6 +18544,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         let publishLink = null;
         let publishWeather = '';
         let publishMood = '';
+        let publishCategory = '';
         let publishLocation = '';
         let publishDate = '';
 
@@ -18542,10 +18605,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
             main.style.visibility = 'hidden';
             pub.classList.add('active');
             publishImages = []; publishFiles = []; publishLink = null;
-            publishWeather = ''; publishMood = ''; publishLocation = ''; publishDate = '';
+            publishWeather = ''; publishMood = ''; publishCategory = ''; publishLocation = ''; publishDate = '';
             const textEl = container.querySelector('#momentsPublishText');
             const weatherInputEl = container.querySelector('#momentsPublishWeather');
             const moodInputEl = container.querySelector('#momentsPublishMood');
+            const categoryInputEl = container.querySelector('#momentsPublishCategory');
             const locationEl = container.querySelector('#momentsPublishLocation');
             const dateEl = container.querySelector('#momentsPublishDate');
             const submitBtnEl = container.querySelector('#momentsPublishSubmit');
@@ -18560,9 +18624,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._refreshPublishImages(container, publishImages, publishFiles);
                 publishWeather = editingMoment.weather || '';
                 publishMood = editingMoment.mood || '';
+                publishCategory = editingMoment.category || '';
                 publishLocation = editingMoment.location || '';
                 weatherInputEl.value = publishWeather;
                 moodInputEl.value = publishMood;
+                categoryInputEl.value = publishCategory;
                 locationEl.value = publishLocation;
                 if (editingMoment.link) {
                     linkForm.classList.add('active');
@@ -18782,7 +18848,55 @@ module.exports = class NorthLunaPlugin extends Plugin {
         document.addEventListener('click', (e) => {
             if (!weatherArrow.contains(e.target) && !weatherDropdown.contains(e.target)) closeWeatherDropdown();
             if (!moodArrow.contains(e.target) && !moodDropdown.contains(e.target)) closeMoodDropdown();
+            if (categoryArrow && !categoryArrow.contains(e.target) && categoryDropdown && !categoryDropdown.contains(e.target)) closeCategoryDropdown();
         });
+
+        /* 分类下拉（用户自定义分类，从设置中读取） */
+        const categoryInput = container.querySelector('#momentsPublishCategory');
+        const categoryArrow = container.querySelector('#momentsCategoryArrow');
+        const categoryDropdown = container.querySelector('#momentsCategoryDropdown');
+        const getCategoryOptions = () => {
+            // 从已有朋友圈中收集所有使用过的分类（去重，按使用次数排序）
+            const counts = new Map();
+            (this.momentsData.items || []).forEach(m => {
+                const cat = (m.category || '').trim();
+                if (!cat) return;
+                counts.set(cat, (counts.get(cat) || 0) + 1);
+            });
+            return Array.from(counts.entries())
+                .sort((a, b) => b[1] - a[1])
+                .map(([cat]) => cat);
+        };
+        const buildCategoryDropdown = () => {
+            const options = getCategoryOptions();
+            if (options.length === 0) {
+                categoryDropdown.innerHTML = '<div class="north-luna-weather-dropdown-item" style="color:var(--b3-theme-on-surface-light);cursor:default;">填写后下次自动出现</div>';
+            } else {
+                categoryDropdown.innerHTML = options.map(o =>
+                    '<div class="north-luna-weather-dropdown-item">' + this._esc(o) + '</div>'
+                ).join('');
+            }
+            categoryDropdown.style.display = 'block';
+        };
+        const closeCategoryDropdown = () => { if (categoryDropdown) categoryDropdown.style.display = 'none'; };
+        if (categoryInput) categoryInput.addEventListener('input', () => { publishCategory = categoryInput.value; });
+        if (categoryArrow) categoryArrow.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (categoryDropdown && categoryDropdown.style.display === 'block') { closeCategoryDropdown(); return; }
+            buildCategoryDropdown();
+        });
+        if (categoryDropdown) categoryDropdown.addEventListener('mousedown', (e) => {
+            const item = e.target.closest('.north-luna-weather-dropdown-item');
+            if (!item) return;
+            // 忽略提示文字
+            if (item.textContent === '填写后下次自动出现') { closeCategoryDropdown(); return; }
+            e.preventDefault();
+            if (categoryInput) categoryInput.value = item.textContent;
+            publishCategory = item.textContent;
+            closeCategoryDropdown();
+            if (categoryInput) categoryInput.focus();
+        });
+
         const dateInput = container.querySelector('#momentsPublishDate');
         dateInput.addEventListener('change', () => { publishDate = dateInput.value; });
         const locationInput = container.querySelector('#momentsPublishLocation');
@@ -18818,7 +18932,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
             const momentData = {
                 text, images: finalImages, link: publishLink,
-                weather: publishWeather, mood: publishMood, location: publishLocation,
+                weather: publishWeather, mood: publishMood, category: publishCategory, location: publishLocation,
                 created: publishDate ? new Date(publishDate).getTime() : Date.now(),
                 createdAt: Date.now(), // 真实发表时刻，单独用于排序（后发表的永远在最前）
                 liked: false,
@@ -18860,6 +18974,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             files: [],
                             time: ts,
                             mood: momentData.mood || '',
+                            category: momentData.category || '',
                             weather: momentData.weather || '',
                             location: momentData.location || '',
                             comments: momentData.comments || [],
@@ -18896,6 +19011,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 else if (act === 'drag') this._enterCoverDragMode(container);
                 else if (act === 'calendar') this._openCoverCalendar(container);
                 else if (act === 'mood-filter') this._openMoodFilterPanel(container, btn);
+                else if (act === 'category-filter') this._openCategoryFilterPanel(container, btn);
                 else if (act === 'delete') {
                     if (confirm) confirm('删除', '确定要删除封面并恢复默认吗？', () => this._resetCover(container));
                 }
@@ -19067,7 +19183,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 item.dataset.cid = cid;
                 item.innerHTML = '<div class="north-luna-moments-comment-display">' +
                     '<span class="north-luna-moments-comment-text"><strong>' + this._esc(nickname) + '：</strong>' + this._esc(text) + '</span>' +
-                    '<span class="north-luna-moments-comment-time">' + time.slice(11, 16) + '</span>' +
+                    '<span class="north-luna-moments-comment-time">' + this._formatCommentTime(time) + '</span>' +
                     '<span class="north-luna-moments-comment-edit" data-cid="' + cid + '"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconEdit"></use></svg></span>' +
                     '<span class="north-luna-moments-comment-del" data-cid="' + cid + '"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconClose"></use></svg></span>' +
                     '</div>' +
@@ -19225,6 +19341,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             files: [],
                             time: ts,
                             mood: m.mood || '',
+                            category: m.category || '',
                             weather: m.weather || '',
                             location: m.location || '',
                             comments: m.comments || [],
@@ -19529,6 +19646,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         allItem.innerHTML = `<span class="north-luna-moments-mood-filter-label">全部</span><span class="north-luna-moments-mood-filter-count">${totalCount}</span>`;
         allItem.addEventListener('click', () => {
             this.momentsMoodFilter = null;
+        this.momentsCategoryFilter = null;
             panel.remove();
             this.refreshMomentsList(container.parentElement);
         });
@@ -19574,6 +19692,84 @@ module.exports = class NorthLunaPlugin extends Plugin {
         panel.style.top = top + 'px';
 
         // 点外面关闭（mousedown 先于 click 触发，避免点按钮时立刻关闭）
+        const onDocMouseDown = (e) => {
+            if (!panel.contains(e.target) && e.target !== anchorBtn && !anchorBtn.contains(e.target)) {
+                panel.remove();
+                document.removeEventListener('mousedown', onDocMouseDown);
+            }
+        };
+        setTimeout(() => document.addEventListener('mousedown', onDocMouseDown), 0);
+    }
+
+    _openCategoryFilterPanel(container, anchorBtn) {
+        // 切换关闭/打开：如果面板已存在则关闭
+        const existing = container.querySelector('.north-luna-moments-mood-filter-panel');
+        if (existing) { existing.remove(); return; }
+
+        // 从已有朋友圈中收集所有使用过的分类（去重 + 计数）
+        const counts = new Map();
+        (this.momentsData.items || []).forEach(m => {
+            const cat = (m.category || '').trim();
+            if (!cat) return;
+            counts.set(cat, (counts.get(cat) || 0) + 1);
+        });
+        const categories = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+
+        const panel = document.createElement('div');
+        panel.className = 'north-luna-moments-mood-filter-panel';
+        const currentFilter = this.momentsCategoryFilter || '';
+        const totalCount = (this.momentsData.items || []).length;
+
+        // 第一行：全部
+        const allItem = document.createElement('div');
+        allItem.className = 'north-luna-moments-mood-filter-item' + (currentFilter ? '' : ' active');
+        allItem.innerHTML = `<span class="north-luna-moments-mood-filter-label">全部</span><span class="north-luna-moments-mood-filter-count">${totalCount}</span>`;
+        allItem.addEventListener('click', () => {
+            this.momentsCategoryFilter = null;
+            panel.remove();
+            this.refreshMomentsList(container.parentElement);
+        });
+        panel.appendChild(allItem);
+
+        // 分类项：合并设置中定义的分类 与 朋友圈中实际使用过的分类
+        const hasData = categories.length > 0 || currentFilter;
+        if (!hasData) {
+            const empty = document.createElement('div');
+            empty.className = 'north-luna-moments-mood-filter-empty';
+            empty.textContent = '还没有使用过分类，发表时填写即会自动出现';
+            panel.appendChild(empty);
+        } else {
+            categories.forEach(([cat]) => {
+                const item = document.createElement('div');
+                item.className = 'north-luna-moments-mood-filter-item' + (cat === currentFilter ? ' active' : '');
+                const displayCount = (this.momentsData.items || []).filter(m => (m.category || '').trim() === cat).length;
+                item.innerHTML = `<span class="north-luna-moments-mood-filter-label">${this._esc(cat)}</span><span class="north-luna-moments-mood-filter-count">${displayCount || 0}</span>`;
+                item.addEventListener('click', () => {
+                    // 二次点击同一项 → 取消筛选
+                    this.momentsCategoryFilter = (this.momentsCategoryFilter === cat) ? null : cat;
+                    panel.remove();
+                    this.refreshMomentsList(container.parentElement);
+                });
+                panel.appendChild(item);
+            });
+        }
+
+        // 定位到按钮下方
+        container.appendChild(panel);
+        const rect = anchorBtn.getBoundingClientRect();
+        const panelRect = panel.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        let left = rect.left - containerRect.left;
+        if (left + panelRect.width > containerRect.width - 8) {
+            left = Math.max(8, containerRect.width - panelRect.width - 8);
+        }
+        let top = rect.bottom - containerRect.top + 6;
+        if (top + panelRect.height > containerRect.height - 8) {
+            top = rect.top - containerRect.top - panelRect.height - 6;
+        }
+        panel.style.left = left + 'px';
+        panel.style.top = top + 'px';
+
         const onDocMouseDown = (e) => {
             if (!panel.contains(e.target) && e.target !== anchorBtn && !anchorBtn.contains(e.target)) {
                 panel.remove();
@@ -20124,6 +20320,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const filtered = this.momentsMoodFilter
             ? scopedItems.filter(m => (m.mood || '') === this.momentsMoodFilter)
             : scopedItems;
+        // 分类筛选（在心情筛选之后叠加）
+        const filtered2 = this.momentsCategoryFilter
+            ? filtered.filter(m => (m.category || '') === this.momentsCategoryFilter)
+            : filtered;
         // 同步筛选按钮的 active 高亮（置顶视图下隐藏）
         const moodBtn = container.querySelector('#momentsMoodFilterBtn');
         if (moodBtn) {
@@ -20136,13 +20336,27 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 moodBtn.title = '按心情筛选朋友圈';
             }
         }
-        const sorted = inPinnedView ? this._sortMoments(filtered) : this._sortMomentsForFeed(filtered);
+        // 同步分类筛选按钮状态
+        const catBtn = container.querySelector('#momentsCategoryFilterBtn');
+        if (catBtn) {
+            catBtn.style.display = inPinnedView ? 'none' : '';
+            if (this.momentsCategoryFilter) {
+                catBtn.classList.add('active');
+                catBtn.title = `当前筛选：${this.momentsCategoryFilter}（点击再次打开面板，点击列表中的"全部"取消）`;
+            } else {
+                catBtn.classList.remove('active');
+                catBtn.title = '按分类筛选朋友圈';
+            }
+        }
+        const sorted = inPinnedView ? this._sortMoments(filtered2) : this._sortMomentsForFeed(filtered2);
         if (sorted.length === 0) {
             const emptyMsg = inPinnedView
                 ? '<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">还没有置顶的动态</div>'
-                : (this.momentsMoodFilter
+                : (this.momentsCategoryFilter
+                    ? `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">当前分类「${this._esc(this.momentsCategoryFilter)}」下还没有朋友圈</div>`
+                    : (this.momentsMoodFilter
                     ? `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">当前心情「${this._esc(this.momentsMoodFilter)}」下还没有朋友圈</div>`
-                    : `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">暂无朋友圈，点击右上角相机发表吧~</div>`);
+                    : `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">暂无朋友圈，点击右上角相机发表吧~</div>`));
             listEl.innerHTML = emptyMsg;
         } else {
             listEl.innerHTML = '';

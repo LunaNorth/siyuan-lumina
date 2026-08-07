@@ -6927,6 +6927,16 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     width: 12px;
     height: 12px;
 }
+.north-breeze-note-archived-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--b3-theme-on-surface-light);
+    background-color: color-mix(in srgb, var(--b3-theme-on-surface-light) 18%, transparent);
+}
 .north-breeze-note-menu {
     color: var(--b3-theme-on-surface-light);
     cursor: pointer;
@@ -9612,6 +9622,7 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 .north-breeze-table-action-btn.view:hover { color: var(--b3-theme-primary); }
 .north-breeze-table-action-btn.delete:hover { color: var(--b3-theme-error); background: var(--b3-card-error-background); }
 .north-breeze-table-action-btn.archive:hover, .north-breeze-table-action-btn.unarchive:hover { color: var(--b3-theme-primary); }
+.north-breeze-table-action-btn.unarchive { color: var(--b3-theme-primary); background: color-mix(in srgb, var(--b3-theme-primary) 12%, transparent); }
 
 /* 页脚 */
 .north-breeze-table-footer {
