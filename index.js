@@ -271,10 +271,19 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin) {
                 addBreezeNoteToMoments(id, storage, plugin);
                 break;
             case 'append-daily-note':
-                // 插入今日日记：复用通用同步方法
+                // 插入今日日记：复用通用同步方法，先检查同步设置
                 (async () => {
                     if (!note) return;
                     const settings = plugin.data[SETTINGS_STORAGE]?.settings || {};
+                    const target = settings.dailyNoteTarget || 'dailynote';
+                    if (target === 'dailynote' && !settings.dailyNotebookId) {
+                        if (typeof showMessage === 'function') showMessage('请先在「轻语设置 → 数据同步」中选择日记笔记本');
+                        return;
+                    }
+                    if (target === 'doc' && !settings.dailyNoteDocId) {
+                        if (typeof showMessage === 'function') showMessage('请先在「轻语设置 → 数据同步」中选择指定文档');
+                        return;
+                    }
                     const result = await plugin._syncToDailyNote({
                         content: note.content,
                         images: note.images,
@@ -847,6 +856,255 @@ function changeBreezeNoteTime(id, storage, plugin) {
         });
 
         // 点击弹窗外或遮罩层关闭时间选择面板
+        const closePopupFn = (e) => {
+            if (!popup.contains(e.target) && !display.contains(e.target)) {
+                popup.classList.remove('show');
+            }
+        };
+        picker.addEventListener('click', closePopupFn);
+        const overlay = picker.querySelector('.north-luna-moments-datetime-overlay');
+        if (overlay) overlay.addEventListener('click', () => popup.classList.remove('show'));
+    })(picker, selectedDate);
+}
+
+/* 修改朋友圈动态时间（复用 changeBreezeNoteTime 的日历 + 时/分/秒 滚轮选择器）。
+   朋友圈的 created 字段是毫秒时间戳，因此解析/格式化与清风略有不同。 */
+function changeMomentsItemTime(mid, plugin) {
+    const items = (plugin.data[MOMENTS_STORAGE] || {}).items || [];
+    const moment = items.find((m) => String(m.id) === String(mid));
+    if (!moment) return;
+
+    const formatDateKey = (d) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    // 解析 moment.created（毫秒时间戳）
+    const parseCreated = (ts) => {
+        const n = Number(ts);
+        if (isNaN(n) || n <= 0) return new Date();
+        return new Date(n);
+    };
+
+    const closePicker = () => {
+        const picker = document.querySelector('.north-luna-moments-datetime-picker');
+        if (picker) picker.remove();
+    };
+    closePicker(); // 保证单实例
+
+    const currentDate = parseCreated(moment.created);
+    let viewYear = currentDate.getFullYear();
+    let viewMonth = currentDate.getMonth();
+    let selectedDate = new Date(currentDate.getTime());
+
+    const picker = document.createElement('div');
+    picker.className = 'north-luna-moments-datetime-picker';
+    picker.innerHTML = `
+        <div class="north-luna-moments-datetime-overlay"></div>
+        <div class="north-luna-moments-datetime-content">
+            <div class="north-luna-moments-datetime-top">
+                <span class="north-luna-moments-datetime-label">修改时间</span>
+                <button class="north-luna-moments-datetime-close" type="button" aria-label="关闭">×</button>
+            </div>
+            <div class="north-luna-moments-datetime-body"></div>
+            <div class="north-luna-moments-datetime-footer">
+                <div class="north-luna-moments-datetime-time">
+                    <svg class="icon" style="width:16px;height:16px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>
+                    <div class="north-luna-moments-datetime-time-wrapper">
+                        <div class="north-luna-moments-datetime-display" data-hours="${String(selectedDate.getHours()).padStart(2, '0')}" data-minutes="${String(selectedDate.getMinutes()).padStart(2, '0')}" data-seconds="${String(selectedDate.getSeconds()).padStart(2, '0')}">${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}:${String(selectedDate.getSeconds()).padStart(2, '0')}</div>
+                        <div class="north-luna-moments-datetime-time-popup">
+                            <div class="north-luna-moments-datetime-time-col" data-col="hours">
+                                <div class="north-luna-moments-datetime-time-header">时</div>
+                                <div class="north-luna-moments-datetime-time-list" data-col="hours"></div>
+                            </div>
+                            <div class="north-luna-moments-datetime-time-col" data-col="minutes">
+                                <div class="north-luna-moments-datetime-time-header">分</div>
+                                <div class="north-luna-moments-datetime-time-list" data-col="minutes"></div>
+                            </div>
+                            <div class="north-luna-moments-datetime-time-col" data-col="seconds">
+                                <div class="north-luna-moments-datetime-time-header">秒</div>
+                                <div class="north-luna-moments-datetime-time-list" data-col="seconds"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="north-luna-moments-datetime-actions">
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-cancel" type="button">取消</button>
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-confirm" type="button">确定</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(picker);
+
+    const renderCalendar = () => {
+        const firstDay = new Date(viewYear, viewMonth, 1);
+        const lastDay = new Date(viewYear, viewMonth + 1, 0);
+        const startWeekday = firstDay.getDay(); // 0=周日
+        const leadingDays = startWeekday;
+
+        const cells = [];
+        const today = new Date();
+        const todayKey = formatDateKey(today);
+        const selectedKey = formatDateKey(selectedDate);
+
+        // 上月填充日
+        for (let i = leadingDays - 1; i >= 0; i--) {
+            const d = new Date(viewYear, viewMonth, -i);
+            cells.push(`<div class="north-luna-moments-datetime-cell other-month" data-date="${formatDateKey(d)}">${d.getDate()}</div>`);
+        }
+        // 当月日期
+        for (let d = 1; d <= lastDay.getDate(); d++) {
+            const date = new Date(viewYear, viewMonth, d);
+            const dateKey = formatDateKey(date);
+            const selectedClass = dateKey === selectedKey ? ' selected' : '';
+            const todayClass = dateKey === todayKey ? ' today' : '';
+            cells.push(`<div class="north-luna-moments-datetime-cell${selectedClass}${todayClass}" data-date="${dateKey}">${d}</div>`);
+        }
+        // 下月填充日，补满 6 行（42 格）
+        const totalCells = cells.length;
+        const trailingDays = 42 - totalCells;
+        for (let i = 1; i <= trailingDays; i++) {
+            const d = new Date(viewYear, viewMonth + 1, i);
+            cells.push(`<div class="north-luna-moments-datetime-cell other-month" data-date="${formatDateKey(d)}">${d.getDate()}</div>`);
+        }
+
+        const headerHtml = `
+            <div class="north-luna-moments-datetime-header">
+                <button class="north-luna-moments-datetime-prev" type="button" title="上月">‹</button>
+                <span class="north-luna-moments-datetime-title">${viewYear}年${viewMonth + 1}月</span>
+                <button class="north-luna-moments-datetime-next" type="button" title="下月">›</button>
+            </div>
+        `;
+        const weekdaysHtml = `<div class="north-luna-moments-datetime-weekdays">${['日','一','二','三','四','五','六'].map(w => `<span>${w}</span>`).join('')}</div>`;
+        const daysHtml = `<div class="north-luna-moments-datetime-days">${cells.join('')}</div>`;
+
+        const body = picker.querySelector('.north-luna-moments-datetime-body');
+        if (body) body.innerHTML = headerHtml + weekdaysHtml + daysHtml;
+    };
+
+    renderCalendar();
+
+    // 关闭/取消
+    picker.querySelector('.north-luna-moments-datetime-overlay').addEventListener('click', closePicker);
+    picker.querySelector('.north-luna-moments-datetime-close').addEventListener('click', closePicker);
+    picker.querySelector('.north-luna-moments-datetime-btn-cancel').addEventListener('click', closePicker);
+
+    // 月份切换
+    picker.querySelector('.north-luna-moments-datetime-body').addEventListener('click', (e) => {
+        const prev = e.target.closest('.north-luna-moments-datetime-prev');
+        const next = e.target.closest('.north-luna-moments-datetime-next');
+        if (prev) {
+            viewMonth--;
+            if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+            renderCalendar();
+            return;
+        }
+        if (next) {
+            viewMonth++;
+            if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+            renderCalendar();
+            return;
+        }
+        const cell = e.target.closest('.north-luna-moments-datetime-cell[data-date]');
+        if (cell) {
+            const dateKey = cell.dataset.date;
+            const parts = dateKey.split('-');
+            selectedDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]),
+                selectedDate.getHours(), selectedDate.getMinutes(), selectedDate.getSeconds());
+            renderCalendar();
+        }
+    });
+
+    // 确定保存
+    picker.querySelector('.north-luna-moments-datetime-btn-confirm').addEventListener('click', () => {
+        const display = picker.querySelector('.north-luna-moments-datetime-display');
+        const hours = parseInt(display?.dataset.hours) || 0;
+        const minutes = parseInt(display?.dataset.minutes) || 0;
+        const seconds = parseInt(display?.dataset.seconds) || 0;
+
+        const newDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+            hours, minutes, seconds);
+        const newTime = newDate.getTime();
+        if (newTime === moment.created) { closePicker(); return; } // 未变化不写
+        moment.created = newTime;
+        moment.createdAt = newTime; // 兼容旧引用
+        if (plugin.saveMoments) {
+            plugin.saveMoments().then(() => {
+                showMessage('时间已修改');
+                // 刷新朋友圈列表
+                if (plugin._siyuTab && typeof plugin._siyuTab.render === 'function') {
+                    plugin._siyuTab.render();
+                }
+            }).catch(() => showMessage('修改失败'));
+        }
+        closePicker();
+    });
+
+    /* 初始化 时/分/秒 滚轮选择器（与 changeBreezeNoteTime 同源） */
+    (function initCustomTimePicker(picker, selectedDate) {
+        let hours = selectedDate.getHours();
+        let minutes = selectedDate.getMinutes();
+        let seconds = selectedDate.getSeconds();
+
+        const display = picker.querySelector('.north-luna-moments-datetime-display');
+        const popup = picker.querySelector('.north-luna-moments-datetime-time-popup');
+        if (!display || !popup) return;
+
+        const ranges = { hours: { max: 24, pad: 2 }, minutes: { max: 60, pad: 2 }, seconds: { max: 60, pad: 2 } };
+
+        const updateDisplay = () => {
+            display.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            display.dataset.hours = String(hours).padStart(2, '0');
+            display.dataset.minutes = String(minutes).padStart(2, '0');
+            display.dataset.seconds = String(seconds).padStart(2, '0');
+        };
+
+        const scrollToSelected = () => {
+            popup.querySelectorAll('.north-luna-moments-datetime-time-list').forEach(list => {
+                const col = list.dataset.col;
+                const val = col === 'hours' ? hours : col === 'minutes' ? minutes : seconds;
+                const active = list.querySelector(`[data-time-value="${val}"]`);
+                if (active && list.scrollTop !== active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2) {
+                    list.scrollTo({ top: active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2, behavior: 'auto' });
+                }
+            });
+        };
+
+        const renderColumns = () => {
+            popup.querySelectorAll('.north-luna-moments-datetime-time-list').forEach(list => {
+                const col = list.dataset.col;
+                const max = ranges[col].max;
+                const current = col === 'hours' ? hours : col === 'minutes' ? minutes : seconds;
+                let html = '';
+                for (let i = 0; i < max; i++) {
+                    const val = String(i).padStart(2, '0');
+                    const cls = i === current ? 'north-luna-moments-datetime-time-item selected' : 'north-luna-moments-datetime-time-item';
+                    html += `<div class="${cls}" data-time-value="${i}" data-col="${col}">${val}</div>`;
+                }
+                list.innerHTML = html;
+            });
+            setTimeout(scrollToSelected, 0);
+        };
+
+        updateDisplay();
+        renderColumns();
+
+        display.addEventListener('click', (e) => {
+            e.stopPropagation();
+            popup.classList.toggle('show');
+            if (popup.classList.contains('show')) scrollToSelected();
+        });
+
+        popup.addEventListener('click', (e) => {
+            const item = e.target.closest('.north-luna-moments-datetime-time-item[data-time-value]');
+            if (!item) return;
+            const col = item.dataset.col;
+            const val = parseInt(item.dataset.timeValue);
+            if (col === 'hours') hours = val;
+            else if (col === 'minutes') minutes = val;
+            else if (col === 'seconds') seconds = val;
+            updateDisplay();
+            renderColumns();
+        });
+
         const closePopupFn = (e) => {
             if (!popup.contains(e.target) && !display.contains(e.target)) {
                 popup.classList.remove('show');
@@ -2532,7 +2790,45 @@ const SIDEBAR_VIEWS = [
                                 <svg class="north-breeze-menu-icon-svg"><use xlink:href="#iconLayoutGrid"></use></svg>
                             </span>
                             <span class="north-breeze-menu-text">全部笔记</span>
+                            ${(() => {
+                                const _qfe = plugin && plugin._getPluginSetting ? plugin._getPluginSetting('breezeQuickFilterEnabled') : false;
+                                if (!_qfe) return '';
+                                return `<span class="north-breeze-menu-arrow" data-breeze-toggle="quick-filter" title="展开快速筛选">
+                                <svg class="north-breeze-menu-arrow-icon" viewBox="0 0 24 24"><use xlink:href="#iconRight"></use></svg>
+                            </span>`;
+                            })()}
                         </div>
+                        <!-- 快速筛选子菜单（默认收起，仅在「内置检索」开启时渲染） -->
+                        ${(() => {
+                            const _qfe = plugin && plugin._getPluginSetting ? plugin._getPluginSetting('breezeQuickFilterEnabled') : false;
+                            if (!_qfe) return '';
+                            return `<div class="north-breeze-quick-filter">
+                            <div class="north-breeze-quick-filter-item" data-breeze-quick="no-tag">
+                                <span class="north-breeze-quick-filter-icon">
+                                    <svg viewBox="0 0 24 24"><use xlink:href="#iconTag"></use></svg>
+                                </span>
+                                <span>无标签</span>
+                            </div>
+                            <div class="north-breeze-quick-filter-item" data-breeze-quick="has-image">
+                                <span class="north-breeze-quick-filter-icon">
+                                    <svg viewBox="0 0 24 24"><use xlink:href="#iconImage"></use></svg>
+                                </span>
+                                <span>有图片</span>
+                            </div>
+                            <div class="north-breeze-quick-filter-item" data-breeze-quick="no-image">
+                                <span class="north-breeze-quick-filter-icon">
+                                    <svg viewBox="0 0 24 24"><use xlink:href="#iconImage"></use></svg>
+                                </span>
+                                <span>无图片</span>
+                            </div>
+                            <div class="north-breeze-quick-filter-item" data-breeze-quick="has-link">
+                                <span class="north-breeze-quick-filter-icon">
+                                    <svg viewBox="0 0 24 24"><use xlink:href="#iconLink"></use></svg>
+                                </span>
+                                <span>有链接</span>
+                            </div>
+                        </div>`;
+                        })()}
                         <div class="north-breeze-menu-item" data-breeze-subview="review">
                             <span class="north-breeze-menu-icon">
                                 <svg class="north-breeze-menu-icon-svg"><use xlink:href="#iconEye"></use></svg>
@@ -2954,8 +3250,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this.container = this.element;
                 // 记录当前 tab 实例
                 plugin._siyuTab = this;
-                // 打开时默认第一个视图（非底部、非设置）
-                this.activeViewId = (SIDEBAR_VIEWS.find(v => !v.isBottom && !v.isSettings) || SIDEBAR_VIEWS[0]).id;
+                // 打开时默认第一个视图（按用户配置的 navOrder 排序，跳过隐藏视图）
+                const sorted = plugin._getSortableViews();
+                const first = sorted.find(v => !plugin._isNavViewHidden(v.id));
+                this.activeViewId = first ? first.id : 'notes';
 
                 this.render = (optContainer) => {
                     const target = optContainer || this.element;
@@ -3611,6 +3909,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             this._bindBreezeCalendar();
                             /* 初始化清风侧栏菜单（全部笔记 / 每日回顾 / 本周记录）切换 */
                             this._bindBreezeMenu();
+                            /* 同步快速筛选子菜单的展开/高亮状态 */
+                            this._syncBreezeQuickFilterUI();
                             /* 渲染侧栏「全部标签」并绑定点击筛选/展开折叠事件 */
                             this._renderBreezeTagList();
                             /* 标签渲染完成后再恢复侧边栏折叠态，避免 width:0 时渲染导致内容空白 */
@@ -4800,14 +5100,30 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     items.forEach(mi => {
                         if (mi._breezeMenuBound) return;
                         mi._breezeMenuBound = true;
-                        mi.addEventListener('click', () => {
+                        mi.addEventListener('click', (e) => {
                             if (plugin.isMobile) return; /* 移动端由 _renderMainDirect 统一处理菜单 */
+                            /* 点击 chevron 箭头 → 只切换快速筛选子菜单展开，不切换子视图 */
+                            if (e.target.closest('.north-breeze-menu-arrow')) {
+                                this._toggleBreezeQuickFilter();
+                                return;
+                            }
+                            /* 点击快速筛选项 → 应用筛选 */
+                            const quickItem = e.target.closest('.north-breeze-quick-filter-item');
+                            if (quickItem) {
+                                this._applyBreezeQuickFilter(quickItem.dataset.breezeQuick);
+                                return;
+                            }
                             const sv = mi.dataset.breezeSubview;
                             if (!sv) return;
                             this.breezeSubView = sv;
                             /* 切换子视图时清除日期筛选（与轻语切换视图清空 selectedDate 一致） */
                             this.breezeDateFilter = null;
                             this.container.querySelectorAll('.north-breeze-heatmap-grid-cell').forEach(c => c.classList.remove('selected'));
+                            /* 切换到「每日回顾/本周记录」时清掉快速筛选（仅「全部笔记」子视图支持） */
+                            if (sv !== 'all') {
+                                this.breezeQuickFilter = null;
+                                this._syncBreezeQuickFilterUI();
+                            }
                             if (sv !== 'review') this._breezeReviewStarted = false;
                             items.forEach(x => x.classList.remove('active'));
                             mi.classList.add('active');
@@ -4815,6 +5131,70 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             this._renderBreezeSubView();
                         });
                     });
+                    /* 快速筛选子菜单独立绑定（不在 .north-breeze-menu-item 内，需单独 delegate） */
+                    const quickFilter = this.container.querySelector('.north-breeze-quick-filter');
+                    if (quickFilter && !quickFilter._breezeMenuBound) {
+                        quickFilter._breezeMenuBound = true;
+                        quickFilter.addEventListener('click', (e) => {
+                            if (plugin.isMobile) return;
+                            const quickItem = e.target.closest('.north-breeze-quick-filter-item');
+                            if (quickItem) {
+                                e.stopPropagation();
+                                this._applyBreezeQuickFilter(quickItem.dataset.breezeQuick);
+                            }
+                        });
+                    }
+                };
+
+                /* ===== 快速筛选子菜单：切换展开/收起 + 高亮当前筛选项 ===== */
+                this._breezeQuickFilterEnabled = () => {
+                    return !!this._getSetting('breezeQuickFilterEnabled');
+                };
+                this._toggleBreezeQuickFilter = () => {
+                    if (!this._breezeQuickFilterEnabled()) return;
+                    this.breezeQuickFilterExpanded = !this.breezeQuickFilterExpanded;
+                    this._syncBreezeQuickFilterUI();
+                };
+                this._syncBreezeQuickFilterUI = () => {
+                    const container = this.container;
+                    if (!container) return;
+                    const sub = container.querySelector('.north-breeze-quick-filter');
+                    if (sub) {
+                        if (this.breezeQuickFilterExpanded) {
+                            sub.classList.add('open');
+                            sub.style.maxHeight = sub.scrollHeight + 'px';
+                        } else {
+                            sub.style.maxHeight = sub.scrollHeight + 'px';
+                            void sub.offsetHeight; // force reflow
+                            sub.classList.remove('open');
+                            sub.style.maxHeight = '0';
+                        }
+                    }
+                    const arrow = container.querySelector('.north-breeze-menu-arrow[data-breeze-toggle="quick-filter"]');
+                    const arrowUse = arrow ? arrow.querySelector('use') : null;
+                    if (arrowUse) {
+                        arrowUse.setAttribute('xlink:href', this.breezeQuickFilterExpanded ? '#iconDown' : '#iconRight');
+                    }
+                    /* 高亮当前激活的筛选项 */
+                    const items = container.querySelectorAll('.north-breeze-quick-filter-item');
+                    items.forEach(it => it.classList.toggle('active', it.dataset.breezeQuick === this.breezeQuickFilter));
+                };
+                /* 应用/切换快速筛选（点击同一项 → 取消；点其他项 → 切换） */
+                this._applyBreezeQuickFilter = (kind) => {
+                    if (!this._breezeQuickFilterEnabled()) return;
+                    if (!kind) return;
+                    /* 仅在「全部笔记」子视图生效；其他子视图自动切回 */
+                    if (this.breezeSubView !== 'all') {
+                        this.breezeSubView = 'all';
+                        this.container.querySelectorAll('.north-breeze-menu-item').forEach(mi => mi.classList.toggle('active', mi.dataset.breezeSubview === 'all'));
+                        if (this._breezeReviewStarted) this._breezeReviewStarted = false;
+                    }
+                    /* 切日期/标签筛选保留，仅叠加快速筛选 */
+                    this.breezeQuickFilter = (this.breezeQuickFilter === kind) ? null : kind;
+                    this.breezeQuickFilterExpanded = true; /* 选中后保持展开，方便看清状态 */
+                    this._syncBreezeQuickFilterUI();
+                    this.breezePage = 1;
+                    this._renderBreezeSubView();
                 };
 
                 /* ===== 清风侧栏：全部标签（树形 + 多级 + 点击筛选） =====
@@ -4825,6 +5205,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this.breezeTagFilter = null; // 当前选中的标签全路径（null = 全部）
                 this.breezeSearchFilter = ''; // 当前搜索关键词（'' = 不过滤）
                 this.breezePage = 1; // 分页当前页码（分页关闭时无意义）
+                this.breezeQuickFilter = null; // 快速筛选：'no-tag' | 'has-image' | 'no-image' | 'has-link' | null
+                this.breezeQuickFilterExpanded = false; // 子菜单是否展开
                 this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncNotebookId: '', syncDocId: '', flomoSyncedSlugs: [] };
                 // 从存储中读回 Flomo 配置
                 const savedFlomo = (plugin.data[SETTINGS_STORAGE] || {}).flomoConfig;
@@ -5109,6 +5491,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     /* 关键词搜索：正文或标签命中（与轻语搜索行为一致） */
                     if (this.breezeSearchFilter) {
                         notes = notes.filter(n => breezeMatchSearch(n, this.breezeSearchFilter));
+                    }
+                    /* 快速筛选（仅在「全部笔记」子视图生效）：无标签 / 有图片 / 无图片 / 有链接 */
+                    if (this.breezeQuickFilter && this.breezeSubView === 'all') {
+                        const kind = this.breezeQuickFilter;
+                        if (kind === 'no-tag') {
+                            notes = notes.filter(n => breezeExtractTags(n.content || '').length === 0);
+                        } else if (kind === 'has-image') {
+                            notes = notes.filter(n => (n.images || []).length > 0);
+                        } else if (kind === 'no-image') {
+                            notes = notes.filter(n => (n.images || []).length === 0);
+                        } else if (kind === 'has-link') {
+                            const linkRe = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(?:^|\s)(https?:\/\/[^\s)]+)/;
+                            notes = notes.filter(n => linkRe.test(n.content || ''));
+                        }
                     }
                     if (this.breezeSubView === 'review') {
                         if (this._breezeReviewStarted) this._renderBreezeReviewNotes(list);
@@ -5833,6 +6229,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'slider', key: 'breezeLetterSpacing', title: '字间距', desc: '字间距，默认 0。单位 px，数值越大字越分散', default: 0, min: 0, max: 3, step: 0.1 }
                         ]},
                         { title: '控制设置', items: [
+                            { type: 'toggle', key: 'breezeQuickFilterEnabled', title: '内置检索', desc: '开启后，「全部笔记」右侧出现箭头，点击展开快速筛选（无标签/有图片/无图片/有链接）。默认关闭。', default: false },
                             { type: 'toggle', key: 'breezeScrollDamping', title: '滚动阻尼', desc: '开启后页面滚动更加丝滑，滚轮停止后内容还会惯性滑行一小段。', default: false },
                             { type: 'toggle', key: 'breezePaginationEnabled', title: '笔记分页', desc: '开启后，清风全部笔记视图将按设定条数分页，底部显示页码导航。默认关闭。', default: false },
                             { type: 'slider', key: 'breezePageSize', title: '每页笔记条数', desc: '分页开启时生效，决定每页显示的笔记数量。', default: 20, min: 10, max: 50, step: 2 },
@@ -17276,6 +17673,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                         <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconEdit"></use></svg>修改
                                     </div>
                                 </div>
+                                <div class="north-luna-moments-action-popup-row">
+                                    <div class="north-luna-moments-action-popup-btn time-change-btn" data-mid="${m.id}">
+                                        <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>修改时间
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -19332,6 +19734,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 syncBtn.dataset.syncing = '1';
                 const iconUse = syncBtn.querySelector('.sync-icon use');
                 const originalHref = iconUse ? iconUse.getAttribute('xlink:href') : '#iconCloud';
+                /* 预检：同步设置是否已配置 */
+                const syncStorage = this.data[SETTINGS_STORAGE] || {};
+                const syncSettings = syncStorage.settings || {};
+                const syncTarget = syncSettings.dailyNoteTarget || 'dailynote';
+                if (syncTarget === 'dailynote' && !syncSettings.dailyNotebookId) {
+                    syncBtn.dataset.syncing = '';
+                    if (typeof showMessage === 'function') showMessage('请先在「轻语设置 → 数据同步」中选择日记笔记本');
+                    return;
+                }
+                if (syncTarget === 'doc' && !syncSettings.dailyNoteDocId) {
+                    syncBtn.dataset.syncing = '';
+                    if (typeof showMessage === 'function') showMessage('请先在「轻语设置 → 数据同步」中选择指定文档');
+                    return;
+                }
                 (async () => {
                     try {
                         const ts = m.created ? new Date(m.created).toISOString().replace('T', ' ').slice(0, 19) : '';
@@ -19396,6 +19812,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.style.display = 'none');
                 container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(c => c.classList.remove('popup-open'));
                 openPublishPage(m);
+                return;
+            }
+            const timeChangeBtn = e.target.closest('.north-luna-moments-action-popup-btn.time-change-btn');
+            if (timeChangeBtn) {
+                e.stopPropagation();
+                const mid = timeChangeBtn.dataset.mid;
+                container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.style.display = 'none');
+                container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(c => c.classList.remove('popup-open'));
+                changeMomentsItemTime(mid, this);
                 return;
             }
         /* 评论输入框：回车发送 / 编辑输入框：回车保存、Esc取消 */

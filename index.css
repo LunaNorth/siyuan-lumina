@@ -6169,6 +6169,85 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     font-weight: 500;
 }
 
+/* 全部笔记右侧展开箭头（默认 #iconRight，展开切换为 #iconDown） */
+.north-breeze-menu-arrow {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: var(--b3-theme-on-surface-light);
+    transition: background-color 0.15s, color 0.15s;
+    cursor: pointer;
+}
+.north-breeze-menu-arrow-icon {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+.north-breeze-menu-arrow:hover {
+    background-color: var(--b3-list-hover);
+    color: var(--b3-theme-on-background);
+}
+.north-breeze-menu-item.active .north-breeze-menu-arrow {
+    color: var(--b3-theme-on-primary);
+}
+.north-breeze-menu-item.active .north-breeze-menu-arrow:hover {
+    background-color: rgba(255, 255, 255, 0.18);
+    color: var(--b3-theme-on-primary);
+}
+
+/* 快速筛选子菜单（无标签 / 有图片 / 有链接 / 有语音）
+   max-height 动画实现丝滑展开/收起 */
+.north-breeze-quick-filter {
+    margin: 0 0 4px 0;
+    padding: 0;
+    border-left: 1px solid color-mix(in srgb, var(--b3-border-color) 35%, transparent);
+    margin-left: 18px;
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+}
+.north-breeze-quick-filter.open {
+    padding: 4px 0;
+}
+.north-breeze-quick-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    margin: 0 8px 4px 4px;
+    font-size: 14px;
+    color: var(--b3-theme-on-surface);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.north-breeze-quick-filter-item:hover {
+    background-color: var(--b3-list-hover);
+    color: var(--b3-theme-on-background);
+}
+.north-breeze-quick-filter-item.active {
+    background-color: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+}
+.north-breeze-quick-filter-icon {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: inherit;
+}
+.north-breeze-quick-filter-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
 /* 全部标签 — 与轻语 north-shuoshuo-tags-section 一致 */
 .north-breeze-tags {
     display: flex;
