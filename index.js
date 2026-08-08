@@ -17205,8 +17205,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
         });
     }
 
-    /* 渲染顶部置顶缩略图条（仿微信朋友圈）：每张图代表一条置顶动态；
-       点击任意位置切换到置顶视图（主列表区显示所有置顶卡片）。无置顶时返回空字符串。
+    /* 渲染顶部置顶缩略图条（仿微信朋友圈）：每条置顶的多张图/视频
+       在内部组成 2×2 / 3×2 / 3×3 等九宫格（参考朋友圈九宫格规则），
+       一组对应一条置顶（共享 data-mid）。无置顶时返回空字符串。
        pinned 视图下隐藏缩略图条、改显返回条。 */
     _renderPinnedStrip() {
         // 置顶视图下不显示缩略图条（避免重复点击）
@@ -17217,22 +17218,71 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (items.length === 0) return '';
         // 按真实发表时刻倒序（新置顶在左）
         const sorted = this._sortMomentsForFeed(items);
-        const coverImg = (m) => {
-            const imgs = m.images || [];
-            return imgs.length ? this._resolveImageUrl(imgs[0]) : null;
+        /* 单个缩略图渲染：图片 / 视频（带播放角标） / 其它文件（ext 作 fallback） */
+        const renderOneThumb = (src) => {
+            const resolved = this._resolveImageUrl(src);
+            const kind = this._fileKindFromName(src);
+            if (kind === 'image') {
+                return `<img class="north-luna-moments-pin-thumb-img" src="${this._esc(resolved)}" alt="置顶" loading="lazy" decoding="async">`;
+            }
+            if (kind === 'video') {
+                return `<div class="north-luna-moments-pin-thumb-video-wrap">
+                    <video class="north-luna-moments-pin-thumb-video" src="${this._esc(resolved)}" preload="metadata" muted playsinline></video>
+                    <div class="north-luna-moments-pin-thumb-video-icon"></div>
+                </div>`;
+            }
+            const name = (src.split('/').pop() || src.split('\\').pop() || '');
+            const ext = name && name.includes('.') ? name.split('.').pop().toUpperCase().slice(0, 3) : 'FILE';
+            return `<div class="north-luna-moments-pin-thumb-fallback">${this._esc(ext)}</div>`;
         };
-        const thumbs = sorted.map(m => {
-            const src = coverImg(m);
-            const thumb = src
-                ? `<img class="north-luna-moments-pin-thumb-img" src="${this._esc(src)}" alt="置顶" loading="lazy" decoding="async">`
-                : `<div class="north-luna-moments-pin-thumb-fallback">${this._esc((m.mood || m.text || '置顶').slice(0, 2))}</div>`;
-            return `<div class="north-luna-moments-pin-thumb" data-mid="${this._esc(m.id)}">${thumb}</div>`;
-        }).join('');
+        /* 朋友圈九宫格规则（参考微信朋友圈摘要图）：
+           1 张 → 1×1；2 张 → 2×1；3 张 → 3×1；4+ 张 → 永远只看 2×2（前 4 张 + 第 4 张上叠 +N 角标） */
+        const SHOW_MAX = 4;
+        const getGridCols = (count) => {
+            if (count <= 1) return 1;
+            if (count === 2) return 2;
+            if (count === 3) return 3;
+            return 2; // 4+ 张永远只用 2 列
+        };
+        /* 一条置顶的所有 images 组成一个 pin-group，grid 排版；
+           纯文本动态退化为单格 fallback。多于 4 张时截断到 4 张 + 第 4 张 +N 角标 */
+        const groups = sorted.map(m => {
+            const imgs = m.images || [];
+            if (imgs.length === 0) {
+                /* 纯文字动态：短文本大字号居中显示，长文本多行流式截断 */
+                const raw = m.mood || m.text || '置顶';
+                const text = String(raw).slice(0, 80);
+                const isShort = text.length <= 10;
+                const modeClass = isShort ? 'pin-thumb-text-center' : 'pin-thumb-text-flow';
+                return `<div class="north-luna-moments-pin-group" data-mid="${this._esc(m.id)}" style="grid-template-columns: repeat(1, 88px); grid-auto-rows: 88px;">` +
+                    `<div class="north-luna-moments-pin-thumb north-luna-moments-pin-thumb-text-mode">` +
+                    `<div class="north-luna-moments-pin-thumb-text ${modeClass}">${this._esc(text)}</div>` +
+                    `</div></div>`;
+            }
+            /* 单图置顶：占 88×88 尺寸（和 2×2 网格一样大），图片铺满 */
+            if (imgs.length === 1) {
+                return `<div class="north-luna-moments-pin-group" data-mid="${this._esc(m.id)}" style="grid-template-columns: repeat(1, 88px); grid-auto-rows: 88px;">` +
+                    `<div class="north-luna-moments-pin-thumb" style="width:100%;height:100%;">${renderOneThumb(imgs[0])}</div></div>`;
+            }
+            const cols = getGridCols(imgs.length);
+            const visible = imgs.slice(0, SHOW_MAX);
+            const extraCount = imgs.length - SHOW_MAX;
+            const cells = visible.map((src, idx) => {
+                const isLast = (idx === SHOW_MAX - 1);
+                const showMore = isLast && extraCount > 0;
+                const overlay = showMore
+                    ? `<div class="north-luna-moments-pin-thumb-more">+${extraCount}</div>`
+                    : '';
+                return `<div class="north-luna-moments-pin-thumb">${renderOneThumb(src)}${overlay}</div>`;
+            }).join('');
+            return `<div class="north-luna-moments-pin-group" data-mid="${this._esc(m.id)}" style="grid-template-columns: repeat(${cols}, 44px);">${cells}</div>`;
+        });
         return `<div class="north-luna-moments-pin-strip" id="momentsPinStrip" title="点击查看全部置顶">
             <div class="north-luna-moments-pin-strip-label">
                 <span>置顶</span>
             </div>
-            <div class="north-luna-moments-pin-strip-thumbs">${thumbs}</div>
+            <div class="north-luna-moments-pin-strip-thumbs">${groups.join('')}</div>
+            <div class="north-luna-moments-pin-strip-next" id="momentsPinNextBtn" title="还有更多置顶">›</div>
         </div>`;
     }
 
@@ -17685,14 +17735,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         ${(m.comments || []).map(c => `<div class="north-luna-moments-comment-item" data-cid="${this._esc(c.id)}">
                             <div class="north-luna-moments-comment-display">
                                 <span class="north-luna-moments-comment-text"><strong>${this._esc(nickname)}：</strong>${this._esc(c.text)}</span>
-                                <span class="north-luna-moments-comment-time">${this._formatCommentTime(c.time)}</span>
-                                <span class="north-luna-moments-comment-edit" data-cid="${this._esc(c.id)}"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconEdit"></use></svg></span>
-                                <span class="north-luna-moments-comment-del" data-cid="${this._esc(c.id)}"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconClose"></use></svg></span>
+                                <span class="north-luna-moments-comment-actions">
+                                    <span class="north-luna-moments-comment-time">${this._formatCommentTime(c.time)}</span>
+                                    <span class="north-luna-moments-comment-actions-right">
+                                        <span class="north-luna-moments-comment-edit" data-cid="${this._esc(c.id)}"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconEdit"></use></svg></span>
+                                        <span class="north-luna-moments-comment-del" data-cid="${this._esc(c.id)}"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconClose"></use></svg></span>
+                                    </span>
+                                </span>
                             </div>
                             <div class="north-luna-moments-comment-edit-row" style="display:none">
-                                <input type="text" class="north-luna-moments-comment-edit-input" value="${this._esc(c.text)}" maxlength="200">
-                                <button class="north-luna-moments-comment-edit-save" data-cid="${this._esc(c.id)}">保存</button>
-                                <button class="north-luna-moments-comment-edit-cancel" data-cid="${this._esc(c.id)}">取消</button>
+                                <textarea class="north-luna-moments-comment-edit-input" maxlength="200">${this._esc(c.text)}</textarea>
+                                <div class="north-luna-moments-comment-edit-actions">
+                                    <button class="north-luna-moments-comment-edit-save" data-cid="${this._esc(c.id)}">保存</button>
+                                    <button class="north-luna-moments-comment-edit-cancel" data-cid="${this._esc(c.id)}">取消</button>
+                                </div>
                             </div>
                         </div>`).join('')}
                         <div class="north-luna-moments-comment-input-row" style="display:none">
@@ -19152,6 +19208,25 @@ module.exports = class NorthLunaPlugin extends Plugin {
             pinStrip.addEventListener('click', () => {
                 self._switchToPinnedView(body);
             });
+            /* 箭头点击 → 平滑滚动 thumbs；溢出检测 → 仅在溢出时显示箭头 */
+            const thumbs = pinStrip.querySelector('.north-luna-moments-pin-strip-thumbs');
+            const nextBtn = pinStrip.querySelector('#momentsPinNextBtn');
+            if (thumbs && nextBtn) {
+                /* 箭头点击：阻止冒泡避免触发 strip 整体进入 pinned 视图 */
+                nextBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    thumbs.scrollBy({ left: 96, behavior: 'smooth' });
+                });
+                /* 滚动监听：到末尾时隐藏箭头 */
+                const updateNextBtn = () => {
+                    const overflowed = thumbs.scrollWidth > thumbs.clientWidth + 2;
+                    const atEnd = thumbs.scrollLeft + thumbs.clientWidth >= thumbs.scrollWidth - 2;
+                    nextBtn.classList.toggle('visible', overflowed && !atEnd);
+                };
+                thumbs.addEventListener('scroll', updateNextBtn);
+                /* 渲染后初始检查：等待布局完成再判断 */
+                requestAnimationFrame(updateNextBtn);
+            }
         }
         /* ===== 置顶视图下的返回按钮 ===== */
         const pinBackBtn = container.querySelector('#momentsPinBackBtn');
@@ -19585,14 +19660,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 item.dataset.cid = cid;
                 item.innerHTML = '<div class="north-luna-moments-comment-display">' +
                     '<span class="north-luna-moments-comment-text"><strong>' + this._esc(nickname) + '：</strong>' + this._esc(text) + '</span>' +
+                    '<span class="north-luna-moments-comment-actions">' +
                     '<span class="north-luna-moments-comment-time">' + this._formatCommentTime(time) + '</span>' +
+                    '<span class="north-luna-moments-comment-actions-right">' +
                     '<span class="north-luna-moments-comment-edit" data-cid="' + cid + '"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconEdit"></use></svg></span>' +
                     '<span class="north-luna-moments-comment-del" data-cid="' + cid + '"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconClose"></use></svg></span>' +
+                    '</span>' +
+                    '</span>' +
                     '</div>' +
                     '<div class="north-luna-moments-comment-edit-row" style="display:none">' +
-                    '<input type="text" class="north-luna-moments-comment-edit-input" value="' + this._esc(text) + '" maxlength="200">' +
+                    '<textarea class="north-luna-moments-comment-edit-input" maxlength="200">' + this._esc(text) + '</textarea>' +
+                    '<div class="north-luna-moments-comment-edit-actions">' +
                     '<button class="north-luna-moments-comment-edit-save" data-cid="' + cid + '">保存</button>' +
                     '<button class="north-luna-moments-comment-edit-cancel" data-cid="' + cid + '">取消</button>' +
+                    '</div>' +
                     '</div>';
                 if (inputRow) panel.insertBefore(item, inputRow);
                 input.value = '';
