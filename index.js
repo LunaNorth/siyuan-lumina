@@ -226,6 +226,9 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin) {
                 // 统一编辑模式：使用主输入框编辑（不再弹内联编辑框）
                 if (plugin && plugin._siyuTab && plugin._siyuTab._loadNoteForEdit) {
                     plugin._siyuTab._loadNoteForEdit(id, note);
+                } else if (plugin && typeof plugin._mobileOpenInputSheetForEdit === 'function') {
+                    // 移动端 fallback：打开底部输入弹层并加载笔记内容
+                    plugin._mobileOpenInputSheetForEdit(id, note);
                 }
                 break;
             case 'copy':
@@ -2904,9 +2907,12 @@ const SIDEBAR_VIEWS = [
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconRiffCard"></use></svg>
                                     </span>
                                 </div>
-                                <button class="north-breeze-send-btn" id="breeze-send">
-                                    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                                </button>
+                                <div class="north-breeze-input-actions">
+                                    <button class="north-breeze-cancel-btn" id="breeze-cancel" style="display:none" title="取消编辑">取消</button>
+                                    <button class="north-breeze-send-btn" id="breeze-send">
+                                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -11499,6 +11505,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!this._breezeSyncBound) {
             this._breezeSyncBound = true;
             this._breezeSyncReload = () => {
+                /* 移动端输入弹层（Bottom Sheet）打开时不重渲染：
+                   上传资源 → 系统文件选择器弹出/关闭 → 触发 focus/visibilitychange →
+                   _refreshActiveBreezeView → renderMain 会重建 body.innerHTML，导致弹层 DOM 被销毁。 */
+                if (this.isMobile && this._isMobileSheetOpen()) return;
                 const now = Date.now();
                 if (this._lastBreezeSyncReload && now - this._lastBreezeSyncReload < 1500) return;
                 this._lastBreezeSyncReload = now;
@@ -11526,7 +11536,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }).catch(() => {});
             };
             this._breezeSyncVisibility = () => {
-                if (document.visibilityState === "visible") this._breezeSyncReload();
+                if (document.visibilityState === "visible" && !(this.isMobile && this._isMobileSheetOpen())) this._breezeSyncReload();
             };
             window.addEventListener("focus", this._breezeSyncReload);
             document.addEventListener("visibilitychange", this._breezeSyncVisibility);
@@ -11748,6 +11758,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
     _isMobileNavViewHidden(viewId) {
         const hidden = (this.data[SETTINGS_STORAGE] || {}).mobileNavHidden || {};
         return !!hidden[viewId];
+    }
+
+    /* 移动端输入弹层（Bottom Sheet）是否正在显示 */
+    _isMobileSheetOpen() {
+        return document.body.classList.contains('north-luna-mobile-sheet-open');
     }
 
     _getMobileSidebarIconHtml(viewId) {
@@ -12562,12 +12577,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
     }
 
     /* ===== 移动端：点击 + 按钮弹出输入框（Bottom Sheet） ===== */
-    _openMobileInputSheet(ctx) {
+    _openMobileInputSheet(ctx, noteForEdit) {
         const inputArea = ctx.container?.querySelector('.north-breeze-input-area');
         if (!inputArea) return;
         const self = this;
         inputArea.classList.remove('mobile-sheet-closing');
         inputArea.classList.add('mobile-sheet-visible');
+        document.body.classList.add('north-luna-mobile-sheet-open');
         /* 首次打开时绑定完整的输入框功能（发送/预览/工具栏/键盘屏蔽，对标 PC _bindBreezeInput） */
         if (!inputArea._mobileInputFullyBound) {
             inputArea._mobileInputFullyBound = true;
@@ -12583,24 +12599,182 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
             });
         }
-        /* 自动聚焦输入框 */
-        setTimeout(() => {
-            const field = inputArea.querySelector('.north-breeze-input-field');
-            if (field && typeof field.focus === 'function') {
-                this._suppressKeyboardToolbarOn(field);
-                field.focus();
+/* 编辑模式：加载已有笔记内容到输入框 */
+        if (noteForEdit) {
+            this._mobileEditingNoteId = noteForEdit.id;
+            this._mobileEditingNoteData = noteForEdit;
+            const box = inputArea.querySelector('#breeze-input-box');
+            const sendBtn = inputArea.querySelector('#breeze-send');
+            const titleInput = inputArea.querySelector('#breeze-title-input');
+            const titleBtn = inputArea.querySelector('#breeze-toolbar-title');
+            /* 先显示编辑态 UI（取消按钮 + 边框变色），确保即使后续 setter 抛错也不影响 */
+            if (box) box.classList.add('editing');
+            if (sendBtn) sendBtn.title = '保存修改';
+            const cancelEl = inputArea.querySelector('.north-breeze-cancel-btn');
+            if (cancelEl) cancelEl.style.display = '';
+            /* ===== 加载已有资源到预览栏：核心渲染逻辑 =====
+               不用 setTimeout 等动画，直接同步渲染：
+               1. 标准化图片路径（兼容字符串 / 对象 / markdown 链接）
+               2. 直接清空 + 填充预览栏 + 强制 has-images 显示
+               3. 同时同步给 _pendingImagesSetter 让 setter 状态保持一致 */
+            try {
+                let imgData = (noteForEdit.images || []).map(img => {
+                    let s = '';
+                    if (typeof img === 'object' && img !== null) {
+                        s = img.path || img.url || img.src || '';
+                    } else {
+                        s = String(img || '');
+                    }
+                    const name = s.split('/').pop() || '';
+                    const ext = (name.split('.').pop() || '').toLowerCase();
+                    const kind = self._fileKindFromName(name);
+                    const isVideo = kind === 'video';
+                    return { type: isVideo ? '视频' : '图片', path: s, raw: s, name: name, ext: ext };
+                }).filter(x => x.path);
+                /* 兜底：从 content 中解析 markdown 图片引用 */
+                if (imgData.length === 0 && noteForEdit.content) {
+                    const mdRe = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
+                    let mm;
+                    while ((mm = mdRe.exec(noteForEdit.content)) !== null) {
+                        const url = mm[2];
+                        if (!url) continue;
+                        const name = url.split('/').pop() || '';
+                        const ext = (name.split('.').pop() || '').toLowerCase();
+                        const kind = self._fileKindFromName(name);
+                        const isVideo = kind === 'video';
+                        imgData.push({ type: isVideo ? '视频' : '图片', path: url, raw: url, name: name, ext: ext });
+                    }
+                }
+                (noteForEdit.files || []).forEach(f => {
+                    const path = (f && f.path) || '';
+                    if (!path) return;
+                    const name = f.name || path.split('/').pop();
+                    const ext = (name.split('.').pop() || '').toLowerCase();
+                    imgData.push({ type: '文件', path: path, raw: path, name: name, ext: ext });
+                });
+
+                /* 直接渲染到预览栏 —— 兼容 breeze view 和 dock view 两种容器 */
+                const previewBar = inputArea.querySelector('#breeze-image-preview-bar')
+                    || inputArea.querySelector('#north-breeze-dock-preview-bar');
+                if (previewBar) {
+                    previewBar.innerHTML = '';
+                    if (imgData.length > 0) {
+                        const frag = document.createDocumentFragment();
+                        imgData.forEach((img, idx) => {
+                            const item = document.createElement('div');
+                            item.className = 'north-breeze-preview-item';
+                            /* inline style 兜底，确保尺寸不受外部 CSS 干扰 */
+                            item.style.cssText = 'width:56px;height:56px;flex-shrink:0;display:inline-block;position:relative;';
+                            item.dataset.index = String(idx);
+                            item.dataset.path = img.path;
+                            const resolvedSrc = (typeof self._resolveImageUrl === 'function') ? self._resolveImageUrl(img.path) : img.path;
+                            item.innerHTML = '<img src="' + self._esc(resolvedSrc) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"><div class="north-breeze-preview-remove">×</div>';
+                            frag.appendChild(item);
+                        });
+                        previewBar.appendChild(frag);
+                        previewBar.classList.add('has-images');
+                        /* 强制 inline display：覆盖任何可能的 CSS 干扰 */
+                        previewBar.style.display = 'flex';
+                    } else {
+                        previewBar.classList.remove('has-images');
+                        previewBar.style.display = '';
+                    }
+                }
+
+                /* 同步给 setter 保持内部状态 */
+                if (typeof inputArea._pendingImagesSetter === 'function') {
+                    inputArea._pendingImagesSetter(imgData);
+                }
+            } catch (err) {
+                console.error('[轻语] 加载编辑资源预览失败:', err);
             }
-        }, 280);
+
+            /* 同步：textarea 内容 + title 立即填好（不等动画） */
+            const field = inputArea.querySelector('.north-breeze-input-field');
+            if (field) {
+                field.value = noteForEdit.content || '';
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (titleInput) {
+                if (noteForEdit.title) {
+                    titleInput.value = noteForEdit.title;
+                    titleInput.style.display = '';
+                    if (titleBtn) titleBtn.classList.add('active');
+                } else {
+                    titleInput.value = '';
+                    titleInput.style.display = 'none';
+                    if (titleBtn) titleBtn.classList.remove('active');
+                }
+            }
+
+            /* setTimeout 仍然保留：聚焦 + 键盘屏蔽（依赖 sheet 动画完成） */
+            setTimeout(() => {
+                if (field && typeof field.focus === 'function') {
+                    const kb = document.getElementById('keyboardToolbar');
+                    if (kb) { kb.classList.add('fn__none'); kb.style.height = ''; }
+                    this._suppressKeyboardToolbarOn(field);
+                    field.focus();
+                }
+            }, 380);
+        } else {
+            /* 新建模式：清除编辑状态 */
+            this._mobileEditingNoteId = null;
+            this._mobileEditingNoteData = null;
+            const box = inputArea.querySelector('#breeze-input-box');
+            const sendBtn = inputArea.querySelector('#breeze-send');
+            if (box) box.classList.remove('editing');
+            if (sendBtn) sendBtn.title = '发送';
+            const cancelEl = inputArea.querySelector('.north-breeze-cancel-btn');
+            if (cancelEl) cancelEl.style.display = 'none';
+            /* 自动聚焦输入框（延迟 380ms 等待 sheet-up 动画完成，避免键盘弹出时弹层异常） */
+            setTimeout(() => {
+                /* 提前隐藏键盘工具栏，防止 focus 触发键盘弹出时工具栏短暂闪现 */
+                const kb = document.getElementById('keyboardToolbar');
+                if (kb) { kb.classList.add('fn__none'); kb.style.height = ''; }
+                const field = inputArea.querySelector('.north-breeze-input-field');
+                if (field && typeof field.focus === 'function') {
+                    this._suppressKeyboardToolbarOn(field);
+                    field.focus();
+                    /* 键盘弹出后视口缩小，保持弹层可见：监听 visualViewport resize */
+                    if (window.visualViewport && !inputArea._vvHandler) {
+                        const onVVResize = () => {
+                            if (!inputArea.classList.contains('mobile-sheet-visible')) {
+                                window.visualViewport.removeEventListener('resize', onVVResize);
+                                inputArea._vvHandler = null;
+                                return;
+                            }
+                            /* 键盘弹出：将页面滚到顶部，确保弹层完整可见 */
+                            window.scrollTo(0, 0);
+                        };
+                        window.visualViewport.addEventListener('resize', onVVResize);
+                        inputArea._vvHandler = onVVResize;
+                    }
+                }
+            }, 380);
+        }
+    }
+
+    /* 移动端编辑笔记专用入口：打开底部输入弹层并加载已有笔记 */
+    _mobileOpenInputSheetForEdit(id, note) {
+        const ctx = this._lunaDockCtx || (this._siyuTab ? { container: this._siyuTab.container } : null);
+        if (!ctx) return;
+        this._openMobileInputSheet(ctx, note);
     }
 
     /* 移动端输入框完整绑定（对标 PC _bindBreezeInput）：发送/预览栏/自适应/工具栏/粘贴 */
     _bindBreezeMobileInput(ctx, inputArea) {
-        const input = inputArea.querySelector('#breeze-input');
-        const box = inputArea.querySelector('#breeze-input-box');
-        const sendBtn = inputArea.querySelector('#breeze-send');
-        const titleInput = inputArea.querySelector('#breeze-title-input');
-        const titleBtn = inputArea.querySelector('#breeze-toolbar-title');
-        const previewBar = inputArea.querySelector('#breeze-image-preview-bar');
+        const input = inputArea.querySelector('#breeze-input')
+            || inputArea.querySelector('#north-breeze-dock-input');
+        const box = inputArea.querySelector('#breeze-input-box')
+            || inputArea.querySelector('#north-breeze-dock-input-box');
+        const sendBtn = inputArea.querySelector('#breeze-send')
+            || inputArea.querySelector('#north-breeze-dock-send');
+        const titleInput = inputArea.querySelector('#breeze-title-input')
+            || inputArea.querySelector('#north-breeze-dock-title-input');
+        const titleBtn = inputArea.querySelector('#breeze-toolbar-title')
+            || inputArea.querySelector('#north-breeze-dock-toolbar-title');
+        const previewBar = inputArea.querySelector('#breeze-image-preview-bar')
+            || inputArea.querySelector('#north-breeze-dock-preview-bar');
         if (!input || !box || !sendBtn || !previewBar) return;
         const plugin = this;
 
@@ -12674,6 +12848,28 @@ module.exports = class NorthLunaPlugin extends Plugin {
             updateState();
         };
 
+        /* 外部可调用的 setter：加载已有资源到预览栏（编辑模式使用） */
+        inputArea._pendingImagesSetter = (imgs) => {
+            pendingImages = imgs;
+            refreshPreviewBar();
+        };
+
+        /* 取消编辑（PC _cancelEdit 移动端对应） */
+        const cancelEdit = () => {
+            plugin._mobileEditingNoteId = null;
+            plugin._mobileEditingNoteData = null;
+            input.value = '';
+            if (titleInput) { titleInput.value = ''; titleInput.style.display = 'none'; if (titleBtn) titleBtn.classList.remove('active'); }
+            pendingImages = [];
+            refreshPreviewBar();
+            box.classList.remove('editing');
+            sendBtn.title = '发送';
+            const cancelEl = inputArea.querySelector('.north-breeze-cancel-btn');
+            if (cancelEl) cancelEl.style.display = 'none';
+            updateState();
+            requestAnimationFrame(autoResizeInput);
+        };
+
         /* 发送 */
         const submit = () => {
             const text = input.value.trim();
@@ -12685,6 +12881,36 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (img.type === '图片' || img.type === '视频') images.push(img.path);
                 else files.push({ name: img.name, path: img.path });
             });
+            /* 编辑模式：更新已有笔记而非新建 */
+            if (plugin._mobileEditingNoteId) {
+                const notes = (plugin.data[RECORDS_STORAGE] || {}).breezeNotes || [];
+                const idx = notes.findIndex(n => n.id === plugin._mobileEditingNoteId);
+                if (idx >= 0) {
+                    notes[idx].content = text;
+                    if (title) notes[idx].title = title; else delete notes[idx].title;
+                    /* 保留已有资源路径，用本次提交的资源替换（编辑时 images/files 存的是已有路径，不是 File） */
+                    notes[idx].images = images;
+                    notes[idx].files = files;
+                    /* 保留置顶/归档状态 */
+                    plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]).catch(() => {});
+                }
+                plugin._mobileEditingNoteId = null;
+                plugin._mobileEditingNoteData = null;
+                ctx.renderMain();
+                /* 清空输入区（编辑完成后退出编辑态） */
+                input.value = '';
+                if (titleInput) { titleInput.value = ''; titleInput.style.display = 'none'; if (titleBtn) titleBtn.classList.remove('active'); }
+                pendingImages = [];
+                refreshPreviewBar();
+                box.classList.remove('editing');
+                sendBtn.title = '发送';
+                const cancelEl = inputArea.querySelector('.north-breeze-cancel-btn');
+                if (cancelEl) cancelEl.style.display = 'none';
+                updateState();
+                requestAnimationFrame(autoResizeInput);
+                return;
+            }
+            /* 新建模式 */
             const now = new Date();
             const p2 = n => String(n).padStart(2, '0');
             const time = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes());
@@ -12724,7 +12950,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         fileInput.multiple = true;
         fileInput.accept = 'image/*,.heic,.heif,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
         fileInput.style.display = 'none';
-        inputArea.appendChild(fileInput);
+        /* 挂到 document.body，避免 fileInput 在 inputArea 子树中——
+           移动端系统文件选择器弹出/关闭时可能触发 inputArea 上的 click 事件，
+           导致遮罩点击处理器误关闭弹层。 */
+        document.body.appendChild(fileInput);
         fileInput.onchange = async () => {
             const files = Array.from(fileInput.files || []);
             if (!files.length) return;
@@ -12741,8 +12970,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             refreshPreviewBar();
             updateState();
         };
+        /* 移动端系统文件选择器弹出时，阻止点击事件冒泡到 inputArea 遮罩层 */
         const imgBtn = inputArea.querySelector('#breeze-toolbar-image');
-        if (imgBtn) imgBtn.addEventListener('click', () => fileInput.click());
+        if (imgBtn) imgBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
 
         /* 粘贴图片 */
         input.addEventListener('paste', async (ev) => {
@@ -12840,6 +13070,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }
         };
         applyMobileToolbarVisibility();
+        /* 取消编辑按钮 */
+        const cancelBtn = inputArea.querySelector('#breeze-cancel');
+        if (cancelBtn) cancelBtn.addEventListener('click', cancelEdit);
     }
 
     /* 屏蔽思源键盘工具栏（#keyboardToolbar）：textarea 获焦时强制隐藏，
@@ -12921,8 +13154,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
     _closeMobileInputSheet(ctx) {
         const inputArea = ctx.container?.querySelector('.north-breeze-input-area');
         if (!inputArea) return;
+        /* 清理 visualViewport 监听 */
+        if (inputArea._vvHandler && window.visualViewport) {
+            window.visualViewport.removeEventListener('resize', inputArea._vvHandler);
+            inputArea._vvHandler = null;
+        }
         inputArea.classList.add('mobile-sheet-closing');
         inputArea.classList.remove('mobile-sheet-visible');
+        document.body.classList.remove('north-luna-mobile-sheet-open');
         setTimeout(() => {
             inputArea.classList.remove('mobile-sheet-closing');
         }, 280);
@@ -13606,7 +13845,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 group.map(n => breezeRenderNoteCard(n, false, q, pageNotes, dateBottom, viewStyle, footerLabel, footerSig)).join(''));
                         });
                         list.innerHTML = subViewHeader + sections.join('') + pagerHtml;
-                        /* 绑定笔记列表交互事件（移动端 fallback 专用，桌面端由 tab._bindBreezeInput 处理） */
+                    }
+                    /* 绑定笔记列表交互事件（移动端 fallback 专用，所有视图模式共用，key 防重复）
+                       桌面端由 tab._bindBreezeInput 处理，此处仅移动端 _renderMainDirect 生效 */
+                    if (!list._mobileBreezeListBound) {
+                        list._mobileBreezeListBound = true;
                         /* 图片/视频点击预览 */
                         list.addEventListener('click', (ev) => plugin._handleMediaClick(ev, '.north-breeze-note-card'));
                         /* 任务复选框 */

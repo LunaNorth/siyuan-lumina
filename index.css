@@ -4127,6 +4127,12 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
         padding: 0 !important;
         border-top: none !important;
     }
+    /* 移动端弹层打开时强制隐藏思源键盘工具栏，防止遮挡输入框快捷按钮 */
+    .north-breeze-input-area.mobile-sheet-visible ~ #keyboardToolbar,
+    .north-breeze-input-area.mobile-sheet-visible #keyboardToolbar,
+    body.north-luna-mobile-sheet-open #keyboardToolbar {
+        display: none !important;
+    }
     .north-breeze-input-area.mobile-sheet-visible {
         display: flex !important;
         flex-direction: column;
