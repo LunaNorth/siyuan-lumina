@@ -6307,6 +6307,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         { title: '控制设置', items: [
                             { type: 'toggle', key: 'autoSyncMoments', title: '自动同步思源笔记文档', desc: '开启后，发布朋友圈动态时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
                             { type: 'toggle', key: 'galleryHideMoments', title: '在明月中隐藏朋友圈资源', desc: '开启后，朋友圈中添加的图片/视频/文件不会出现在明月（拾光）视图中。默认关闭。', default: false },
+                            { type: 'select', key: 'momentsLongNoteCollapse', title: '长笔记自动折叠', desc: '超过设定行数的朋友圈动态会自动折叠，底部显示展开按钮。图片始终完整显示，只折叠文字部分。', default: 'never', options: [
+                                { value: 'never', label: '永不折叠' },
+                                { value: '4', label: '4 行' },
+                                { value: '6', label: '6 行' },
+                                { value: '8', label: '8 行（推荐）' },
+                                { value: '12', label: '12 行' },
+                                { value: '20', label: '20 行' }
+                            ]},
                         ]},
                         { title: '锁屏保护', items: [
                             { type: 'toggle', key: 'momentsLockEnabled', title: '启用锁屏', desc: '开启后进入朋友圈需要输入密码才能查看', default: false },
@@ -8175,6 +8183,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                             else this._applyBreezeImageSize(mainList);
                                         }
                                         if (this.plugin && this.plugin._applyBreezeDockAppearance) this.plugin._applyBreezeDockAppearance();
+                                    }
+                                    /* 朋友圈长笔记折叠：实时应用到朋友圈列表 */
+                                    if (cddl.dataset.key === 'momentsLongNoteCollapse') {
+                                        const momentsList = this.container && this.container.querySelector('#momentsList');
+                                        if (momentsList && this.plugin && this.plugin._applyMomentsLongNoteCollapse) this.plugin._applyMomentsLongNoteCollapse(momentsList);
                                     }
                                     /* 同步目标切换：刷新视图以显隐「指定文档」项 */
                                     if (cddl.dataset.key === 'dailyNoteTarget' && body) {
@@ -11588,6 +11601,40 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }
         } catch (e) { /* fall through */ }
         return ((this.data[SETTINGS_STORAGE] || {}).settings || {})[key];
+    }
+
+    /* 朋友圈长笔记自动折叠：按设置阈值（N 行）裁剪 .north-luna-moments-item-text 文字段；
+       超过阈值则在文字 div 上加 .moments-folded 类，并在卡片上加 .moments-has-fold
+       显示底部"展开"按钮。图片段独立存在，不受影响。
+       作为 plugin class 方法（而非 tab 实例方法），移动端无 tab 时也能正常调用。
+       切换"永不折叠"/"8 行"等档位后，再调用一次即可在已渲染的卡片上重算。 */
+    _applyMomentsLongNoteCollapse(listEl) {
+        if (!listEl) return;
+        const setting = this._getPluginSetting('momentsLongNoteCollapse') || 'never';
+        const threshold = parseInt(setting, 10) || 0;
+        listEl.querySelectorAll('.north-luna-moments-item').forEach((card) => {
+            const textEls = card.querySelectorAll('.north-luna-moments-item-text');
+            // 先清掉旧的折叠状态再测量"自然高度"
+            textEls.forEach((t) => t.classList.remove('moments-folded'));
+            card.classList.remove('moments-has-fold', 'moments-expanded');
+            if (threshold <= 0) return;
+            let hasFold = false;
+            textEls.forEach((textEl) => {
+                // 计算"实际行高"：line-height 可能是 normal(NaN) 或 px 或 number
+                const cs = getComputedStyle(textEl);
+                const lhRaw = parseFloat(cs.lineHeight);
+                const fs = parseFloat(cs.fontSize) || 14;
+                const lh = (!isNaN(lhRaw) && lhRaw >= 1) ? lhRaw : (fs * 1.6);
+                const lineCount = textEl.scrollHeight / lh;
+                if (lineCount > threshold) {
+                    textEl.classList.add('moments-folded');
+                    textEl.style.setProperty('--moments-fold-lines', String(threshold));
+                    textEl.style.setProperty('--moments-fold-line-h', lh + 'px');
+                    hasFold = true;
+                }
+            });
+            if (hasFold) card.classList.add('moments-has-fold');
+        });
     }
     _setPluginSetting(key, val) {
         this.data[SETTINGS_STORAGE] = this.data[SETTINGS_STORAGE] || {};
@@ -17692,6 +17739,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 <div class="north-luna-moments-item-content">
                     <div class="north-luna-moments-item-name">${this._esc(nickname)}</div>
                     <div class="north-luna-moments-item-text">${breezeRenderTextWithTags(m.text || '')}</div>
+                    <div class="north-luna-moments-expand" data-mid="${m.id}"><span class="moments-expand-text">全文</span><svg class="moments-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="moments-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>
                     ${mediaHtml}
                     <div class="north-luna-moments-item-meta">
                         ${metaHtml}
@@ -17813,7 +17861,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
             for (; rendered < end; rendered++) {
                 html += self.renderMomentItem(items[rendered], nickname);
             }
-            if (html) listEl.insertAdjacentHTML('beforeend', html);
+            if (html) {
+                listEl.insertAdjacentHTML('beforeend', html);
+                // 新渲染的卡片统一应用长笔记折叠（plugin class 方法，移动端无 tab 时也能调用）
+                if (self._applyMomentsLongNoteCollapse) self._applyMomentsLongNoteCollapse(listEl);
+            }
             return rendered >= items.length;
         };
 
@@ -19601,6 +19653,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
                 }
                 this.saveMoments().catch(() => {});
+                return;
+            }
+            /* 长笔记折叠展开/收起按钮：点击切换卡片 .moments-expanded，同时切换按钮文案与箭头方向 */
+            const expandBtn = e.target.closest('.north-luna-moments-expand');
+            if (expandBtn) {
+                e.stopPropagation();
+                const card = expandBtn.closest('.north-luna-moments-item');
+                if (!card) return;
+                const expanded = card.classList.toggle('moments-expanded');
+                const textEl = expandBtn.querySelector('.moments-expand-text');
+                const arrowEl = expandBtn.querySelector('.moments-expand-arrow');
+                if (textEl) textEl.textContent = expanded ? '收起' : '全文';
+                if (arrowEl) arrowEl.setAttribute('d', expanded
+                    ? 'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z'
+                    : 'M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z');
                 return;
             }
             /* 图片/视频点击预览：复用清风 _handleMediaClick → showMomentsMediaPreview（与清风共用同一查看器） */

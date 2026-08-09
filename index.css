@@ -1131,11 +1131,56 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     font-size: var(--moments-font-size, var(--b3-font-size-editor, 15px));
     color: var(--moments-text);
     line-height: 1.8;
-    margin-bottom: 12px;
+    margin-bottom: 6px;
     word-wrap: break-word;
     white-space: pre-wrap;
     user-select: text;
     -webkit-user-select: text;
+    overflow: hidden;
+}
+
+/* 朋友圈长笔记折叠：超过阈值时 JS 写入 --moments-fold-lines 和 --moments-fold-line-h
+   折叠时底部加朦胧遮罩提示"还有更多"，展开时清掉 */
+.north-luna-moments-item-text.moments-folded {
+    max-height: calc(var(--moments-fold-line-h, 29px) * var(--moments-fold-lines, 6));
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 36px), transparent 100%);
+    mask-image: linear-gradient(to bottom, black calc(100% - 36px), transparent 100%);
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+}
+.north-luna-moments-item.moments-expanded .north-luna-moments-item-text.moments-folded {
+    max-height: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+    margin-bottom: 6px;
+}
+
+/* 朋友圈展开/收起按钮：默认隐藏，只有卡片含可折叠文字段时才显示 */
+.north-luna-moments-expand {
+    display: none;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    margin-top: 4px;
+    margin-bottom: 10px;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: color 0.2s;
+}
+.north-luna-moments-expand:hover {
+    color: var(--b3-theme-primary);
+}
+.north-luna-moments-item.moments-has-fold .north-luna-moments-expand {
+    display: flex;
+}
+.north-luna-moments-expand .moments-expand-icon {
+    width: 14px;
+    height: 14px;
 }
 
 /* 朋友圈正文 markdown 渲染（复用清风 breezeRenderTextWithTags 生成的类名） */
