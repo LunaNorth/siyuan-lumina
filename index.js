@@ -9522,10 +9522,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const slugSet = new Set(isFullSync ? [] : (this.flomoConfig.flomoSyncedSlugs || []));
                     let added = 0;
                     for (const m of memos) {
+                        /* 跳过回收站中的 memo（deleted_at 不为 null 表示已软删除） */
+                        if (m.deleted_at) continue;
                         /* 全量同步跳过已存在；增量同步跳过 */
                         if (!isFullSync && slugSet.has(m.slug)) continue;
                         /* HTML → 文本：先用临时 DOM 解析嵌套列表，转为缩进 Markdown */
-                        let content = (m.content || '').replace(/<br\s*\/?>/gi, '\n').replace(/<p>(.*?)<\/p>/gi, '$1\n').replace(/<b>(.*?)<\/b>/gi, '**$1**').replace(/<i>(.*?)<\/i>/gi, '*$1*');
+                        let content = (m.content || '').replace(/<br\s*\/?>/gi, '\n').replace(/<p>(.*?)<\/p>/gi, '$1\n').replace(/<b>(.*?)<\/b>/gi, '**$1**').replace(/<i>(.*?)<\/i>/gi, '*$1*').replace(/<mark>(.*?)<\/mark>/gi, '==$1==');
                         /* 使用 DOM 遍历嵌套列表，递归转录为带缩进的 Markdown */
                         /* 使用 DOM 遍历嵌套列表，递归转录为带缩进的 Markdown。
                            关键：递归处理子列表时，子列表的所有行 indent 都要基于子列表在父 LI 内的"逻辑缩进"——
@@ -19352,6 +19354,28 @@ module.exports = class NorthLunaPlugin extends Plugin {
             pubTextEl.style.height = Math.max(120, pubTextEl.scrollHeight) + 'px';
         };
         if (pubTextEl) pubTextEl.addEventListener('input', () => requestAnimationFrame(autoResizePub));
+
+        /* 粘贴图片：从剪贴板直接粘贴到朋友圈发表（与清风输入框一致的图片粘贴支持） */
+        if (pubTextEl) pubTextEl.addEventListener('paste', async (ev) => {
+            const items = ev.clipboardData && ev.clipboardData.items;
+            if (!items) return;
+            const files = [];
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                if (it.kind !== 'file') continue;
+                const f = it.getAsFile();
+                if (f && f.type.startsWith('image/')) files.push(f);
+            }
+            if (!files.length) return; // 纯文字粘贴：交给浏览器默认处理，不拦截
+            ev.preventDefault();
+            for (const f of files) {
+                const converted = await this._heicToJpeg(f);
+                const objectUrl = URL.createObjectURL(converted);
+                publishImages.push(objectUrl);
+                publishFiles.push(converted);
+            }
+            this._refreshPublishImages(container, publishImages, publishFiles);
+        });
 
         const openPublishPage = (editingMoment) => {
             editingId = editingMoment ? editingMoment.id : null;
