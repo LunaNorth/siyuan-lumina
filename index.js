@@ -9626,7 +9626,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
                     this.flomoConfig.flomoSyncedSlugs = [...slugSet];
                     await this._saveFlomoConfig();
-                    if (added > 0 && t === 'breeze') await plugin.saveData(SETTINGS_STORAGE, plugin.data[SETTINGS_STORAGE]);
+                    if (added > 0 && t === 'breeze') await plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]);
                     if (added > 0) {
                         this._viewDomCache = {};
                         if (this.activeViewId === 'notes') {
