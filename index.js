@@ -13459,7 +13459,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     };
                     body.addEventListener('click', (ev) => {
                         const cell = ev.target.closest('.north-breeze-heatmap-grid-cell');
-                        if (!cell || !grid.contains(cell)) {
+                        /* renderMain 会重建 body.innerHTML，闭包里的旧 grid 引用会失效。
+                           改用 cell.closest('#breeze-heatmap-grid') 动态查找当前 DOM 中的 grid。 */
+                        const currentGrid = cell ? cell.closest('#breeze-heatmap-grid') : null;
+                        if (!currentGrid) {
                             /* 点到非 cell（菜单/标签/搜索栏/侧栏外）：移除残留 tooltip */
                             hideBreezeMobileTip();
                             return;
@@ -13467,7 +13470,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const dateStr = cell.dataset.date;
                         if (!dateStr) return;
                         const wasSelected = cell.classList.contains('selected');
-                        grid.querySelectorAll('.north-breeze-heatmap-grid-cell').forEach(c => c.classList.remove('selected'));
+                        currentGrid.querySelectorAll('.north-breeze-heatmap-grid-cell').forEach(c => c.classList.remove('selected'));
                         if (wasSelected) {
                             plugin._mobileBreezeDateFilter = null;
                             hideBreezeMobileTip();
@@ -13481,26 +13484,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             }
                             showBreezeMobileTip(cell);
                         }
-                        /* 关键步骤：renderMain 会替换 body.innerHTML 销毁侧栏。
-                           把当前侧栏摘出 body，renderMain 后塞回原位（替换新建的副本），
-                           这样 drawer-open + 菜单 active + 滚动位置都保留 */
-                        const oldSidebar = body.querySelector('.north-breeze-sidebar');
-                        const oldMain = body.querySelector('.north-breeze-main');
-                        let detachedSidebar = null;
-                        if (oldSidebar && oldMain && oldSidebar.parentElement === oldMain) {
-                            detachedSidebar = oldSidebar;
-                            oldMain.removeChild(detachedSidebar);
-                        }
+                        /* 关闭抽屉让出屏幕给结果展示（与内置检索/标签筛选/子视图切换行为一致） */
+                        plugin._closeBreezeSidebar(ctx);
                         ctx.renderMain();
-                        if (detachedSidebar) {
-                            const newMain = body.querySelector('.north-breeze-main');
-                            const newSidebar = newMain ? newMain.querySelector('.north-breeze-sidebar') : null;
-                            if (newSidebar && newSidebar !== detachedSidebar) {
-                                newSidebar.replaceWith(detachedSidebar);
-                            } else if (newMain) {
-                                newMain.insertBefore(detachedSidebar, newMain.firstChild);
-                            }
-                        }
                     });
                 }
                 /* 恢复选中高亮（innerHTML 重建会清空） */
@@ -13574,24 +13560,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             item.classList.add('selected');
                             plugin._mobileBreezeTagFilter = tag;
                         }
-                        /* 侧栏保留（同 heatmap：摘出后 renderMain 完塞回） */
-                        const sidebar = body.querySelector('.north-breeze-sidebar');
-                        const main = body.querySelector('.north-breeze-main');
-                        let detached = null;
-                        if (sidebar && main && sidebar.parentElement === main) {
-                            detached = sidebar;
-                            main.removeChild(detached);
-                        }
+                        /* 关闭抽屉让出屏幕给结果展示（与热力图/内置检索/子视图切换行为一致） */
+                        plugin._closeBreezeSidebar(ctx);
                         ctx.renderMain();
-                        if (detached) {
-                            const newMain = body.querySelector('.north-breeze-main');
-                            const newSidebar = newMain ? newMain.querySelector('.north-breeze-sidebar') : null;
-                            if (newSidebar && newSidebar !== detached) {
-                                newSidebar.replaceWith(detached);
-                            } else if (newMain) {
-                                newMain.insertBefore(detached, newMain.firstChild);
-                            }
-                        }
                     });
                 }
                 /* 恢复标签选中高亮（innerHTML 重建清空） */
@@ -13631,6 +13602,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const tags = breezeExtractTags(n.content || '');
                             return tags.some(t => t === sel || t.startsWith(sel + '/'));
                         });
+                    }
+                    /* 快速筛选（移动端内置检索，仅「全部笔记」子视图生效，复刻 PC breezeQuickFilter 行为） */
+                    if (plugin._mobileBreezeQuickFilter && (ctx._mobileBreezeSubView || 'all') === 'all') {
+                        const kind = plugin._mobileBreezeQuickFilter;
+                        if (kind === 'no-tag') {
+                            notes = notes.filter(n => breezeExtractTags(n.content || '').length === 0);
+                        } else if (kind === 'has-image') {
+                            notes = notes.filter(n => (n.images || []).length > 0);
+                        } else if (kind === 'no-image') {
+                            notes = notes.filter(n => (n.images || []).length === 0);
+                        } else if (kind === 'has-link') {
+                            const linkRe = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(?:^|\s)(https?:\/\/[^\s)]+)/;
+                            notes = notes.filter(n => linkRe.test(n.content || ''));
+                        }
                     }
                     /* 分页：开启且总条数超过每页条数时才切片 + 显示分页器（复刻 PC _renderBreezeSubView） */
                     const paginationEnabled = !!plugin._getPluginSetting('breezePaginationEnabled');
@@ -13895,6 +13880,22 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (!body._mobileMenuBound) {
                     body._mobileMenuBound = true;
                     body.addEventListener('click', (ev) => {
+                        /* 1. 内置检索箭头 → 只切换快速筛选子菜单展开/收起，不切换子视图、不关闭抽屉
+                           这是修复 PC 能展开折叠、移动端点箭头却跳到全部笔记的 BUG 关键点 */
+                        if (ev.target.closest('.north-breeze-menu-arrow')) {
+                            ev.stopPropagation();
+                            plugin._mobileToggleBreezeQuickFilter(ctx);
+                            return;
+                        }
+                        /* 2. 快速筛选项（无标签/有图片/无图片/有链接）→ 应用筛选，不切换子视图、不关闭抽屉 */
+                        const quickItem = ev.target.closest('.north-breeze-quick-filter-item');
+                        if (quickItem) {
+                            ev.stopPropagation();
+                            const kind = quickItem.dataset.breezeQuick;
+                            if (kind) plugin._mobileApplyBreezeQuickFilter(kind, ctx);
+                            return;
+                        }
+                        /* 3. 切换子视图（全部笔记 / 每日回顾 / 本周记录） */
                         const menuItem = ev.target.closest('.north-breeze-menu-item');
                         if (!menuItem) return;
                         const sv = menuItem.dataset.breezeSubview;
@@ -13904,8 +13905,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         /* 更新所有菜单项高亮 */
                         body.querySelectorAll('.north-breeze-menu-item').forEach(x => x.classList.remove('active'));
                         menuItem.classList.add('active');
-                        /* 清除日期筛选 + 切换子视图时重置回顾状态 */
+                        /* 清除日期筛选 + 切换子视图时清掉快速筛选（仅「全部笔记」子视图支持快速筛选） + 重置回顾状态 */
                         plugin._mobileBreezeDateFilter = null;
+                        plugin._mobileResetQuickFilter();
                         plugin._mobileBreezeReviewStarted = false;
                         if (plugin._siyuTab) {
                             plugin._siyuTab.breezeDateFilter = null;
@@ -13923,6 +13925,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 body.querySelectorAll('.north-breeze-menu-item').forEach(mi => {
                     mi.classList.toggle('active', mi.dataset.breezeSubview === activeSubView);
                 });
+                /* 同步移动端内置检索 UI（展开/折叠 + 箭头方向 + active 高亮）
+                   renderMain 会重建侧栏 DOM，需要把 plugin 上的展开状态与选中状态重新写进 DOM。
+                   若当前子视图不是「全部笔记」则自动收起折叠箭头（与 PC 端 _bindBreezeMenu 行为一致） */
+                if (activeSubView !== 'all') {
+                    plugin._mobileResetQuickFilter();
+                }
+                plugin._syncMobileBreezeQuickFilterUI(ctx);
                 /* 绑定分页器按钮点击（复刻 PC _bindBreezePager，移动端用 ctx._mobileBreezePage 替代 this.breezePage） */
                 if (list) {
                     list.querySelectorAll('.north-breeze-pager-btn:not(.disabled)').forEach(btn => {
@@ -14169,6 +14178,74 @@ module.exports = class NorthLunaPlugin extends Plugin {
         } else {
             /* tab 不存在：走 _renderMainDirect 重新渲染 */
             ctx.renderMain();
+        }
+    }
+    /* ===== 移动端「内置检索」支持（复刻 PC 端 _toggleBreezeQuickFilter / _applyBreezeQuickFilter / _syncBreezeQuickFilterUI）
+       修复：移动端点击 chevron 箭头被误当作切换「全部笔记」且不展开的 BUG —— 这里独立存储
+       plugin._mobileBreezeQuickFilter / plugin._mobileBreezeQuickFilterExpanded 状态（不依赖 tab 实例），
+       通过直接修改 DOM 切换 .open + maxHeight + arrow 的 use，达到与 PC 端一致的展开/折叠体验。 */
+    _mobileToggleBreezeQuickFilter(ctx) {
+        if (!this._getPluginSetting('breezeQuickFilterEnabled')) return;
+        if (!ctx) return;
+        this._mobileBreezeQuickFilterExpanded = !this._mobileBreezeQuickFilterExpanded;
+        if (this._siyuTab) this._siyuTab.breezeQuickFilterExpanded = this._mobileBreezeQuickFilterExpanded;
+        this._syncMobileBreezeQuickFilterUI(ctx);
+    }
+    _mobileApplyBreezeQuickFilter(kind, ctx) {
+        if (!this._getPluginSetting('breezeQuickFilterEnabled')) return;
+        if (!ctx || !kind) return;
+        /* 仅在「全部笔记」子视图生效；其他子视图自动切回全部笔记 */
+        if ((ctx._mobileBreezeSubView || 'all') !== 'all') {
+            ctx._mobileBreezeSubView = 'all';
+            if (this._siyuTab) this._siyuTab.breezeSubView = 'all';
+        }
+        /* 切换：点同项 → 取消；点其他 → 切换；同步到 tab */
+        const next = (this._mobileBreezeQuickFilter === kind) ? null : kind;
+        this._mobileBreezeQuickFilter = next;
+        if (this._siyuTab) this._siyuTab.breezeQuickFilter = next;
+        /* 选中后保持展开（plugin/_siyuTab 持有即可，下次回打开抽屉时由 _syncMobileBreezeQuickFilterUI 写回 DOM） */
+        this._mobileBreezeQuickFilterExpanded = true;
+        if (this._siyuTab) this._siyuTab.breezeQuickFilterExpanded = true;
+        ctx._mobileBreezePage = 1;
+        if (this._siyuTab) this._siyuTab.breezePage = 1;
+        /* 移动端屏幕小，点选后保留抽屉会挡住笔记结果。
+           与切换子视图一致：先 _closeBreezeSidebar 关闭抽屉 + 移除 overlay，再 renderMain 重建列表。
+           这样既符合用户「点完想看结果」的直觉，也彻底规避了 v2.1.3 修过的抽屉-overlay 残留问题。 */
+        this._closeBreezeSidebar(ctx);
+        ctx.renderMain();
+    }
+    _syncMobileBreezeQuickFilterUI(ctx) {
+        if (!ctx || !ctx.container) return;
+        const body = ctx.container.querySelector('.north-luna-main-body');
+        if (!body) return;
+        const sub = body.querySelector('.north-breeze-quick-filter');
+        if (sub) {
+            if (this._mobileBreezeQuickFilterExpanded) {
+                sub.classList.add('open');
+                sub.style.maxHeight = sub.scrollHeight + 'px';
+            } else {
+                sub.style.maxHeight = sub.scrollHeight + 'px';
+                void sub.offsetHeight; // force reflow
+                sub.classList.remove('open');
+                sub.style.maxHeight = '0';
+            }
+        }
+        const arrow = body.querySelector('.north-breeze-menu-arrow[data-breeze-toggle="quick-filter"]');
+        const arrowUse = arrow ? arrow.querySelector('use') : null;
+        if (arrowUse) {
+            arrowUse.setAttribute('xlink:href', this._mobileBreezeQuickFilterExpanded ? '#iconDown' : '#iconRight');
+        }
+        /* 高亮当前激活的筛选项 */
+        const items = body.querySelectorAll('.north-breeze-quick-filter-item');
+        items.forEach(it => it.classList.toggle('active', it.dataset.breezeQuick === this._mobileBreezeQuickFilter));
+    }
+    /* 切换到非「全部笔记」子视图时清掉移动端快速筛选状态（与 PC 端 _bindBreezeMenu 行为一致） */
+    _mobileResetQuickFilter() {
+        this._mobileBreezeQuickFilter = null;
+        this._mobileBreezeQuickFilterExpanded = false;
+        if (this._siyuTab) {
+            this._siyuTab.breezeQuickFilter = null;
+            this._siyuTab.breezeQuickFilterExpanded = false;
         }
     }
 
