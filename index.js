@@ -6262,6 +6262,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'breezeToolbarCode', title: '行级代码', desc: '显示/隐藏工具栏行级代码按钮', default: false },
                             { type: 'toggle', key: 'breezeToolbarFlomo', title: 'Flomo 同步', desc: '显示/隐藏工具栏 Flomo 同步按钮（仅登录 Flomo 后可见）', default: false }
                         ]},
+                        { title: '侧边栏输入工具栏设置', items: [
+                            { type: 'toggle', key: 'breezeDockToolbarTag', title: '标签', desc: '显示/隐藏侧边栏工具栏标签按钮（独立于主视图，互不影响）', default: true },
+                            { type: 'toggle', key: 'breezeDockToolbarImage', title: '上传资源', desc: '显示/隐藏侧边栏工具栏上传资源按钮（独立于主视图，互不影响）', default: true },
+                            { type: 'toggle', key: 'breezeDockToolbarTask', title: '任务列表', desc: '显示/隐藏侧边栏工具栏任务列表按钮（独立于主视图，互不影响）', default: true },
+                            { type: 'toggle', key: 'breezeDockToolbarUl', title: '无序列表', desc: '显示/隐藏侧边栏工具栏无序列表按钮（独立于主视图，互不影响）', default: true },
+                            { type: 'toggle', key: 'breezeDockToolbarOl', title: '有序列表', desc: '显示/隐藏侧边栏工具栏有序列表按钮（独立于主视图，互不影响）', default: true },
+                            { type: 'toggle', key: 'breezeDockToolbarTitle', title: '设置标题', desc: '显示/隐藏侧边栏工具栏设置标题按钮（独立于主视图，互不影响）', default: true },
+                            { type: 'toggle', key: 'breezeDockToolbarColor', title: '字体颜色', desc: '显示/隐藏侧边栏工具栏字体颜色按钮（独立于主视图，互不影响）', default: false },
+                            { type: 'toggle', key: 'breezeDockToolbarBold', title: '粗体', desc: '显示/隐藏侧边栏工具栏粗体按钮（独立于主视图，互不影响）', default: false },
+                            { type: 'toggle', key: 'breezeDockToolbarStrike', title: '删除线', desc: '显示/隐藏侧边栏工具栏删除线按钮（独立于主视图，互不影响）', default: false },
+                            { type: 'toggle', key: 'breezeDockToolbarMark', title: '高亮', desc: '显示/隐藏侧边栏工具栏高亮按钮（独立于主视图，互不影响）', default: false },
+                            { type: 'toggle', key: 'breezeDockToolbarCode', title: '行级代码', desc: '显示/隐藏侧边栏工具栏行级代码按钮（独立于主视图，互不影响）', default: false },
+                            { type: 'toggle', key: 'breezeDockToolbarFlomo', title: 'Flomo 同步', desc: '显示/隐藏侧边栏工具栏 Flomo 同步按钮（仅登录 Flomo 后可见，独立于主视图，互不影响）', default: false }
+                        ]},
                         { title: '回顾设置', items: [
                             { type: 'select', key: 'breezeReviewDailyCount', title: '每日回顾数量', desc: '进入每日回顾后，每次随机/加权展示的笔记条数。可在清风左侧「每日回顾」里使用。', default: '8', options: [
                                 { value: '4', label: '4 条' },
@@ -6460,6 +6474,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const DOCK_KEYS = ['breezeHoverBorder','breezeDockCompact','breezeFontSize','breezeImgSizeSingle','breezeImgSizeDouble','breezeImgSizeFour','breezeImgSizeMulti','breezeLongNoteCollapse'];
                     if (DOCK_KEYS.indexOf(key) >= 0 && plugin._applyBreezeDockAppearance) {
                         plugin._applyBreezeDockAppearance();
+                    }
+                    /* 侧边栏工具栏设置变更：即时刷新 Dock 工具栏按钮可见性（独立于主视图 breezeToolbar*） */
+                    if (key.indexOf('breezeDockToolbar') === 0 && plugin._applyBreezeDockToolbarVisibility) {
+                        plugin._applyBreezeDockToolbarVisibility();
                     }
                     /* 昵称 / 个性签名：改完立刻同步到朋友圈封面、动态列表、清风/LifeLog 资料卡 */
                     if (key === 'nickname' || key === 'signature') {
@@ -7893,7 +7911,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const gHtml = renderItems(g.items);
                         if (!gHtml) return ''; // 该分组无匹配项时整体隐藏
                         const gTitleHtml = g.title ? `<div class="north-luna-settings-section-title">${plugin._esc(g.title)}</div>` : '';
-                        const extraCardClass = g.title === '输入框工具栏设置' ? ' north-luna-settings-toolbar-card' : g.title === '移动端朋友圈设置' ? ' north-luna-settings-moments-mobile-card' : '';
+                        const extraCardClass = (g.title === '输入框工具栏设置' || g.title === '侧边栏输入工具栏设置') ? ' north-luna-settings-toolbar-card' : g.title === '移动端朋友圈设置' ? ' north-luna-settings-moments-mobile-card' : '';
                         return `${gTitleHtml}<div class="north-luna-settings-group-card${extraCardClass}">
                             <div class="north-luna-settings-group-body">${gHtml}</div>
                         </div>`;
@@ -14300,6 +14318,27 @@ module.exports = class NorthLunaPlugin extends Plugin {
         }
     }
 
+    /* 侧边栏工具栏可见性：读取 breezeDockToolbar* 专用配置（独立于主视图 breezeToolbar*）。
+       Dock 无 sidebar 按钮（故 key 列表不含 sidebar）；flomo 按钮需同时满足配置开启 + 已登录。
+       由 _setSetting 在检测到 breezeDockToolbar* 字段变更时调用，实现设置即时生效。 */
+    _applyBreezeDockToolbarVisibility() {
+        const root = this._breezeDockEl;
+        if (!root) return;
+        const KEYS = ['tag','image','task','ul','ol','title','color','bold','strike','mark','code','flomo'];
+        KEYS.forEach(k => {
+            const visible = this._getPluginSetting('breezeDockToolbar' + k.charAt(0).toUpperCase() + k.slice(1)) !== false;
+            const btn = root.querySelector('#north-breeze-dock-toolbar-' + k);
+            if (btn) btn.style.display = visible ? '' : 'none';
+        });
+        /* Flomo 按钮：配置开启 且 已登录 才显示 */
+        const flomoBtn = root.querySelector('#north-breeze-dock-toolbar-flomo');
+        if (flomoBtn) {
+            const toolbarOn = this._getPluginSetting('breezeDockToolbarFlomo') !== false;
+            const logged = !!(this._siyuTab && this._siyuTab.flomoConfig && this._siyuTab.flomoConfig.accessToken);
+            flomoBtn.style.display = (toolbarOn && logged) ? '' : 'none';
+        }
+    }
+
     onunload() {
         this.unhookMobileGoBack();
         if (this._toolbarObserver) {
@@ -14513,16 +14552,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             });
         }
 
-        /* 工具栏按钮可见性控制 */
-        const TOOLBAR_BTN_KEYS = ['tag','image','task','ul','ol','sidebar','title','color','bold','strike','mark','code'];
-        const applyToolbarVisibility = () => {
-            TOOLBAR_BTN_KEYS.forEach(k => {
-                const visible = this._getPluginSetting('breezeToolbar' + k.charAt(0).toUpperCase() + k.slice(1)) !== false;
-                const btn = root.querySelector('#north-breeze-dock-toolbar-' + k);
-                if (btn) btn.style.display = visible ? '' : 'none';
-            });
-        };
-        applyToolbarVisibility();
+        /* 工具栏按钮可见性控制：读取侧边栏专用配置（breezeDockToolbar*），与主视图设置互不影响。
+           统一委托给 plugin 级方法，设置变更后由 _setSetting 调用同一方法即时刷新。 */
+        this._applyBreezeDockToolbarVisibility();
 
         let pendingImages = []; // { type:'图片'|'文件', path, raw, name, ext }
         const getNotes = () => {
@@ -14735,15 +14767,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (markBtn) markBtn.addEventListener('click', () => insertAtCursor('==', '=='));
         const codeBtn = root.querySelector('#north-breeze-dock-toolbar-code');
         if (codeBtn) codeBtn.addEventListener('click', () => insertAtCursor('`', '`'));
-        /* Flomo 同步按钮：仅登录后可见，点击触发增量同步 */
+        /* Flomo 同步按钮：可见性由 _applyBreezeDockToolbarVisibility 统一管理（配置开启 + 已登录），
+           这里只绑定点击事件触发增量同步。 */
         const flomoDockBtn = root.querySelector('#north-breeze-dock-toolbar-flomo');
         if (flomoDockBtn) {
             const _siyuTab = plugin._siyuTab;
-            const updateDockFlomo = () => {
-                const logged = _siyuTab && _siyuTab.flomoConfig && _siyuTab.flomoConfig.accessToken;
-                flomoDockBtn.style.display = logged ? '' : 'none';
-            };
-            updateDockFlomo();
             if (_siyuTab && _siyuTab._flomoSync) {
                 flomoDockBtn.addEventListener('click', async () => {
                     if (!_siyuTab.flomoConfig || !_siyuTab.flomoConfig.accessToken) return;
@@ -18336,7 +18364,32 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (data.category) metaParts.push(data.category);
         if (data.location) metaParts.push(data.location);
         const metaStr = metaParts.join(' · ');
-        const quote = (s) => (s || '').split('\n').map(l => '> ' + l).join('\n');
+        /* 把多行字符串包裹为引述块（callout）格式。
+           关键修复：标签行（思源格式 #xxx）若与上一行紧邻（无空行），会被并入上一个任务/列表项，
+           导致同步后 #背景 等标签被吞到任务列表里。这里在标签行前自动插入一个 '>' 空行，
+           让思源把标签识别为独立段落。
+           排除：
+             - ##/### 等多级标题（行首 # 后跟 # 或空白则不算标签）
+             - 引述块内部的 # 标签（行首是 '>' 时不算标签） */
+        const quote = (s) => {
+            if (!s) return '';
+            const lines = String(s).split('\n');
+            const out = [];
+            for (let i = 0; i < lines.length; i++) {
+                const cur = lines[i];
+                // 标签行：行首允许空白 + # + 非空白字符（排除 ## / ### 标题与 # 后为空格）
+                const isTagLine = /^\s*#[^\s#]/.test(cur);
+                if (isTagLine && i > 0) {
+                    // 上一行若不是空引述行（"> "），则插入一个 ">" 形成空行隔开标签
+                    const prev = out[out.length - 1];
+                    if (prev !== '> ') {
+                        out.push('>');
+                    }
+                }
+                out.push('> ' + cur);
+            }
+            return out.join('\n');
+        };
         // 兼容旧数据：syncMode 未设置时，若填了自定义模板则视为 custom，否则 callout
         const syncMode = settings.dailyNoteSyncMode || ((settings.dailyNoteCustomTemplate || '').trim() ? 'custom' : 'callout');
         // 自定义模板共用：清风与朋友圈均使用 dailyNoteCustomTemplate（朋友圈同步时 {{mood}}/{{weather}}/{{category}}/{{location}} 有值，清风为空）
