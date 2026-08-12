@@ -4377,8 +4377,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     };
 
                     /* 根据「回车直接提交」设置初始化移动端键盘提示（enterkeyhint）：
-                       开='done'（键盘显示"完成"），关='enter'（显示"换行"） */
-                    input.setAttribute('enterkeyhint', this._getSetting('breezeEnterToSubmit') !== false ? 'done' : 'enter');
+                       开='done'（键盘显示"完成"），关='enter'（显示"换行"）。
+                       移动端始终强制换行，与 keydown 逻辑保持一致。 */
+                    input.setAttribute('enterkeyhint', (!plugin.isMobile && this._getSetting('breezeEnterToSubmit') !== false) ? 'done' : 'enter');
 
                     /* 输入框自适应高度：内容少时紧凑、多时随内容撑高（至 max-height 后转滚动），
                        与内联编辑框 autoResize 一致，解决「文字多可滑动但展示空间太小」 */
@@ -4436,8 +4437,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 requestAnimationFrame(autoResizeInput);
                                 return;
                             }
-                            /* 普通行：按开关决定提交 or 默认换行 */
-                            if (this._getSetting('breezeEnterToSubmit') !== false) {
+                            /* 普通行：按开关决定提交 or 默认换行（移动端始终强制换行） */
+                            if (!plugin.isMobile && this._getSetting('breezeEnterToSubmit') !== false) {
                                 e.preventDefault();
                                 submit();
                             }
@@ -8012,12 +8013,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 if (this.plugin && this.plugin._refreshBreezeDockList) this.plugin._refreshBreezeDockList();
                             }
                             if (inp.dataset.key === 'breezeEnterToSubmit') {
-                                /* 实时同步移动端键盘提示：开='done'，关='enter'（按 Enter 时不再提交） */
+                                /* 实时同步键盘提示：开='done'，关='enter'（移动端始终强制换行，按 Enter 时不再提交） */
+                                const isMobile = this.plugin && this.plugin.isMobile;
+                                const hint = (!isMobile && inp.checked) ? 'done' : 'enter';
                                 const input = this.container.querySelector('#breeze-input');
-                                if (input) input.setAttribute('enterkeyhint', inp.checked ? 'done' : 'enter');
+                                if (input) input.setAttribute('enterkeyhint', hint);
                                 /* 同步 Dock 输入框的回车提交行为 */
                                 const dockInput = this.plugin && this.plugin._breezeDockEl && this.plugin._breezeDockEl.querySelector('#north-breeze-dock-input');
-                                if (dockInput) dockInput.setAttribute('enterkeyhint', inp.checked ? 'done' : 'enter');
+                                if (dockInput) dockInput.setAttribute('enterkeyhint', hint);
                             }
                             if (inp.dataset.key === 'breezeSidebarFullScroll') {
                                 /* 左侧面板整体滚动：去掉标签区独立滚，整侧边栏一起滚（参考轻语 .north-shuoshuo-sidebar-full-scroll） */
@@ -12957,12 +12960,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         input.addEventListener('focus', () => box.classList.add('focused'));
         input.addEventListener('blur', () => { box.classList.remove('focused'); updateState(); });
         sendBtn.addEventListener('click', submit);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-            }
-        });
+        /* 移动端始终 Enter = 换行（移动端键盘不便 Shift+Enter，发送按钮始终可用） */
+        // 不做 Enter → 提交 拦截，由浏览器默认行为处理换行
 
         /* 图片/资源上传 */
         const fileInput = document.createElement('input');
@@ -14670,8 +14669,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         input.addEventListener('blur', () => { box.classList.remove('focused'); updateState(); });
         sendBtn.addEventListener('click', submit);
 
-        // 回车提交（与设置同步）
-        const enterToSubmit = this._getPluginSetting('breezeEnterToSubmit') !== false;
+        // 回车提交（与设置同步，移动端始终强制换行）
+        const enterToSubmit = !plugin.isMobile && this._getPluginSetting('breezeEnterToSubmit') !== false;
         input.setAttribute('enterkeyhint', enterToSubmit ? 'done' : 'enter');
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
