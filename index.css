@@ -3876,13 +3876,18 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
         font-size: 14px;
     }
     /* 移动端弹层中 textarea 滚到边界时，overscroll-behavior: contain
-       阻止滚动动量逃逸到外层触发页面滚动 → 键盘收起 */
+       阻止滚动动量逃逸到外层触发页面滚动 → 键盘收起。
+       注意：overscroll-behavior 仅 iOS 16.4+ 生效，老版本 iOS 直接忽略，
+       因此真正的兜底是 JS 的 touchmove 边界拦截（见 _preventMobileScrollChain）。
+       touch-action: pan-y 允许纵向滑动，避免被系统识别为横向手势（如返回手势）。 */
     .north-breeze-input-area.mobile-sheet-visible .north-breeze-input-field {
         overscroll-behavior: contain;
+        touch-action: pan-y;
     }
     /* 弹层内容盒加双层保险 */
     .north-breeze-input-area.mobile-sheet-visible .north-breeze-input-box {
         overscroll-behavior: contain;
+        touch-action: pan-y;
     }
     .north-breeze-toolbar-left {
         gap: 12px;

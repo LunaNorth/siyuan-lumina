@@ -12838,6 +12838,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!input || !box || !sendBtn || !previewBar) return;
         const plugin = this;
 
+        /* 移动端：对 textarea 与内容盒做滚动链拦截，
+           防止长文本滚动到边界时滚动动量穿透到外层导致键盘收起、光标丢失 */
+        if (this.isMobile) {
+            this._preventMobileScrollChain(input);
+            this._preventMobileScrollChain(box);
+        }
+
         /* 标题按钮 */
         if (titleBtn && titleInput) {
             titleBtn.addEventListener('click', () => {
@@ -13153,6 +13160,33 @@ module.exports = class NorthLunaPlugin extends Plugin {
             this._kbObserver?.disconnect();
             this._kbObserver = null;
         });
+    }
+
+    /* 阻止移动端滚动链（scroll chaining）：textarea / 滚动容器滚到边界时，
+       滚动动量会逃逸到外层（父容器 → 页面），iOS 会因此把软键盘收起、输入框失焦，
+       光标随之丢失。overscroll-behavior: contain 仅 iOS 16.4+ 生效，老版本直接忽略，
+       这里用 touchmove 边界拦截兜底：当元素已滚到顶部/底部且继续朝该方向滑动时，
+       调用 preventDefault 阻断滚动链，从而保住键盘与光标。 */
+    _preventMobileScrollChain(el) {
+        if (!el || !this.isMobile) return;
+        let lastY = 0;
+        el.addEventListener('touchstart', (e) => {
+            if (e.touches && e.touches.length) lastY = e.touches[0].clientY;
+        }, { passive: true });
+        el.addEventListener('touchmove', (e) => {
+            if (!e.touches || !e.touches.length) return;
+            /* 元素本身不可滚动时不拦截，避免影响外层正常手势 */
+            if (el.scrollHeight <= el.clientHeight + 1) return;
+            const y = e.touches[0].clientY;
+            const dy = y - lastY;
+            lastY = y;
+            const atTop = el.scrollTop <= 0;
+            const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+            /* 手指下滑(dy>0)且在顶部 / 手指上滑(dy<0)且在底部 → 已到边界，阻断穿透 */
+            if ((dy > 0 && atTop) || (dy < 0 && atBottom)) {
+                e.preventDefault();
+            }
+        }, { passive: false });
     }
 
     /* 移动端全局屏蔽思源键盘工具栏（#keyboardToolbar）：事件委托方式，
