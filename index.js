@@ -146,7 +146,7 @@ function breezeFileExtColor(ext) {
                  批注 iconMark / 修改时间 iconClock / 插入今日日记 iconSparkles /
                  添加到朋友圈 iconGlobe / 归档 iconInbox / 删除 iconTrashcan(14×14, 红色)
    按用户当前要求：菜单项**功能暂不实现**，点击只关闭菜单 + 控制台 log，后续按需补。 */
-function showBreezeNoteMenu(id, triggerEl, storage, plugin) {
+function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
     // 移除已存在的菜单（保证单实例）
     const existing = document.querySelector('.north-breeze-note-menu-dropdown');
     if (existing) existing.remove();
@@ -220,17 +220,25 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin) {
                 if (plugin && plugin._siyuTab && typeof plugin._siyuTab.render === 'function') {
                     plugin._siyuTab.render();
                 }
+                // 同步刷新 Dock 侧边栏列表（若启用），保证侧边栏置顶后立即重排
+                if (plugin && plugin._breezeNotifyDockChanged) {
+                    try { plugin._breezeNotifyDockChanged(); } catch (e) { /* noop */ }
+                }
                 break;
             }
-            case 'edit':
-                // 统一编辑模式：使用主输入框编辑（不再弹内联编辑框）
-                if (plugin && plugin._siyuTab && plugin._siyuTab._loadNoteForEdit) {
+            case 'edit': {
+                // 统一编辑模式：根据触发来源选择输入框 —— 从 Dock 侧边栏触发则在侧边栏输入框编辑，
+                // 从主视图触发则用主输入框；移动端 fallback 打开底部输入弹层。
+                if (source === 'dock' && plugin && plugin._breezeDockLoadForEdit) {
+                    plugin._breezeDockLoadForEdit(id, note);
+                } else if (plugin && plugin._siyuTab && plugin._siyuTab._loadNoteForEdit) {
                     plugin._siyuTab._loadNoteForEdit(id, note);
                 } else if (plugin && typeof plugin._mobileOpenInputSheetForEdit === 'function') {
                     // 移动端 fallback：打开底部输入弹层并加载笔记内容
                     plugin._mobileOpenInputSheetForEdit(id, note);
                 }
                 break;
+            }
             case 'copy':
                 // 复制：文字 → 空行 → 资源 Markdown，去 leading / 对齐思源路径
                 {
@@ -319,6 +327,10 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin) {
                         if (plugin && plugin._siyuTab && typeof plugin._siyuTab.render === 'function') {
                             plugin._siyuTab.render();
                         }
+                        // 同步刷新 Dock 侧边栏列表（若启用），保证侧边栏删除后立即消失
+                        if (plugin && plugin._breezeNotifyDockChanged) {
+                            try { plugin._breezeNotifyDockChanged(); } catch (e) { /* noop */ }
+                        }
                     };
                     if (confirm) {
                         confirm('删除笔记', '确定要删除这条清风笔记吗？\n此操作不可恢复。', doDelete);
@@ -381,6 +393,10 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin) {
                         }
                     } else {
                         try { plugin.renderMain(); } catch(e) {}
+                    }
+                    // 同步刷新 Dock 侧边栏列表（若启用），保证侧边栏归档后立即消失
+                    if (plugin._breezeNotifyDockChanged) {
+                        try { plugin._breezeNotifyDockChanged(); } catch(e) {}
                     }
                 }
                 break;
@@ -3306,6 +3322,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const doDelete = () => {
                                 const s = this.plugin.data[RECORDS_STORAGE] || {};
                                 if (!s.breezeNotes) return;
+                                // 清理该笔记关联的资源（图片/视频/文件）
+                                (note.images || []).forEach(img => { if (this.plugin.deletePluginImage) this.plugin.deletePluginImage(img); });
+                                (note.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path) this.plugin.deletePluginImage(f.path); });
                                 s.breezeNotes = s.breezeNotes.filter(n => n.id !== note.id);
                                 this.plugin.data[RECORDS_STORAGE] = s;
                                 this.plugin.saveData(RECORDS_STORAGE, s);
@@ -3548,10 +3567,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     //    breezeExtractTags 返回完整路径（如 父/子），不含父级（父），
                     //    所以必须用前缀匹配，否则删父标签时一条笔记都过滤不掉
                     const prefix = fullTag + '/';
-                    data.breezeNotes = notes.filter(n => {
+                    const remaining = [];
+                    notes.forEach(n => {
                         const tags = breezeExtractTags(n.content || '');
-                        return !tags.some(t => t === fullTag || t.startsWith(prefix));
+                        const shouldDelete = tags.some(t => t === fullTag || t.startsWith(prefix));
+                        if (shouldDelete) {
+                            // 清理被删除笔记关联的资源（图片/视频/文件）
+                            (n.images || []).forEach(img => { if (this.plugin.deletePluginImage) this.plugin.deletePluginImage(img); });
+                            (n.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path) this.plugin.deletePluginImage(f.path); });
+                        } else {
+                            remaining.push(n);
+                        }
                     });
+                    data.breezeNotes = remaining;
 
                     this.plugin.data[RECORDS_STORAGE] = data;
                     this.plugin.saveData(RECORDS_STORAGE, data);
@@ -3709,6 +3737,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 };
                 this._deleteTableNote = (id) => {
                     const s = this.plugin.data[RECORDS_STORAGE] || {};
+                    const note = (s.breezeNotes || []).find(n => n.id === id);
+                    if (!note) return;
+                    // 清理该笔记关联的资源（图片/视频/文件）
+                    (note.images || []).forEach(img => { if (this.plugin.deletePluginImage) this.plugin.deletePluginImage(img); });
+                    (note.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path) this.plugin.deletePluginImage(f.path); });
                     s.breezeNotes = (s.breezeNotes || []).filter(n => n.id !== id);
                     this.plugin.data[RECORDS_STORAGE] = s;
                     this.plugin.saveData(RECORDS_STORAGE, s);
@@ -8498,6 +8531,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this._openProfileEditModal();
                     } else if (action === "clearMoments") {
                         const doClear = () => {
+                            // 清理所有朋友圈动态的资源（图片/视频）
+                            (plugin.momentsData.items || []).forEach(m => {
+                                (m.images || []).forEach(img => plugin.deletePluginImage(img));
+                            });
                             plugin.momentsData.items = [];
                             plugin.saveMoments();
                             showMessage("已清空");
@@ -14556,6 +14593,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this._applyBreezeDockToolbarVisibility();
 
         let pendingImages = []; // { type:'图片'|'文件', path, raw, name, ext }
+        let editingNoteId = null; // 正在编辑的笔记 id（null 表示新建模式）
+        let cancelBtn = null;     // Dock 编辑态取消按钮
         const getNotes = () => {
             this.data[RECORDS_STORAGE] = this.data[RECORDS_STORAGE] || {};
             this.data[RECORDS_STORAGE].breezeNotes = this.data[RECORDS_STORAGE].breezeNotes || [];
@@ -14624,14 +14663,48 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (img.type === '图片' || img.type === '视频') images.push(img.path);
                 else files.push({ name: img.name, path: img.path });
             });
-            const now = new Date();
-            const p2 = n => String(n).padStart(2, '0');
-            const time = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes());
-            const note = { id: 'b_' + Date.now() + Math.random().toString(36).slice(2, 6), time, content: text, images, files };
-            if (title) note.title = title;
-            const notes = getNotes();
-            notes.unshift(note);
-            this.saveData(RECORDS_STORAGE, this.data[RECORDS_STORAGE]).catch(() => {});
+            /* 编辑模式：更新现有笔记而非新建（与主视图 _bindBreezeInput.submit 对齐） */
+            if (editingNoteId) {
+                const notes = getNotes();
+                const target = notes.find(n => n.id === editingNoteId);
+                if (target) {
+                    target.content = text;
+                    target.images = images;
+                    target.files = files;
+                    if (title) target.title = title; else delete target.title;
+                    this.saveData(RECORDS_STORAGE, this.data[RECORDS_STORAGE]).catch(() => {});
+                    showMessage('已保存');
+                }
+                /* 退出编辑态 */
+                editingNoteId = null;
+                box.classList.remove('editing');
+                sendBtn.title = '发送';
+                if (cancelBtn) cancelBtn.style.display = 'none';
+            } else {
+                /* 新建笔记 */
+                const now = new Date();
+                const p2 = n => String(n).padStart(2, '0');
+                const time = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes());
+                const note = { id: 'b_' + Date.now() + Math.random().toString(36).slice(2, 6), time, content: text, images, files };
+                if (title) note.title = title;
+                const notes = getNotes();
+                notes.unshift(note);
+                this.saveData(RECORDS_STORAGE, this.data[RECORDS_STORAGE]).catch(() => {});
+                /* 自动同步思源笔记文档：提交后 1s 防抖 */
+                if (plugin._getPluginSetting('autoSyncBreeze')) {
+                    clearTimeout(plugin._breezeDockAutoSyncTimer);
+                    plugin._breezeDockAutoSyncTimer = setTimeout(() => {
+                        plugin._syncToDailyNote({
+                            content: note.content,
+                            images: note.images,
+                            files: note.files,
+                            time: note.time,
+                            source: 'breeze'
+                        }).catch(() => {});
+                    }, 1000);
+                }
+            }
+            /* 共通的清理与刷新 */
             this._refreshBreezeDockList();
             // 同步主视图（_renderBreezeSubView 在 tab 实例上，不在 plugin 上）
             if (this._siyuTab && this._siyuTab._renderBreezeSubView) {
@@ -14649,20 +14722,83 @@ module.exports = class NorthLunaPlugin extends Plugin {
             refreshPreviewBar();
             updateState();
             requestAnimationFrame(autoResize);
-            /* 自动同步思源笔记文档：提交后 1s 防抖 */
-            if (plugin._getPluginSetting('autoSyncBreeze')) {
-                clearTimeout(plugin._breezeDockAutoSyncTimer);
-                plugin._breezeDockAutoSyncTimer = setTimeout(() => {
-                    plugin._syncToDailyNote({
-                        content: note.content,
-                        images: note.images,
-                        files: note.files,
-                        time: note.time,
-                        source: 'breeze'
-                    }).catch(() => {});
-                }, 1000);
-            }
         };
+
+        /* ===== Dock 编辑模式：把笔记加载到侧边栏输入框（与主视图 _loadNoteForEdit 对齐） ===== */
+        const cancelEdit = () => {
+            editingNoteId = null;
+            input.value = '';
+            if (titleInput) { titleInput.value = ''; titleInput.style.display = 'none'; if (titleBtn) titleBtn.classList.remove('active'); }
+            pendingImages = [];
+            refreshPreviewBar();
+            box.classList.remove('editing');
+            sendBtn.title = '发送';
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            updateState();
+            requestAnimationFrame(autoResize);
+        };
+        const loadForEdit = (id, note) => {
+            if (!input || !note) return;
+            editingNoteId = id;
+            input.value = note.content || '';
+            if (titleInput) {
+                if (note.title) {
+                    titleInput.value = note.title;
+                    titleInput.style.display = '';
+                    if (titleBtn) titleBtn.classList.add('active');
+                } else {
+                    titleInput.value = '';
+                    titleInput.style.display = 'none';
+                    if (titleBtn) titleBtn.classList.remove('active');
+                }
+            }
+            /* 加载已有资源到预览栏 */
+            pendingImages = [];
+            (note.images || []).forEach(img => {
+                const name = String(img).split('/').pop();
+                const ext = (name.split('.').pop() || '').toLowerCase();
+                const kind = plugin._fileKindFromName(name);
+                const isVideo = kind === 'video';
+                pendingImages.push({ type: isVideo ? '视频' : '图片', path: img, raw: img, name: name, ext: ext });
+            });
+            (note.files || []).forEach(f => {
+                const name = f.name || (f.path || '').split('/').pop();
+                const ext = (name.split('.').pop() || '').toLowerCase();
+                pendingImages.push({ type: '文件', path: f.path, raw: f.path, name: name, ext: ext });
+            });
+            refreshPreviewBar();
+            /* 显示编辑态 UI：取消按钮 + 发送按钮变色 */
+            box.classList.add('editing');
+            sendBtn.title = '保存修改';
+            /* 创建/复用取消编辑按钮 */
+            if (!cancelBtn) {
+                const cancelEl = document.createElement('button');
+                cancelEl.className = 'north-breeze-cancel-btn';
+                cancelEl.textContent = '取消';
+                cancelEl.title = '取消编辑';
+                cancelBtn = cancelEl;
+                /* 把发送按钮和取消按钮包进一个 flex 容器，确保两者紧挨在一起 */
+                if (!sendBtn.parentElement.classList.contains('north-breeze-input-actions')) {
+                    const wrap = document.createElement('div');
+                    wrap.className = 'north-breeze-input-actions';
+                    sendBtn.parentElement.insertBefore(wrap, sendBtn);
+                    wrap.appendChild(sendBtn);
+                }
+                /* 把取消按钮插入到发送按钮之前，保证发送按钮在右侧 */
+                sendBtn.parentElement.insertBefore(cancelEl, sendBtn);
+            }
+            if (cancelBtn) {
+                cancelBtn.removeEventListener('click', cancelEdit);
+                cancelBtn.addEventListener('click', cancelEdit, { once: true });
+                cancelBtn.style.display = '';
+            }
+            updateState();
+            requestAnimationFrame(autoResize);
+            input.focus();
+            input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
+        /* 暴露给 showBreezeNoteMenu：从 Dock 侧边栏点「编辑」时调用 */
+        plugin._breezeDockLoadForEdit = loadForEdit;
 
         input.addEventListener('input', () => { updateState(); requestAnimationFrame(autoResize); });
         input.addEventListener('focus', () => box.classList.add('focused'));
@@ -14953,7 +15089,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const id = menuEl.dataset.id;
                 if (id) {
                     // 复用主视图的 showBreezeNoteMenu（含删除逻辑），然后刷新 Dock
-                    showBreezeNoteMenu(id, menuEl, plugin.data[RECORDS_STORAGE], plugin);
+                    showBreezeNoteMenu(id, menuEl, plugin.data[RECORDS_STORAGE], plugin, 'dock');
                     setTimeout(() => this._refreshBreezeDockList(), 50);
                 }
                 return;
@@ -18681,22 +18817,34 @@ module.exports = class NorthLunaPlugin extends Plugin {
         await fetch('/api/file/putFile', { method: 'POST', body: backupForm, headers });
     }
 
-    // 从 assets/ 删除图片（插件内部的删除 = 真正删除，不再触发备份恢复）
+    // 删除插件资源文件（assets 或 public 目录），插件内部的删除 = 真正删除，不再触发备份恢复
     async deletePluginImage(filePath) {
+        if (!filePath) return;
         const clean = filePath.startsWith('/') ? filePath.substring(1) : filePath;
-        if (!clean.startsWith('assets/')) return;
-        const fileName = clean.substring('assets/'.length);
         try {
             const token = window.siyuan?.config?.api?.token || '';
             const headers = {};
             if (token) headers['Authorization'] = `Token ${token}`;
-            if (!this._pluginDeletedAssets) this._pluginDeletedAssets = new Set();
-            this._pluginDeletedAssets.add(fileName);
-            const formData = new FormData();
-            formData.append('path', `data/${clean}`);
-            await fetch('/api/file/removeFile', { method: 'POST', body: formData, headers });
-            if (!this._isAssetReferenced(fileName)) {
-                await this.deleteBackupAsset(fileName);
+            if (clean.startsWith('assets/')) {
+                // assets 资源目录：记录 + 删主文件 + 视引用情况清理备份
+                const fileName = clean.substring('assets/'.length);
+                if (!this._pluginDeletedAssets) this._pluginDeletedAssets = new Set();
+                this._pluginDeletedAssets.add(fileName);
+                await fetch('/api/file/removeFile', {
+                    method: 'POST',
+                    headers: { ...headers, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: `data/${clean}` })
+                });
+                if (!this._isAssetReferenced(fileName)) {
+                    await this.deleteBackupAsset(fileName);
+                }
+            } else if (clean.startsWith('public/')) {
+                // public 公共目录（public/siyuan-lumina/xxx）：直接删除文件（该目录无备份机制）
+                await fetch('/api/file/removeFile', {
+                    method: 'POST',
+                    headers: { ...headers, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: `data/${clean}` })
+                });
             }
         } catch (e) {
             console.error('删除图片失败:', e);
@@ -18709,9 +18857,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const token = window.siyuan?.config?.api?.token || '';
             const headers = {};
             if (token) headers['Authorization'] = `Token ${token}`;
-            const formData = new FormData();
-            formData.append('path', `data/storage/petal/siyuan-lumina/images/${fileName}`);
-            await fetch('/api/file/removeFile', { method: 'POST', body: formData, headers });
+            await fetch('/api/file/removeFile', {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: `data/storage/petal/siyuan-lumina/images/${fileName}` })
+            });
         } catch (e) {
             console.error('删除备份文件失败:', e);
         }
