@@ -1200,7 +1200,7 @@ function addBreezeNoteToMoments(id, storage, plugin) {
    负向先行 (?!#) 排除 #A#B 这种环绕写法；支持多级标签 父/子 用 / 分隔 */
 function breezeExtractTags(content) {
     if (!content) return [];
-    const tagRegex = /#([\w\/\u4e00-\u9fa5-]+)(?=\s|\n|$|[，。！？；：""''（）【】])/g;
+    const tagRegex = /#([\w\/一-龥-]+)(?=\s|\n|$|[，。！？；：""''（）【】])/g;
     const tags = [];
     let m;
     while ((m = tagRegex.exec(content)) !== null) {
@@ -1945,7 +1945,7 @@ function renderBreezeTable(tab) {
         const time = note.time || '';
         const updated = note.updated || time;
         const tags = breezeExtractTags(note.content || '');
-        const tagStripRe = /#([\w\/\u4e00-\u9fa5-]+)(?=\s|\n|$|[，。！？；：""''（）【】])/g;
+        const tagStripRe = /#([\w\/一-龥-]+)(?=\s|\n|$|[，。！？；：""''（）【】])/g;
         const content = (note.content || '').replace(/<[^>]*>/g, '').replace(tagStripRe, '').replace(/\s+/g, ' ').trim();
         const displayContent = content.length > 60 ? content.slice(0, 60) + '…' : content;
         const checked = tab._tableChecked.has(note.id);
@@ -2264,37 +2264,97 @@ function breezeRenderContent(rawOrParts, q, storage) {
     out += breezeBuildMemoRefsHtml(parts.text || '', storage);
     return out;
 }
-/* 多级列表递归渲染
-   items: [{indent:缩进空格数, text:内容, startN:起始序号(仅ol)}]
-   baseIndent: 当前层级基准缩进量
-   renderInline: 内容渲染函数
-   tag: 'ol' | 'ul' */
-function breezeBuildListTree(items, baseIndent, renderInline, tag) {
+/* 多级混合列表递归渲染（支持 task / ol / ul / quote 任意嵌套）
+   items:     [{kind:'task'|'ol'|'ul'|'quote', indent, text, [startN], [checked]}]  按行顺序排列
+   startIdx:  当前层级从 items 哪个下标开始消费
+   levelIndent: 当前层基准缩进（同 indent 视为同级；> levelIndent 视为子层）
+   renderInline: 行内渲染函数
+   返回 {html, nextIdx} — nextIdx 是本层实际消费到的下标（供父层继续 i=j 推进） */
+function breezeBuildListTree(items, startIdx, levelIndent, renderInline) {
     let html = '';
-    let i = 0;
-    while (i < items.length) {
-        const it = items[i];
-        const textHtml = renderInline(it.text || '');
-        /* 检查后续行是否属于当前项的子列表（缩进大于当前项） */
-        let subItems = [];
-        let j = i + 1;
-        while (j < items.length && items[j].indent > it.indent) { subItems.push(items[j]); j++; }
-        if (subItems.length > 0) {
-            const subIndent = subItems[0].indent;
-            const firstSub = subItems[0];
-            const subTag = firstSub.startN !== undefined ? 'ol' : (firstSub.text ? 'ul' : 'ul');
-            html += '<li>' + textHtml + breezeBuildListTree(subItems, subIndent, renderInline, subTag) + '</li>';
-            i = j;
-        } else {
-            html += '<li>' + textHtml + '</li>';
-            i++;
+    let i = startIdx;
+    let openKind = null; // 当前打开的 wrapper 类型：'task' | 'ol' | 'ul' | null
+
+    const closeList = () => {
+        if (openKind === 'task' || openKind === 'ul') html += '</ul>';
+        else if (openKind === 'ol') html += '</ol>';
+        openKind = null;
+    };
+    /* 根据 item 类型开启对应的列表 wrapper */
+    const openListFor = (item) => {
+        if (item.kind === 'task') {
+            html += '<ul class="north-breeze-task-list">';
+            openKind = 'task';
+        } else if (item.kind === 'ol') {
+            const startAttr = item.startN && item.startN !== 1 ? ' start="' + item.startN + '"' : '';
+            html += '<ol class="north-breeze-ordered-list"' + startAttr + '>';
+            openKind = 'ol';
+        } else if (item.kind === 'ul') {
+            html += '<ul class="north-breeze-bullet-list">';
+            openKind = 'ul';
         }
+    };
+    /* item 应当放进的 wrapper 类型（task 走 task-list、ol 走 ol、其余 ul/quote 不放列表内） */
+    const wrapperKindOf = (item) => {
+        if (item.kind === 'task') return 'task';
+        if (item.kind === 'ol') return 'ol';
+        if (item.kind === 'ul') return 'ul';
+        return null;
+    };
+
+    while (i < items.length && items[i].indent >= levelIndent) {
+        const item = items[i];
+        /* 防御性跳过：若调用方传错 levelIndent 导致出现 indent > levelIndent 的孤儿项，直接跳过 */
+        if (item.indent > levelIndent) { i++; continue; }
+
+        /* 引用块独立处理：闭合前面可能开的列表，连续同层 quote 合并为一个 blockquote */
+        if (item.kind === 'quote') {
+            closeList();
+            html += '<blockquote class="north-breeze-quote">';
+            while (i < items.length && items[i].indent === levelIndent && items[i].kind === 'quote') {
+                const q = items[i];
+                let j = i + 1;
+                while (j < items.length && items[j].indent > q.indent) j++;
+                const subItems = items.slice(i + 1, j);
+                if (subItems.length) {
+                    const subRes = breezeBuildListTree(subItems, 0, subItems[0].indent, renderInline);
+                    html += subRes.html;
+                } else {
+                    html += '<div>' + renderInline(q.text) + '</div>';
+                }
+                i = j;
+            }
+            html += '</blockquote>';
+            continue;
+        }
+
+        /* 列表项：先保证 wrapper 是同类型（连续同级同 type 自动合并），再渲染本项 + 递归子项 */
+        const want = wrapperKindOf(item);
+        if (openKind !== want) {
+            closeList();
+            openListFor(item);
+        }
+
+        /* 收集紧跟的子项（indent 严格大于当前），直到遇到同级或更浅层 */
+        let j = i + 1;
+        while (j < items.length && items[j].indent > item.indent) j++;
+        const subItems = items.slice(i + 1, j);
+        let childHtml = '';
+        if (subItems.length) {
+            const subRes = breezeBuildListTree(subItems, 0, subItems[0].indent, renderInline);
+            childHtml = subRes.html;
+        }
+        const textHtml = renderInline(item.text || '');
+        if (item.kind === 'task') {
+            const checkedAttr = item.checked ? ' checked' : '';
+            html += '<li class="north-breeze-task-item"><input type="checkbox" class="north-breeze-task-checkbox"' + checkedAttr + '><span>' + textHtml + '</span>' + childHtml + '</li>';
+        } else {
+            html += '<li>' + textHtml + childHtml + '</li>';
+        }
+        i = j;
     }
-    if (tag === 'ol') {
-        const firstStart = items[0] && items[0].startN;
-        return '<ol class="north-breeze-ordered-list"' + (firstStart && firstStart !== 1 ? ' start="' + firstStart + '"' : '') + '>' + html + '</ol>';
-    }
-    return '<ul class="north-breeze-bullet-list">' + html + '</ul>';
+    closeList();
+    return { html, nextIdx: i };
 }
 
 /* 文字段内 #标签 + 列表/任务 识��：对齐轻语 renderList 思路。
@@ -2312,74 +2372,52 @@ function breezeRenderTextWithTags(raw, q) {
     const RE_OL   = /^(\s*)(\d+)\.\s+(.*)$/;
     const RE_UL   = /^(\s*)([-*+])\s+(.*)$/;
     const RE_QUOTE = /^(\s*)>\s+(.*)$/;
-    const isListLine = (l) => RE_TASK.test(l) || RE_OL.test(l) || RE_UL.test(l) || RE_QUOTE.test(l);
-    /* 收集连续同类型为一段（含空行断开） */
+
+    /* 把一行解析为结构化列表项；非列表行返回 null */
+    const parseListLine = (line) => {
+        let m;
+        if ((m = line.match(RE_TASK)))   return { kind: 'task',  indent: m[1].length, text: m[4], checked: (m[3] === 'x' || m[3] === 'X') };
+        if ((m = line.match(RE_OL)))     return { kind: 'ol',    indent: m[1].length, startN: parseInt(m[2], 10), text: m[3] };
+        if ((m = line.match(RE_UL)))     return { kind: 'ul',    indent: m[1].length, text: m[3] };
+        if ((m = line.match(RE_QUOTE)))  return { kind: 'quote', indent: m[1].length, text: m[2] };
+        return null;
+    };
+    const isListLine = (l) => parseListLine(l) !== null;
+    const isBlank = (l) => l.trim() === '';
+
+    /* 收集段：空行断开。列表段内允许 task/ol/ul/quote 任意相邻混排，由后续 indent 树构建处理嵌套。 */
     const segments = [];
     let i = 0;
     while (i < lines.length) {
         const line = lines[i];
-        let m = line.match(RE_QUOTE);
-        if (m) {
+        if (isBlank(line)) { i++; continue; }
+        if (isListLine(line)) {
             const start = i;
-            while (i < lines.length && RE_QUOTE.test(lines[i])) i++;
-            segments.push({ type: 'quote', lines: lines.slice(start, i) });
-            continue;
-        }
-        m = line.match(RE_TASK);
-        if (m) {
-            const start = i;
-            while (i < lines.length && RE_TASK.test(lines[i])) i++;
-            segments.push({ type: 'task', lines: lines.slice(start, i) });
-            continue;
-        }
-        m = line.match(RE_OL);
-        if (m) {
-            const start = i;
-            const firstIndent = m[1].length;
-            while (i < lines.length && RE_OL.test(lines[i])) i++;
-            const items = lines.slice(start, i).map(l => { const mm = l.match(RE_OL); return { indent: mm[1].length, startN: parseInt(mm[2],10), text: mm[3] }; });
-            segments.push({ type: 'ol', items, firstIndent });
-            continue;
-        }
-        m = line.match(RE_UL);
-        if (m) {
-            const start = i;
-            const firstIndent = m[1].length;
-            while (i < lines.length && RE_UL.test(lines[i])) i++;
-            const items = lines.slice(start, i).map(l => { const mm = l.match(RE_UL); return { indent: mm[1].length, text: mm[3] }; });
-            segments.push({ type: 'ul', items, firstIndent });
+            while (i < lines.length && !isBlank(lines[i]) && isListLine(lines[i])) i++;
+            const items = [];
+            for (let k = start; k < i; k++) {
+                const p = parseListLine(lines[k]);
+                if (p) items.push(p);
+            }
+            if (items.length) segments.push({ type: 'list', items });
             continue;
         }
         const start = i;
-        while (i < lines.length && !isListLine(lines[i])) i++;
+        while (i < lines.length && !isBlank(lines[i]) && !isListLine(lines[i])) i++;
         segments.push({ type: 'text', lines: lines.slice(start, i) });
     }
-    /* 单行内 行内格式 + #标签 高亮：先 escape（含搜索词高亮），再行内 markdown，再 #标签。
-       #标签加后行断言 (?<![:="'\w])：排除紧跟在 :=" 或字母数字之后的 #（如 style="color:#0066cc" 里的 #hex），避免误匹配成标签 */
-    const renderInline = (s) => breezeInlineFormat(breezeHighlightText(s, q)).replace(/(?<![:="'\w])#([\w\/\u4e00-\u9fa5-]+)(?![\w\/\u4e00-\u9fa5-])(?!#)/g, (m) => `<span class="north-breeze-tag">${m}</span>`);
+
+    /* 行内格式 + #标签 高亮：先 escape（含搜索词高亮），再行内 markdown，再 #标签。
+       #标签加后行断言 (?<![:="\'\w])：排除紧跟在 :=" 或字母数字之后的 #（如 style="color:#0066cc" 里的 #hex），避免误匹配成标签 */
+    const renderInline = (s) => breezeInlineFormat(breezeHighlightText(s, q)).replace(/(?<![:="\'\w])#([\w\/一-龥-]+)(?![\w\/一-龥-])(?!#)/g, (m) => `<span class="north-breeze-tag">${m}</span>`);
     let html = '';
     segments.forEach((seg) => {
         if (seg.type === 'text') {
             html += seg.lines.map(renderInline).join('<br>');
-        } else if (seg.type === 'quote') {
-            html += '<blockquote class="north-breeze-quote">';
-            seg.lines.forEach((line) => {
-                const mm = line.match(RE_QUOTE);
-                html += '<div>' + renderInline(mm[2]) + '</div>';
-            });
-            html += '</blockquote>';
-        } else if (seg.type === 'task') {
-            html += '<ul class="north-breeze-task-list">';
-            seg.lines.forEach((line) => {
-                const mm = line.match(RE_TASK);
-                const checked = (mm[3] === 'x' || mm[3] === 'X');
-                html += '<li class="north-breeze-task-item"><input type="checkbox" class="north-breeze-task-checkbox"' + (checked ? ' checked' : '') + '><span>' + renderInline(mm[4]) + '</span></li>';
-            });
-            html += '</ul>';
-        } else if (seg.type === 'ol') {
-            html += breezeBuildListTree(seg.items, seg.firstIndent, renderInline, 'ol');
-        } else if (seg.type === 'ul') {
-            html += breezeBuildListTree(seg.items, seg.firstIndent, renderInline, 'ul');
+        } else if (seg.type === 'list') {
+            const minIndent = Math.min.apply(null, seg.items.map(it => it.indent));
+            const res = breezeBuildListTree(seg.items, 0, minIndent, renderInline);
+            html += res.html;
         }
     });
     return html;
@@ -3504,7 +3542,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                     // 更新笔记内容：替换 #旧名（含子路径）
                     const escapedOld = oldFullTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const regex = new RegExp(`#${escapedOld}(?=[\\s\\n\\/\\u4e00-\\u9fa5\u3000-\u303f\uff00-\uffef，。！？；：""''（）【】]|$)`, 'g');
+                    const regex = new RegExp(`#${escapedOld}(?=[\\s\\n\\/\一-\龥　-〿＀-￯，。！？；：""''（）【】]|$)`, 'g');
                     notes.forEach(n => {
                         n.content = n.content.replace(regex, '#' + newFullTag);
                     });
@@ -3519,7 +3557,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                 /* 删除标签：清理 tagMeta + 从所有笔记中移除该标签
                    支持多级标签：删除父标签时同时清理所有子路径文本（#父 以及 #父/子/孙 整段一并移除）。
-                   正则用 (\/[\w\u4e00-\u9fa5-]+)* 贪婪匹配所有子路径——
+                   正则用 (\/[\w一-龥-]+)* 贪婪匹配所有子路径——
                    不能用前瞻判断 / ：前瞻是零宽断言不消耗字符，会导致 #父 匹配后 /子/孙 残留。 */
                 this._deleteBreezeTag = (fullTag) => {
                     const data = this.plugin.data[RECORDS_STORAGE] || {};
@@ -3535,9 +3573,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
 
                     // 2) 从笔记中移除 #fullTag 自身及所有 #fullTag/子/孙... 整段文本
-                    //    (\/[\w\u4e00-\u9fa5-]+)* 贪婪吃掉所有 /子路径，避免残留 /孙
+                    //    (\/[\w一-龥-]+)* 贪婪吃掉所有 /子路径，避免残留 /孙
                     const escapedTag = fullTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const regex = new RegExp(`\\s*#${escapedTag}(\\/[\\w\\u4e00-\\u9fa5-]+)*(?=[\\s\\n\\u4e00-\\u9fa5\u3000-\u303f\uff00-\uffef，。！？；：""''（）【】]|$)`, 'g');
+                    const regex = new RegExp(`\\s*#${escapedTag}(\\/[\\w\一-\龥-]+)*(?=[\\s\\n\一-\龥　-〿＀-￯，。！？；：""''（）【】]|$)`, 'g');
                     notes.forEach(n => {
                         n.content = n.content.replace(regex, '').trim();
                     });
@@ -8722,7 +8760,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             if (format === 'md') {
                                 /* 无图片时直接下载 MD，无需加载 JSZip */
                                 if (imgFiles.length === 0) {
-                                    const blob = new Blob(['\ufeff' + md], { type: 'text/markdown;charset=utf-8' });
+                                    const blob = new Blob(['﻿' + md], { type: 'text/markdown;charset=utf-8' });
                                     const url = URL.createObjectURL(blob);
                                     const a = document.createElement('a');
                                     a.href = url; a.download = `${fnBase}-${date}.md`; a.click();
@@ -8756,7 +8794,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     try {
                                         const JSZip = await loadJSZip();
                                         const zip = new JSZip();
-                                        zip.file(`${fnBase}-${date}.md`, '\ufeff' + md);
+                                        zip.file(`${fnBase}-${date}.md`, '﻿' + md);
                                         const assetsFolder = zip.folder('assets');
                                         imgFiles.forEach(f => {
                                             const base64Data = f.b64.split(',')[1] || f.b64;
@@ -8771,7 +8809,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     } catch (e) {
                                         /* JSZip 加载失败/超时降级为纯 MD 文本（图片引用保留但不含图片文件） */
                                         console.warn('[轻语] JSZip 加载失败，降级为纯 MD:', e && e.message);
-                                        const blob = new Blob(['\ufeff' + md], { type: 'text/markdown;charset=utf-8' });
+                                        const blob = new Blob(['﻿' + md], { type: 'text/markdown;charset=utf-8' });
                                         const url = URL.createObjectURL(blob);
                                         const a = document.createElement('a');
                                         a.href = url; a.download = `${fnBase}-${date}.md`; a.click();
@@ -8788,7 +8826,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     + '.tags{color:#e67e22;font-size:14px;margin:4px 0;}'
                                     + '.meta{color:#999;font-size:13px;margin:4px 0;}'
                                     + 'img{border-radius:4px;}</style></head><body><h1>' + title + '</h1>' + htmlContent + '</body></html>';
-                                const blob = new Blob(['\ufeff' + html], { type: 'application/msword;charset=utf-8' });
+                                const blob = new Blob(['﻿' + html], { type: 'application/msword;charset=utf-8' });
                                 const url = URL.createObjectURL(blob);
                                 const a = document.createElement('a');
                                 a.href = url; a.download = `${fnBase}-${date}.doc`; a.click();
@@ -9650,7 +9688,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         content = content.replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n').replace(/^\s+|\s+$/g, '').replace(/(\S)[ \t]{2,}/g, '$1 ');
                         /* 标签去重：从正文中已存在的 #标签 不重复追加（参考轻语 _saveFlomoMemosToShuoshuo） */
                         const existingTags = new Set();
-                        const tagRe = /#([\w\/\u4e00-\u9fa5-]+)(?![\w\/\u4e00-\u9fa5-])(?!#)/g;
+                        const tagRe = /#([\w\/一-龥-]+)(?![\w\/一-龥-])(?!#)/g;
                         let tm;
                         while ((tm = tagRe.exec(content)) !== null) { if (!/^\d+$/.test(tm[1])) existingTags.add(tm[1]); }
                         const uniqueTags = (m.tags || []).filter(t => !existingTags.has(t));

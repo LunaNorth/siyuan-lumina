@@ -8458,10 +8458,28 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 }
 .north-breeze-task-item {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     gap: 6px;
     margin: 4px 0;
     line-height: 1.6;
+}
+/* 任务项内嵌的子列表：自动换到下一行 + 缩进到 checkbox 之后 */
+.north-breeze-task-item > .north-breeze-ordered-list,
+.north-breeze-task-item > .north-breeze-bullet-list,
+.north-breeze-task-item > .north-breeze-task-list,
+.north-breeze-task-item > .north-breeze-quote {
+    flex-basis: 100%;
+    min-width: 100%;
+    margin-left: 0;
+    margin-top: 2px;
+    padding-left: 18px;
+}
+/* ol/ul/quote 内嵌的 task 列表也保留基本缩进 */
+.north-breeze-ordered-list li > .north-breeze-task-list,
+.north-breeze-bullet-list li > .north-breeze-task-list,
+.north-breeze-quote > .north-breeze-task-list {
+    margin: 2px 0;
 }
 .north-breeze-task-item input[type="checkbox"] {
     margin: 0;
