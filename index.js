@@ -6391,10 +6391,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         { title: '朋友圈外观', items: [
                             { type: 'toggle', key: 'momentsHoverBorder', title: '悬停边框变色', desc: '鼠标移至动态卡片时边框变为主题色', default: false },
                             { type: 'slider', key: 'momentsFontSize', title: '自定义字体大小', desc: '字号默认为 16，影响朋友圈动态内容显示', default: 16, min: 10, max: 24, step: 1 },
+                            { type: 'slider', key: 'momentsMobileFontSize', title: '移动端字体大小', desc: '仅移动端生效，不影响 PC 端。字号默认为 15，不同手机屏幕观感不一，可在此单独调节。', default: 15, min: 12, max: 22, step: 1 },
                             { type: 'select', key: 'momentsCalendarStyle', title: '朋友圈日历样式', desc: '选择朋友圈日历的展示形式', default: 'photo', options: [
                                 { value: 'heatmap', label: '热力图' },
                                 { value: 'photo', label: '记忆拼图' }
-                            ] }
+                            ] },
+                            { type: 'toggle', key: 'momentsWeatherBg', title: '天气背景色', desc: '开启后，根据动态的天气显示不同的卡片背景色（晴 / 多云 / 阴 / 雨 / 雪等），便于一眼区分。默认关闭。', default: false }
                         ]},
                         { title: '控制设置', items: [
                             { type: 'toggle', key: 'autoSyncMoments', title: '自动同步思源笔记文档', desc: '开启后，发布朋友圈动态时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
@@ -8148,9 +8150,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             showTip();
                             moveTip();
                             this._setSetting(inp.dataset.key, Number(inp.value));
-                            // 实时应用到朋友圈容器
-                            const momentsContainer = this.container && this.container.querySelector(".north-luna-moments-container");
-                            if (momentsContainer) momentsContainer.style.setProperty("--moments-font-size", inp.value + "px");
+                            // 实时应用到朋友圈容器（仅 PC 端字号 slider；移动端字号在 renderMoments 时读取，避免污染 PC 端显示）
+                            if (inp.dataset.key === 'momentsFontSize') {
+                                const momentsContainer = this.container && this.container.querySelector(".north-luna-moments-container");
+                                if (momentsContainer) momentsContainer.style.setProperty("--moments-font-size", inp.value + "px");
+                            }
                             // 实时应用到清风：写到 tab 容器，输入框与笔记列表均继承
                             if (inp.dataset.key === 'breezeFontSize') {
                                 const fsVal = inp.value + "px";
@@ -17940,7 +17944,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const cover = cfg.cover || null;
         const coverPosition = cfg.coverPosition || 50;
 
-        const initialFontSize = settingsAll.momentsFontSize || 16;
+        /* 移动端与 PC 端字号独立：移动端用 momentsMobileFontSize（默认 15），PC 用 momentsFontSize（默认 16） */
+        const initialFontSize = this.isMobile
+            ? (settingsAll.momentsMobileFontSize || 15)
+            : (settingsAll.momentsFontSize || 16);
 
         body.innerHTML = `
             <div class="north-luna-moments-container" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder !== false ? '' : '--mom-mobile-item-border: none;'}">
@@ -18254,10 +18261,25 @@ module.exports = class NorthLunaPlugin extends Plugin {
         }
     }
 
+    /* 天气 → 背景色标签：从天气字符串里识别已知天气（晴/多云/雨/雪等），
+       返回中文标签供 data-weather 使用；识别不到（如自定义天气）返回空字符串。
+       label 已按长度降序排列，保证 "小雪" 先于 "雪" 命中。 */
+    _weatherBgKey(weather) {
+        if (!weather) return '';
+        const w = String(weather);
+        const LABELS = ['晴天','少云','多云','小雨','中雨','大雨','阵雨','小雪','潮湿','干燥','大风','彩虹','冰雹','台风','阴','雪','雾','霾','热','冷','暖','凉'];
+        for (const label of LABELS) {
+            if (w.includes(label)) return label;
+        }
+        return '';
+    }
+
     renderMomentItem(m, nickname) {
         /* 昵称实时读取：懒加载后续分片时也能拿到最新值，不用外层闭包里的旧快照 */
         nickname = this._getProfileNickname();
         const dateStr = this.formatMomentDate(m.created);
+        /* 天气背景色：开启设置且天气可识别时，给卡片打 data-weather 标签 */
+        const weatherKey = this._getPluginSetting('momentsWeatherBg') ? this._weatherBgKey(m.weather) : '';
         // 头像：用户设置优先，否则用默认头像
         const userAvatar = ((this.data[SETTINGS_STORAGE] || {}).settings || {}).avatar;
         let avatarSrc = this._resolveImageUrl(userAvatar ? userAvatar : DEFAULT_AVATAR);
@@ -18288,7 +18310,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const metaHtml = `<span class="north-luna-moments-meta-tags">${metaParts.join('')}</span>`;
 
         return `
-            <div class="north-luna-moments-item" data-mid="${m.id}">
+            <div class="north-luna-moments-item" data-mid="${m.id}"${weatherKey ? ` data-weather="${weatherKey}"` : ''}>
                 ${(m.pinned && this._momentsViewMode === 'pinned') ? `<div class="north-luna-moments-pin-badge" title="已置顶">
                     <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconPin"></use></svg>
                 </div>` : ''}
@@ -20081,7 +20103,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 text, images: finalImages, link: publishLink,
                 weather: publishWeather, mood: publishMood, category: publishCategory, location: publishLocation,
                 created: publishDate ? new Date(publishDate).getTime() : Date.now(),
-                createdAt: Date.now(), // 真实发表时刻，单独用于排序（后发表的永远在最前）
+                createdAt: publishDate ? new Date(publishDate).getTime() : Date.now(), // 用户选了日期就按所选日期排序；否则按真实发表时刻
                 liked: false,
                 comments: [],
                 pinned: false,

@@ -1094,6 +1094,31 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     border-color: color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
 }
 
+/* 天气背景色：开启「天气背景色」后，不同天气的动态卡片显示不同底色与边框色。
+   用 color-mix 把天气色与主题表面色/边框色混合，深浅主题下均自适应、不刺眼。 */
+.north-luna-moments-item[data-weather="晴天"] { background-color: color-mix(in srgb, #f5c542 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #f5c542 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="少云"] { background-color: color-mix(in srgb, #a8d4f0 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #a8d4f0 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="多云"] { background-color: color-mix(in srgb, #c3cfe0 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #c3cfe0 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="阴"]   { background-color: color-mix(in srgb, #9aa6b8 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #9aa6b8 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="小雨"] { background-color: color-mix(in srgb, #7fc6e8 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #7fc6e8 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="中雨"] { background-color: color-mix(in srgb, #4f9fd6 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #4f9fd6 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="大雨"] { background-color: color-mix(in srgb, #3574c4 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #3574c4 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="阵雨"] { background-color: color-mix(in srgb, #6cc0d8 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #6cc0d8 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="雪"]   { background-color: color-mix(in srgb, #dfe9f6 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #dfe9f6 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="小雪"] { background-color: color-mix(in srgb, #e4edf8 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #e4edf8 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="大风"] { background-color: color-mix(in srgb, #a7c0d4 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #a7c0d4 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="雾"]   { background-color: color-mix(in srgb, #c0c8cc 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #c0c8cc 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="霾"]   { background-color: color-mix(in srgb, #b9a88c 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #b9a88c 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="彩虹"] { background-color: color-mix(in srgb, #e2a4d2 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #e2a4d2 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="热"]   { background-color: color-mix(in srgb, #f0935a 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #f0935a 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="冷"]   { background-color: color-mix(in srgb, #9cc2f0 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #9cc2f0 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="暖"]   { background-color: color-mix(in srgb, #f0c48a 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #f0c48a 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="凉"]   { background-color: color-mix(in srgb, #a6d2c0 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #a6d2c0 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="潮湿"] { background-color: color-mix(in srgb, #8cc6d6 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #8cc6d6 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="干燥"] { background-color: color-mix(in srgb, #e6ce9c 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #e6ce9c 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="台风"] { background-color: color-mix(in srgb, #7e9cb8 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #7e9cb8 45%, var(--moments-card-border)); }
+.north-luna-moments-item[data-weather="冰雹"] { background-color: color-mix(in srgb, #b7d3e6 28%, var(--b3-theme-surface)); border-color: color-mix(in srgb, #b7d3e6 45%, var(--moments-card-border)); }
+
 .north-luna-moments-item-avatar {
     width: 48px;
     height: 48px;
