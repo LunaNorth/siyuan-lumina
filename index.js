@@ -2884,6 +2884,12 @@ const SIDEBAR_VIEWS = [
                                 </span>
                                 <span>有链接</span>
                             </div>
+                            <div class="north-breeze-quick-filter-item" data-breeze-quick="has-task">
+                                <span class="north-breeze-quick-filter-icon">
+                                    <svg viewBox="0 0 24 24"><use xlink:href="#iconCheck"></use></svg>
+                                </span>
+                                <span>有任务</span>
+                            </div>
                         </div>`;
                         })()}
                         <div class="north-breeze-menu-item" data-breeze-subview="review">
@@ -3710,7 +3716,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                     /* 搜索 */
                     const si = list.querySelector('#table-search-input');
-                    if (si && !si._b) { si._b = true; let t; si.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { this.tableSearchText = si.value; rerender(); }, 300); }); si.addEventListener('keydown', (e) => { if (e.key === 'Enter') { this.tableSearchText = si.value; rerender(); } }); }
+                    if (si && !si._b) { si._b = true; let t; let composing = false; const doSearch = () => { this.tableSearchText = si.value; rerender(); }; si.addEventListener('compositionstart', () => { composing = true; clearTimeout(t); }); si.addEventListener('compositionend', () => { composing = false; doSearch(); }); si.addEventListener('input', () => { if (composing) return; clearTimeout(t); t = setTimeout(doSearch, 300); }); si.addEventListener('keydown', (e) => { if (e.key === 'Enter') { this.tableSearchText = si.value; rerender(); } }); }
                     const sc = list.querySelector('#table-search-clear');
                     if (sc && !sc._b) { sc._b = true; sc.addEventListener('click', () => { this.tableSearchText = ''; rerender(); }); }
 
@@ -4335,7 +4341,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this.breezePage = 1;
                         this._renderBreezeSubView();
                     };
-                    input.addEventListener('input', apply);
+                    /* IME 中文输入：拼音合成期间不触发过滤重渲染，避免输入法被打断 */
+                    let isComposing = false;
+                    input.addEventListener('compositionstart', () => { isComposing = true; });
+                    input.addEventListener('compositionend', () => { isComposing = false; apply(); });
+                    input.addEventListener('input', () => { if (!isComposing) apply(); });
                     if (clearBtn) {
                         clearBtn.addEventListener('click', () => {
                             input.value = '';
@@ -5283,7 +5293,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this.breezeTagFilter = null; // 当前选中的标签全路径（null = 全部）
                 this.breezeSearchFilter = ''; // 当前搜索关键词（'' = 不过滤）
                 this.breezePage = 1; // 分页当前页码（分页关闭时无意义）
-                this.breezeQuickFilter = null; // 快速筛选：'no-tag' | 'has-image' | 'no-image' | 'has-link' | null
+                this.breezeQuickFilter = null; // 快速筛选：'no-tag' | 'has-image' | 'no-image' | 'has-link' | 'has-task' | null
                 this.breezeQuickFilterExpanded = false; // 子菜单是否展开
                 this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncNotebookId: '', syncDocId: '', flomoSyncedSlugs: [] };
                 // 从存储中读回 Flomo 配置
@@ -5570,7 +5580,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (this.breezeSearchFilter) {
                         notes = notes.filter(n => breezeMatchSearch(n, this.breezeSearchFilter));
                     }
-                    /* 快速筛选（仅在「全部笔记」子视图生效）：无标签 / 有图片 / 无图片 / 有链接 */
+                    /* 快速筛选（仅在「全部笔记」子视图生效）：无标签 / 有图片 / 无图片 / 有链接 / 有任务 */
                     if (this.breezeQuickFilter && this.breezeSubView === 'all') {
                         const kind = this.breezeQuickFilter;
                         if (kind === 'no-tag') {
@@ -5582,6 +5592,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         } else if (kind === 'has-link') {
                             const linkRe = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(?:^|\s)(https?:\/\/[^\s)]+)/;
                             notes = notes.filter(n => linkRe.test(n.content || ''));
+                        } else if (kind === 'has-task') {
+                            const taskRe = /^\s*[-*+]\s+\[[ xX]\]/m;
+                            notes = notes.filter(n => taskRe.test(n.content || ''));
                         }
                     }
                     if (this.breezeSubView === 'review') {
@@ -6307,7 +6320,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'slider', key: 'breezeLetterSpacing', title: '字间距', desc: '字间距，默认 0。单位 px，数值越大字越分散', default: 0, min: 0, max: 3, step: 0.1 }
                         ]},
                         { title: '控制设置', items: [
-                            { type: 'toggle', key: 'breezeQuickFilterEnabled', title: '内置检索', desc: '开启后，「全部笔记」右侧出现箭头，点击展开快速筛选（无标签/有图片/无图片/有链接）。默认关闭。', default: false },
+                            { type: 'toggle', key: 'breezeQuickFilterEnabled', title: '内置检索', desc: '开启后，「全部笔记」右侧出现箭头，点击展开快速筛选（无标签/有图片/无图片/有链接/有任务）。默认关闭。', default: false },
                             { type: 'toggle', key: 'breezeScrollDamping', title: '滚动阻尼', desc: '开启后页面滚动更加丝滑，滚轮停止后内容还会惯性滑行一小段。', default: false },
                             { type: 'toggle', key: 'breezePaginationEnabled', title: '笔记分页', desc: '开启后，清风全部笔记视图将按设定条数分页，底部显示页码导航。默认关闭。', default: false },
                             { type: 'slider', key: 'breezePageSize', title: '每页笔记条数', desc: '分页开启时生效，决定每页显示的笔记数量。', default: 20, min: 10, max: 50, step: 2 },
@@ -6670,7 +6683,16 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             });
                         });
                     };
-                    modal.querySelector('.north-luna-builtin-icon-search-input').addEventListener('input', (e) => {
+                    const iconSearchInput = modal.querySelector('.north-luna-builtin-icon-search-input');
+                    let iconComposing = false;
+                    iconSearchInput.addEventListener('compositionstart', () => { iconComposing = true; });
+                    iconSearchInput.addEventListener('compositionend', (e) => {
+                        iconComposing = false;
+                        body.innerHTML = renderGrid(e.target.value);
+                        bindItems();
+                    });
+                    iconSearchInput.addEventListener('input', (e) => {
+                        if (iconComposing) return; // IME 拼音期间不重渲染，避免候选词被打断
                         body.innerHTML = renderGrid(e.target.value);
                         bindItems();
                     });
@@ -8033,11 +8055,31 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const searchInput = body.querySelector("#northLunaSettingsSearch");
                     if (searchInput) {
                         searchInput.value = this._settingsFilter || "";
-                        searchInput.addEventListener("input", () => {
-                            this._settingsFilter = searchInput.value;
+                        // IME 合成中标记：避免拼音输入阶段被 input 事件反复重渲染打断
+                        // 否则中文输入法会"只看到拼音字母、看不到候选词"
+                        let isComposing = false;
+                        let pendingValue = this._settingsFilter || "";
+                        const flushFilter = (val) => {
+                            this._settingsFilter = val;
                             // 记录焦点 + 光标位置，重新渲染后还原
-                            this._searchFocusState = { focused: true, caret: searchInput.selectionStart };
+                            this._searchFocusState = { focused: true, caret: (searchInput.selectionStart ?? val.length) };
                             this._renderSettingsView(body);
+                        };
+                        searchInput.addEventListener("compositionstart", () => {
+                            isComposing = true;
+                        });
+                        searchInput.addEventListener("compositionend", (e) => {
+                            isComposing = false;
+                            // 合成结束时取最终的可见文本（e.data 在某些浏览器下更准确）
+                            const finalVal = (typeof e.data === "string" && e.data) ? searchInput.value : searchInput.value;
+                            pendingValue = finalVal;
+                            flushFilter(finalVal);
+                        });
+                        searchInput.addEventListener("input", () => {
+                            // 无论是否在 IME 合成中，都同步最新值（防极端场景）
+                            pendingValue = searchInput.value;
+                            if (isComposing) return; // IME 期间不重渲染，等 compositionend 再处理
+                            flushFilter(searchInput.value);
                         });
                         // 渲染后若之前在搜索，恢复焦点 + 光标
                         if (this._searchFocusState && this._searchFocusState.focused) {
@@ -10230,10 +10272,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const input = body.querySelector('#lifelogSearchInput');
                     const clear = body.querySelector('#lifelogSearchClear');
                     if (!input || !clear) return;
-                    input.addEventListener('input', () => {
+                    /* IME 中文输入：拼音合成期间不触发过滤重渲染，避免输入法被打断 */
+                    let isComposing = false;
+                    const applySearch = () => {
                         clear.style.display = input.value.trim() ? '' : 'none';
                         this._renderLifeLogTimeline(body, input.value.trim());
-                    });
+                    };
+                    input.addEventListener('compositionstart', () => { isComposing = true; });
+                    input.addEventListener('compositionend', () => { isComposing = false; applySearch(); });
+                    input.addEventListener('input', () => { if (!isComposing) applySearch(); });
                     clear.addEventListener('click', () => {
                         input.value = '';
                         clear.style.display = 'none';
@@ -12083,7 +12130,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             mobileSearchInput2.placeholder = ctx.activeViewId === 'lifelog' ? '搜索记录...' : '搜索笔记...';
             mobileSearchInput2.value = (ctx.activeViewId === 'lifelog' ? this.lifelogMobileSearch : ctx.breezeMobileSearch) || '';
             /* 清空搜索栏后若重新输入，需再次显示搜索栏（用户可能用 + 按钮打开了输入区） */
-            mobileSearchInput2.addEventListener('input', () => {
+            const handleMobileSearch = () => {
                 if (ctx.activeViewId === 'lifelog') {
                     /* LifeLog：联动侧边栏搜索框，触发时间轴过滤 + 高亮 */
                     this.lifelogMobileSearch = mobileSearchInput2.value.trim();
@@ -12102,7 +12149,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
                     ctx.renderMain();
                 }
-            });
+            };
+            /* IME 中文输入：拼音合成期间不触发过滤重渲染，避免输入法被打断 */
+            let mobileComposing = false;
+            mobileSearchInput2.addEventListener('compositionstart', () => { mobileComposing = true; });
+            mobileSearchInput2.addEventListener('compositionend', () => { mobileComposing = false; handleMobileSearch(); });
+            mobileSearchInput2.addEventListener('input', () => { if (!mobileComposing) handleMobileSearch(); });
             /* 回车键直接关闭搜索栏 */
             mobileSearchInput2.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -13745,6 +13797,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         } else if (kind === 'has-link') {
                             const linkRe = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(?:^|\s)(https?:\/\/[^\s)]+)/;
                             notes = notes.filter(n => linkRe.test(n.content || ''));
+                        } else if (kind === 'has-task') {
+                            const taskRe = /^\s*[-*+]\s+\[[ xX]\]/m;
+                            notes = notes.filter(n => taskRe.test(n.content || ''));
                         }
                     }
                     /* 分页：开启且总条数超过每页条数时才切片 + 显示分页器（复刻 PC _renderBreezeSubView） */
@@ -14017,7 +14072,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             plugin._mobileToggleBreezeQuickFilter(ctx);
                             return;
                         }
-                        /* 2. 快速筛选项（无标签/有图片/无图片/有链接）→ 应用筛选，不切换子视图、不关闭抽屉 */
+                        /* 2. 快速筛选项（无标签/有图片/无图片/有链接/有任务）→ 应用筛选，不切换子视图、不关闭抽屉 */
                         const quickItem = ev.target.closest('.north-breeze-quick-filter-item');
                         if (quickItem) {
                             ev.stopPropagation();
@@ -15456,10 +15511,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const input = body.querySelector('#lifelogSearchInput');
             const clear = body.querySelector('#lifelogSearchClear');
             if (!input || !clear) return;
-            input.addEventListener('input', () => {
+            /* IME 中文输入：拼音合成期间不触发过滤重渲染，避免输入法被打断 */
+            let isComposing = false;
+            const applySearch = () => {
                 clear.style.display = input.value.trim() ? '' : 'none';
                 this._renderLifeLogTimeline(body, input.value.trim());
-            });
+            };
+            input.addEventListener('compositionstart', () => { isComposing = true; });
+            input.addEventListener('compositionend', () => { isComposing = false; applySearch(); });
+            input.addEventListener('input', () => { if (!isComposing) applySearch(); });
             clear.addEventListener('click', () => {
                 input.value = '';
                 clear.style.display = 'none';

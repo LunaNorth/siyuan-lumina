@@ -2,6 +2,7 @@
   <div style="font-family: Georgia, 'Times New Roman', 'Noto Serif SC', 'Songti SC', serif; font-size: 76px; color: var(--b3-theme-on-background); letter-spacing: 3px; line-height: 1; margin-bottom: 22px;">Lumina</div>
   <div style="color: var(--b3-theme-on-surface); font-size: 15px; letter-spacing: 0.3px; margin-bottom: 10px;">SIYuan: A new way to instantly capture every fleeting thought.</div>
   <div style="color: var(--b3-theme-on-surface-light); font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase;">如果你也喜欢记录-那么现在就可以开始了!</div>
+  <div style="margin-top: 10px; color: var(--b3-theme-on-surface-light); font-size: 13px; letter-spacing: 0.05em;">特别鸣谢 · 斯尔龙猫（封面图与图标）</div>
 </div>
 
 <div style="display: flex; gap: 10px; align-items: center; justify-content: center; margin: .5em 0; flex-wrap: wrap;">
@@ -72,10 +73,12 @@
 > 如未检测到旧数据，请在**设置 → 数据同步 → 数据导入中点下导入按钮**
 
 
-### v2.1.8
-- 【修复】朋友圈发表时选择过去的日期，发表后未按所选日期排序、而是排到最新位置的问题
-- 【新增】朋友圈「天气背景色」：不同天气（晴 / 少云 / 多云 / 阴 / 雨 / 雪等）显示不同的卡片背景色与边框色，便于一眼区分；在「朋友圈设置 → 朋友圈外观」中开关，默认关闭
-- 【新增】朋友圈「移动端字体大小」：在「朋友圈设置 → 朋友圈外观」中单独设置移动端字号（默认 15px），仅移动端生效、不影响 PC 端
+### v2.1.9
+- 【特别鸣谢】感谢斯尔龙猫用户提供的封面图以及图标
+- 【修复】设置视图搜索框无法输入中文
+- 【修复】修复其余搜索框的中文输入问题
+- 【新增】内置检索（快速筛选）新增「有任务」筛选
+
 
 
 
@@ -88,6 +91,11 @@
 <details>
 <summary>轻语往期更新日志</summary>
 
+
+### v2.1.8
+- 【修复】朋友圈发表时选择过去的日期，发表后未按所选日期排序、而是排到最新位置的问题
+- 【新增】朋友圈「天气背景色」：不同天气（晴 / 少云 / 多云 / 阴 / 雨 / 雪等）显示不同的卡片背景色与边框色，便于一眼区分；在「朋友圈设置 → 朋友圈外观」中开关，默认关闭
+- 【新增】朋友圈「移动端字体大小」：在「朋友圈设置 → 朋友圈外观」中单独设置移动端字号（默认 15px），仅移动端生效、不影响 PC 端
 
 ### v2.1.7
 - 【修复】清风视图嵌套列表混排渲染问题
