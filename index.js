@@ -7344,6 +7344,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 };
 
                 this._settingsFilter = this._settingsFilter || "";
+                /* 标记：上一次重渲染是否由「用户点击分类按钮」触发，用于让重渲染时不要把活动分类强制拉回 firstMatch */
+                this._userPickedCategory = false;
+                /* 标记：搜索期间是否手动切换过分分类，用于清空搜索时决定是否恢复到原分类 */
+                this._userPickedDuringSearch = false;
                 /* 文件树弹窗：从工作区选取一个文档，回调 (docId, docName, docIcon) */
                 this._openDocPicker = (onPick) => {
                     const tk = window.siyuan?.config?.api?.token || '';
@@ -7825,20 +7829,33 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         if (c.groups) c.groups.forEach(g => { if (g.items) allItems.push(...g.items); });
                         return allItems.some(it => (it.title || "").toLowerCase().includes(filter) || (it.desc || "").toLowerCase().includes(filter));
                     };
-                    /* 搜索时自动切换到第一个匹配分类；清空搜索时恢复之前选中的分类 */
+                    /* 搜索时自动切换到第一个匹配分类；清空搜索时恢复之前选中的分类
+                       注意：若上一次重渲染是用户手动点击分类按钮触发的（即 _userPickedCategory），
+                       本次渲染要尊重用户选择，不要把活动分类再强行拉回 firstMatch，
+                       否则用户在搜索框里输入文字期间，点击任何分类按钮都会被立刻覆盖，体验上像「点不动」 */
                     if (filter) {
                         if (!this._preSearchActiveCategory && cats.includes(this.activeSettingsCategory)) {
                             this._preSearchActiveCategory = this.activeSettingsCategory;
                         }
-                        const firstMatch = cats.find(matchCat);
-                        if (firstMatch && firstMatch !== this.activeSettingsCategory) {
-                            this.activeSettingsCategory = firstMatch;
+                        if (this._userPickedCategory) {
+                            /* 用户刚主动点击过分类按钮：保留其选择，跳过自动跳转逻辑 */
+                            this._userPickedCategory = false;
+                        } else {
+                            const firstMatch = cats.find(matchCat);
+                            if (firstMatch && firstMatch !== this.activeSettingsCategory) {
+                                this.activeSettingsCategory = firstMatch;
+                            }
                         }
                     } else {
-                        if (this._preSearchActiveCategory && cats.includes(this._preSearchActiveCategory)) {
+                        /* 清空搜索：若用户在搜索期间手动切换过分分类，保留其最终选择；
+                           若期间没手动切过，再恢复到进入搜索前的分类。
+                           （用 _userPickedDuringSearch 判定，与 _userPickedCategory 解耦，
+                           因为 _userPickedCategory 在上面的 if 分支就被消费清空了。） */
+                        if (!this._userPickedDuringSearch && this._preSearchActiveCategory && cats.includes(this._preSearchActiveCategory)) {
                             this.activeSettingsCategory = this._preSearchActiveCategory;
                         }
                         this._preSearchActiveCategory = null;
+                        this._userPickedDuringSearch = false;
                     }
                     const catSidebar = cats.filter(matchCat).map(cId => {
                         const c = this._settingsSchema[cId];
@@ -8089,7 +8106,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         }
                     }
                     body.querySelectorAll(".north-luna-settings-cat-item").forEach(btn => {
-                        btn.addEventListener("click", () => { this.activeSettingsCategory = btn.dataset.cat; this._renderSettingsView(body); });
+                        btn.addEventListener("click", () => {
+                            /* 标记这次切换是用户主动点击触发的，让重渲染时不要被「自动跳到第一个匹配分类」覆盖。
+                               _userPickedCategory：本次渲染的「一次性」标志，重渲染时被消费。
+                               _userPickedDuringSearch：搜索期间是否手动切换过，清空搜索时用于判断是否恢复原分类。 */
+                            this.activeSettingsCategory = btn.dataset.cat;
+                            this._userPickedCategory = true;
+                            this._userPickedDuringSearch = true;
+                            this._renderSettingsView(body);
+                        });
                     });
                     body.querySelectorAll("input[data-type=toggle]").forEach(inp => {
                         inp.addEventListener("change", () => {
