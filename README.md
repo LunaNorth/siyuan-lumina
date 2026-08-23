@@ -1,70 +1,28 @@
 <div style="text-align: center; padding: 0 0 15px;">
-  <div style="font-family: inherit; font-size: 76px; color: var(--b3-theme-on-background); letter-spacing: 3px; line-height: 1; margin-bottom: 22px;">Lumina</div>
+  <div style="font-size: 76px; font-family: Georgia, 'Times New Roman', 'Noto Serif SC', 'Songti SC', serif;  color: var(--b3-theme-on-background); letter-spacing: 3px; line-height: 1; margin-bottom: 22px;">Lumina</div>
   <div style="color: var(--b3-theme-on-surface); font-size: 15px; letter-spacing: 0.3px; margin-bottom: 10px;">SIYuan: A new way to instantly capture every fleeting thought.</div>
   <div style="color: var(--b3-theme-on-surface-light); font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase;">如果你也喜欢记录-那么现在就可以开始了!</div>
-  <div style="margin-top: 10px; color: var(--b3-theme-on-surface-light); font-size: 13px; letter-spacing: 0.05em;">特别鸣谢 · 斯尔龙猫（封面图与图标）</div>
+  <div style="margin-top: 10px; color: var(--b3-theme-on-surface-light); font-size: 13px; letter-spacing: 0.05em; margin-bottom: 16px;">特别鸣谢 · 斯尔龙猫（封面图与图标）</div>
+
+  <div style="display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
+    <a href="https://testingcf.jsdelivr.net/gh/LunaNorth/north-img/images/20260519195219305.png" 
+        target="_blank" rel="noopener noreferrer"
+        style="display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; background: linear-gradient(135deg, #19be6b 0%, #47d789 100%); color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.25s ease; box-shadow: 0 2px 8px rgba(25,190,107,0.25); border: none;">
+        ❤️ 感谢您的支持
+    </a>
+    <a href="https://ld246.com/article/1778921929846" 
+        target="_blank" rel="noopener noreferrer"
+        style="display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; background: linear-gradient(135deg, #2d8cf0 0%, #5cadff 100%); color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.25s ease; box-shadow: 0 2px 8px rgba(45,140,240,0.25); border: none;">
+        📖 使用介绍
+    </a>
+    <a href="https://ld246.com/article/1777266791604" 
+        target="_blank" rel="noopener noreferrer"
+        style="display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; background: linear-gradient(135deg, #ff9900 0%, #ffb84d 100%); color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.25s ease; box-shadow: 0 2px 8px rgba(255,153,0,0.25); border: none;">
+        💬 轻语 & 问题反馈
+    </a>
+  </div>
 </div>
 
-<div style="display: flex; gap: 10px; align-items: center; justify-content: center; margin: .5em 0; flex-wrap: wrap;">
-  <!-- 按钮1：绿色 - 感谢您的支持 -->
-  <a href="https://testingcf.jsdelivr.net/gh/LunaNorth/north-img/images/20260519195219305.png" 
-      target="_blank" rel="noopener noreferrer"
-      style="display: inline-flex; 
-              align-items: center; 
-              gap: 5px;
-              padding: 6px 14px; 
-              background: linear-gradient(135deg, #19be6b 0%, #47d789 100%);
-              color: white; 
-              border-radius: 8px; 
-              text-decoration: none;
-              font-size: 13px;
-              font-weight: 500;
-              transition: all 0.25s ease;
-              box-shadow: 0 2px 8px rgba(25,190,107,0.25);
-              border: none;">
-      ❤️ 感谢您的支持
-  </a>
-  <!-- 按钮2：蓝色 - 使用介绍 -->
-  <a href="https://ld246.com/article/1778921929846" 
-      target="_blank" rel="noopener noreferrer"
-      style="display: inline-flex; 
-              align-items: center; 
-              gap: 5px;
-              padding: 6px 14px; 
-              background: linear-gradient(135deg, #2d8cf0 0%, #5cadff 100%);
-              color: white; 
-              border-radius: 8px; 
-              text-decoration: none;
-              font-size: 13px;
-              font-weight: 500;
-              transition: all 0.25s ease;
-              box-shadow: 0 2px 8px rgba(45,140,240,0.25);
-              border: none;">
-      📖 使用介绍
-  </a>
-  <!-- 按钮3：橙色 - 轻语 & 问题反馈 -->
-  <a href="https://ld246.com/article/1777266791604" 
-      target="_blank" rel="noopener noreferrer"
-      style="display: inline-flex; 
-              align-items: center; 
-              gap: 5px;
-              padding: 6px 14px; 
-              background: linear-gradient(135deg, #ff9900 0%, #ffb84d 100%);
-              color: white; 
-              border-radius: 8px; 
-              text-decoration: none;
-              font-size: 13px;
-              font-weight: 500;
-              transition: all 0.25s ease;
-              box-shadow: 0 2px 8px rgba(255,153,0,0.25);
-              border: none;">
-      💬 轻语 & 问题反馈
-  </a>
-</div>
-  
-
-
-</br>
 
 
 
@@ -72,6 +30,8 @@
 
 > 如未检测到旧数据，请在**设置 → 数据同步 → 数据导入中点下导入按钮**
 
+### v2.2.1.1
+- 【修复】README乱码问题
 
 ### v2.2.1
 - 【修复】朋友圈发表长文时手动敲的空行分隔被自动合并，现按原空行正常显示
