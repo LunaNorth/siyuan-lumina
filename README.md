@@ -1,5 +1,5 @@
 <div style="text-align: center; padding: 0 0 15px;">
-  <div style="font-family: Georgia, 'Times New Roman', 'Noto Serif SC', 'Songti SC', serif; font-size: 76px; color: var(--b3-theme-on-background); letter-spacing: 3px; line-height: 1; margin-bottom: 22px;">Lumina</div>
+  <div style="font-family: inherit; font-size: 76px; color: var(--b3-theme-on-background); letter-spacing: 3px; line-height: 1; margin-bottom: 22px;">Lumina</div>
   <div style="color: var(--b3-theme-on-surface); font-size: 15px; letter-spacing: 0.3px; margin-bottom: 10px;">SIYuan: A new way to instantly capture every fleeting thought.</div>
   <div style="color: var(--b3-theme-on-surface-light); font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase;">如果你也喜欢记录-那么现在就可以开始了!</div>
   <div style="margin-top: 10px; color: var(--b3-theme-on-surface-light); font-size: 13px; letter-spacing: 0.05em;">特别鸣谢 · 斯尔龙猫（封面图与图标）</div>
@@ -73,8 +73,14 @@
 > 如未检测到旧数据，请在**设置 → 数据同步 → 数据导入中点下导入按钮**
 
 
-### v2.2.0
-- 【修复】设置视图搜索时无法切换分类
+### v2.2.1
+- 【修复】朋友圈发表长文时手动敲的空行分隔被自动合并，现按原空行正常显示
+- 【修复】朋友圈历史动态「同步」时误写入「今天」的日记，而非动态对应的历史日期
+- 【修复】朋友圈同步到日记后标题多余时间（如 `08:00:00`），现只保留日期
+- 【修复】Flomo 同步的图片在清风视图中模糊（此前下载的是缩略图，现改为下载原图）
+- 【修复】Flomo 同步笔记时间错误（UTC 偏 8 小时、且带秒），现按本地时间、不带秒显示
+
+
 
 
 
@@ -90,6 +96,9 @@
 
 <details>
 <summary>轻语往期更新日志</summary>
+
+### v2.2.0
+- 【修复】设置视图搜索时无法切换分类
 
 ### v2.1.9
 - 【特别鸣谢】感谢斯尔龙猫用户提供的封面图以及图标

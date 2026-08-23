@@ -2385,12 +2385,16 @@ function breezeRenderTextWithTags(raw, q) {
     const isListLine = (l) => parseListLine(l) !== null;
     const isBlank = (l) => l.trim() === '';
 
-    /* 收集段：空行断开。列表段内允许 task/ol/ul/quote 任意相邻混排，由后续 indent 树构建处理嵌套。 */
+    /* 收集段：空行断开。列表段内允许 task/ol/ul/quote 任意相邻混排，由后续 indent 树构建处理嵌套。
+       同时记录每个段前面有几行空行（blankBefore），渲染时还原成 <br>，
+       否则长文里用户手敲的空行分隔会被吞掉、段落被合并。 */
     const segments = [];
     let i = 0;
     while (i < lines.length) {
+        let blankBefore = 0;
+        while (i < lines.length && isBlank(lines[i])) { blankBefore++; i++; }
+        if (i >= lines.length) break;
         const line = lines[i];
-        if (isBlank(line)) { i++; continue; }
         if (isListLine(line)) {
             const start = i;
             while (i < lines.length && !isBlank(lines[i]) && isListLine(lines[i])) i++;
@@ -2399,19 +2403,24 @@ function breezeRenderTextWithTags(raw, q) {
                 const p = parseListLine(lines[k]);
                 if (p) items.push(p);
             }
-            if (items.length) segments.push({ type: 'list', items });
+            if (items.length) segments.push({ type: 'list', items, blankBefore });
             continue;
         }
         const start = i;
         while (i < lines.length && !isBlank(lines[i]) && !isListLine(lines[i])) i++;
-        segments.push({ type: 'text', lines: lines.slice(start, i) });
+        segments.push({ type: 'text', lines: lines.slice(start, i), blankBefore });
     }
 
     /* 行内格式 + #标签 高亮：先 escape（含搜索词高亮），再行内 markdown，再 #标签。
        #标签加后行断言 (?<![:="\'\w])：排除紧跟在 :=" 或字母数字之后的 #（如 style="color:#0066cc" 里的 #hex），避免误匹配成标签 */
     const renderInline = (s) => breezeInlineFormat(breezeHighlightText(s, q)).replace(/(?<![:="\'\w])#([\w\/一-龥-]+)(?![\w\/一-龥-])(?!#)/g, (m) => `<span class="north-breeze-tag">${m}</span>`);
     let html = '';
-    segments.forEach((seg) => {
+    segments.forEach((seg, idx) => {
+        /* 还原段与段之间的空行：N 个空行 → N+1 个 <br>（1 个结束上一行，其余为空白行）。
+           首段前的空行忽略（对齐旧的「开头空行跳过」行为）。 */
+        if (idx > 0 && seg.blankBefore > 0) {
+            html += '<br>'.repeat(seg.blankBefore + 1);
+        }
         if (seg.type === 'text') {
             html += seg.lines.map(renderInline).join('<br>');
         } else if (seg.type === 'list') {
@@ -9677,7 +9686,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             latestSlug = data.data[data.data.length - 1].slug;
                         }
                         await this._saveFlomoMemos(allMemos, isFullSync);
-                        this.flomoConfig.lastSyncTime = new Date().toISOString().replace('T', ' ').substring(0, 19);
+                        this.flomoConfig.lastSyncTime = plugin._formatLocalDateTime(Date.now());
                         await this._saveFlomoConfig();
                         showMessage(`同步完成：新增 ${allMemos.length} 条笔记`);
                     } catch (e) { showMessage('同步失败: ' + e.message); }
@@ -9764,19 +9773,33 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         while ((tm = tagRe.exec(content)) !== null) { if (!/^\d+$/.test(tm[1])) existingTags.add(tm[1]); }
                         const uniqueTags = (m.tags || []).filter(t => !existingTags.has(t));
                         if (uniqueTags.length) content += '\n' + uniqueTags.map(t => '#' + t).join(' ');
-                        /* 下载远程图片 → 本地 */
+                        /* 下载远程图片 → 本地。
+                           flomo 返回的图片 URL（f.url 与正文 <img src>）是缩略图，原图在正文 <img data-source="..."> 里；
+                           优先用 data-source 原图地址下载，否则图片在清风里会是糊的缩略图。 */
                         const imgs = [];
+                        const originalUrls = [];
+                        if (m.content) {
+                            const dsRe = /data-source="([^"]+)"/g;
+                            let dsm;
+                            while ((dsm = dsRe.exec(m.content)) !== null) originalUrls.push(dsm[1]);
+                        }
                         if (m.files && m.files.length) {
-                            for (const f of m.files) {
+                            for (let fi = 0; fi < m.files.length; fi++) {
+                                const f = m.files[fi];
                                 const fu = f.url || '';
                                 if (fu.startsWith('http')) {
-                                    try { const path = await this._flomoUploadImage(fu); if (path) imgs.push(path); } catch {}
+                                    const src = originalUrls[fi] || fu;
+                                    try { const path = await this._flomoUploadImage(src); if (path) imgs.push(path); } catch {}
                                 } else if (/\.(png|jpe?g|gif|webp|svg|bmp)/i.test(fu)) imgs.push(fu);
                             }
                         }
                         if (t === 'breeze') {
-                            const note = { id: 'flomo_' + m.slug, time: m.created_at ? new Date(m.created_at).toISOString().replace('T',' ').substring(0,19).replace(/-/g,'-') : new Date().toISOString().replace('T',' ').substring(0,19).replace(/-/g,'-'), content, images: imgs, files: [], source: 'flomo' };
-                            plugin.data[RECORDS_STORAGE].breezeNotes = [note].concat(plugin.data[RECORDS_STORAGE].breezeNotes || []);
+                            const note = { id: 'flomo_' + m.slug, time: m.created_at ? plugin._formatLocalDateTime(new Date(m.created_at)).slice(0, 16) : plugin._formatLocalDateTime(Date.now()).slice(0, 16), content, images: imgs, files: [], source: 'flomo' };
+                            const list = plugin.data[RECORDS_STORAGE].breezeNotes || [];
+                            const existIdx = list.findIndex(n => n.id === note.id);
+                            /* 已存在（如全量重新同步）：覆盖更新，让重新下载的原图生效，避免重复添加同一条 flomo 笔记 */
+                            if (existIdx >= 0) list[existIdx] = note;
+                            else plugin.data[RECORDS_STORAGE].breezeNotes = [note].concat(list);
                         } else {
                             /* 跟随数据同步设置：每日日记 */
                             const syncSettings = (plugin.data[SETTINGS_STORAGE] || {}).settings || {};
@@ -9814,12 +9837,26 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                 this._flomoUploadImage = async (url) => {
                     try {
-                        const resp = await fetch(url);
-                        const blob = await resp.blob();
-                        if (!blob || !blob.type.startsWith('image/')) return null;
-                        const ext = blob.type.split('/')[1] || 'png';
-                        const file = new File([blob], `flomo_${Date.now()}.${ext}`, { type: blob.type });
-                        return await plugin._uploadResource(file, { assetsDirPath: 'assets/' });
+                        /* 兜底清理：若拿到的仍是缩略图 URL（路径含 /thumbnail/、OSS 样式后缀 !xxx 或处理参数 ?xxx），
+                           先还原成原图地址下载；失败再回退原始 URL。 */
+                        const cleanUrl = String(url)
+                            .replace(/\/thumbnail\//g, '/')
+                            .replace(/![^\/?#]*/g, '')
+                            .split('?')[0];
+                        const candidates = [...new Set([cleanUrl, String(url)])].filter(Boolean);
+                        for (const u of candidates) {
+                            try {
+                                const resp = await fetch(u);
+                                if (!resp.ok) continue;
+                                const blob = await resp.blob();
+                                if (!blob || !blob.type.startsWith('image/')) continue;
+                                const ext = blob.type.split('/')[1] || 'png';
+                                const file = new File([blob], `flomo_${Date.now()}.${ext}`, { type: blob.type });
+                                const path = await plugin._uploadResource(file, { assetsDirPath: 'assets/' });
+                                if (path) return path;
+                            } catch {}
+                        }
+                        return null;
                     } catch { return null; }
                 };
 
@@ -18735,7 +18772,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (metaStr) body += '> ' + metaStr + '\n';
         body += quote(convertedContent) + (rawResources ? '\n> \n' + quote(rawResources) : '');
         if (commentsStr) body += '\n> \n' + quote(commentsStr);
-        const timeDisplay = (timePart === '00:00:00') ? '' : ' ' + timePart;
+        // 朋友圈同步不带时间（标题只显示日期，如 2026-08-06）；清风保留 HH:MM(:SS)
+        const timeDisplay = (data.source === 'moments' || timePart === '00:00:00') ? '' : ' ' + timePart;
         return '> [!' + tpl + '] ' + datePart + timeDisplay + '\n' + body + '\n';
     }
 
@@ -18759,9 +18797,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }
             return { targetId: docId, message: '已插入指定文档（按日期分组）' + (settings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
         }
-        // 同步目标：每日日记
+        // 同步目标：每日日记（按动态的实际日期定位对应日期的日记，而非固定写入今天）
         const notebookId = settings.dailyNotebookId || '';
         if (!notebookId) throw new Error('请先在「数据同步」中选择日记笔记本');
+        const dateStr = (timeStr || '').slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            return this._appendToDailyNoteByDate(notebookId, markdown, dateStr, settings);
+        }
+        return this._appendToTodayDailyNote(notebookId, markdown, settings);
+    }
+
+    /* 把「今日日记」追加逻辑独立出来（原 appendDailyNoteBlock 逻辑），
+       作为按日期定位失败 / 无日期信息时的回退路径。 */
+    async _appendToTodayDailyNote(notebookId, markdown, settings) {
+        const token = window.siyuan?.config?.api?.token || '';
+        const authHeaders = Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Token ' + token } : {});
         const resp = await fetch('/api/block/appendDailyNoteBlock', {
             method: 'POST',
             headers: authHeaders,
@@ -18789,6 +18839,95 @@ module.exports = class NorthLunaPlugin extends Plugin {
             } catch (e) { console.warn('[清风] 打开今日日记文档失败:', e); }
         }
         return { targetId, message: '已插入今日日记' + (settings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
+    }
+
+    /* 本地时间格式化："YYYY-MM-DD HH:MM:SS"。
+       不能用 toISOString()（UTC 时间），否则东八区下日期会往前偏一天，导致同步到错误的日记日期。 */
+    _formatLocalDateTime(ts) {
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return '';
+        const p2 = (n) => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+    }
+
+    /* 渲染日记路径模板（dailyNoteSavePath）得到指定日期的日记 hpath。
+       思源日记路径是 Go template，形如：/daily note/{{now | date "2006/01"}}/{{now | date "2006-01-02"}}
+       这里只实现日记命名常用子集 {{now | date "layout"}}：
+       Go 布局 token：2006=年 06=2位年 01=月 02=日 15=时 04=分 05=秒。
+       无法解析（仍残留 {{...}} 等不支持的语法）时返回 null，由调用方回退到「今日日记」。 */
+    _renderDailyNotePath(tpl, dateStr) {
+        if (!tpl) return null;
+        const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+        if (!m) return null;
+        const d = new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0);
+        const p2 = (n) => String(n).padStart(2, '0');
+        const map = {
+            '2006': String(d.getFullYear()),
+            '06': p2(d.getFullYear() % 100),
+            '01': p2(d.getMonth() + 1),
+            '02': p2(d.getDate()),
+            '15': p2(d.getHours()),
+            '04': p2(d.getMinutes()),
+            '05': p2(d.getSeconds()),
+        };
+        let out = String(tpl).replace(/\{\{\s*now\s*\|\s*date\s*"([^"]+)"\s*\}\}/g, (whole, layout) =>
+            layout.replace(/2006|06|01|02|15|04|05/g, (tok) => map[tok]));
+        if (/\{\{/.test(out)) return null; // 仍残留未解析的模板语法 → 回退
+        out = out.trim();
+        if (out && !out.startsWith('/')) out = '/' + out;
+        return out;
+    }
+
+    /* 按指定日期定位「每日日记」文档并追加内容。
+       appendDailyNoteBlock 只会写「今天」，无法指定历史日期，故手动：
+       读日记路径模板 → 渲染目标日期 hpath → 查找/创建该日记文档 → appendBlock 追加。
+       返回 { targetId, message }；任一步失败则回退到「今日日记」。 */
+    async _appendToDailyNoteByDate(notebookId, markdown, dateStr, settings) {
+        const token = window.siyuan?.config?.api?.token || '';
+        const authHeaders = Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Token ' + token } : {});
+        // 1) 读取笔记本日记路径模板
+        let dailyPathTpl = '';
+        try {
+            const confResp = await fetch('/api/notebook/getNotebookConf', { method: 'POST', headers: authHeaders, body: JSON.stringify({ notebook: notebookId }) });
+            const confJson = await confResp.json().catch(() => null);
+            dailyPathTpl = (confJson && confJson.code === 0 && confJson.data && confJson.data.conf && confJson.data.conf.dailyNoteSavePath) || '';
+        } catch (e) { dailyPathTpl = ''; }
+        // 2) 渲染目标日期 hpath；失败则回退「今日日记」
+        const hpath = dailyPathTpl ? this._renderDailyNotePath(dailyPathTpl, dateStr) : '';
+        if (!hpath) return this._appendToTodayDailyNote(notebookId, markdown, settings);
+        // 3) 查找该路径文档；不存在则创建
+        let docId = '';
+        try {
+            const idsResp = await fetch('/api/filetree/getIDsByHPath', { method: 'POST', headers: authHeaders, body: JSON.stringify({ path: hpath, notebook: notebookId }) });
+            const idsJson = await idsResp.json().catch(() => null);
+            const ids = (idsJson && idsJson.code === 0 && Array.isArray(idsJson.data)) ? idsJson.data : [];
+            docId = ids[0] || '';
+        } catch (e) { docId = ''; }
+        if (!docId) {
+            try {
+                const createResp = await fetch('/api/filetree/createDocWithMd', { method: 'POST', headers: authHeaders, body: JSON.stringify({ notebook: notebookId, path: hpath, markdown: '' }) });
+                const createJson = await createResp.json().catch(() => null);
+                if (createJson && createJson.code === 0 && createJson.data) docId = createJson.data;
+            } catch (e) { docId = ''; }
+        }
+        if (!docId) return this._appendToTodayDailyNote(notebookId, markdown, settings);
+        // 4) 向该日记文档追加内容
+        const appendResp = await fetch('/api/block/appendBlock', { method: 'POST', headers: authHeaders, body: JSON.stringify({ dataType: 'markdown', data: markdown, parentID: docId }) });
+        const appendJson = await appendResp.json().catch(() => null);
+        if (!appendJson || appendJson.code !== 0) throw new Error('插入失败：' + ((appendJson && appendJson.msg) || '未知错误'));
+        let targetId = docId;
+        const ops = Array.isArray(appendJson.data) ? appendJson.data : (appendJson.data ? [appendJson.data] : []);
+        for (const item of ops) {
+            const doOps = Array.isArray(item?.doOperations) ? item.doOperations : [];
+            for (const op of doOps) {
+                if (op?.id) { targetId = op.id; break; }
+            }
+            if (targetId !== docId) break;
+        }
+        if (settings.syncJumpToDoc !== false && this.app && typeof openTab === 'function') {
+            try { openTab({ app: this.app, doc: { id: docId, action: ['cb-get-hl'] } }); } catch (e) { console.warn('[清风] 打开日记文档失败:', e); }
+        }
+        return { targetId, message: '已同步到 ' + dateStr + ' 的日记' + (settings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
     }
 
     /* 向指定文档按日期分组追加内容（移植自轻语 appendToDocWithDateGroup）。
@@ -20220,7 +20359,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 /* 自动同步思源笔记文档：发布后 1s 防抖，仅新建时生效（编辑不触发） */
                 if (isNew && this._getPluginSetting('autoSyncMoments')) {
                     clearTimeout(this._momentsAutoSyncTimer);
-                    const ts = momentData.created ? new Date(momentData.created).toISOString().replace('T', ' ').slice(0, 19) : '';
+                    const ts = momentData.created ? this._formatLocalDateTime(momentData.created) : '';
                     this._momentsAutoSyncTimer = setTimeout(() => {
                         this._syncToDailyNote({
                             content: momentData.text || '',
@@ -20623,7 +20762,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
                 (async () => {
                     try {
-                        const ts = m.created ? new Date(m.created).toISOString().replace('T', ' ').slice(0, 19) : '';
+                        const ts = m.created ? this._formatLocalDateTime(m.created) : '';
                         const result = await this._syncToDailyNote({
                             content: m.text || '',
                             images: m.images || [],
