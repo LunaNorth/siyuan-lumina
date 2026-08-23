@@ -1458,6 +1458,16 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     /* GPU 合成层：拖拽/缩放时避免每帧重绘导致卡顿 */
     will-change: transform;
     backface-visibility: hidden;
+    /* 【修复长截图放大模糊】让浏览器在放大时走高质量插值（双三次/Lanczos）
+       旧 WebKit/Safari fallback 保留（已被新规范值替代，但仍可保留） */
+    image-rendering: -webkit-optimize-contrast;
+    /* ⚠ 不要用 crisp-edges / pixelated —— 那些是给像素画/图标保留锐利的，
+       对照片和长截图会"放大后锯齿明显、且不像照片那样有平滑过渡"，
+       这正是默认 image-rendering: auto 看长截图糊的原因。
+       smooth 才是正解（Chrome 99+ / Edge 99+ / Firefox 65+ 走高质量平滑插值） */
+    image-rendering: smooth;
+    /* 关键：禁止 flex 收缩，否则移动端容器窄时图片被压成容器宽度，transform scale 再缩就铺不满两端 */
+    flex-shrink: 0;
 }
 
 .north-luna-moments-image-preview-img.dragging {

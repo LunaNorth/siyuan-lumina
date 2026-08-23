@@ -1405,18 +1405,22 @@ function breezeShowMemoDetail(noteId, plugin) {
         });
     });
 
-    /* modal 内的图片点击：放大预览（与思源主题适配，使用 _imagePreview 或简单 new Image） */
+    /* modal 内的图片点击：放大预览（复用完整查看器，支持滚轮缩放/拖拽，避免长截图模糊） */
     overlay.querySelectorAll('.north-breeze-memo-card-content img').forEach(img => {
         img.addEventListener('click', (e) => {
             e.stopPropagation();
             const src = img.getAttribute('src');
             if (!src) return;
-            /* 简单全屏预览：新建遮罩插入 body，点空白关闭 */
-            const prev = document.createElement('div');
-            prev.style.cssText = 'position:fixed;inset:0;z-index:200000;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
-            prev.innerHTML = `<img src="${esc(src)}" style="max-width:92vw;max-height:92vh;border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,0.4);">`;
-            prev.addEventListener('click', () => prev.remove());
-            document.body.appendChild(prev);
+            if (typeof plugin.showMomentsMediaPreview === 'function') {
+                plugin.showMomentsMediaPreview([{ src: src.replace(/^\//, ''), isVideo: false }], 0);
+            } else {
+                /* 降级：简单全屏预览 */
+                const prev = document.createElement('div');
+                prev.style.cssText = 'position:fixed;inset:0;z-index:200000;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+                prev.innerHTML = `<img src="${esc(src)}" style="max-width:92vw;max-height:92vh;border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,0.4);">`;
+                prev.addEventListener('click', () => prev.remove());
+                document.body.appendChild(prev);
+            }
         });
     });
 }
@@ -19486,7 +19490,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
         let idx = currentIndex;
 
         // ---- 全局状态（图片缩放拖拽用） ----
-        let scale = 1, fitScale = 1;
+        // maxScale：滚轮/双指缩放的最大倍率，由 onImgReady 按 "原图自然宽度 / 当前 fit 后的显示宽度" 自适应算出。
+        // 把上限锁在 1:1 原图尺寸 —— 超过原图像素后浏览器只能做插值放大（糊），所以这里硬性挡住无意义的"超原图放大"。
+        let scale = 1, fitScale = 1, maxScale = 15;
         let translateX = 0, translateY = 0;
         let isDragging = false;
         let dragStartX = 0, dragStartY = 0;
@@ -19523,6 +19529,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
             <div class="north-luna-moments-image-preview-hint">滚轮缩放 | 拖拽移动 | 双击重置</div>
         `;
         document.body.appendChild(overlay);
+
+        /* 移动端：图片查看器打开时拦截内部所有触摸事件，阻止其冒泡到外层（思源移动端的「滑动返回」/手势系统），
+           避免左右拖拽图片时误触发返回上一页。内部 container 的缩放/拖拽逻辑不受影响。 */
+        overlay.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+        overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+        overlay.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
 
         const container = overlay.querySelector('.north-luna-moments-image-preview-container');
         const hint = overlay.querySelector('.north-luna-moments-image-preview-hint');
@@ -19592,34 +19604,38 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 container.appendChild(img);
 
                 const onImgReady = () => {
-                    const vw = window.innerWidth * 0.9;
-                    const vh = window.innerHeight * 0.9;
-                    const isMobile = window.innerWidth < 768;
-                    if (isMobile) {
-                        img.style.width = '100vw';
-                        img.style.height = 'auto';
-                        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                            const expectedHeight = window.innerWidth * (img.naturalHeight / img.naturalWidth);
-                            if (expectedHeight > vh) {
-                                img.style.width = 'auto';
-                                img.style.height = '90vh';
-                            }
+                    const isMobile = this.isMobile || window.innerWidth < 768 || window.matchMedia('(pointer: coarse)').matches;
+                    const padW = isMobile ? window.innerWidth : window.innerWidth * 0.9;
+                    const padH = window.innerHeight * 0.9;
+                    /* 统一渲染：始终以原图像素尺寸渲染，再用 transform scale 适配屏幕，放大时只是对
+                       高清原图做变换，避免长截图放大模糊（与 PC 同款修复）。
+                       移动端仅按宽度铺满屏幕两端（100vw），长截图高度按比例、靠手势缩放/单指拖拽浏览；
+                       PC 端同时受高度限制，保证整图可见。 */
+                    img.style.width = (img.naturalWidth > 0 ? img.naturalWidth : padW) + 'px';
+                    img.style.height = 'auto';
+                    img.style.maxWidth = 'none';
+                    img.style.maxHeight = 'none';
+                    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                        if (isMobile) {
+                            /* 移动端：仅按宽度铺满屏幕两端（上限 1，避免小图被放大糊掉） */
+                            fitScale = Math.min(padW / img.naturalWidth, 1);
+                        } else {
+                            /* PC 端：同时受高度限制，整图可见 */
+                            fitScale = Math.min(padW / img.naturalWidth, padH / img.naturalHeight, 1);
                         }
                     } else {
-                        img.style.width = '90vw';
-                        img.style.height = 'auto';
-                        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                            const expectedHeight = window.innerWidth * 0.9 * (img.naturalHeight / img.naturalWidth);
-                            if (expectedHeight > vh) {
-                                img.style.width = 'auto';
-                                img.style.height = '90vh';
-                            }
-                        }
+                        fitScale = 1;
                     }
-                    fitScale = 1;
-                    scale = 1;
+                    scale = fitScale;
                     translateX = 0;
                     translateY = 0;
+                    if (isMobile) {
+                        // 移动端：最多放大到原图 1.5 倍（scale=1 即为原图 1:1 清晰），避免长截图放大糊
+                        maxScale = Math.max(1, 1.5);
+                    } else {
+                        // PC 端：至少能放大到原图 1:1，大图保留更大放大空间
+                        maxScale = Math.max(1 / fitScale, 3);
+                    }
                     applyTransform();
                 };
                 if (img.complete && img.naturalWidth > 0) onImgReady();
@@ -19634,9 +19650,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const onWheel = (e) => {
             e.preventDefault();
             const delta = e.deltaY > 0 ? -0.1 : 0.1;
-            scale = Math.max(fitScale * 0.3, Math.min(scale + delta * scale, 15));
+            scale = Math.max(fitScale * 0.3, Math.min(scale + delta * scale, maxScale));
             applyTransform();
-            showHint(`缩放: ${Math.round(scale / fitScale * 100)}%`, 1500);
+            showHint(`缩放: ${Math.round(scale * 100)}%`, 1500);
         };
 
         // ---- 鼠标拖拽平移 ----
@@ -19689,7 +19705,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const dx = e.touches[0].clientX - e.touches[1].clientX;
                     const dy = e.touches[0].clientY - e.touches[1].clientY;
                     lastTouchDist = Math.sqrt(dx * dx + dy * dy);
-                } else if (e.touches.length === 1 && scale > fitScale * 1.05) {
+                } else if (e.touches.length === 1 && (this.isMobile || window.innerWidth < 768 || window.matchMedia('(pointer: coarse)').matches || scale > fitScale * 1.05)) {
                     isDragging = true;
                     dragStartX = e.touches[0].clientX;
                     dragStartY = e.touches[0].clientY;
@@ -19706,9 +19722,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     if (lastTouchDist > 0) {
                         const delta = (dist / lastTouchDist) - 1;
-                        scale = Math.max(fitScale * 0.3, Math.min(scale + delta * scale, 15));
+                        scale = Math.max(fitScale * 0.3, Math.min(scale + delta * scale, maxScale));
                         applyTransform();
-                        showHint(`缩放: ${Math.round(scale / fitScale * 100)}%`, 1500);
+                        showHint(`缩放: ${Math.round(scale * 100)}%`, 1500);
                     }
                     lastTouchDist = dist;
                 } else if (e.touches.length === 1 && isDragging) {
