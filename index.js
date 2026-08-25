@@ -6539,8 +6539,24 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             ]},
                             { type: 'slider', key: 'exportImgScale', title: '导出图片缩放比例', desc: '控制导出图片相对于原图的缩放比例。100% 为原图大小，比例越小图片越小。默认 100%', default: 100, min: 10, max: 100, step: 10 },
                             { type: 'export_timerange', title: '导出时间范围', desc: '选择要导出的数据时间范围，仅在点击下方导出按钮时生效' },
-                            { type: 'button', key: 'exportBreeze', action: 'exportBreeze', title: '导出清风数据', desc: '将清风笔记导出为所选格式的文件', buttonText: '导出清风数据' },
-                            { type: 'button', key: 'exportMomentsData', action: 'exportMomentsData', title: '导出朋友圈数据', desc: '将朋友圈动态导出为所选格式的文件', buttonText: '导出朋友圈数据' }
+                            { type: 'select', key: 'exportBreezeScope', title: '清风导出范围', desc: '导出清风数据时按标签筛选：可导出「全部数据」「无标签」，或从下方列表选择「某一个标签」单独导出。仅在点击「导出清风数据」时生效', default: 'all', options: (plugin) => {
+                                const list = [{ value: 'all', label: '全部数据' }, { value: 'notag', label: '无标签' }];
+                                const notes = ((plugin.data[RECORDS_STORAGE] || {}).breezeNotes) || [];
+                                const tagSet = new Set();
+                                notes.forEach(n => { try { breezeExtractTags(n.content || '').forEach(t => tagSet.add(t)); } catch (e) {} });
+                                Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'zh')).forEach(t => list.push({ value: 'tag:' + t, label: '#' + t }));
+                                return list;
+                            }},
+                            { type: 'button', key: 'exportBreeze', action: 'exportBreeze', title: '导出清风数据', desc: '将清风笔记导出为所选格式的文件（受「导出格式 / 时间范围 / 清风导出范围」影响）', buttonText: '导出清风数据' },
+                            { type: 'select', key: 'exportMomentsScope', title: '朋友圈导出范围', desc: '导出朋友圈数据时按分类筛选：可导出「全部数据」「无分类」，或从下方列表选择「某一个分类」单独导出。仅在点击「导出朋友圈数据」时生效', default: 'all', options: (plugin) => {
+                                const list = [{ value: 'all', label: '全部数据' }, { value: 'nocategory', label: '无分类' }];
+                                const items = (plugin.momentsData && plugin.momentsData.items) || [];
+                                const catSet = new Set();
+                                items.forEach(m => { if (m.category) catSet.add(m.category); });
+                                Array.from(catSet).sort((a, b) => a.localeCompare(b, 'zh')).forEach(c => list.push({ value: 'cat:' + c, label: '分类：' + c }));
+                                return list;
+                            }},
+                            { type: 'button', key: 'exportMomentsData', action: 'exportMomentsData', title: '导出朋友圈数据', desc: '将朋友圈动态导出为所选格式的文件（受「导出格式 / 时间范围 / 朋友圈导出范围」影响）', buttonText: '导出朋友圈数据' }
                         ]},
                         { title: '资源存储模式', items: [
                             { type: 'select', key: 'resourceStorage', title: '存储位置', desc: '控制上传的图片与资源文件保存到思源 assets 资源目录，还是公共目录 public/siyuan-lumina/。公共目录脱离 assets 资源目录，不会被思源「未引用资源清理」删除。切换后只影响新上传的资源，已有引用不受影响。', default: 'assets', options: [{ value: 'assets', label: '思源资源目录 (assets)' }, { value: 'public', label: '公共目录 (public/siyuan-lumina/)' }] }
@@ -7914,7 +7930,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 <input type="range" class="north-luna-settings-slider" data-key="${it.key}" data-type="slider" min="${min}" max="${max}" step="${step}" value="${v}">
                             </div>`;
                         } else if (it.type === "select") {
-                            const opts = it.options || [];
+                            const opts = typeof it.options === 'function' ? it.options(plugin) : (it.options || []);
                             const currentOpt = opts.find(o => String(o.value) === String(val)) || opts[0];
                             const currentLabel = currentOpt ? currentOpt.label : '';
                             const optionsHtml = opts.map(o => `<div class="north-luna-settings-cddl-item${String(o.value) === String(val) ? ' active' : ''}" data-value="${plugin._esc(o.value)}">${plugin._esc(o.label)}</div>`).join('');
@@ -8750,21 +8766,37 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             if (isBreeze) {
                                 const allNotes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
                                 if (!allNotes.length) { showMessage('暂无清风笔记数据'); return; }
-                                const notes = filterByExportTimeRange(allNotes, n => parseBreezeTime(n.time));
-                                if (!notes.length) { showMessage('所选时间范围内无清风笔记数据'); return; }
+                                let notes = filterByExportTimeRange(allNotes, n => parseBreezeTime(n.time));
+                                // 标签范围筛选（无标签 / 具体标签 / 全部数据；兼容旧值 'tag' = 任意有标签）
+                                const breezeScope = this._getSetting('exportBreezeScope') || 'all';
+                                if (breezeScope === 'notag') notes = notes.filter(n => breezeExtractTags(n.content || '').length === 0);
+                                else if (breezeScope === 'tag') notes = notes.filter(n => breezeExtractTags(n.content || '').length > 0);
+                                else if (breezeScope.indexOf('tag:') === 0) {
+                                    const sel = breezeScope.slice(4);
+                                    notes = notes.filter(n => breezeExtractTags(n.content || '').some(t => t === sel || t.indexOf(sel + '/') === 0));
+                                }
+                                if (!notes.length) { showMessage('所选范围内无清风笔记数据'); return; }
                                 notes.forEach(note => {
                                     if (!note.content && !note.time) return;
                                     items.push({
                                         time: note.time, text: note.content || '',
-                                        tags: note.tags || [],
+                                        tags: breezeExtractTags(note.content || ''),
                                         images: (note.images || []).map(p => plugin._resolveImageUrl(p))
                                     });
                                 });
                             } else {
                                 const allMoments = plugin.momentsData.items || [];
                                 if (!allMoments.length) { showMessage('暂无朋友圈数据'); return; }
-                                const moments = filterByExportTimeRange(allMoments, m => m.created ? new Date(m.created) : null);
-                                if (!moments.length) { showMessage('所选时间范围内无朋友圈数据'); return; }
+                                let moments = filterByExportTimeRange(allMoments, m => m.created ? new Date(m.created) : null);
+                                // 分类范围筛选（无分类 / 具体分类 / 全部数据；兼容旧值 'category' = 任意有分类）
+                                const momentsScope = this._getSetting('exportMomentsScope') || 'all';
+                                if (momentsScope === 'nocategory') moments = moments.filter(m => !m.category);
+                                else if (momentsScope === 'category') moments = moments.filter(m => !!m.category);
+                                else if (momentsScope.indexOf('cat:') === 0) {
+                                    const sel = momentsScope.slice(4);
+                                    moments = moments.filter(m => m.category === sel);
+                                }
+                                if (!moments.length) { showMessage('所选范围内无朋友圈数据'); return; }
                                 const exportNickname = plugin._getProfileNickname();
                                 moments.forEach(m => {
                                     if (!m.text && !m.created) return;
