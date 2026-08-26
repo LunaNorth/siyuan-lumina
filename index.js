@@ -14589,16 +14589,27 @@ module.exports = class NorthLunaPlugin extends Plugin {
     _applyBreezeDockToolbarVisibility() {
         const root = this._breezeDockEl;
         if (!root) return;
+        /* 侧边栏工具栏各按钮的默认显隐，与「清风设置 → 侧边栏输入工具栏设置」中各项的 default 保持一致。
+           关键点：Dock 是独立面板，this._siyuTab 通常为 null，_getPluginSetting 不会回退 schema 默认值，
+           未写入存储的设置项会返回 undefined；而下方判断用 `!== false`，导致默认应为 false 的项
+           （color/bold/strike/mark/code/flomo）在首次打开侧边栏时被误判为「显示」，
+           出现 12 个按钮全出、工具栏溢出的问题（只有点一次设置开关、触发重算后才恢复正常）。
+           因此这里显式给出默认值，保证首次打开即按设置生效，不再依赖 _getPluginSetting 的默认值回退。 */
+        const DEFAULTS = { tag:true, image:true, task:true, ul:true, ol:true, title:true, color:false, bold:false, strike:false, mark:false, code:false, flomo:false };
+        const getVal = (k) => {
+            const raw = this._getPluginSetting('breezeDockToolbar' + k.charAt(0).toUpperCase() + k.slice(1));
+            return raw !== undefined ? raw : DEFAULTS[k];
+        };
         const KEYS = ['tag','image','task','ul','ol','title','color','bold','strike','mark','code','flomo'];
         KEYS.forEach(k => {
-            const visible = this._getPluginSetting('breezeDockToolbar' + k.charAt(0).toUpperCase() + k.slice(1)) !== false;
+            const visible = getVal(k) !== false;
             const btn = root.querySelector('#north-breeze-dock-toolbar-' + k);
             if (btn) btn.style.display = visible ? '' : 'none';
         });
         /* Flomo 按钮：配置开启 且 已登录 才显示 */
         const flomoBtn = root.querySelector('#north-breeze-dock-toolbar-flomo');
         if (flomoBtn) {
-            const toolbarOn = this._getPluginSetting('breezeDockToolbarFlomo') !== false;
+            const toolbarOn = getVal('flomo') !== false;
             const logged = !!(this._siyuTab && this._siyuTab.flomoConfig && this._siyuTab.flomoConfig.accessToken);
             flomoBtn.style.display = (toolbarOn && logged) ? '' : 'none';
         }

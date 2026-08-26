@@ -8171,6 +8171,7 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 }
 .north-breeze-toolbar-left {
     display: flex;
+    flex-wrap: wrap;
     gap: 16px;
     align-items: center;
 }
