@@ -1,4 +1,4 @@
-const { Plugin, openTab, getFrontend, showMessage, confirm, openEmoji } = require("siyuan");
+const { Plugin, openTab, getFrontend, showMessage, confirm, openEmoji, fetchSyncPost } = require("siyuan");
 
 const RECORDS_STORAGE = "lumina-records";
 const SETTINGS_STORAGE = "lumina-settings";
@@ -2254,6 +2254,147 @@ function breezeInlineFormat(t) {
     return t;
 }
 
+/* ============================================================
+ * 清风视图：自动获取链接标题（移植自 sy-titled-link 的思路）
+ * - 清风把纯文本网址自动渲染成 <a class="north-breeze-link">
+ * - 渲染完成后，对「裸网址」(链接文字 == 网址) 自动抓取网页 <title> 并替换链接文字
+ * - 用户已命名的 [文字](网址) 不被覆盖
+ * - URL→标题 走「内存缓存 + 持久化」，避免每次重渲染重复请求
+ * ============================================================ */
+const BREEZE_AUTO_LINK_TITLE = true;     // 总开关：改为 false 可关闭自动取标题
+const LINK_TITLE_STORAGE = "lumina-link-titles";
+let breezeLinkTitlePlugin = null;        // 指向插件实例，用于持久化
+const breezeLinkTitleCache = new Map();  // url -> title（会话内 + 持久化）
+const breezeTitleFetchQueue = [];        // 待抓取队列
+let breezeTitleFetching = 0;
+const BREEZE_TITLE_MAX_CONCURRENT = 4;   // 并发上限，保护网络
+
+function breezeLoadLinkTitleCache(plugin) {
+    if (!plugin || !plugin.loadData) return;
+    plugin.loadData(LINK_TITLE_STORAGE).then(d => {
+        if (d && typeof d === "object") {
+            Object.keys(d).forEach(k => { if (d[k]) breezeLinkTitleCache.set(k, d[k]); });
+        }
+    }).catch(() => {});
+}
+
+function breezePersistLinkTitles() {
+    if (!breezeLinkTitlePlugin || !breezeLinkTitlePlugin.saveData) return;
+    const obj = {};
+    breezeLinkTitleCache.forEach((v, k) => { obj[k] = v; });
+    try { breezeLinkTitlePlugin.saveData(LINK_TITLE_STORAGE, obj).catch(() => {}); } catch (e) { /* noop */ }
+}
+
+/* 从 HTML 中提取 <title>，规则与 sy-titled-link 一致：
+   - 非 utf-8 编码页面直接放弃（无法正确解码）
+   - 用 window.Lute.UnEscapeHTMLStr 反转义 HTML 实体 */
+function breezeExtractTitleFromHtml(html) {
+    if (!html) return null;
+    const m = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+    if (!m) return null;
+    let title = m[1].trim().replace(/\s+/g, " ");
+    if (!title) return null;
+    const charsetM = html.match(/<meta\b[^>]+charset\s*=\s*['"]?([^\s'">]+)['"]?[^>]*>/i);
+    const charset = charsetM ? charsetM[1].toLowerCase() : "utf-8";
+    if (charset !== "utf-8") return null; // 非 utf-8 暂不支持
+    try {
+        if (typeof window !== "undefined" && window.Lute && window.Lute.UnEscapeHTMLStr) {
+            title = window.Lute.UnEscapeHTMLStr(title) || title;
+        }
+    } catch (e) { /* noop */ }
+    return title;
+}
+
+/* 经 SiYuan 后端代理抓取网页，绕开前端 CORS（桌面端/移动端均可用） */
+function breezeFetchUrlTitle(rawUrl) {
+    if (typeof fetchSyncPost !== "function") return Promise.resolve(null);
+    let url = rawUrl;
+    if (url.startsWith("www.")) url = "https://" + url;
+    else if (!/^https?:\/\//i.test(url)) return Promise.resolve(null);
+    const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.76";
+    return fetchSyncPost("/api/network/forwardProxy", {
+        url: url,
+        method: "GET",
+        timeout: 7000,
+        contentType: "text/html",
+        headers: [{ "User-Agent": ua }],
+        payload: null
+    }).then(resp => {
+        if (!resp || resp.code !== 0) return null;
+        const data = resp.data;
+        if (!data || Math.floor((data.status || 0) / 100) !== 2) return null;
+        return breezeExtractTitleFromHtml(data.body);
+    }).catch(e => {
+        console.warn("[清风链接标题] 获取失败:", url, e && e.message ? e.message : e);
+        return null;
+    });
+}
+
+function breezeApplyLinkTitle(link, url, title) {
+    if (!link || !link.isConnected) return;
+    if (link.getAttribute("href") !== url) return;            // 链接已被重渲染替换
+    if (link.getAttribute("data-lumina-title-state") === "done") return;
+    link.textContent = title;
+    link.setAttribute("title", url);                          // 悬浮提示显示原网址
+    link.setAttribute("data-luma-title", title);
+    link.setAttribute("data-lumina-title-state", "done");
+}
+
+function breezePumpTitleQueue() {
+    while (breezeTitleFetching < BREEZE_TITLE_MAX_CONCURRENT && breezeTitleFetchQueue.length) {
+        const job = breezeTitleFetchQueue.shift();
+        breezeTitleFetching++;
+        breezeFetchUrlTitle(job.url).then(title => {
+            breezeTitleFetching--;
+            if (title) {
+                breezeLinkTitleCache.set(job.url, title);
+                breezePersistLinkTitles();
+                breezeApplyLinkTitle(job.link, job.url, title);
+            } else if (job.link) {
+                job.link.setAttribute("data-lumina-title-state", "done"); // 失败：保留原网址，不再重试
+            }
+            breezePumpTitleQueue();
+        }).catch(() => {
+            breezeTitleFetching--;
+            if (job.link) job.link.setAttribute("data-lumina-title-state", "done");
+            breezePumpTitleQueue();
+        });
+    }
+}
+
+/* 扫描某容器内未处理的清风链接，自动填充标题 */
+function breezeAutoFetchLinkTitles(root) {
+    if (!BREEZE_AUTO_LINK_TITLE || !root) return;
+    const links = root.querySelectorAll('a.north-breeze-link[href^="http"]:not([data-lumina-title-state])');
+    links.forEach(link => {
+        const url = link.getAttribute("href") || "";
+        if (!/^https?:\/\//i.test(url)) { link.setAttribute("data-lumina-title-state", "done"); return; }
+        // 仅处理裸网址（文字 == 网址）；用户已命名的 [文字](网址) 不动
+        if ((link.textContent || "").trim() !== url) { link.setAttribute("data-lumina-title-state", "done"); return; }
+        const cached = breezeLinkTitleCache.get(url);
+        if (cached) { breezeApplyLinkTitle(link, url, cached); return; }
+        link.setAttribute("data-lumina-title-state", "pending");
+        breezeTitleFetchQueue.push({ url: url, link: link });
+    });
+    breezePumpTitleQueue();
+}
+
+/* 全局观察器：覆盖主视图 / 侧边栏 dock / 周视图 / 回顾 / 展开全文 等所有重渲染 */
+let breezeLinkTitleObserver = null;
+function breezeInstallLinkTitleObserver() {
+    if (breezeLinkTitleObserver || typeof MutationObserver === "undefined") return;
+    breezeLinkTitleObserver = new MutationObserver(() => {
+        if (breezeLinkTitleObserver._t) clearTimeout(breezeLinkTitleObserver._t);
+        breezeLinkTitleObserver._t = setTimeout(() => {
+            breezeAutoFetchLinkTitles(document.body);
+        }, 400);
+    });
+    try { breezeLinkTitleObserver.observe(document.body, { childList: true, subtree: true }); } catch (e) { /* noop */ }
+}
+function breezeUninstallLinkTitleObserver() {
+    if (breezeLinkTitleObserver) { breezeLinkTitleObserver.disconnect(); breezeLinkTitleObserver = null; }
+}
+
 function breezeRenderContent(rawOrParts, q, storage) {
     const parts = (rawOrParts && typeof rawOrParts === 'object' && !Array.isArray(rawOrParts) && ('images' in rawOrParts || 'files' in rawOrParts || 'text' in rawOrParts))
         ? rawOrParts
@@ -3251,6 +3392,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         const plugin = this;
         PLUGIN_REF = this;
+        // 清风链接标题：载入缓存并启动全局观察器（自动把裸网址替换为网页标题）
+        breezeLinkTitlePlugin = this;
+        breezeLoadLinkTitleCache(this);
+        breezeInstallLinkTitleObserver();
         if (!this._pluginDeletedAssets) this._pluginDeletedAssets = new Set();
 
         // 注册自定义图标（供标签页+顶栏使用）
@@ -3950,9 +4095,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                         this.breezePage = 1;
                                     }
                                     list.innerHTML = (viewStyle === 'card' ? buildBreezeMasonry(renderNotes, this.breezeSearchFilter, dateBottom, viewStyle, footerLabel, footerSignature) : buildBreezeNotes(renderNotes, this.breezeSearchFilter, dateBottom, viewStyle, footerLabel, footerSignature)) + pagerH;
-                                    this._bindBreezePager(list);
-                                    this._applyBreezeImageSize(list);
-                                    this._applyBreezeLongNoteCollapse(list);
+                        this._bindBreezePager(list);
+                            this._applyBreezeImageSize(list);
+                            this._applyBreezeLongNoteCollapse(list);
+                            // 清风链接标题：渲染完成后自动把裸网址替换为网页标题
+                            try { breezeAutoFetchLinkTitles(list); } catch (e) { /* noop */ }
                                 }
                             }
                             // 滚动阻尼：启用后丝滑惯性滚动
@@ -5652,6 +5799,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             this._bindBreezePager(list);
                                                         this._applyBreezeImageSize(list);
                             this._applyBreezeLongNoteCollapse(list);
+                            // 清风链接标题：渲染完成后自动把裸网址替换为网页标题
+                            try { breezeAutoFetchLinkTitles(list); } catch (e) { /* noop */ }
                         }
                         // re-bind 滚动阻尼（innerHTML 会销毁 scroll-box）
                         if (this._getSetting('breezeScrollDamping')) {
@@ -14619,6 +14768,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
     }
 
     onunload() {
+        breezeUninstallLinkTitleObserver();
         this.unhookMobileGoBack();
         if (this._toolbarObserver) {
             this._toolbarObserver.disconnect();

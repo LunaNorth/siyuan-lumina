@@ -12094,3 +12094,12 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     .north-luna-quickopen-panel { width: 100%; max-width: 96vw; }
     .qo-steps { flex-direction: column; }
 }
+
+/* 清风视图：自动获取的网页标题链接 */
+a.north-breeze-link {
+    word-break: break-word;
+}
+/* 正在自动获取标题时的占位提示（虚线下划线） */
+a.north-breeze-link[data-lumina-title-state="pending"] {
+    border-bottom: 1px dashed var(--b3-theme-primary, #4285f4);
+}
