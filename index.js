@@ -385,19 +385,12 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                 if (note) {
                     note.archived = !note.archived;
                     plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
-                    // 刷新视图：优先走 _renderBreezeSubView，没有则走 renderMain
-                    if (plugin._siyuTab && plugin._siyuTab._renderBreezeSubView) {
-                        try { plugin._siyuTab._renderBreezeSubView(); } catch(e) {}
-                        if (plugin._siyuTab._renderBreezeTagList) {
-                            try { plugin._siyuTab._renderBreezeTagList(); } catch(e) {}
-                        }
-                    } else {
-                        try { plugin.renderMain(); } catch(e) {}
-                    }
-                    // 同步刷新 Dock 侧边栏列表（若启用），保证侧边栏归档后立即消失
-                    if (plugin._breezeNotifyDockChanged) {
-                        try { plugin._breezeNotifyDockChanged(); } catch(e) {}
-                    }
+                    /* 刷新所有清风视图：PC 标签页 + 移动端抽屉 + PC Dock 侧边栏
+                       与「新增笔记」后的刷新保持一致（见 _saveBreezeNote），避免归档后界面无反应
+                       注意：Dock 列表 _refreshBreezeDockList 已过滤已归档，归档后笔记会立即从侧边栏消失 */
+                    try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
+                    try { plugin._refreshActiveBreezeView(plugin._lunaDockCtx); } catch (e) { /* noop */ }
+                    try { plugin._refreshBreezeDockList(); } catch (e) { /* noop */ }
                 }
                 break;
             default:
@@ -2246,6 +2239,16 @@ function breezeInlineFormat(t) {
     /* 背景颜色：[bg=var(--b3-font-backgroundN)]...[/bg]，与字体颜色配对 */
     t = t.replace(/\[bg=(var\(--[\w-]+\)|[a-zA-Z]+|#[0-9a-fA-F]{3,8}|rgb\(\d{1,3}(?:,\s*\d{1,3}){2}\))\]([\s\S]*?)\[\/bg\]/g,
         (m, c, txt) => '<span data-type="text" style="background-color:' + c + '">' + txt + '</span>');
+    /* 裸链接自动识别：http(s):// 开头的网址直接变可点击链接
+       解决用户从网页复制的纯文本网址无法点开的问题（之前只有 [文字](网址) 表单式可点击）
+       放在 Markdown 链接之前处理；用负向后顾 (?<!\()"') 避免误伤 [文字](网址) 里的网址（其前是 "("） */
+    t = t.replace(/(?<![\("'])https?:\/\/[^\s<>"')\]]+/gi, (url) => {
+        /* 去掉结尾可能被误吞的标点（英文句点/逗号等），还原到链接外，避免把标点包进链接 */
+        const m = url.match(/^(.*?)([.,;:。，、；：！？）】」』]+)$/);
+        let tail = '';
+        if (m) { url = m[1]; tail = m[2]; }
+        return '<a class="north-breeze-link" href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>' + tail;
+    });
     /* Markdown 超链接：[文字](网址) → <a>，放在最后避免与其它内联格式互相干扰 */
     t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="north-breeze-link" href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
     return t;
@@ -14737,7 +14740,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
     _refreshBreezeDockList() {
         const listEl = this._breezeDockEl && this._breezeDockEl.querySelector('#north-breeze-dock-list');
         if (!listEl) return;
-        const notes = ((this.data[RECORDS_STORAGE] || {}).breezeNotes || []).slice();
+        let notes = ((this.data[RECORDS_STORAGE] || {}).breezeNotes || []).slice();
+        // 归档笔记默认不在侧边栏显示（与主视图「归档笔记默认隐藏」保持一致，否则归档后列表无变化，像是点了没反应）
+        notes = notes.filter(n => !n.archived);
         // 倒序：最新的在上面
         notes.sort((a, b) => (b.time || '').localeCompare(a.time || ''));
         if (notes.length === 0) {
