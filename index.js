@@ -3047,6 +3047,12 @@ const SIDEBAR_VIEWS = [
                                 </span>
                                 <span>有任务</span>
                             </div>
+                            <div class="north-breeze-quick-filter-item" data-breeze-quick="archived">
+                                <span class="north-breeze-quick-filter-icon">
+                                    <svg viewBox="0 0 24 24"><use xlink:href="#iconInbox"></use></svg>
+                                </span>
+                                <span>已归档</span>
+                            </div>
                         </div>`;
                         })()}
                         <div class="north-breeze-menu-item" data-breeze-subview="review">
@@ -4292,6 +4298,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                         const imgPath = dayFirstImg[key];
                                         const imgHtml = `<img class="north-luna-moments-calendar-photo-img" src="${breezeEsc(imgPath)}" data-kind="image" alt="" loading="lazy">`;
                                         rowCells += `<div class="north-luna-moments-calendar-photo-cell has-photo"${dateAttr} title="${tooltip}">${num}${imgHtml}</div>`;
+                                    } else if (count > 0) {
+                                        // 有记录但当天没有图片：保留 data-date 以便点击交互，并显示小圆点标记
+                                        rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record"${dateAttr} title="${tooltip}">${num}<span class="north-luna-moments-calendar-photo-dot" aria-hidden="true"></span></div>`;
                                     } else {
                                         rowCells += `<div class="north-luna-moments-calendar-photo-cell" title="${tooltip}">${num}</div>`;
                                     }
@@ -5456,7 +5465,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this.breezeTagFilter = null; // 当前选中的标签全路径（null = 全部）
                 this.breezeSearchFilter = ''; // 当前搜索关键词（'' = 不过滤）
                 this.breezePage = 1; // 分页当前页码（分页关闭时无意义）
-                this.breezeQuickFilter = null; // 快速筛选：'no-tag' | 'has-image' | 'no-image' | 'has-link' | 'has-task' | null
+                this.breezeQuickFilter = null; // 快速筛选：'no-tag' | 'has-image' | 'no-image' | 'has-link' | 'has-task' | 'archived' | null
                 this.breezeQuickFilterExpanded = false; // 子菜单是否展开
                 this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncNotebookId: '', syncDocId: '', flomoSyncedSlugs: [] };
                 // 从存储中读回 Flomo 配置
@@ -5726,7 +5735,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (!list) return;
                     let notes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
                     // 归档笔记默认不显示在清风主视图中（表格视图可单独筛选查看）
-                    notes = notes.filter(n => !n.archived);
+                    // 但若用户在内置检索中选中「已归档」，则本视图仅展示已归档笔记（覆盖默认隐藏）
+                    const quickIsArchived = this.breezeQuickFilter === 'archived' && this.breezeSubView === 'all';
+                    if (!quickIsArchived) {
+                        notes = notes.filter(n => !n.archived);
+                    }
                     if (this.breezeTagFilter) {
                         const sel = this.breezeTagFilter;
                         const prefix = sel + '/';
@@ -5758,6 +5771,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         } else if (kind === 'has-task') {
                             const taskRe = /^\s*[-*+]\s+\[[ xX]\]/m;
                             notes = notes.filter(n => taskRe.test(n.content || ''));
+                        } else if (kind === 'archived') {
+                            notes = notes.filter(n => !!n.archived);
                         }
                     }
                     if (this.breezeSubView === 'review') {
@@ -6485,7 +6500,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'slider', key: 'breezeLetterSpacing', title: '字间距', desc: '字间距，默认 0。单位 px，数值越大字越分散', default: 0, min: 0, max: 3, step: 0.1 }
                         ]},
                         { title: '控制设置', items: [
-                            { type: 'toggle', key: 'breezeQuickFilterEnabled', title: '内置检索', desc: '开启后，「全部笔记」右侧出现箭头，点击展开快速筛选（无标签/有图片/无图片/有链接/有任务）。默认关闭。', default: false },
+                            { type: 'toggle', key: 'breezeQuickFilterEnabled', title: '内置检索', desc: '开启后，「全部笔记」右侧出现箭头，点击展开快速筛选（无标签/有图片/无图片/有链接/有任务/已归档）。默认关闭。', default: false },
                             { type: 'toggle', key: 'breezeScrollDamping', title: '滚动阻尼', desc: '开启后页面滚动更加丝滑，滚轮停止后内容还会惯性滑行一小段。', default: false },
                             { type: 'toggle', key: 'breezePaginationEnabled', title: '笔记分页', desc: '开启后，清风全部笔记视图将按设定条数分页，底部显示页码导航。默认关闭。', default: false },
                             { type: 'slider', key: 'breezePageSize', title: '每页笔记条数', desc: '分页开启时生效，决定每页显示的笔记数量。', default: 20, min: 10, max: 50, step: 2 },
@@ -14020,7 +14035,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     /* 子视图：全部笔记(all) / 每日回顾(review) / 本周记录(week) */
                     const subView = ctx._mobileBreezeSubView || 'all';
                     const q = (ctx.breezeMobileSearch || '').trim().toLowerCase();
-                    let notes = visibleNotes;
+                    let notes;
+                    // 归档笔记默认不显示；若用户在内置检索选中「已归档」，则仅展示已归档笔记（覆盖默认隐藏）
+                    if (plugin._mobileBreezeQuickFilter === 'archived' && (ctx._mobileBreezeSubView || 'all') === 'all') {
+                        notes = allNotes.filter(n => !!n.archived);
+                    } else {
+                        notes = visibleNotes;
+                    }
                     /* 本周记录：筛选本周内的笔记 */
                     if (subView === 'week') {
                         const now = new Date();
@@ -14060,6 +14081,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         } else if (kind === 'has-task') {
                             const taskRe = /^\s*[-*+]\s+\[[ xX]\]/m;
                             notes = notes.filter(n => taskRe.test(n.content || ''));
+                        } else if (kind === 'archived') {
+                            notes = notes.filter(n => !!n.archived);
                         }
                     }
                     /* 分页：开启且总条数超过每页条数时才切片 + 显示分页器（复刻 PC _renderBreezeSubView） */
@@ -14578,6 +14601,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         if (count > 0 && dayFirstImg[key]) {
                             const imgHtml = `<img class="north-luna-moments-calendar-photo-img" src="${breezeEsc(dayFirstImg[key])}" data-kind="image" alt="" loading="lazy">`;
                             rowCells += `<div class="north-luna-moments-calendar-photo-cell has-photo"${dateAttr} title="${tooltip}">${num}${imgHtml}</div>`;
+                        } else if (count > 0) {
+                            // 有记录但当天没有图片：保留 data-date 以便点击交互，并显示小圆点标记
+                            rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record"${dateAttr} title="${tooltip}">${num}<span class="north-luna-moments-calendar-photo-dot" aria-hidden="true"></span></div>`;
                         } else {
                             rowCells += `<div class="north-luna-moments-calendar-photo-cell" title="${tooltip}">${num}</div>`;
                         }
@@ -18661,7 +18687,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             <div class="north-luna-moments-action-popup" data-mid="${m.id}">
                                 <div class="north-luna-moments-action-popup-row">
                                     <div class="north-luna-moments-action-popup-btn like-btn${m.liked ? ' liked' : ''}" data-mid="${m.id}">
-                                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="${m.liked ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' : 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z'}"></path></svg>${m.liked ? '取赞' : '点赞'}
+                                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconHeart"></use></svg>${m.liked ? '取赞' : '点赞'}
                                     </div>
                                     <div class="north-luna-moments-action-popup-btn pin-btn" data-mid="${m.id}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconPin"></use></svg>${m.pinned ? '取消置顶' : '置顶'}
@@ -18691,7 +18717,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     </div>
                     <div class="north-luna-moments-comment-panel" data-mid="${m.id}">
                         ${m.liked ? `<div class="north-luna-moments-like-row" data-mid="${m.id}">
-                            <svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-2px;flex-shrink:0;"><use xlink:href="#iconHeart"></use></svg>
+                            <svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-2px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"></path></svg>
                             <span class="north-luna-moments-like-nickname">${this._esc(nickname)}</span>
                         </div>` : ''}
                         ${(m.comments || []).map(c => `<div class="north-luna-moments-comment-item" data-cid="${this._esc(c.id)}">
@@ -18715,7 +18741,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         </div>`).join('')}
                         <div class="north-luna-moments-comment-input-row" style="display:none">
                             <input type="text" class="north-luna-moments-comment-input" placeholder="写评论..." maxlength="200">
-                            <button class="north-luna-moments-comment-cancel" data-mid="${m.id}">取消</button>
                             <button class="north-luna-moments-comment-send" data-mid="${m.id}">发送</button>
                         </div>
                     </div>
@@ -20744,7 +20769,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         likeRow = document.createElement('div');
                         likeRow.className = 'north-luna-moments-like-row';
                         likeRow.dataset.mid = mid;
-                        likeRow.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-2px;flex-shrink:0;"><use xlink:href="#iconHeart"></use></svg><span class="north-luna-moments-like-nickname">' + this._esc(this._getProfileNickname()) + '</span>';
+                        likeRow.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-2px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"></path></svg><span class="north-luna-moments-like-nickname">' + this._esc(this._getProfileNickname()) + '</span>';
                         /* 插到评论列表最前面（评论项之前） */
                         const firstComment = panel.querySelector('.north-luna-moments-comment-item');
                         if (firstComment) panel.insertBefore(likeRow, firstComment);
@@ -20753,6 +20778,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         likeRow.remove();
                     }
                 }
+                /* 点赞/取赞后收起菜单弹窗，与评论按钮一致 */
+                container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.classList.remove('active'));
                 this.saveMoments().catch(() => {});
                 return;
             }
@@ -20794,23 +20821,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (inputRow) {
                         const wasOpen = inputRow.style.display !== 'none';
                         inputRow.style.display = wasOpen ? 'none' : 'flex';
+                        /* 点击评论后隐藏菜单弹窗，避免遮挡输入框 */
+                        container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.classList.remove('active'));
                         if (!wasOpen) {
                             const input = inputRow.querySelector('.north-luna-moments-comment-input');
                             if (input) setTimeout(() => input.focus(), 100);
                         }
                     }
-                }
-                return;
-            }
-            /* 取消评论：收起输入框并清空内容 */
-            const cancelCommentBtn = e.target.closest('.north-luna-moments-comment-cancel');
-            if (cancelCommentBtn) {
-                e.stopPropagation();
-                const inputRow = cancelCommentBtn.closest('.north-luna-moments-comment-input-row');
-                if (inputRow) {
-                    inputRow.style.display = 'none';
-                    const input = inputRow.querySelector('.north-luna-moments-comment-input');
-                    if (input) input.value = '';
                 }
                 return;
             }
@@ -20969,12 +20986,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 e.stopPropagation();
                 const popup = moreBtn.parentElement.querySelector('.north-luna-moments-action-popup');
                 if (popup) {
-                    const wasVisible = popup.style.display === 'flex';
-                    container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.style.display = 'none');
+                    const wasVisible = popup.classList.contains('active');
+                    container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.classList.remove('active'));
                     // 清除所有卡片上的 popup-open 类
                     container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(c => c.classList.remove('popup-open'));
                     if (!wasVisible) {
-                        popup.style.display = 'flex';
+                        popup.classList.add('active');
                         // 提升当前卡片层级，防止菜单被下一张卡片遮挡
                         const card = moreBtn.closest('.north-luna-moments-item');
                         if (card) card.classList.add('popup-open');
@@ -20983,7 +21000,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 return;
             }
             if (!e.target.closest('.north-luna-moments-action-popup')) {
-                container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.style.display = 'none');
+                container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.classList.remove('active'));
                 container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(c => c.classList.remove('popup-open'));
             }
             const syncBtn = e.target.closest('.north-luna-moments-action-popup-btn.sync-btn');
@@ -21032,7 +21049,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 if (iconUse) iconUse.setAttribute('xlink:href', originalHref);
                                 syncBtn.dataset.syncing = '';
                                 const popup = syncBtn.closest('.north-luna-moments-action-popup');
-                                if (popup) popup.style.display = 'none';
+                                if (popup) popup.classList.remove('active');
                                 const card = syncBtn.closest('.north-luna-moments-item');
                                 if (card) card.classList.remove('popup-open');
                             }, 1500);
@@ -21070,7 +21087,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const mid = editBtn.dataset.mid;
                 const m = (this.data[MOMENTS_STORAGE].items || []).find(x => x.id === mid);
                 if (!m) return;
-                container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.style.display = 'none');
+                container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.classList.remove('active'));
                 container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(c => c.classList.remove('popup-open'));
                 openPublishPage(m);
                 return;
@@ -21079,7 +21096,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (timeChangeBtn) {
                 e.stopPropagation();
                 const mid = timeChangeBtn.dataset.mid;
-                container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.style.display = 'none');
+                container.querySelectorAll('.north-luna-moments-action-popup').forEach(p => p.classList.remove('active'));
                 container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(c => c.classList.remove('popup-open'));
                 changeMomentsItemTime(mid, this);
                 return;

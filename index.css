@@ -464,10 +464,17 @@
     transition: opacity 0.2s ease, transform 0.2s ease !important;
 }
 
-/* 悬停封面图或工具栏时显示 */
-.north-luna-moments-cover:hover .north-luna-moments-cover-toolbar,
-img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
-.north-luna-moments-cover-toolbar:hover,
+/* 悬停封面图或工具栏时显示（仅真实指针设备，避免触屏 emulated hover 导致工具栏常驻/闪烁） */
+@media (hover: hover) {
+    .north-luna-moments-cover:hover .north-luna-moments-cover-toolbar,
+    img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
+    .north-luna-moments-cover-toolbar:hover {
+        opacity: 1 !important;
+        transform: none !important;
+        pointer-events: auto !important;
+    }
+}
+/* 触屏点按封面图时由 JS 切换 .visible 显隐（所有设备通用，不依赖 hover） */
 .north-luna-moments-cover-toolbar.visible {
     opacity: 1 !important;
     transform: none !important;
@@ -527,11 +534,21 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     fill: currentColor;
 }
 
-.north-luna-moments-cover-tool:hover {
+@media (hover: hover) {
+    .north-luna-moments-cover-tool:hover {
+        background: rgba(0, 0, 0, 0.48);
+    }
+}
+.north-luna-moments-cover-tool:active {
     background: rgba(0, 0, 0, 0.48);
 }
 
-.north-luna-moments-cover-tool-danger:hover {
+@media (hover: hover) {
+    .north-luna-moments-cover-tool-danger:hover {
+        background: rgba(220, 38, 38, 0.8);
+    }
+}
+.north-luna-moments-cover-tool-danger:active {
     background: rgba(220, 38, 38, 0.8);
 }
 
@@ -540,8 +557,13 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     background: var(--b3-theme-primary);
     color: #fff;
 }
-.north-luna-moments-cover-tool.active:hover {
-    background: var(--b3-theme-primary);
+@media (hover: hover) {
+    .north-luna-moments-cover-tool.active:hover {
+        background: var(--b3-theme-primary);
+        filter: brightness(1.1);
+    }
+}
+.north-luna-moments-cover-tool.active:active {
     filter: brightness(1.1);
 }
 
@@ -1908,6 +1930,15 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     color: var(--b3-theme-primary, #576b95);
     margin-bottom: 2px;
 }
+/* 点赞爱心使用思源内置 iconHeart 的内联描边路径（不受图标包影响）；
+   锁定 stroke 取主色、fill 不填充，保证始终是思源内置样式 */
+.north-luna-moments-like-row svg:not([fill]) {
+    fill: none;
+    stroke: var(--b3-theme-primary, #576b95);
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
 .north-luna-moments-like-nickname {
     color: var(--b3-theme-primary, #576b95);
 }
@@ -2110,25 +2141,6 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 .north-luna-moments-comment-panel .north-luna-moments-comment-send:hover {
     opacity: 0.85;
 }
-/* 评论输入框取消按钮：与发送按钮并排，轻量样式 */
-.north-luna-moments-comment-panel .north-luna-moments-comment-cancel {
-    flex-shrink: 0;
-    border: none;
-    background: transparent;
-    color: var(--b3-theme-on-surface-light);
-    border-radius: 7px;
-    padding: 6px 14px;
-    font-size: 13px;
-    line-height: 1.3;
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s;
-    text-align: center;
-    white-space: nowrap;
-}
-.north-luna-moments-comment-panel .north-luna-moments-comment-cancel:hover {
-    color: var(--b3-theme-on-surface);
-    background: color-mix(in srgb, var(--b3-theme-on-surface) 8%, transparent);
-}
 @keyframes moments-likes-fade-in {
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -2149,11 +2161,23 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     transition: opacity 0.2s ease, background-color 0.2s ease;
 }
 
-.north-luna-moments-item:hover .north-luna-moments-more-btn {
+@media (hover: hover) {
+    .north-luna-moments-item:hover .north-luna-moments-more-btn {
+        opacity: 1;
+    }
+}
+/* 移动端无 hover：菜单按钮常驻可见（由 .is-mobile 控制，避免触屏 emulated hover 闪烁） */
+.north-luna-container.is-mobile .north-luna-moments-more-btn {
     opacity: 1;
 }
 
-.north-luna-moments-more-btn:hover {
+@media (hover: hover) {
+    .north-luna-moments-more-btn:hover {
+        background-color: var(--moments-interaction-bg);
+    }
+}
+/* 触屏点按反馈 */
+.north-luna-moments-more-btn:active {
     background-color: var(--moments-interaction-bg);
 }
 
@@ -2184,18 +2208,26 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     position: absolute;
     right: 40px;
     top: 50%;
-    transform: translateY(-50%);
+    transform: translateY(-50%) scale(0.96);
+    transform-origin: right center;
     background-color: var(--moments-action-popup-bg);
     border-radius: 4px;
-    display: none;
+    display: flex;
     align-items: center;
     z-index: 6;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.33s ease, transform 0.33s ease, visibility 0.33s;
 }
 
 .north-luna-moments-action-popup.active {
-    display: flex;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(-50%) scale(1);
 }
 
 .north-luna-moments-action-popup-btn {
@@ -3641,13 +3673,17 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
         min-width: 198px;
         right: 0;
         top: 100%;
-        transform: none;
+        transform: scale(0.96);
+        transform-origin: top right;
         flex-direction: column;
         border-radius: 8px;
         z-index: 6;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
         border: 1px solid var(--moments-action-popup-border);
         overflow: hidden;
+    }
+    .north-luna-container.is-mobile .north-luna-moments-action-popup.active {
+        transform: scale(1);
     }
     /* 行容器在移动端可见，每行容纳 3 个按钮 */
     .north-luna-container.is-mobile .north-luna-moments-action-popup-row {
@@ -4634,13 +4670,13 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 }
 .north-luna-moments-calendar-photo-dot {
     position: absolute;
-    right: 5px;
-    bottom: 5px;
-    width: 7px;
-    height: 7px;
+    right: 4px;
+    bottom: 4px;
+    width: 4px;
+    height: 4px;
     border-radius: 50%;
     background: var(--b3-theme-primary);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--b3-theme-background) 60%, transparent);
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--b3-theme-background) 60%, transparent);
     z-index: 2;
 }
 .north-luna-moments-calendar-photo-num {
