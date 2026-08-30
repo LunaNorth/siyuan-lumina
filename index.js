@@ -6568,15 +6568,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         ]},
                         { title: '朋友圈外观', items: [
                             { type: 'toggle', key: 'momentsHoverBorder', title: '悬停边框变色', desc: '鼠标移至动态卡片时边框变为主题色', default: false },
+                            { type: 'toggle', key: 'momentsShowBorder', title: '显示卡片边框', desc: '朋友圈动态卡片是否显示边框。默认开启（显示卡片边框），关闭后卡片不再显示边框。', default: true },
+                            { type: 'toggle', key: 'momentsWeatherBg', title: '天气背景色', desc: '开启后，根据动态的天气显示不同的卡片背景色（晴 / 多云 / 阴 / 雨 / 雪等），便于一眼区分。默认关闭。', default: false },
                             { type: 'slider', key: 'momentsFontSize', title: '自定义字体大小', desc: '字号默认为 16，影响朋友圈动态内容显示', default: 16, min: 10, max: 24, step: 1 },
                             { type: 'slider', key: 'momentsMobileFontSize', title: '移动端字体大小', desc: '仅移动端生效，不影响 PC 端。字号默认为 15，不同手机屏幕观感不一，可在此单独调节。', default: 15, min: 12, max: 22, step: 1 },
                             { type: 'select', key: 'momentsCalendarStyle', title: '朋友圈日历样式', desc: '选择朋友圈日历的展示形式', default: 'photo', options: [
                                 { value: 'heatmap', label: '热力图' },
                                 { value: 'photo', label: '记忆拼图' }
-                            ] },
-                            { type: 'toggle', key: 'momentsWeatherBg', title: '天气背景色', desc: '开启后，根据动态的天气显示不同的卡片背景色（晴 / 多云 / 阴 / 雨 / 雪等），便于一眼区分。默认关闭。', default: false }
+                            ] }
                         ]},
                         { title: '控制设置', items: [
+                            { type: 'toggle', key: 'momentsShowCommentTime', title: '显示评论日期', desc: '开启后评论的日期/时间才显示：PC 端为鼠标悬停该条评论时显示，移动端为点击昵称弹出菜单时显示；关闭后（默认）评论始终不显示日期。PC 与移动端同时生效。', default: false },
                             { type: 'toggle', key: 'autoSyncMoments', title: '自动同步思源笔记文档', desc: '开启后，发布朋友圈动态时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
                             { type: 'toggle', key: 'galleryHideMoments', title: '在明月中隐藏朋友圈资源', desc: '开启后，朋友圈中添加的图片/视频/文件不会出现在明月（拾光）视图中。默认关闭。', default: false },
                             { type: 'select', key: 'momentsLongNoteCollapse', title: '长笔记自动折叠', desc: '超过设定行数的朋友圈动态会自动折叠，底部显示展开按钮。图片始终完整显示，只折叠文字部分。', default: 'never', options: [
@@ -8367,6 +8369,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             if (inp.dataset.key === 'momMobileShowBorder') {
                                 const momentsContainer = this.container && this.container.querySelector(".north-luna-moments-container");
                                 if (momentsContainer) momentsContainer.style.setProperty("--mom-mobile-item-border", inp.checked ? '' : 'none');
+                            }
+                            if (inp.dataset.key === 'momentsShowBorder') {
+                                const momentsContainer = this.container && this.container.querySelector(".north-luna-moments-container");
+                                if (momentsContainer) momentsContainer.style.setProperty("--mom-pc-item-border", inp.checked ? '' : 'none');
+                            }
+                            if (inp.dataset.key === 'momentsShowCommentTime') {
+                                const momentsContainer = this.container && this.container.querySelector(".north-luna-moments-container");
+                                if (momentsContainer) momentsContainer.classList.toggle("moments-hide-comment-time", !inp.checked);
                             }
                         });
                     });
@@ -18274,7 +18284,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             : (settingsAll.momentsFontSize || 16);
 
         body.innerHTML = `
-            <div class="north-luna-moments-container" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder !== false ? '' : '--mom-mobile-item-border: none;'}">
+            <div class="north-luna-moments-container${settingsAll.momentsHoverBorder === true ? ' moments-hover-border' : ''}${settingsAll.momentsShowCommentTime !== true ? ' moments-hide-comment-time' : ''}" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder !== false ? '' : '--mom-mobile-item-border: none;'} ${settingsAll.momentsShowBorder === false ? '--mom-pc-item-border: none;' : ''}">
                 <div class="north-luna-moments-main" id="momentsMainPage">
                     <div class="north-luna-moments-nav" id="momentsNavBar">
                         <div class="north-luna-moments-nav-left"></div>
@@ -18647,9 +18657,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     <div class="north-luna-moments-item-meta">
                         ${metaHtml}
                         <div class="north-luna-moments-item-actions">
-                            ${m.liked ? `<span class="north-luna-moments-liked-indicator" data-mid="${m.id}">
-                                <svg viewBox="0 0 24 24" width="15" height="15"><path fill="#e74c3c" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
-                            </span>` : ''}
                             <div class="north-luna-moments-more-btn" data-mid="${m.id}"></div>
                             <div class="north-luna-moments-action-popup" data-mid="${m.id}">
                                 <div class="north-luna-moments-action-popup-row">
@@ -18683,6 +18690,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         </div>
                     </div>
                     <div class="north-luna-moments-comment-panel" data-mid="${m.id}">
+                        ${m.liked ? `<div class="north-luna-moments-like-row" data-mid="${m.id}">
+                            <svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-2px;flex-shrink:0;"><use xlink:href="#iconHeart"></use></svg>
+                            <span class="north-luna-moments-like-nickname">${this._esc(nickname)}</span>
+                        </div>` : ''}
                         ${(m.comments || []).map(c => `<div class="north-luna-moments-comment-item" data-cid="${this._esc(c.id)}">
                             <div class="north-luna-moments-comment-display">
                                 <span class="north-luna-moments-comment-text"><strong>${this._esc(nickname)}：</strong>${this._esc(c.text)}</span>
@@ -18704,6 +18715,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         </div>`).join('')}
                         <div class="north-luna-moments-comment-input-row" style="display:none">
                             <input type="text" class="north-luna-moments-comment-input" placeholder="写评论..." maxlength="200">
+                            <button class="north-luna-moments-comment-cancel" data-mid="${m.id}">取消</button>
                             <button class="north-luna-moments-comment-send" data-mid="${m.id}">发送</button>
                         </div>
                     </div>
@@ -20695,6 +20707,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         /* ===== 列表项交互（更多/删除/编辑/图片预览） ===== */
         container.addEventListener('click', (e) => {
+            /* 点评论输入框外部区域 → 自动收起所有打开的输入框（轻量收起，不清空内容，方便再次点开继续编辑） */
+            const clickedInputRow = e.target.closest('.north-luna-moments-comment-input-row');
+            const clickedCommentBtn = e.target.closest('.north-luna-moments-action-popup-btn.comment-btn');
+            if (!clickedInputRow && !clickedCommentBtn) {
+                container.querySelectorAll('.north-luna-moments-comment-input-row').forEach(r => {
+                    if (r.style.display !== 'none') r.style.display = 'none';
+                });
+            }
             /* 点赞按钮（位于 ··· 弹窗内） */
             const likeBtn = e.target.closest('.north-luna-moments-action-popup-btn.like-btn');
             if (likeBtn) {
@@ -20715,19 +20735,22 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 /* 重置按钮的纯文本节点为新文案，保留 svg */
                 const textNodes = Array.from(likeBtn.childNodes).filter(n => n.nodeType === 3);
                 if (textNodes.length) textNodes[textNodes.length - 1].nodeValue = m.liked ? '取赞' : '点赞';
-                /* 同步卡片 meta 行的点赞红心指示器：增删 */
+                /* 同步评论区内的点赞行（仿微信朋友圈「♡ 昵称」）：增删 */
                 const card = container.querySelector('.north-luna-moments-item[data-mid="' + this._esc(String(mid)) + '"]');
                 if (card) {
-                    let indicator = card.querySelector('.north-luna-moments-liked-indicator');
-                    if (m.liked && !indicator) {
-                        indicator = document.createElement('span');
-                        indicator.className = 'north-luna-moments-liked-indicator';
-                        indicator.dataset.mid = mid;
-                        indicator.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="#e74c3c" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>';
-                        const actions = card.querySelector('.north-luna-moments-item-actions');
-                        if (actions) actions.insertBefore(indicator, actions.firstChild);
-                    } else if (!m.liked && indicator) {
-                        indicator.remove();
+                    const panel = card.querySelector('.north-luna-moments-comment-panel');
+                    let likeRow = panel ? panel.querySelector('.north-luna-moments-like-row') : null;
+                    if (m.liked && !likeRow && panel) {
+                        likeRow = document.createElement('div');
+                        likeRow.className = 'north-luna-moments-like-row';
+                        likeRow.dataset.mid = mid;
+                        likeRow.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-2px;flex-shrink:0;"><use xlink:href="#iconHeart"></use></svg><span class="north-luna-moments-like-nickname">' + this._esc(this._getProfileNickname()) + '</span>';
+                        /* 插到评论列表最前面（评论项之前） */
+                        const firstComment = panel.querySelector('.north-luna-moments-comment-item');
+                        if (firstComment) panel.insertBefore(likeRow, firstComment);
+                        else panel.insertBefore(likeRow, panel.firstChild);
+                    } else if (!m.liked && likeRow) {
+                        likeRow.remove();
                     }
                 }
                 this.saveMoments().catch(() => {});
@@ -20776,6 +20799,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             if (input) setTimeout(() => input.focus(), 100);
                         }
                     }
+                }
+                return;
+            }
+            /* 取消评论：收起输入框并清空内容 */
+            const cancelCommentBtn = e.target.closest('.north-luna-moments-comment-cancel');
+            if (cancelCommentBtn) {
+                e.stopPropagation();
+                const inputRow = cancelCommentBtn.closest('.north-luna-moments-comment-input-row');
+                if (inputRow) {
+                    inputRow.style.display = 'none';
+                    const input = inputRow.querySelector('.north-luna-moments-comment-input');
+                    if (input) input.value = '';
                 }
                 return;
             }
@@ -21082,6 +21117,96 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
             }
         });
+
+        /* ===== 评论右键菜单（PC）+ 长按菜单（移动端） ===== */
+        const _showCommentContextMenu = (commentItem, x, y) => {
+            /* 先关闭已有菜单 */
+            const oldMenu = document.querySelector('.north-luna-comment-ctx-menu');
+            if (oldMenu) oldMenu.remove();
+            const cid = commentItem.dataset.cid;
+            const menu = document.createElement('div');
+            menu.className = 'north-luna-comment-ctx-menu';
+            menu.innerHTML =
+                '<div class="north-luna-comment-ctx-item north-luna-comment-ctx-edit" data-cid="' + this._esc(cid) + '">' +
+                    '<svg class="icon" style="width:13px;height:13px;margin-right:8px;vertical-align:-2px;"><use xlink:href="#iconEdit"></use></svg>编辑</div>' +
+                '<div class="north-luna-comment-ctx-item north-luna-comment-ctx-del" data-cid="' + this._esc(cid) + '">' +
+                    '<svg class="icon" style="width:13px;height:13px;margin-right:8px;vertical-align:-2px;"><use xlink:href="#iconTrashcan"></use></svg>删除</div>';
+            menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;z-index:9999;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px 0;min-width:120px;font-size:13px;';
+            document.body.appendChild(menu);
+            commentItem.classList.add('ctx-open');
+            /* 定位修正：不超出视口 */
+            const rect = menu.getBoundingClientRect();
+            if (rect.right > window.innerWidth) menu.style.left = (x - rect.width) + 'px';
+            if (rect.bottom > window.innerHeight) menu.style.top = (y - rect.height) + 'px';
+            /* 点击外部关闭 */
+            const closeMenu = (ev) => {
+                if (!menu.contains(ev.target)) {
+                    menu.remove();
+                    commentItem.classList.remove('ctx-open');
+                    document.removeEventListener('click', closeMenu, true);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', closeMenu, true), 0);
+
+            /* 编辑：直接进入行内编辑 */
+            const editItem = menu.querySelector('.north-luna-comment-ctx-edit');
+            if (editItem) editItem.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                menu.remove();
+                commentItem.classList.remove('ctx-open');
+                const item = container.querySelector('.north-luna-moments-comment-item[data-cid="' + this._esc(cid) + '"]');
+                if (!item) return;
+                const display = item.querySelector('.north-luna-moments-comment-display');
+                const editRow = item.querySelector('.north-luna-moments-comment-edit-row');
+                const input = editRow ? editRow.querySelector('.north-luna-moments-comment-edit-input') : null;
+                if (!display || !editRow || !input) return;
+                container.querySelectorAll('.north-luna-moments-comment-edit-row').forEach(r => {
+                    if (r !== editRow) {
+                        r.style.display = 'none';
+                        const sd = r.closest('.north-luna-moments-comment-item') && r.closest('.north-luna-moments-comment-item').querySelector('.north-luna-moments-comment-display');
+                        if (sd) sd.style.display = '';
+                    }
+                });
+                display.style.display = 'none';
+                editRow.style.display = 'flex';
+                input.focus();
+                input.setSelectionRange(input.value.length, input.value.length);
+            });
+
+            /* 删除：二次确认后移除 */
+            const delItem = menu.querySelector('.north-luna-comment-ctx-del');
+            if (delItem) delItem.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                menu.remove();
+                commentItem.classList.remove('ctx-open');
+                const cItem = container.querySelector('.north-luna-moments-comment-item[data-cid="' + this._esc(cid) + '"]');
+                const cPanel = cItem ? cItem.closest('.north-luna-moments-comment-panel') : null;
+                const mid = cPanel ? cPanel.dataset.mid : null;
+                if (!mid) return;
+                const doDelete = () => {
+                    const items = (this.data[MOMENTS_STORAGE] || {}).items || [];
+                    const m = items.find(x => String(x.id) === String(mid));
+                    if (!m) return;
+                    m.comments = (m.comments || []).filter(c => c.id !== cid);
+                    if (cItem) cItem.remove();
+                    this.saveMoments().catch(() => {});
+                };
+                if (typeof confirm === 'function') { confirm('删除评论', '确定要删除这条评论吗？', doDelete); }
+                else { doDelete(); }
+            });
+        };
+
+        /* 点击评论昵称 → 弹出编辑/删除菜单（桌面 / 移动端通用，不再依赖右键或长按） */
+        container.addEventListener('click', (e) => {
+            const nameEl = e.target.closest('.north-luna-moments-comment-text strong');
+            if (!nameEl) return;
+            const commentItem = nameEl.closest('.north-luna-moments-comment-item');
+            if (!commentItem) return;
+            e.preventDefault();
+            const rect = nameEl.getBoundingClientRect();
+            _showCommentContextMenu(commentItem, rect.left, rect.bottom + 4);
+        });
+
 
         });
     }

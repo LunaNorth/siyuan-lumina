@@ -229,19 +229,29 @@
     border-color: color-mix(in srgb, var(--moments-card-border) 70%, transparent);
 }
 .north-luna-moments-list.moments-hover-border .north-luna-moments-item:hover {
-    border-color: color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
+    outline-offset: 0;
 }
 
 /* ===== 朋友圈主样式 ===== */
 /* 朋友圈滚动条隐藏 */
 .north-luna-moments-body::-webkit-scrollbar { display: none; }
-.north-luna-moments-body { scrollbar-width: none; -ms-overflow-style: none; }
+.north-luna-moments-body {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
 
 .north-luna-moments-container {
     position: relative;
     width: 100%;
     min-height: 100%;
-    height: 100%;
+    height: auto;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
     background: var(--moments-bg);
     font-family: inherit;
     color: var(--moments-text);
@@ -839,7 +849,7 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     box-sizing: border-box;
     background-color: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
     border-radius: 8px;
-    border: 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent);
+    border: var(--mom-pc-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
     cursor: pointer;
     /* 自适应高度：容纳一行置顶 group（2×2 时 88px+padding），不被剪裁 */
     min-height: 64px;
@@ -1029,7 +1039,7 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     width: 74%;
     box-sizing: border-box;
     border-radius: 8px;
-    border: 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent);
+    border: var(--mom-pc-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
 }
 .north-luna-moments-pin-back-btn {
     display: flex;
@@ -1081,17 +1091,36 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     padding: 16px;
     position: relative;
     background-color: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
-    border: 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent);
+    border: var(--mom-pc-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
     width: 73%;
 }
 
 /* 悬停边框变色（参考轻语） */
 .north-luna-moments-list.moments-hover-border .north-luna-moments-item {
     border-color: color-mix(in srgb, var(--moments-card-border) 70%, transparent);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    outline: 1px solid transparent;
+    outline-offset: 0;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, outline-color 0.2s ease;
 }
 .north-luna-moments-list.moments-hover-border .north-luna-moments-item:hover {
-    border-color: color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
+    outline-offset: 0;
+}
+
+/* 置顶条/返回条 悬停边框变色（与动态卡片一致；使用 outline 不影响布局，避免抖动；
+   且独立于卡片边框显示开关，关闭卡片边框时悬停仍会变色） */
+.north-luna-moments-container.moments-hover-border .north-luna-moments-pin-strip,
+.north-luna-moments-container.moments-hover-border .north-luna-moments-pin-back-bar {
+    outline: 1px solid transparent;
+    outline-offset: 0;
+    transition: outline-color 0.2s ease;
+}
+.north-luna-moments-container.moments-hover-border .north-luna-moments-pin-strip:hover,
+.north-luna-moments-container.moments-hover-border .north-luna-moments-pin-back-bar:hover {
+    outline: 1px solid color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
+    outline-offset: 0;
+    position: relative;
+    z-index: 1;
 }
 
 /* 天气背景色：开启「天气背景色」后，不同天气的动态卡片显示不同底色与边框色。
@@ -1865,15 +1894,22 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     100% { transform: scale(1); }
 }
 
-/* 卡片 meta 行点赞指示器（已点赞时显示红色实心小红心） */
-.north-luna-moments-liked-indicator {
-    display: inline-flex;
+/* 点赞行（仿微信朋友圈：评论区内的「♡ 昵称」样式，排在评论列表最前面） */
+.north-luna-moments-like-row {
+    display: flex;
     align-items: center;
-    flex-shrink: 0;
-    animation: moments-like-pop 0.3s ease;
+    gap: 6px;
+    padding: 4px 0;
+    font-size: 13px;
+    line-height: 1.5;
 }
-.north-luna-moments-liked-indicator svg {
-    display: block;
+.north-luna-moments-like-row svg {
+    fill: var(--b3-theme-primary, #576b95);
+    color: var(--b3-theme-primary, #576b95);
+    margin-bottom: 2px;
+}
+.north-luna-moments-like-nickname {
+    color: var(--b3-theme-primary, #576b95);
 }
 
 /* 置顶标记（卡片右上角） */
@@ -1892,20 +1928,29 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 /* 朋友圈评论面板（参考微信朋友圈样式） */
 .north-luna-moments-comment-panel {
     margin-top: 8px;
-    padding: 8px 0 0;
+    padding: 0;
     animation: moments-likes-fade-in 0.2s ease;
+    border-radius: 6px;
 }
-/* 仅在存在评论时才显示顶部分隔线 */
-.north-luna-moments-comment-panel:has(.north-luna-moments-comment-item) {
-    border-top: 1px solid rgba(128, 128, 128, 0.08);
+/* 无互动内容（既无点赞也无评论）时隐藏面板占位空间 */
+.north-luna-moments-comment-panel:not(:has(.north-luna-moments-comment-item)):not(:has(.north-luna-moments-like-row)) {
+    margin-top: 0;
+    padding: 0;
+}
+/* 有互动内容（点赞或评论）时：浅色圆角背景（仿微信朋友圈「子卡片」效果） */
+.north-luna-moments-comment-panel:has(.north-luna-moments-comment-item),
+.north-luna-moments-comment-panel:has(.north-luna-moments-like-row) {
+    background-color: color-mix(in srgb, var(--b3-theme-on-surface) 6%, transparent);
+    padding: 10px 12px;
+    border-radius: 6px;
 }
 .north-luna-moments-comment-item {
-    padding: 4px 0;
+    padding: 3px 0;
     font-size: 13px;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 .north-luna-moments-comment-display {
-    display: block;
+    display: inline;
 }
 .north-luna-moments-comment-text {
     color: var(--b3-theme-on-surface);
@@ -1916,13 +1961,13 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 .north-luna-moments-comment-text strong {
     color: var(--b3-theme-primary);
     font-weight: 600;
+    cursor: pointer;
 }
-/* 时间在左 + 编辑/删除在右，参考朋友圈经典样式 */
+/* 时间紧跟评论内容，编辑/删除隐藏（通过右键/长按触发） */
 .north-luna-moments-comment-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 4px;
+    display: inline;
+    margin-left: 6px;
+    vertical-align: baseline;
 }
 .north-luna-moments-comment-actions-right {
     display: flex;
@@ -1933,36 +1978,25 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     font-size: 11px;
     color: var(--b3-theme-on-surface-light);
     white-space: nowrap;
-}
-.north-luna-moments-comment-del {
-    display: inline-flex;
-    align-items: center;
-    cursor: pointer;
-    color: var(--b3-theme-on-surface-light);
     opacity: 0;
     transition: opacity 0.15s;
-    padding: 0 2px;
 }
-.north-luna-moments-comment-item:hover .north-luna-moments-comment-del {
+/* 桌面：鼠标移到某条评论时，该条日期才显示 */
+.north-luna-moments-comment-item:hover .north-luna-moments-comment-time {
     opacity: 1;
 }
-.north-luna-moments-comment-del:hover {
-    color: #e74c3c;
+/* 移动端无 hover：评论日期默认隐藏，点击昵称弹出编辑/删除菜单时随菜单一起显示 */
+.north-luna-container.is-mobile .north-luna-moments-comment-item.ctx-open .north-luna-moments-comment-time {
+    opacity: 1;
 }
+/* 控制设置 → 显示评论日期：关闭时（默认）隐藏评论日期，PC/移动端一致；开启后沿用悬停/点击昵称的揭示逻辑 */
+.north-luna-moments-container.moments-hide-comment-time .north-luna-moments-comment-time {
+    display: none;
+}
+/* 编辑/删除按钮：默认隐藏，仅通过右键菜单 / 长按触发 */
+.north-luna-moments-comment-del,
 .north-luna-moments-comment-edit {
-    display: inline-flex;
-    align-items: center;
-    cursor: pointer;
-    color: var(--b3-theme-on-surface-light);
-    opacity: 0;
-    transition: opacity 0.15s;
-    padding: 0 2px;
-}
-.north-luna-moments-comment-item:hover .north-luna-moments-comment-edit {
-    opacity: 1;
-}
-.north-luna-moments-comment-edit:hover {
-    color: var(--b3-theme-primary);
+    display: none !important;
 }
 /* 行内编辑评论 */
 .north-luna-moments-comment-edit-row {
@@ -1970,6 +2004,21 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     flex-direction: column;
     gap: 6px;
     margin-top: 2px;
+}
+
+/* 评论右键/长按菜单 */
+.north-luna-comment-ctx-menu {
+    font-family: inherit;
+}
+.north-luna-comment-ctx-item {
+    padding: 8px 14px;
+    cursor: pointer;
+    color: var(--b3-theme-on-background);
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.north-luna-comment-ctx-item:hover {
+    background: var(--b3-list-hover);
 }
 .north-luna-moments-comment-edit-actions {
     display: flex;
@@ -2060,6 +2109,25 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
 }
 .north-luna-moments-comment-panel .north-luna-moments-comment-send:hover {
     opacity: 0.85;
+}
+/* 评论输入框取消按钮：与发送按钮并排，轻量样式 */
+.north-luna-moments-comment-panel .north-luna-moments-comment-cancel {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--b3-theme-on-surface-light);
+    border-radius: 7px;
+    padding: 6px 14px;
+    font-size: 13px;
+    line-height: 1.3;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+    text-align: center;
+    white-space: nowrap;
+}
+.north-luna-moments-comment-panel .north-luna-moments-comment-cancel:hover {
+    color: var(--b3-theme-on-surface);
+    background: color-mix(in srgb, var(--b3-theme-on-surface) 8%, transparent);
 }
 @keyframes moments-likes-fade-in {
     from { opacity: 0; transform: translateY(-4px); }
@@ -3508,11 +3576,13 @@ img.north-luna-moments-cover-img:hover ~ .north-luna-moments-cover-toolbar,
     .north-luna-moments-pin-strip {
         width: 93%;
         box-sizing: border-box;
+        border: var(--mom-mobile-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
     }
     .north-luna-moments-pin-back-bar {
         width: 93%;
         box-sizing: border-box;
         border-radius: 8px;
+        border: var(--mom-mobile-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
     }
 
     /* 移动端朋友圈字体大小 */
