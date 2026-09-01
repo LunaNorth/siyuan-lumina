@@ -13,7 +13,7 @@ const TAB_TYPE = "lumina-siyu-tab";
 const PLUGIN_NAME = "轻语";
 
 // 自定义图标（通过 this.addIcons 注册为思源全局图标，用于标签页+顶栏）
-const PLUGIN_ICON = `<symbol id="iconLightWord" viewBox="0 0 1024 1024"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M33.248 887.349h225.296l591.398-591.398c28.828-28.828 46.659-68.657 46.659-112.646 0-87.983-71.325-159.306-159.306-159.306-43.992 0-83.819 17.833-112.646 46.659l-591.398 591.398v225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M568.318 126.981l225.296 225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M878.102 662.060l-112.646 168.971h225.296l-112.646 168.971"/></symbol><symbol id="iconMobileDevice" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><line x1="11" y1="18" x2="13" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>`;
+const PLUGIN_ICON = `<symbol id="iconLightWord" viewBox="0 0 1024 1024"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M33.248 887.349h225.296l591.398-591.398c28.828-28.828 46.659-68.657 46.659-112.646 0-87.983-71.325-159.306-159.306-159.306-43.992 0-83.819 17.833-112.646 46.659l-591.398 591.398v225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M568.318 126.981l225.296 225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M878.102 662.060l-112.646 168.971h225.296l-112.646 168.971"/></symbol><symbol id="iconMobileDevice" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><line x1="11" y1="18" x2="13" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol><symbol id="iconBreezeComment" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><circle cx="8.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"/></symbol>`;
 
 /* 文档图标渲染：与文件树弹窗一致（思源内置图标名→SVG、路径→emojis 图片、十六进制→Emoji、兜底原样显示）。
    定义为模块级函数，避免依赖 this/plugin 引用在不同作用域下取不到的问题。 */
@@ -150,6 +150,11 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
     // 移除已存在的菜单（保证单实例）
     const existing = document.querySelector('.north-breeze-note-menu-dropdown');
     if (existing) existing.remove();
+    /* 首次打开菜单时，确保清风评论的全局事件委托只绑定一次（覆盖 PC / Dock / 移动端） */
+    if (plugin && !plugin._breezeCommentBound) {
+        breezeBindCommentEvents(plugin);
+        plugin._breezeCommentBound = true;
+    }
     // 找对应笔记（菜单项判断需要，比如置顶/归档文案）
     const notes = ((storage || {}).breezeNotes) || [];
     const note = notes.find((n) => n.id === id);
@@ -176,6 +181,7 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
         iconItem('copy',        'iconCopy',      '复制') +
         iconItem('share',       'iconSpreadOdd', '分享') +
         iconItem('comment',     'iconMark',      '批注') +
+        iconItem('breeze-comment', 'iconBreezeComment', '评论') +
         iconItem('change-time', 'iconClock',     '修改时间') +
         iconItem('append-daily-note', 'iconSparkles', '插入今日日记') +
         '<div class="north-breeze-menu-divider"></div>' +
@@ -374,6 +380,22 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                     }
                     input.focus();
                     input.dispatchEvent(new Event('input'));
+                }
+                break;
+            case 'breeze-comment':
+                // 评论：定位到该卡片的评论面板 → 展开输入框并聚焦（样式与朋友圈一致）
+                {
+                    const card = triggerEl ? triggerEl.closest('.north-breeze-note-card') : document.querySelector('.north-breeze-note-card[data-id="' + id + '"]');
+                    if (!card) break;
+                    const panel = card.querySelector('.north-luna-moments-comment-panel[data-nid="' + id + '"]');
+                    if (!panel) break;
+                    const inputRow = panel.querySelector('.north-luna-moments-comment-input-row');
+                    if (!inputRow) break;
+                    /* 关闭其它已打开的评论输入框，避免多个同时展开 */
+                    document.querySelectorAll('.north-luna-moments-comment-input-row').forEach(r => { if (r !== inputRow) r.style.display = 'none'; });
+                    inputRow.style.display = 'flex';
+                    const input = inputRow.querySelector('.north-luna-moments-comment-input');
+                    if (input) setTimeout(() => input.focus(), 100);
                 }
                 break;
             case 'share':
@@ -2840,12 +2862,241 @@ function buildBreezeMasonry(notes, q, dateBottomEnabled, viewStyle, footerLabel,
         '</div>';
 }
 
+/* 清风评论面板：复用朋友圈评论的 CSS 类名（north-luna-moments-comment-*），
+   因此视觉与朋友圈评论完全一致；数据存放在 note.comments: [{id,text,time,nickname}]。
+   返回的 HTML 直接拼到每条笔记卡片末尾。 */
+function breezeRenderCommentPanel(it) {
+    const comments = (it && it.comments) || [];
+    const itemsHtml = comments.map(c => {
+        const cid = breezeEsc(c.id);
+        const nick = breezeEsc(c.nickname || '清风');
+        const text = breezeEsc(c.text || '');
+        const time = breezeEsc(c.time || '');
+        return '<div class="north-luna-moments-comment-item" data-cid="' + cid + '">' +
+            '<div class="north-luna-moments-comment-display">' +
+                '<span class="north-luna-moments-comment-text">' +
+                    '<strong class="north-breeze-comment-nick" data-cid="' + cid + '" title="点击修改或删除">' + nick + '：</strong>' + text +
+                '</span>' +
+                '<span class="north-luna-moments-comment-actions">' +
+                    '<span class="north-luna-moments-comment-time">' + time + '</span>' +
+                '</span>' +
+            '</div>' +
+            '<div class="north-luna-moments-comment-edit-row" style="display:none">' +
+                '<textarea class="north-luna-moments-comment-edit-input" maxlength="200">' + text + '</textarea>' +
+                '<div class="north-luna-moments-comment-edit-actions">' +
+                    '<button class="north-luna-moments-comment-edit-save" data-cid="' + cid + '" type="button">保存</button>' +
+                    '<button class="north-luna-moments-comment-edit-cancel" data-cid="' + cid + '" type="button">取消</button>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+    const nid = breezeEsc(it.id);
+    return '<div class="north-luna-moments-comment-panel" data-nid="' + nid + '">' +
+        itemsHtml +
+        '<div class="north-luna-moments-comment-input-row" style="display:none">' +
+            '<input type="text" class="north-luna-moments-comment-input" placeholder="写评论..." maxlength="200">' +
+            '<button class="north-luna-moments-comment-send" data-nid="' + nid + '" type="button">发送</button>' +
+        '</div>' +
+    '</div>';
+}
+
+/* 清风评论：全局事件委托（仅作用于 .north-breeze-note-card 内的评论交互，不影响朋友圈）。
+   绑定一次（plugin._breezeCommentBound 去重），覆盖 PC / Dock / 移动端所有清风列表。 */
+function breezeBindCommentEvents(plugin) {
+    /* 弹出昵称菜单（修改 / 删除） */
+    const openNickMenu = (nickEl) => {
+        document.querySelectorAll('.north-breeze-comment-menu').forEach(m => m.remove());
+        const cid = nickEl.dataset.cid;
+        const panel = nickEl.closest('.north-luna-moments-comment-panel');
+        const menu = document.createElement('div');
+        menu.className = 'north-breeze-comment-menu';
+        menu.innerHTML =
+            '<div class="north-breeze-comment-menu-item" data-act="edit" data-cid="' + breezeEsc(cid) + '">修改</div>' +
+            '<div class="north-breeze-comment-menu-item" data-act="delete" data-cid="' + breezeEsc(cid) + '">删除</div>';
+        document.body.appendChild(menu);
+        const rect = nickEl.getBoundingClientRect();
+        const mw = menu.offsetWidth, mh = menu.offsetHeight;
+        let left = rect.left;
+        let top = rect.bottom + 4;
+        if (top + mh > window.innerHeight) top = rect.top - mh - 4;
+        if (left + mw > window.innerWidth - 4) left = window.innerWidth - mw - 4;
+        if (left < 4) left = 4;
+        menu.style.left = left + 'px';
+        menu.style.top = top + 'px';
+        menu.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const mi = ev.target.closest('.north-breeze-comment-menu-item');
+            if (!mi) return;
+            const act = mi.dataset.act;
+            const mcid = mi.dataset.cid;
+            menu.remove();
+            const item = document.querySelector('.north-luna-moments-comment-item[data-cid="' + breezeEsc(mcid) + '"]');
+            if (act === 'edit') {
+                if (!item) return;
+                const display = item.querySelector('.north-luna-moments-comment-display');
+                const editRow = item.querySelector('.north-luna-moments-comment-edit-row');
+                const input = editRow ? editRow.querySelector('.north-luna-moments-comment-edit-input') : null;
+                if (display) display.style.display = 'none';
+                if (editRow) editRow.style.display = 'flex';
+                if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+            } else if (act === 'delete') {
+                const doDelete = () => {
+                    const storage = plugin.data[RECORDS_STORAGE];
+                    const notes = (storage && storage.breezeNotes) || [];
+                    const nid = panel ? panel.dataset.nid : null;
+                    const note = notes.find(n => n.id === nid);
+                    if (!note) return;
+                    note.comments = (note.comments || []).filter(c => String(c.id) !== String(mcid));
+                    const ci = document.querySelector('.north-luna-moments-comment-item[data-cid="' + breezeEsc(mcid) + '"]');
+                    if (ci) ci.remove();
+                    if (plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
+                };
+                if (typeof confirm === 'function') confirm('删除评论', '确定要删除这条评论吗？', doDelete);
+                else doDelete();
+            }
+        });
+    };
+
+    const onListClick = (ev) => {
+        /* 发送评论 */
+        const sendBtn = ev.target.closest('.north-luna-moments-comment-send');
+        if (sendBtn && sendBtn.closest('.north-breeze-note-card')) {
+            ev.stopPropagation();
+            const nid = sendBtn.dataset.nid;
+            const panel = sendBtn.closest('.north-luna-moments-comment-panel');
+            const inputRow = sendBtn.closest('.north-luna-moments-comment-input-row');
+            const input = inputRow ? inputRow.querySelector('.north-luna-moments-comment-input') : null;
+            if (!input || !input.value.trim()) return;
+            const text = input.value.trim();
+            const storage = plugin.data[RECORDS_STORAGE];
+            const notes = (storage && storage.breezeNotes) || [];
+            const note = notes.find(n => n.id === nid);
+            if (!note) return;
+            note.comments = note.comments || [];
+            const now = new Date();
+            const p2 = n => String(n).padStart(2, '0');
+            const time = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate()) + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes());
+            const cid = 'bc_' + Date.now();
+            const nickname = (plugin._getProfileNickname && plugin._getProfileNickname()) || '清风';
+            note.comments.push({ id: cid, text: text, time: time, nickname: nickname });
+            const item = document.createElement('div');
+            item.className = 'north-luna-moments-comment-item';
+            item.dataset.cid = cid;
+            item.innerHTML = '<div class="north-luna-moments-comment-display">' +
+                '<span class="north-luna-moments-comment-text">' +
+                    '<strong class="north-breeze-comment-nick" data-cid="' + breezeEsc(cid) + '" title="点击修改或删除">' + breezeEsc(nickname) + '：</strong>' + breezeEsc(text) +
+                '</span>' +
+                '<span class="north-luna-moments-comment-actions">' +
+                    '<span class="north-luna-moments-comment-time">' + breezeEsc(time) + '</span>' +
+                '</span>' +
+            '</div>' +
+            '<div class="north-luna-moments-comment-edit-row" style="display:none">' +
+                '<textarea class="north-luna-moments-comment-edit-input" maxlength="200">' + breezeEsc(text) + '</textarea>' +
+                '<div class="north-luna-moments-comment-edit-actions">' +
+                    '<button class="north-luna-moments-comment-edit-save" data-cid="' + breezeEsc(cid) + '" type="button">保存</button>' +
+                    '<button class="north-luna-moments-comment-edit-cancel" data-cid="' + breezeEsc(cid) + '" type="button">取消</button>' +
+                '</div>' +
+            '</div>';
+            if (inputRow) panel.insertBefore(item, inputRow);
+            input.value = '';
+            if (inputRow) inputRow.style.display = 'none';
+            if (plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
+            return;
+        }
+        /* 点击昵称 → 修改/删除菜单 */
+        const nick = ev.target.closest('.north-breeze-comment-nick');
+        if (nick && nick.closest('.north-breeze-note-card')) {
+            ev.stopPropagation();
+            openNickMenu(nick);
+            return;
+        }
+        /* 编辑-保存 */
+        const saveBtn = ev.target.closest('.north-luna-moments-comment-edit-save');
+        if (saveBtn && saveBtn.closest('.north-breeze-note-card')) {
+            ev.stopPropagation();
+            const cid = saveBtn.dataset.cid;
+            const item = saveBtn.closest('.north-luna-moments-comment-item');
+            const input = item ? item.querySelector('.north-luna-moments-comment-edit-input') : null;
+            if (!input) return;
+            const text = input.value.trim();
+            if (!text) { input.focus(); return; }
+            const panel2 = item ? item.closest('.north-luna-moments-comment-panel') : null;
+            const nid = panel2 ? panel2.dataset.nid : null;
+            const storage = plugin.data[RECORDS_STORAGE];
+            const notes = (storage && storage.breezeNotes) || [];
+            const note = notes.find(n => n.id === nid);
+            if (!note) return;
+            const c = (note.comments || []).find(x => String(x.id) === String(cid));
+            if (c) c.text = text;
+            const textSpan = item.querySelector('.north-luna-moments-comment-text');
+            if (textSpan) {
+                const nickName = (c && c.nickname) || '清风';
+                textSpan.innerHTML = '<strong class="north-breeze-comment-nick" data-cid="' + breezeEsc(cid) + '" title="点击修改或删除">' + breezeEsc(nickName) + '：</strong>' + breezeEsc(text);
+            }
+            const display = item.querySelector('.north-luna-moments-comment-display');
+            const editRow = item.querySelector('.north-luna-moments-comment-edit-row');
+            if (display) display.style.display = '';
+            if (editRow) editRow.style.display = 'none';
+            if (plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
+            return;
+        }
+        /* 编辑-取消 */
+        const cancelBtn = ev.target.closest('.north-luna-moments-comment-edit-cancel');
+        if (cancelBtn && cancelBtn.closest('.north-breeze-note-card')) {
+            ev.stopPropagation();
+            const item = cancelBtn.closest('.north-luna-moments-comment-item');
+            const display = item ? item.querySelector('.north-luna-moments-comment-display') : null;
+            const editRow = item ? item.querySelector('.north-luna-moments-comment-edit-row') : null;
+            if (display) display.style.display = '';
+            if (editRow) editRow.style.display = 'none';
+            return;
+        }
+    };
+    document.addEventListener('click', onListClick);
+    /* 点击空白处关闭昵称菜单（昵称自身点击已在上方 stopPropagation 处理） */
+    document.addEventListener('click', (ev) => {
+        if (!ev.target.closest('.north-breeze-comment-menu') && !ev.target.closest('.north-breeze-comment-nick')) {
+            document.querySelectorAll('.north-breeze-comment-menu').forEach(m => m.remove());
+        }
+    });
+    /* 回车发送 / 编辑框回车保存、Esc 取消 */
+    const onKey = (ev) => {
+        const input = ev.target.closest('.north-luna-moments-comment-input');
+        if (input && input.closest('.north-breeze-note-card')) {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                const inputRow = input.closest('.north-luna-moments-comment-input-row');
+                const sendBtn = inputRow ? inputRow.querySelector('.north-luna-moments-comment-send') : null;
+                if (sendBtn) sendBtn.click();
+            }
+            return;
+        }
+        const editInput = ev.target.closest('.north-luna-moments-comment-edit-input');
+        if (editInput && editInput.closest('.north-breeze-note-card')) {
+            if (ev.key === 'Enter' && !ev.isComposing) {
+                ev.preventDefault();
+                const row = editInput.closest('.north-luna-moments-comment-edit-row');
+                const saveBtn = row ? row.querySelector('.north-luna-moments-comment-edit-save') : null;
+                if (saveBtn) saveBtn.click();
+            } else if (ev.key === 'Escape') {
+                ev.preventDefault();
+                const row = editInput.closest('.north-luna-moments-comment-edit-row');
+                const cancelBtn = row ? row.querySelector('.north-luna-moments-comment-edit-cancel') : null;
+                if (cancelBtn) cancelBtn.click();
+            }
+        }
+    };
+    document.addEventListener('keydown', onKey);
+}
+
 /* 渲染单条笔记卡片 HTML（统一供全部笔记 / 每日回顾 / 本周记录共用）
    showPinnedBadge: 是否在卡片右上角显示"置顶"小标签。列表视图（buildBreezeNotes）
    有"置顶"分组标题，重复表达会显得冗余且标签被 date 挤到卡片中间，关闭；
    瀑布流（buildBreezeMasonry）无分组标题，默认开启以提供单卡视觉标识。 */
 const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnabled, viewStyle, footerLabel, footerSignature) => {
     if (showPinnedBadge === undefined) showPinnedBadge = true;
+    /* 评论面板：每条笔记末尾追加，复用朋友圈评论样式 */
+    const cp = breezeRenderCommentPanel(it);
     const moreSvg = '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>';
     const hasTitle = !!(it.title && it.title.trim());
     /* 底栏卡片：底部信息栏（图标+昵称 | 日期） */
@@ -2874,6 +3125,7 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
             '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
             '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
             footerHtml +
+            cp +
             '</div>';
         }
         return '<div class="north-breeze-note-card footer-style" data-id="' + breezeEsc(it.id) + '">' +
@@ -2881,6 +3133,7 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
             '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
             '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
             footerHtml +
+            cp +
             '</div>';
     }
     if (hasTitle) {
@@ -2895,8 +3148,9 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
             '</div></div>' +
             '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
             '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
-            '<div class="north-breeze-note-footer"><span class="north-breeze-note-date-bottom">' + breezeFormatTitleDate(it.time) + '</span></div>' +
-            '</div>';
+                '<div class="north-breeze-note-footer"><span class="north-breeze-note-date-bottom">' + breezeFormatTitleDate(it.time) + '</span></div>' +
+                cp +
+                '</div>';
     }
     /* 无标题：日期在顶部；根据设置决定日期格式 */
     return '<div class="north-breeze-note-card" data-id="' + breezeEsc(it.id) + '">' +
@@ -2908,6 +3162,7 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
         '</div></div>' +
         '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
         '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
+        cp +
         '</div>';
 };
 /* 清风视图：笔记列表（按真实日期分组，全部笔记 / 每日回顾 / 本周记录统一调用）
@@ -18310,7 +18565,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             : (settingsAll.momentsFontSize || 16);
 
         body.innerHTML = `
-            <div class="north-luna-moments-container${settingsAll.momentsHoverBorder === true ? ' moments-hover-border' : ''}${settingsAll.momentsShowCommentTime !== true ? ' moments-hide-comment-time' : ''}" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder !== false ? '' : '--mom-mobile-item-border: none;'} ${settingsAll.momentsShowBorder === false ? '--mom-pc-item-border: none;' : ''}">
+            <div class="north-luna-moments-container${settingsAll.momentsHoverBorder === true ? ' moments-hover-border' : ''}${settingsAll.momentsShowCommentTime !== true ? ' moments-hide-comment-time' : ''}" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder === true ? '' : '--mom-mobile-item-border: none;'} ${settingsAll.momentsShowBorder === false ? '--mom-pc-item-border: none;' : ''}">
                 <div class="north-luna-moments-main" id="momentsMainPage">
                     <div class="north-luna-moments-nav" id="momentsNavBar">
                         <div class="north-luna-moments-nav-left"></div>
@@ -20277,9 +20532,108 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 dateEl.value = new Date().toISOString().split('T')[0];
                 publishDate = dateEl.value;
                 submitBtnEl.textContent = '发表';
+                applyDraftToForm();   // 恢复上次保留的草稿（若有）
             }
             textEl.focus();
             requestAnimationFrame(autoResizePub);
+        };
+
+        /* ===== 草稿：取消时「保留 / 不保留」 ===== */
+        const closePublishPage = () => {
+            main.style.visibility = '';
+            pub.classList.remove('active');
+            editingId = null;
+        };
+        /* 判断当前发表页是否有内容（文字 / 图片 / 天气心情分类地点 / 链接 任一非空即算有内容） */
+        const hasPublishContent = () => {
+            const t = container.querySelector('#momentsPublishText');
+            if (t && t.value.trim()) return true;
+            if (publishImages.length) return true;
+            const w = container.querySelector('#momentsPublishWeather');
+            const m = container.querySelector('#momentsPublishMood');
+            const c = container.querySelector('#momentsPublishCategory');
+            const l = container.querySelector('#momentsPublishLocation');
+            if ((w && w.value.trim()) || (m && m.value.trim()) || (c && c.value.trim()) || (l && l.value.trim())) return true;
+            if (publishLink && (publishLink.title || publishLink.url)) return true;
+            return false;
+        };
+        /* 读取当前表单，写入草稿并持久化（存于 MOMENTS_STORAGE.draft） */
+        const saveDraft = () => {
+            const textEl = container.querySelector('#momentsPublishText');
+            const weatherInputEl = container.querySelector('#momentsPublishWeather');
+            const moodInputEl = container.querySelector('#momentsPublishMood');
+            const categoryInputEl = container.querySelector('#momentsPublishCategory');
+            const locationEl = container.querySelector('#momentsPublishLocation');
+            const dateEl = container.querySelector('#momentsPublishDate');
+            const data = self.data[MOMENTS_STORAGE] || (self.data[MOMENTS_STORAGE] = {});
+            data.draft = {
+                text: textEl ? textEl.value : '',
+                images: publishImages.slice(),
+                link: publishLink ? { title: publishLink.title || '', url: publishLink.url || '' } : null,
+                weather: weatherInputEl ? weatherInputEl.value : '',
+                mood: moodInputEl ? moodInputEl.value : '',
+                category: categoryInputEl ? categoryInputEl.value : '',
+                location: locationEl ? locationEl.value : '',
+                date: dateEl ? dateEl.value : ''
+            };
+            self.saveMoments().catch(() => {});
+        };
+        /* 清除草稿（发表成功 / 选择「不保留」时调用） */
+        const clearDraft = () => {
+            const data = self.data[MOMENTS_STORAGE];
+            if (data && data.draft) { delete data.draft; self.saveMoments().catch(() => {}); }
+        };
+        /* 打开「新建发表」时恢复草稿；返回是否恢复成功（编辑已有动态时不应调用） */
+        const applyDraftToForm = () => {
+            const data = self.data[MOMENTS_STORAGE];
+            if (!data || !data.draft) return false;
+            const d = data.draft;
+            const textEl = container.querySelector('#momentsPublishText');
+            const weatherInputEl = container.querySelector('#momentsPublishWeather');
+            const moodInputEl = container.querySelector('#momentsPublishMood');
+            const categoryInputEl = container.querySelector('#momentsPublishCategory');
+            const locationEl = container.querySelector('#momentsPublishLocation');
+            const dateEl = container.querySelector('#momentsPublishDate');
+            if (textEl) textEl.value = d.text || '';
+            publishImages = (d.images || []).slice();
+            publishFiles = (d.images || []).map(() => null);
+            self._refreshPublishImages(container, publishImages, publishFiles);
+            if (weatherInputEl) weatherInputEl.value = d.weather || '';
+            if (moodInputEl) moodInputEl.value = d.mood || '';
+            if (categoryInputEl) categoryInputEl.value = d.category || '';
+            if (locationEl) locationEl.value = d.location || '';
+            if (dateEl && d.date) dateEl.value = d.date;
+            publishDate = dateEl ? dateEl.value : publishDate;
+            if (d.link) {
+                publishLink = { title: d.link.title || '', url: d.link.url || '' };
+                linkForm.classList.add('active');
+                const lt = linkForm.querySelector('#momentsPublishLinkTitle');
+                const lu = linkForm.querySelector('#momentsPublishLinkUrl');
+                if (lt) lt.value = d.link.title || '';
+                if (lu) lu.value = d.link.url || '';
+            }
+            requestAnimationFrame(autoResizePub);
+            return true;
+        };
+        /* 取消草稿弹窗：标题 + 两个按钮（不保留 / 保留） */
+        const showCancelDraftDialog = (onKeep, onDiscard) => {
+            const mask = document.createElement('div');
+            mask.className = 'north-luna-moments-draft-mask';
+            mask.innerHTML =
+                '<div class="north-luna-moments-draft-dialog">' +
+                    '<div class="north-luna-moments-draft-title">是否保留当前内容？</div>' +
+                    '<div class="north-luna-moments-draft-actions">' +
+                        '<button type="button" class="north-luna-moments-draft-btn north-luna-moments-draft-discard">不保留</button>' +
+                        '<button type="button" class="north-luna-moments-draft-btn north-luna-moments-draft-keep">保留</button>' +
+                    '</div>' +
+                '</div>';
+            document.body.appendChild(mask);
+            const close = () => { mask.remove(); document.removeEventListener('click', onMask, true); };
+            const onMask = (e) => { if (e.target === mask) close(); };
+            // 延时注册遮罩点击：避免触发本次打开弹窗的同源 click 立刻把弹窗关掉
+            setTimeout(() => document.addEventListener('click', onMask, true), 0);
+            mask.querySelector('.north-luna-moments-draft-discard').addEventListener('click', () => { close(); onDiscard(); });
+            mask.querySelector('.north-luna-moments-draft-keep').addEventListener('click', () => { close(); onKeep(); });
         };
 
         /* ===== markdown 工具栏：在光标处插入对应标记 ===== */
@@ -20403,12 +20757,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
             });
         }
 
-        /* ===== 返回按钮 ===== */
+        /* ===== 取消按钮：有内容则询问「保留 / 不保留」，无内容直接返回 ===== */
         const backBtn = container.querySelector('#momentsPublishBack');
         backBtn.addEventListener('click', () => {
-            main.style.visibility = '';
-            pub.classList.remove('active');
-            editingId = null;
+            if (hasPublishContent()) {
+                showCancelDraftDialog(
+                    () => { saveDraft(); closePublishPage(); },   // 保留 → 存草稿并返回
+                    () => { clearDraft(); closePublishPage(); }   // 不保留 → 丢弃并返回
+                );
+            } else {
+                closePublishPage();
+            }
         });
 
         /* ===== 添加图片 ===== */
@@ -20606,6 +20965,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 main.style.visibility = '';
                 pub.classList.remove('active');
                 editingId = null;
+                clearDraft();   // 发表/保存成功后清除草稿
                 this.refreshMomentsList(body);
                 /* 自动同步思源笔记文档：发布后 1s 防抖，仅新建时生效（编辑不触发） */
                 if (isNew && this._getPluginSetting('autoSyncMoments')) {

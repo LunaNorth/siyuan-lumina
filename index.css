@@ -2927,23 +2927,26 @@
 
 .north-luna-moments-publish-back,
 .north-luna-moments-edit-back {
-    width: 24px;
-    height: 24px;
-    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    padding: 0 8px;
+    color: var(--moments-nav-icon-scrolled);
+    font-size: 14px;
+    line-height: 1;
     cursor: pointer;
+    transition: color 0.2s ease;
 }
 
-.north-luna-moments-publish-back::before,
-.north-luna-moments-edit-back::before {
-    content: '';
-    position: absolute;
-    left: 8px;
-    top: 50%;
-    width: 10px;
-    height: 10px;
-    border-left: 2px solid var(--moments-nav-icon-scrolled);
-    border-bottom: 2px solid var(--moments-nav-icon-scrolled);
-    transform: translateY(-50%) rotate(45deg);
+.north-luna-moments-publish-back::after,
+.north-luna-moments-edit-back::after {
+    content: '取消';
+}
+
+.north-luna-moments-publish-back:hover,
+.north-luna-moments-edit-back:hover {
+    color: var(--b3-theme-primary);
 }
 
 .north-luna-moments-publish-title,
@@ -2972,6 +2975,59 @@
 .north-luna-moments-edit-save:disabled {
     background-color: var(--moments-publish-placeholder);
     cursor: not-allowed;
+}
+
+/* 取消发表时的草稿提示弹窗（保留 / 不保留） */
+.north-luna-moments-draft-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+}
+.north-luna-moments-draft-dialog {
+    min-width: 260px;
+    max-width: 320px;
+    padding: 20px 22px 18px;
+    background: var(--b3-theme-surface);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 10px;
+    box-shadow: var(--b3-dialog-shadow, 0 8px 24px rgba(0, 0, 0, 0.18));
+}
+.north-luna-moments-draft-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--b3-theme-on-background);
+    text-align: center;
+    line-height: 1.5;
+}
+.north-luna-moments-draft-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 18px;
+}
+.north-luna-moments-draft-btn {
+    flex: 1;
+    height: 36px;
+    border-radius: 6px;
+    border: 1px solid var(--b3-border-color);
+    background: transparent;
+    color: var(--b3-theme-on-background);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.north-luna-moments-draft-btn:hover {
+    background: color-mix(in srgb, var(--b3-theme-on-surface) 8%, transparent);
+}
+.north-luna-moments-draft-keep {
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+.north-luna-moments-draft-keep:hover {
+    background: color-mix(in srgb, var(--b3-theme-primary) 12%, transparent);
 }
 
 .north-luna-moments-publish-content,
@@ -8505,7 +8561,7 @@
     color: var(--b3-theme-primary);
     background-color: color-mix(in srgb, var(--b3-theme-primary) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--b3-theme-primary) 22%, transparent);
-    border-radius: 14px;
+    border-radius: 7px;
     cursor: pointer;
     transition: all 0.18s ease;
     user-select: none;
@@ -12208,4 +12264,56 @@ a.north-breeze-link {
 /* 正在自动获取标题时的占位提示（虚线下划线） */
 a.north-breeze-link[data-lumina-title-state="pending"] {
     border-bottom: 1px dashed var(--b3-theme-primary, #4285f4);
+}
+
+/* ===== 清风评论（复用朋友圈评论类名，这里只做清风专属微调） ===== */
+/* 1) 不显示评论时间：桌面悬停 / 移动端点击昵称都不显示日期（覆盖朋友圈 hover 揭示逻辑） */
+.north-breeze-note-card .north-luna-moments-comment-time {
+    display: none !important;
+}
+/* 2) 昵称可点击（弹「修改 / 删除」菜单），用清风专属类名避免影响朋友圈 */
+.north-breeze-note-card .north-breeze-comment-nick {
+    cursor: pointer;
+}
+/* 3) 昵称弹出的「修改 / 删除」浮动菜单（添加到 body，需固定定位 + 高层级） */
+.north-breeze-comment-menu {
+    position: fixed;
+    z-index: 9999;
+    min-width: 96px;
+    padding: 4px;
+    background-color: var(--b3-menu-background, var(--b3-theme-surface, #fff));
+    border: 1px solid var(--b3-border-color, rgba(128, 128, 128, 0.2));
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    font-size: 13px;
+}
+.north-breeze-comment-menu-item {
+    padding: 6px 12px;
+    border-radius: 4px;
+    color: var(--b3-theme-on-background, #333);
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+.north-breeze-comment-menu-item:hover {
+    background-color: var(--b3-theme-primary-light, rgba(66, 133, 244, 0.12));
+    color: var(--b3-theme-primary, #4285f4);
+}
+/* 4) 清风评论输入框：加边框 + 微底色，解决浅色主题下输入框「隐形」看不清的问题 */
+.north-breeze-note-card .north-luna-moments-comment-input {
+    border: 1px solid var(--b3-border-color);
+    background-color: color-mix(in srgb, var(--b3-theme-surface) 70%, transparent);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.north-breeze-note-card .north-luna-moments-comment-input:focus {
+    border-color: var(--b3-theme-primary);
+}
+.north-breeze-note-card .north-luna-moments-comment-input-row {
+    margin-top: 6px;
+}
+/* 5) 清风评论面板不播放入场动画：列表整页重渲染时（打开菜单 / 切换筛选 / 评论操作等）
+   面板会被重建并复播 moments-likes-fade-in，造成评论区一闪一闪；正文无此动画所以不闪。
+   仅对清风评论面板关闭动画，朋友圈评论保持原样。 */
+.north-breeze-note-card .north-luna-moments-comment-panel {
+    animation: none !important;
 }
