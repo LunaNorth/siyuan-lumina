@@ -10133,16 +10133,22 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                 this._flomoSync = async (isFullSync) => {
                     if (!this.flomoConfig.accessToken) { showMessage('请先登录 Flomo'); return; }
+                    if (this._flomoSyncing) { showMessage('已有同步正在进行，请稍候'); return; }
+                    this._flomoSyncing = true;
                     showMessage(isFullSync ? '正在进行全量同步，请耐心等待...' : '正在增量同步 Flomo 笔记...');
                     const allMemos = [];
                     let latestSlug = '';
+                    let pageGuard = 0;
                     /* 全量：从很早的时间开始拉；增量：从上次同步时间开始 */
                     let lastSync = isFullSync ? '2020-01-01 00:00:00' : (this.flomoConfig.lastSyncTime || '2020-01-01 00:00:00');
+                    /* 翻页时间游标：必须随每页最后一条 memo 的 updated_at 前进，
+                       否则接口只在首屏返回一页（最多 200 条），后续翻页收不到数据 */
+                    let cursorTime = Math.floor(new Date(lastSync).getTime() / 1000).toString();
                     try {
                         while (true) {
+                            if (++pageGuard > 500) { showMessage('已拉取页数过多，已停止以防卡死'); break; }
                             const ts = Math.floor(Date.now() / 1000).toString();
-                            const lu = Math.floor(new Date(lastSync).getTime() / 1000).toString();
-                            const params = { api_key: FLOMO_API_KEY, app_version: FLOMO_APP_VERSION, latest_slug: latestSlug, latest_updated_at: lu, limit: '200', timestamp: ts, tz: '8:0', webp: '1' };
+                            const params = { api_key: FLOMO_API_KEY, app_version: FLOMO_APP_VERSION, latest_slug: latestSlug, latest_updated_at: cursorTime, limit: '200', timestamp: ts, tz: '8:0', webp: '1' };
                             params.sign = this._flomoSign(params);
                             const qs = Object.keys(params).sort().map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
                             const data = await this._flomoFetch(FLOMO_API_BASE + '/memo/updated?' + qs, {
@@ -10150,14 +10156,32 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             });
                             if (data.code !== 0 || !Array.isArray(data.data)) break;
                             allMemos.push(...data.data);
+                            showMessage(`正在拉取 Flomo 笔记：${allMemos.length} 条...`);
                             if (data.data.length < 200) break;
-                            latestSlug = data.data[data.data.length - 1].slug;
+                            const lastMemo = data.data[data.data.length - 1];
+                            latestSlug = lastMemo.slug;
+                            /* 关键修复：时间游标前进到本页最后一条 memo 的更新时间，驱动下一页翻页 */
+                            const rawUa = lastMemo.updated_at != null ? lastMemo.updated_at : lastMemo.created_at;
+                            if (rawUa != null) {
+                                const ms = (typeof rawUa === 'number') ? (rawUa < 1e12 ? rawUa * 1000 : rawUa) : new Date(rawUa).getTime();
+                                if (!isNaN(ms)) cursorTime = Math.floor(ms / 1000).toString();
+                            }
                         }
-                        await this._saveFlomoMemos(allMemos, isFullSync);
+                        const stats = await this._saveFlomoMemos(allMemos, isFullSync);
                         this.flomoConfig.lastSyncTime = plugin._formatLocalDateTime(Date.now());
                         await this._saveFlomoConfig();
-                        showMessage(`同步完成：新增 ${allMemos.length} 条笔记`);
+                        if (stats) {
+                            if (stats.added === 0) {
+                                showMessage(stats.skipped ? `同步完成：笔记均已是最新（${stats.skipped} 条已删除或已同步）` : '同步完成：没有新笔记');
+                            } else {
+                                let msg = `同步完成：新增 ${stats.added} 条`;
+                                if (stats.skipped) msg += `，跳过 ${stats.skipped} 条`;
+                                if (stats.imgFail) msg += `，${stats.imgFail} 张图片下载失败`;
+                                showMessage(msg);
+                            }
+                        }
                     } catch (e) { showMessage('同步失败: ' + e.message); }
+                    finally { this._flomoSyncing = false; }
                 };
 
                 this._saveFlomoMemos = async (memos, isFullSync) => {
@@ -10165,11 +10189,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const t = this.flomoConfig.syncTarget || 'breeze';
                     const slugSet = new Set(isFullSync ? [] : (this.flomoConfig.flomoSyncedSlugs || []));
                     let added = 0;
+                    let skipped = 0;
+                    let imgFail = 0;
+                    let processed = 0;
                     for (const m of memos) {
                         /* 跳过回收站中的 memo（deleted_at 不为 null 表示已软删除） */
-                        if (m.deleted_at) continue;
-                        /* 全量同步跳过已存在；增量同步跳过 */
-                        if (!isFullSync && slugSet.has(m.slug)) continue;
+                        if (m.deleted_at) { skipped++; processed++; continue; }
+                        /* 全量同步跳过已存在；增量同步跳过已同步的 */
+                        if (!isFullSync && slugSet.has(m.slug)) { skipped++; processed++; continue; }
                         /* HTML → 文本：先用临时 DOM 解析嵌套列表，转为缩进 Markdown */
                         let content = (m.content || '').replace(/<br\s*\/?>/gi, '\n').replace(/<p>(.*?)<\/p>/gi, '$1\n').replace(/<b>(.*?)<\/b>/gi, '**$1**').replace(/<i>(.*?)<\/i>/gi, '*$1*').replace(/<mark>(.*?)<\/mark>/gi, '==$1==');
                         /* 使用 DOM 遍历嵌套列表，递归转录为带缩进的 Markdown */
@@ -10257,7 +10284,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 const fu = f.url || '';
                                 if (fu.startsWith('http')) {
                                     const src = originalUrls[fi] || fu;
-                                    try { const path = await this._flomoUploadImage(src); if (path) imgs.push(path); } catch {}
+                                    try { const path = await this._flomoUploadImage(src); if (path) imgs.push(path); else imgFail++; } catch { imgFail++; }
                                 } else if (/\.(png|jpe?g|gif|webp|svg|bmp)/i.test(fu)) imgs.push(fu);
                             }
                         }
@@ -10280,7 +10307,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 await plugin._apiAppendDailyNoteBlock(content, d, syncSettings.dailyNotebookId || '');
                             }
                         }
-                        slugSet.add(m.slug); added++;
+                        slugSet.add(m.slug); added++; processed++;
+                        if (processed % 15 === 0 || processed === memos.length) showMessage(`已导入 Flomo 笔记：${processed}/${memos.length}...`);
                     }
                     this.flomoConfig.flomoSyncedSlugs = [...slugSet];
                     await this._saveFlomoConfig();
@@ -10300,7 +10328,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         /* Dock 面板同步刷新（不受当前视图限制） */
                         plugin._breezeNotifyDockChanged && plugin._breezeNotifyDockChanged();
                     }
-                    showMessage(`同步完成：新增 ${added} 条笔记`);
+                    return { added, skipped, imgFail, total: memos.length };
                 };
 
                 this._flomoUploadImage = async (url) => {
