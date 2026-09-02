@@ -7928,14 +7928,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             /* 批量获取文档图标：从 blocks.ial 解析 icon（思源文档图标存在 IAL 中，如 {: icon="..." type="doc"}） */
                             let iconMap = {};
                             try {
-                                const ids = files.map(f => `'${String(f.id).replace(/'/g, "''")}'`).join(',');
-                                const iconResp = await fetch('/api/query/sql', { method: 'POST', headers: h, body: JSON.stringify({ stmt: `SELECT id, ial FROM blocks WHERE id IN (${ids}) AND type = 'd'` }) });
-                                const iconJson = await iconResp.json().catch(() => null);
-                                (iconJson && iconJson.data || []).forEach(r => {
-                                    if (!r.id || !r.ial) return;
-                                    const m = String(r.ial).match(/icon=["']([^"']+)["']/);
-                                    if (m && m[1]) iconMap[r.id] = m[1];
-                                });
+                                const validIds = files.map(f => String(f.id)).filter(id => /^[0-9A-Za-z-]{1,64}$/.test(id));
+                                if (validIds.length) {
+                                    const ids = validIds.map(id => `'${id}'`).join(',');
+                                    const iconResp = await fetch('/api/query/sql', { method: 'POST', headers: h, body: JSON.stringify({ stmt: `SELECT id, ial FROM blocks WHERE id IN (${ids}) AND type = 'd'` }) });
+                                    const iconJson = await iconResp.json().catch(() => null);
+                                    (iconJson && iconJson.data || []).forEach(r => {
+                                        if (!r.id || !r.ial) return;
+                                        const m = String(r.ial).match(/icon=["']([^"']+)["']/);
+                                        if (m && m[1]) iconMap[r.id] = m[1];
+                                    });
+                                }
                             } catch (e) {}
                             container.innerHTML = files.map(f => {
                                 const subCount = f.subFileCount;
