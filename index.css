@@ -1806,41 +1806,31 @@
     border-bottom: 6px solid transparent;
 }
 
-/* 链接卡片 */
+/* 链接卡片 - 极简文字链接 */
 .north-luna-moments-link-card {
-    display: flex;
-    align-items: center;
-    background-color: var(--moments-link-card-bg);
-    padding: 8px;
-    border-radius: 4px;
-    margin-bottom: 8px;
-    max-width: 220px;
-}
-
-.north-luna-moments-link-thumb {
-    width: 40px;
-    height: 40px;
-    border-radius: 4px;
-    object-fit: cover;
-    margin-right: 8px;
-    flex-shrink: 0;
-    background-color: #e0e0e0;
-}
-
-.north-luna-moments-link-info {
-    flex: 1;
-    min-width: 0;
+    display: block;
+    max-width: 100%;
+    cursor: pointer;
+    box-sizing: border-box;
 }
 
 .north-luna-moments-link-title {
-    font-size: 13px;
-    color: var(--moments-text);
+    display: inline-block;
+    max-width: 100%;
+    font-size: 14px;
+    color: var(--b3-theme-primary);
     line-height: 1.4;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-color: color-mix(in srgb, var(--b3-theme-primary) 45%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
+    transition: opacity 0.2s ease;
+}
+
+.north-luna-moments-link-card:hover .north-luna-moments-link-title {
+    opacity: 0.7;
 }
 
 /* 元信息行 - 朋友圈风格 */

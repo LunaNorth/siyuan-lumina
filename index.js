@@ -18934,12 +18934,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
             mediaHtml = `<div class="north-luna-moments-media"><div class="north-luna-moments-image-grid ${gridClass}">${items}</div></div>`;
         }
         if (m.link && m.link.title) {
-            mediaHtml += `<div class="north-luna-moments-link-card" data-link-url="${this._esc(m.link.url || '#')}">
-                <div class="north-luna-moments-link-thumb">🔗</div>
-                <div class="north-luna-moments-link-info">
-                    <div class="north-luna-moments-link-title">${this._esc(m.link.title)}</div>
-                    <div class="north-luna-moments-link-url">${this._esc(m.link.url || '')}</div>
-                </div>
+            mediaHtml += `<div class="north-luna-moments-link-card" data-link-url="${this._esc(m.link.url || '#')}" title="${this._esc(m.link.url || '')}">
+                <span class="north-luna-moments-link-title">${this._esc(m.link.title)}</span>
             </div>`;
         }
 
