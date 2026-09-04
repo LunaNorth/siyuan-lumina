@@ -10074,7 +10074,8 @@
 }
 
 /* 内容列 */
-.north-breeze-table-content-cell { min-width: 120px; }
+.north-breeze-table-content-cell { min-width: 120px; cursor: pointer; }
+.north-breeze-table-content-cell:hover { background: var(--b3-list-hover); }
 .north-breeze-table-content-text {
     display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     color: var(--b3-theme-on-background); font-size: 14px; line-height: 1.5;

@@ -1309,8 +1309,9 @@ function breezeStripMemoPreview(content) {
    数据：清风数据源 = plugin.data[RECORDS_STORAGE].breezeNotes（每条 note 含 time 字符串、content、images、files）。
    复用：breezeRenderContent 渲染卡片正文；breezeExtractTags 抽取 #标签。
    关闭：返回按钮 / 点遮罩 / ESC 键（任一即可）。 */
-function breezeShowMemoDetail(noteId, plugin) {
+function breezeShowMemoDetail(noteId, plugin, opts = {}) {
     if (!plugin || !noteId) return;
+    const { showEmptyRelationCount = true } = opts;
     const storage = plugin.data[RECORDS_STORAGE] || {};
     const notes = storage.breezeNotes || [];
     const note = notes.find(n => n.id === noteId);
@@ -1369,7 +1370,7 @@ function breezeShowMemoDetail(noteId, plugin) {
             <div class="north-breeze-modal-header">
                 <button class="north-breeze-modal-back" type="button" aria-label="返回">←</button>
                 <div class="north-breeze-modal-book-info">
-                    <div class="north-breeze-modal-book-meta">${esc(noteDate)} · ${linkingNotes.length} 条关联</div>
+                    <div class="north-breeze-modal-book-meta">${esc(noteDate)}${linkingNotes.length > 0 || showEmptyRelationCount ? ' · ' + linkingNotes.length + ' 条关联' : ''}</div>
                 </div>
             </div>
             <div class="north-breeze-modal-body">
@@ -1499,6 +1500,12 @@ function breezeTableTagStyle(tab, tag) {
 function breezeEscapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+/* SQL 安全：校验思源块/文档 ID 是否合法（白名单），合法返回原值，否则返回空串。
+   用于 /api/query/sql 拼接前过滤不可信输入，避免把块/文档 ID 直接拼进 SQL 造成注入。
+   思源块 ID 格式为「14 位时间戳 + 连字符 + 字母数字」，正则覆盖其全部合法字符。 */
+function breezeValidSqlId(id) {
+    return /^[0-9A-Za-z\-]{1,64}$/.test(String(id)) ? String(id) : '';
 }
 function breezeFormatDateKey(d) {
     const p = (n) => String(n).padStart(2, '0');
@@ -4121,7 +4128,29 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._bindBreezeTable = () => {
                     const list = this.container.querySelector('.north-breeze-table-wrapper');
                     if (!list) return;
-                    const rerender = () => { const b = this.container.querySelector('.north-luna-main-body'); if (b) { b.innerHTML = renderBreezeTable(this); this._bindBreezeTable(); } };
+                    const rerender = () => {
+                        const b = this.container.querySelector('.north-luna-main-body');
+                        if (b) {
+                            /* 记录搜索框当前状态，重渲染后恢复焦点与光标，避免输入时失焦 */
+                            const oldInput = this.container.querySelector('#table-search-input');
+                            const wasFocused = !!oldInput && document.activeElement === oldInput;
+                            const selStart = oldInput ? oldInput.selectionStart : null;
+                            const selEnd = oldInput ? oldInput.selectionEnd : null;
+
+                            b.innerHTML = renderBreezeTable(this);
+                            this._bindBreezeTable();
+
+                            if (wasFocused) {
+                                const newInput = this.container.querySelector('#table-search-input');
+                                if (newInput) {
+                                    newInput.focus();
+                                    if (selStart != null && selEnd != null) {
+                                        try { newInput.setSelectionRange(selStart, selEnd); } catch (e) {}
+                                    }
+                                }
+                            }
+                        }
+                    };
 
                     /* 点击外部关闭 cddl 弹层（一次性绑定全局监听） */
                     if (!this._cddlOutsideBound) {
@@ -4180,6 +4209,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     /* 行单条按钮 */
                     list.querySelectorAll('.north-breeze-table-action-btn.archive, .north-breeze-table-action-btn.unarchive').forEach(b => { if (!b._b) { b._b = true; b.addEventListener('click', (e) => { e.stopPropagation(); this._toggleTableArchive(b.dataset.id); rerender(); }); } });
                     list.querySelectorAll('.north-breeze-table-action-btn.delete').forEach(b => { if (!b._b) { b._b = true; b.addEventListener('click', (e) => { e.stopPropagation(); const id = b.dataset.id; const del = () => { this._deleteTableNote(id); rerender(); }; if (confirm) confirm('删除笔记', '确定要删除这条清风笔记吗？\n此操作不可恢复。', del); else del(); }); } });
+
+                    /* 点击内容列查看笔记详情（复用批注详情弹窗样式） */
+                    list.querySelectorAll('.north-breeze-table-content-cell').forEach(cell => {
+                        if (cell._b) return;
+                        cell._b = true;
+                        cell.addEventListener('click', (e) => {
+                            if (e.target.closest('a, button, input')) return;
+                            const row = cell.closest('.north-breeze-table-row');
+                            const id = row && row.dataset.id;
+                            if (id && this.plugin) breezeShowMemoDetail(id, this.plugin, { showEmptyRelationCount: false });
+                        });
+                    });
 
                     /* 批量 */
                     const ba = list.querySelector('#table-batch-archive');
@@ -7928,14 +7969,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             /* 批量获取文档图标：从 blocks.ial 解析 icon（思源文档图标存在 IAL 中，如 {: icon="..." type="doc"}） */
                             let iconMap = {};
                             try {
-                                const ids = files.map(f => `'${String(f.id).replace(/'/g, "''")}'`).join(',');
-                                const iconResp = await fetch('/api/query/sql', { method: 'POST', headers: h, body: JSON.stringify({ stmt: `SELECT id, ial FROM blocks WHERE id IN (${ids}) AND type = 'd'` }) });
-                                const iconJson = await iconResp.json().catch(() => null);
-                                (iconJson && iconJson.data || []).forEach(r => {
-                                    if (!r.id || !r.ial) return;
-                                    const m = String(r.ial).match(/icon=["']([^"']+)["']/);
-                                    if (m && m[1]) iconMap[r.id] = m[1];
-                                });
+                                const validIds = files.map(f => String(f.id)).filter(id => /^[0-9A-Za-z\-]{1,64}$/.test(id));
+                                if (validIds.length) {
+                                    const ids = validIds.map(id => `'${id}'`).join(',');
+                                    const iconResp = await fetch('/api/query/sql', { method: 'POST', headers: h, body: JSON.stringify({ stmt: `SELECT id, ial FROM blocks WHERE id IN (${ids}) AND type = 'd'` }) });
+                                    const iconJson = await iconResp.json().catch(() => null);
+                                    (iconJson && iconJson.data || []).forEach(r => {
+                                        if (!r.id || !r.ial) return;
+                                        const m = String(r.ial).match(/icon=["']([^"']+)["']/);
+                                        if (m && m[1]) iconMap[r.id] = m[1];
+                                    });
+                                }
                             } catch (e) {}
                             container.innerHTML = files.map(f => {
                                 const subCount = f.subFileCount;
@@ -11808,17 +11852,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (!blockId) return;
                     /* LifeLog 记录 id 可能以 lifelog_ 开头，实际块 ID 不含此前缀 */
                     const bid = String(blockId).replace(/^lifelog_/, '');
+                    const safeBid = breezeValidSqlId(bid);
                     /* 查询块原始内容 */
                     let originalContent = '';
                     try {
-                        const resp = await fetch('/api/query/sql', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ stmt: `SELECT content FROM blocks WHERE id = '${bid.replace(/'/g, "''")}'` })
-                        });
-                        const json = await resp.json();
-                        if (json.code === 0 && json.data && json.data.length > 0) {
-                            originalContent = json.data[0].content || '';
+                        if (safeBid) {
+                            const resp = await fetch('/api/query/sql', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ stmt: `SELECT content FROM blocks WHERE id = '${safeBid}'` })
+                            });
+                            const json = await resp.json();
+                            if (json.code === 0 && json.data && json.data.length > 0) {
+                                originalContent = json.data[0].content || '';
+                            }
                         }
                     } catch (e) { /* silent */ }
                     /* 弹窗 */
@@ -15520,8 +15567,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
         sendBtn.addEventListener('click', submit);
 
         // 回车提交（与设置同步，移动端始终强制换行）
-        const enterToSubmit = !plugin.isMobile && this._getPluginSetting('breezeEnterToSubmit') !== false;
-        input.setAttribute('enterkeyhint', enterToSubmit ? 'done' : 'enter');
+        // 注意：必须每次按键实时读取设置。Dock 是独立 DOM，改设置后不会自动重建，
+        // 若在此缓存成常量，用户在设置里改动后侧边栏仍沿用旧值，导致开关看起来不生效。
+        const getEnterToSubmit = () => !plugin.isMobile && plugin._getPluginSetting('breezeEnterToSubmit') !== false;
+        const syncEnterKeyHint = () => input.setAttribute('enterkeyhint', getEnterToSubmit() ? 'done' : 'enter');
+        syncEnterKeyHint();
+        input.addEventListener('focus', syncEnterKeyHint);
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
                 // 列表续行
@@ -15561,7 +15612,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     requestAnimationFrame(autoResize);
 
                 }
-                if (enterToSubmit) {
+                if (getEnterToSubmit()) {
                     e.preventDefault();
                     submit();
                 }
@@ -17270,17 +17321,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (!blockId) return;
             /* LifeLog 记录 id 可能以 lifelog_ 开头，实际块 ID 不含此前缀 */
             const bid = String(blockId).replace(/^lifelog_/, '');
+            const safeBid = breezeValidSqlId(bid);
             /* 查询块原始内容 */
             let originalContent = '';
             try {
-                const resp = await fetch('/api/query/sql', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stmt: `SELECT content FROM blocks WHERE id = '${bid.replace(/'/g, "''")}'` })
-                });
-                const json = await resp.json();
-                if (json.code === 0 && json.data && json.data.length > 0) {
-                    originalContent = json.data[0].content || '';
+                if (safeBid) {
+                    const resp = await fetch('/api/query/sql', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ stmt: `SELECT content FROM blocks WHERE id = '${safeBid}'` })
+                    });
+                    const json = await resp.json();
+                    if (json.code === 0 && json.data && json.data.length > 0) {
+                        originalContent = json.data[0].content || '';
+                    }
                 }
             } catch (e) { /* silent */ }
             /* 弹窗 */
@@ -19304,16 +19358,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (target === 'doc') {
             const docId = (settings.dailyNoteDocId || '').trim();
             if (!docId) throw new Error('请先在「数据同步」中选择指定文档');
+            const safeDocId = breezeValidSqlId(docId);
+            if (!safeDocId) throw new Error('指定的文档块 ID 格式不合法');
             // 校验文档是否存在
-            const checkResp = await fetch('/api/query/sql', { method: 'POST', headers: authHeaders, body: JSON.stringify({ stmt: `SELECT id FROM blocks WHERE id = '${docId.replace(/'/g, "''")}' LIMIT 1` }) });
+            const checkResp = await fetch('/api/query/sql', { method: 'POST', headers: authHeaders, body: JSON.stringify({ stmt: `SELECT id FROM blocks WHERE id = '${safeDocId}' LIMIT 1` }) });
             const checkJson = await checkResp.json().catch(() => null);
             if (!checkJson || checkJson.code !== 0 || !checkJson.data || checkJson.data.length === 0) throw new Error('指定的文档不存在，请检查文档块 ID');
-            const blockId = await this._appendToDocWithDateGroup(docId, markdown, timeStr);
+            const blockId = await this._appendToDocWithDateGroup(safeDocId, markdown, timeStr);
             if (!blockId) throw new Error('插入指定文档失败：未知错误');
             if (settings.syncJumpToDoc !== false && this.app && typeof openTab === 'function') {
-                try { openTab({ app: this.app, doc: { id: docId, action: ['cb-get-hl'] } }); } catch (e) { console.warn('[清风] 打开指定文档失败:', e); }
+                try { openTab({ app: this.app, doc: { id: safeDocId, action: ['cb-get-hl'] } }); } catch (e) { console.warn('[清风] 打开指定文档失败:', e); }
             }
-            return { targetId: docId, message: '已插入指定文档（按日期分组）' + (settings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
+            return { targetId: safeDocId, message: '已插入指定文档（按日期分组）' + (settings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
         }
         // 同步目标：每日日记（按动态的实际日期定位对应日期的日记，而非固定写入今天）
         const notebookId = settings.dailyNotebookId || '';
@@ -19452,37 +19508,41 @@ module.exports = class NorthLunaPlugin extends Plugin {
        在 docId 内查找/创建 `## 日期` h2，并把 content 插入到该分组最后。
        返回插入块的 ID，失败返回 null。 */
     async _appendToDocWithDateGroup(docId, content, ts) {
+        const safeDocId = breezeValidSqlId(docId);
+        if (!safeDocId) return null;
         const tk = window.siyuan?.config?.api?.token || '';
         const hh = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
         const dStr = (ts || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+        const safeDStr = /^\d{4}-\d{2}-\d{2}$/.test(dStr) ? dStr : '';
+        const safeTs = (s) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(s)) ? String(s) : '';
         const sql = (stmt) => fetch('/api/query/sql', { method: 'POST', headers: hh, body: JSON.stringify({ stmt }) }).then(r => r.json()).catch(() => null);
         try {
-            const h2 = await sql(`SELECT id, created FROM blocks WHERE root_id = '${docId}' AND type = 'h' AND subtype = 'h2' AND content LIKE '${dStr}%' ORDER BY created LIMIT 1`);
+            const h2 = await sql(`SELECT id, created FROM blocks WHERE root_id = '${safeDocId}' AND type = 'h' AND subtype = 'h2' AND content LIKE '${safeDStr}%' ORDER BY created LIMIT 1`);
             let previousId = null;
             if (h2 && h2.code === 0 && h2.data && h2.data.length > 0) {
                 const h2Id = h2.data[0].id;
-                const h2Created = h2.data[0].created;
-                const next = await sql(`SELECT created FROM blocks WHERE root_id = '${docId}' AND type = 'h' AND subtype = 'h2' AND created > '${h2Created}' ORDER BY created LIMIT 1`);
-                const nextCreated = (next && next.code === 0 && next.data && next.data.length > 0) ? next.data[0].created : null;
-                let q = `SELECT id, created FROM blocks WHERE root_id = '${docId}' AND type NOT IN ('d','l','b','s') AND parent_id = '${docId}' AND created > '${h2Created}'`;
+                const h2Created = safeTs(h2.data[0].created);
+                const next = await sql(`SELECT created FROM blocks WHERE root_id = '${safeDocId}' AND type = 'h' AND subtype = 'h2' AND created > '${h2Created}' ORDER BY created LIMIT 1`);
+                const nextCreated = (next && next.code === 0 && next.data && next.data.length > 0) ? safeTs(next.data[0].created) : '';
+                let q = `SELECT id, created FROM blocks WHERE root_id = '${safeDocId}' AND type NOT IN ('d','l','b','s') AND parent_id = '${safeDocId}' AND created > '${h2Created}'`;
                 if (nextCreated) q += ` AND created < '${nextCreated}'`;
                 q += ` ORDER BY created DESC LIMIT 1`;
                 const last = await sql(q);
                 previousId = (last && last.code === 0 && last.data && last.data.length > 0) ? last.data[0].id : h2Id;
             } else {
-                const last = await sql(`SELECT id, created FROM blocks WHERE root_id = '${docId}' AND type NOT IN ('d','l','b','s') AND parent_id = '${docId}' ORDER BY created DESC LIMIT 1`);
-                const h2Data = `## ${dStr}\n\n`;
+                const last = await sql(`SELECT id, created FROM blocks WHERE root_id = '${safeDocId}' AND type NOT IN ('d','l','b','s') AND parent_id = '${safeDocId}' ORDER BY created DESC LIMIT 1`);
+                const h2Data = `## ${safeDStr}\n\n`;
                 if (last && last.code === 0 && last.data && last.data.length > 0) {
                     const ins = await fetch('/api/block/insertBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: h2Data, previousID: last.data[0].id }) }).then(r => r.json()).catch(() => null);
                     if (ins && ins.code === 0 && ins.data && ins.data[0] && ins.data[0].doOperations && ins.data[0].doOperations.length > 0) previousId = ins.data[0].doOperations[ins.data[0].doOperations.length - 1].id;
                 } else {
-                    const app = await fetch('/api/block/appendBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: h2Data, parentID: docId }) }).then(r => r.json()).catch(() => null);
+                    const app = await fetch('/api/block/appendBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: h2Data, parentID: safeDocId }) }).then(r => r.json()).catch(() => null);
                     if (app && app.code === 0 && app.data && app.data[0] && app.data[0].doOperations && app.data[0].doOperations.length > 0) previousId = app.data[0].doOperations[app.data[0].doOperations.length - 1].id;
                 }
             }
             const insertInto = async (prevId) => {
                 if (!prevId) {
-                    const app = await fetch('/api/block/appendBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: content, parentID: docId }) }).then(r => r.json()).catch(() => null);
+                    const app = await fetch('/api/block/appendBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: content, parentID: safeDocId }) }).then(r => r.json()).catch(() => null);
                     return (app && app.code === 0 && app.data && app.data[0] && app.data[0].doOperations && app.data[0].doOperations.length > 0) ? app.data[0].doOperations[app.data[0].doOperations.length - 1].id : null;
                 }
                 const ins = await fetch('/api/block/insertBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: content, previousID: prevId }) }).then(r => r.json()).catch(() => null);
