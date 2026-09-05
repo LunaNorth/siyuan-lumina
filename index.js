@@ -3344,6 +3344,15 @@ const SIDEBAR_VIEWS = [
                 <div class="north-breeze-content">
                     <!-- 输入区域（顶部） -->
                     <div class="north-breeze-input-area">
+                        <!-- Flomo 风格编辑态顶部导航栏（仅移动端全屏编辑时显示） -->
+                        <div class="north-breeze-edit-topbar" id="breeze-edit-topbar" style="display:none">
+                            <button class="north-breeze-edit-back" id="breeze-edit-back" type="button" aria-label="返回">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><use xlink:href="#iconLeft"></use></svg>
+                            </button>
+                            <div class="north-breeze-edit-title-block">
+                                <span class="north-breeze-edit-title">编辑</span>
+                            </div>
+                        </div>
                         <div class="north-breeze-input-box" id="breeze-input-box">
                             <div class="north-breeze-input-wrapper">
                                 <input class="north-breeze-title-input" id="breeze-title-input" placeholder="笔记标题（可选）" style="display:none">
@@ -13342,11 +13351,67 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const self = this;
         inputArea.classList.remove('mobile-sheet-closing');
         inputArea.classList.add('mobile-sheet-visible');
+        /* 编辑态走全屏（Flomo 风格），添加态保持底部 sheet 不动 */
+        if (noteForEdit) {
+            inputArea.classList.add('mobile-edit-fullscreen');
+        } else {
+            inputArea.classList.remove('mobile-edit-fullscreen');
+        }
         document.body.classList.add('north-luna-mobile-sheet-open');
+        /* 安装 visualViewport 监听（统一处理添加/编辑两种态）：
+           键盘弹出时把 inputArea 高度压缩到 visualViewport.height，并贴到 vv.offsetTop，
+           让底部工具栏浮在键盘上方不会被遮；键盘收起时还原为全屏。
+           注意：必须在键盘"开/关"状态真正切换时才重写 inputArea 的 height/top，
+           否则 textarea 内部上下滑动时某些安卓 WebView 会让 visualViewport 轻微抖动，
+           每次抖动都触发本监听 → inputArea 反复重排 → 点击坐标错位（光标乱跳）+ 键盘误收起。 */
+        if (window.visualViewport && !inputArea._vvHandler) {
+            inputArea._kbWasOpen = (window.visualViewport.height < window.innerHeight * 0.85);
+            const onVVResize = () => {
+                if (!inputArea.classList.contains('mobile-sheet-visible')) {
+                    window.visualViewport.removeEventListener('resize', onVVResize);
+                    inputArea._vvHandler = null;
+                    return;
+                }
+                const vv = window.visualViewport;
+                /* 启发式：visualViewport 高度 < 原始高度的 85% 即视为键盘弹出 */
+                const keyboardOpen = vv.height < window.innerHeight * 0.85;
+                /* 仅当键盘开/关状态真正切换时才调整 inputArea 尺寸（去抖），
+                   滚动过程中的抖动直接忽略，避免重排导致光标错位 / 键盘收起 */
+                if (keyboardOpen === inputArea._kbWasOpen) return;
+                inputArea._kbWasOpen = keyboardOpen;
+                if (keyboardOpen) {
+                    inputArea.style.height = vv.height + 'px';
+                    inputArea.style.top = vv.offsetTop + 'px';
+                } else {
+                    inputArea.style.height = '';
+                    inputArea.style.top = '';
+                }
+                window.scrollTo(0, 0);
+            };
+            window.visualViewport.addEventListener('resize', onVVResize);
+            inputArea._vvHandler = onVVResize;
+        }
         /* 首次打开时绑定完整的输入框功能（发送/预览/工具栏/键盘屏蔽，对标 PC _bindBreezeInput） */
         if (!inputArea._mobileInputFullyBound) {
             inputArea._mobileInputFullyBound = true;
             this._bindBreezeMobileInput(ctx, inputArea);
+        }
+        /* 首次打开时绑定 Flomo 风格顶部导航栏交互（仅返回箭头）；
+           节点固定但编辑态才显示，事件源全局唯一，一次绑定即可。 */
+        if (!inputArea._topbarBound) {
+            inputArea._topbarBound = true;
+            const backBtn = inputArea.querySelector('#breeze-edit-back');
+            if (backBtn) {
+                backBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    /* 编辑态下：返回 = 关闭抽屉（不保存修改，与底部"取消"行为一致） */
+                    if (self._mobileEditingNoteId) {
+                        /* 复用 cancelEdit 流程：清空 + 重置状态 + 关闭 */
+                        self._closeMobileInputSheet(ctx);
+                    }
+                });
+            }
         }
         /* 遮罩点击关闭（轻语式：复用 inputArea 自身的半透明背景作为遮罩） */
         if (!inputArea._mobileInputMaskBound) {
@@ -13366,7 +13431,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const sendBtn = inputArea.querySelector('#breeze-send');
             const titleInput = inputArea.querySelector('#breeze-title-input');
             const titleBtn = inputArea.querySelector('#breeze-toolbar-title');
-            /* 先显示编辑态 UI（取消按钮 + 边框变色），确保即使后续 setter 抛错也不影响 */
+            /* 显示 Flomo 风格顶部导航栏 */
+            const topbar = inputArea.querySelector('#breeze-edit-topbar');
+            if (topbar) topbar.style.display = 'flex';
             if (box) box.classList.add('editing');
             if (sendBtn) sendBtn.title = '保存修改';
             const cancelEl = inputArea.querySelector('.north-breeze-cancel-btn');
@@ -13473,6 +13540,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (kb) { kb.classList.add('fn__none'); kb.style.height = ''; }
                     this._suppressKeyboardToolbarOn(field);
                     field.focus();
+                    /* 光标定位到末尾（编辑态：打开时应停在已有内容尾部，
+                       而不是跳到开头；等待下一帧布局稳定后再设置，避免被重排覆盖） */
+                    try {
+                        const len = field.value.length;
+                        requestAnimationFrame(() => {
+                            field.setSelectionRange(len, len);
+                        });
+                    } catch (err) { /* 某些内核 setSelectionRange 在 readonly 时会抛错，忽略 */ }
                 }
             }, 380);
         } else {
@@ -13485,6 +13560,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (sendBtn) sendBtn.title = '发送';
             const cancelEl = inputArea.querySelector('.north-breeze-cancel-btn');
             if (cancelEl) cancelEl.style.display = 'none';
+            /* 兜底：新建态隐藏 Flomo 顶部导航栏（确保不会因为状态串扰残留显示） */
+            const topbar0 = inputArea.querySelector('#breeze-edit-topbar');
+            if (topbar0) topbar0.style.display = 'none';
             /* 自动聚焦输入框（延迟 380ms 等待 sheet-up 动画完成，避免键盘弹出时弹层异常） */
             setTimeout(() => {
                 /* 提前隐藏键盘工具栏，防止 focus 触发键盘弹出时工具栏短暂闪现 */
@@ -13494,20 +13572,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (field && typeof field.focus === 'function') {
                     this._suppressKeyboardToolbarOn(field);
                     field.focus();
-                    /* 键盘弹出后视口缩小，保持弹层可见：监听 visualViewport resize */
-                    if (window.visualViewport && !inputArea._vvHandler) {
-                        const onVVResize = () => {
-                            if (!inputArea.classList.contains('mobile-sheet-visible')) {
-                                window.visualViewport.removeEventListener('resize', onVVResize);
-                                inputArea._vvHandler = null;
-                                return;
-                            }
-                            /* 键盘弹出：将页面滚到顶部，确保弹层完整可见 */
-                            window.scrollTo(0, 0);
-                        };
-                        window.visualViewport.addEventListener('resize', onVVResize);
-                        inputArea._vvHandler = onVVResize;
-                    }
+                    /* visualViewport 监听已统一在 _openMobileInputSheet 顶部安装，
+                       这里不再重复绑定（避免多次回调叠加） */
                 }
             }, 380);
         }
@@ -13544,6 +13610,33 @@ module.exports = class NorthLunaPlugin extends Plugin {
             this._preventMobileScrollChain(box);
         }
 
+        /* 编辑态全屏：在 window 捕获阶段接管手势，彻底阻止滚动事件传到 SiYuan 原生滚动/键盘收起处理。
+           配合 CSS .north-breeze-input-field 的 touch-action: none，手指滑动只触发 JS 滚动 textarea，
+           不会触发任何原生页面滚动，因此键盘不会被收起；选区存在时让出原生手势以便拖动选择柄。 */
+        if (this.isMobile) {
+            let msLastY = 0;
+            const onEditTouchStart = (e) => {
+                if (e.touches && e.touches.length) msLastY = e.touches[0].clientY;
+            };
+            const onEditTouchMove = (e) => {
+                if (!inputArea.classList.contains('mobile-edit-fullscreen') || !plugin._mobileEditingNoteId) return;
+                if (!inputArea.contains(e.target)) return;
+                /* 已有选区时让出原生手势（拖动选择柄），不拦截、不阻断 */
+                if (input.selectionStart !== input.selectionEnd) return;
+                /* 阻止原生滚动 + 阻断事件冒泡到 SiYuan 原生的键盘收起处理 */
+                e.preventDefault();
+                e.stopPropagation();
+                if (!e.touches || !e.touches.length) return;
+                const y = e.touches[0].clientY;
+                const dy = y - msLastY;
+                msLastY = y;
+                try { input.scrollTop -= dy; } catch (err) {}
+            };
+            window.addEventListener('touchstart', onEditTouchStart, { passive: true, capture: true });
+            window.addEventListener('touchmove', onEditTouchMove, { passive: false, capture: true });
+            inputArea._editManualScroll = { onEditTouchStart, onEditTouchMove };
+        }
+
         /* 标题按钮 */
         if (titleBtn && titleInput) {
             titleBtn.addEventListener('click', () => {
@@ -13563,6 +13656,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
             sendBtn.classList.toggle('active', has);
         };
         const autoResizeInput = () => {
+            /* 编辑态全屏模式：textarea 高度由 flex 布局接管（撑满 wrapper），
+               不能用 scrollHeight 撑破布局（否则工具栏会被挤到屏幕外）。
+               清空 inline height 让 CSS flex:1 生效 */
+            const inputAreaEl = input.closest('.north-breeze-input-area');
+            const isFullscreenEdit = inputAreaEl && inputAreaEl.classList.contains('mobile-edit-fullscreen');
+            if (isFullscreenEdit) {
+                input.style.height = '';
+                input.style.maxHeight = '';
+                return;
+            }
+            /* 添加态（底部小抽屉）：保持原有自适应逻辑（按内容自动长高） */
             input.style.height = 'auto';
             input.style.height = Math.max(60, input.scrollHeight) + 'px';
         };
@@ -13632,6 +13736,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
             sendBtn.title = '发送';
             const cancelEl = inputArea.querySelector('.north-breeze-cancel-btn');
             if (cancelEl) cancelEl.style.display = 'none';
+            /* 同步移除全屏编辑态标记 */
+            inputArea.classList.remove('mobile-edit-fullscreen');
+            /* 同步隐藏 Flomo 顶部导航栏（避免"取消"后 topbar 残留） */
+            const topbarZ = inputArea.querySelector('#breeze-edit-topbar');
+            if (topbarZ) topbarZ.style.display = 'none';
             updateState();
             requestAnimationFrame(autoResizeInput);
         };
@@ -13672,6 +13781,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 sendBtn.title = '发送';
                 const cancelEl = inputArea.querySelector('.north-breeze-cancel-btn');
                 if (cancelEl) cancelEl.style.display = 'none';
+                /* 同步移除全屏编辑态标记 */
+                inputArea.classList.remove('mobile-edit-fullscreen');
+                /* 同步隐藏 Flomo 顶部导航栏 */
+                const topbarS = inputArea.querySelector('#breeze-edit-topbar');
+                if (topbarS) topbarS.style.display = 'none';
                 updateState();
                 requestAnimationFrame(autoResizeInput);
                 return;
@@ -13701,10 +13815,81 @@ module.exports = class NorthLunaPlugin extends Plugin {
         requestAnimationFrame(autoResizeInput);
         input.addEventListener('input', () => { updateState(); requestAnimationFrame(autoResizeInput); });
         input.addEventListener('focus', () => box.classList.add('focused'));
-        input.addEventListener('blur', () => { box.classList.remove('focused'); updateState(); });
+        input.addEventListener('blur', () => {
+            box.classList.remove('focused');
+            updateState();
+            /* Flomo 风格键盘全程锁定：编辑态全屏模式下，除非用户显式退出
+               （返回箭头 / 保存 / 取消）或正在唤起系统原生选择器（图片 / 时间），
+               否则失焦后自动把键盘拉回来，保证输入过程键盘不收起。
+               轮询式重拉：遇到标签选择器 / 标题输入框等临时焦点转移则避让，
+               待其关闭后再把键盘拉回，既全程锁定又不与这些浮层争抢焦点。 */
+            const inputAreaEl = input.closest('.north-breeze-input-area');
+            const isFullscreenEdit = inputAreaEl && inputAreaEl.classList.contains('mobile-edit-fullscreen');
+            if (!isFullscreenEdit || !plugin._mobileEditingNoteId) return;
+            const tryRefocus = () => {
+                if (!plugin._mobileEditingNoteId || inputArea._suppressKbRefocus) return;
+                if (document.activeElement === input) return;
+                /* 标签选择器浮层打开时避让，等它关闭后再拉回键盘 */
+                if (inputArea.querySelector('.north-breeze-tag-picker')) { setTimeout(tryRefocus, 120); return; }
+                /* 标题输入框获焦时（点标题按钮展开）不抢焦点 */
+                const titleEl = inputArea.querySelector('#breeze-title-input') || inputArea.querySelector('#north-breeze-dock-title-input');
+                if (document.activeElement === titleEl) return;
+                try { input.focus(); } catch (e) {}
+            };
+            setTimeout(tryRefocus, 60);
+        });
         sendBtn.addEventListener('click', submit);
         /* 移动端始终 Enter = 换行（移动端键盘不便 Shift+Enter，发送按钮始终可用） */
         // 不做 Enter → 提交 拦截，由浏览器默认行为处理换行
+
+        /* 列表前缀自动续行（复刻 PC 端 _bindBreezeInput 的 keydown 列表续行规则）——
+           输入"- xxx" / "1. xxx" / "- [ ] xxx" 后按回车，下一行自动补全同款前缀；
+           在空列表项上连续按回车则删除前缀、退出列表（恢复普通段落）。
+           移动端之前缺失这套逻辑，导致列表只能手动重复打前缀。 */
+        input.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            /* 排除带修饰键的回车（Shift/Ctrl/Meta/Alt）和中文输入法正在选词 */
+            if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+            const s = input.selectionStart, end = input.selectionEnd;
+            const v = input.value;
+            const before = v.substring(0, s);
+            const after = v.substring(end);
+            const lineStart = before.lastIndexOf('\n') + 1;
+            const prevLine = before.substring(lineStart);
+            /* 注意：mUl 必须在 mTask 之后判断，否则 "- [ ] " 会被 mUl 抢先匹配成无序列表 */
+            const mTask = prevLine.match(/^(\s*)([-*+])\s+\[([ xX])\]\s+(.*)$/);
+            const mUl   = prevLine.match(/^(\s*)([-*+])\s+(.*)$/);
+            const mOl   = prevLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
+            const isEmptyTask = !!prevLine.match(/^(\s*)([-*+])\s+\[([ xX])\]\s*$/);
+            const isEmptyUl   = !!prevLine.match(/^(\s*)([-*+])\s*$/);
+            const isEmptyOl   = !!prevLine.match(/^(\s*)(\d+)\.\s*$/);
+            /* 空列表项：用户连续按第二次回车 → 删除前缀退出列表 */
+            if (isEmptyTask || isEmptyUl || isEmptyOl) {
+                e.preventDefault();
+                input.value = before.substring(0, lineStart) + '\n' + after;
+                const newPos = lineStart + 1;
+                input.focus();
+                try { input.setSelectionRange(newPos, newPos); } catch (err) {}
+                updateState();
+                requestAnimationFrame(autoResizeInput);
+                return;
+            }
+            /* 非空列表项：按回车后下一行补全前缀 */
+            let prefix = '';
+            if (mTask) prefix = mTask[1] + mTask[2] + ' [ ] ';
+            else if (mUl) prefix = mUl[1] + mUl[2] + ' ';
+            else if (mOl) prefix = mOl[1] + (parseInt(mOl[2], 10) + 1) + '. ';
+            if (prefix) {
+                e.preventDefault();
+                const ins = '\n' + prefix;
+                input.value = before + ins + after;
+                const newPos = before.length + ins.length;
+                input.focus();
+                try { input.setSelectionRange(newPos, newPos); } catch (err) {}
+                updateState();
+                requestAnimationFrame(autoResizeInput);
+            }
+        });
 
         /* 图片/资源上传 */
         const fileInput = document.createElement('input');
@@ -13731,10 +13916,28 @@ module.exports = class NorthLunaPlugin extends Plugin {
             fileInput.value = '';
             refreshPreviewBar();
             updateState();
+            /* 选完资源后恢复键盘锁定并拉回键盘（Flomo 风格持续输入） */
+            inputArea._suppressKbRefocus = false;
+            if (plugin._mobileEditingNoteId) {
+                requestAnimationFrame(() => { try { input.focus(); } catch (e) {} });
+            }
         };
         /* 移动端系统文件选择器弹出时，阻止点击事件冒泡到 inputArea 遮罩层 */
         const imgBtn = inputArea.querySelector('#breeze-toolbar-image');
-        if (imgBtn) imgBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+        if (imgBtn) imgBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            /* 系统文件选择器会临时收起键盘：标记抑制自动拉回，
+               待选择器关闭（选完或取消）后再恢复锁定并拉回键盘 */
+            inputArea._suppressKbRefocus = true;
+            fileInput.click();
+            /* 兜底：用户取消选择器（无 change）也在此窗口结束后恢复键盘 */
+            setTimeout(() => {
+                inputArea._suppressKbRefocus = false;
+                if (plugin._mobileEditingNoteId && document.activeElement !== input) {
+                    try { input.focus(); } catch (e) {}
+                }
+            }, 1200);
+        });
 
         /* 粘贴图片 */
         input.addEventListener('paste', async (ev) => {
@@ -13948,8 +14151,46 @@ module.exports = class NorthLunaPlugin extends Plugin {
             window.visualViewport.removeEventListener('resize', inputArea._vvHandler);
             inputArea._vvHandler = null;
         }
+        /* 清理编辑态全屏的手动滚动接管监听（window 捕获阶段） */
+        if (inputArea._editManualScroll) {
+            window.removeEventListener('touchstart', inputArea._editManualScroll.onEditTouchStart, { passive: true, capture: true });
+            window.removeEventListener('touchmove', inputArea._editManualScroll.onEditTouchMove, { passive: false, capture: true });
+            inputArea._editManualScroll = null;
+        }
+        /* 清理可能由 visualViewport 监听写入的 inline 高度/top（关闭时还原全屏） */
+        inputArea.style.height = '';
+        inputArea.style.top = '';
+        /* 清空编辑态残留状态（避免下次打开时残留）：
+           顶部"返回箭头"、底部"取消"按钮、物理返回键都走这条路径，
+           任何一条关闭都要保证下次打开是干净的（无论是编辑还是添加）。 */
+        this._mobileEditingNoteId = null;
+        this._mobileEditingNoteData = null;
+        /* 关闭时一并清除键盘锁定抑制标记，避免影响后续打开 */
+        inputArea._suppressKbRefocus = false;
+        const input = inputArea.querySelector('.north-breeze-input-field');
+        if (input) { input.value = ''; input.style.height = ''; input.style.maxHeight = ''; }
+        const titleInput = inputArea.querySelector('#breeze-title-input');
+        if (titleInput) { titleInput.value = ''; titleInput.style.display = 'none'; }
+        const titleBtn = inputArea.querySelector('#breeze-toolbar-title');
+        if (titleBtn) titleBtn.classList.remove('active');
+        const previewBar = inputArea.querySelector('#breeze-image-preview-bar');
+        if (previewBar) { previewBar.innerHTML = ''; previewBar.classList.remove('has-images'); previewBar.style.display = ''; }
+        /* 通过 setter 同步清掉内部 pendingImages（如果绑定过） */
+        if (typeof inputArea._pendingImagesSetter === 'function') {
+            inputArea._pendingImagesSetter([]);
+        }
+        const box = inputArea.querySelector('#breeze-input-box');
+        if (box) { box.classList.remove('editing'); box.classList.remove('focused'); }
+        const sendBtn = inputArea.querySelector('#breeze-send');
+        if (sendBtn) { sendBtn.title = '发送'; sendBtn.classList.remove('active'); }
+        const cancelEl = inputArea.querySelector('.north-breeze-cancel-btn');
+        if (cancelEl) cancelEl.style.display = 'none';
+        /* 清掉 Flomo 顶部导航栏 */
+        const topbar = inputArea.querySelector('#breeze-edit-topbar');
+        if (topbar) topbar.style.display = 'none';
         inputArea.classList.add('mobile-sheet-closing');
         inputArea.classList.remove('mobile-sheet-visible');
+        inputArea.classList.remove('mobile-edit-fullscreen');
         document.body.classList.remove('north-luna-mobile-sheet-open');
         setTimeout(() => {
             inputArea.classList.remove('mobile-sheet-closing');

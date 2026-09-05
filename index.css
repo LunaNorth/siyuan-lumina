@@ -4384,6 +4384,157 @@
         from { transform: translateY(0); }
         to   { transform: translateY(100%); }
     }
+
+    /* ===== 移动端：编辑态全屏（Flomo 风格，添加态走上面 55vh 小抽屉不受影响） ===== */
+    .north-breeze-input-area.mobile-sheet-visible.mobile-edit-fullscreen {
+        background: var(--b3-theme-background);
+        animation: none;
+        /* 阻断滚动链穿透：textarea 内部滚动时不让外层（body / 页面）跟着滚动，
+           否则部分安卓内核会判定焦点丢失 → 软键盘收起 */
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+    }
+    .north-breeze-input-area.mobile-sheet-visible.mobile-edit-fullscreen.mobile-sheet-closing {
+        animation: none;
+    }
+    .north-breeze-input-area.mobile-sheet-visible.mobile-edit-fullscreen .north-breeze-input-box {
+        max-height: none;
+        height: auto;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        margin: 0;
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+        padding: 12px 16px calc(8px + env(safe-area-inset-bottom, 0px));
+        /* 用 grid 替代 flex：grid-template-rows: 1fr auto 强制 wrapper 占满剩余空间、
+           toolbar 固定底部。grid 行高是确定的，子元素无法撑破父容器，
+           比 flex 更不容易被内容溢出击穿。 */
+        display: grid;
+        grid-template-rows: 1fr auto;
+        align-items: stretch;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        box-sizing: border-box;
+        animation: none;
+        animation-delay: 0;
+    }
+    /* 中间输入区撑满剩余高度（grid row 1），textarea 自适应扩展；
+       min-width: 0 防御 grid/flex item 被内容撑大 */
+    .north-breeze-input-area.mobile-sheet-visible.mobile-edit-fullscreen .north-breeze-input-wrapper {
+        grid-row: 1;
+        min-height: 0;
+        min-width: 0;
+        max-width: 100%;
+        max-height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        margin-bottom: 0;
+    }
+    /* textarea 自身：在 grid 容器里撑满 wrapper（grid row 1 = 1fr），
+       取消默认的 max-height 50vh（否则长文编辑会被截断），
+       加 overflow-x hidden + word-break 防止英文/长链接造成水平滚动条；
+       用 !important 防御性锁死 box-sizing/min-width/white-space/font-size，
+       避免宿主环境的奇怪覆盖（如输入框宽度被拉大、文字字号被改、white-space 锁死不换行） */
+    .north-breeze-input-area.mobile-sheet-visible.mobile-edit-fullscreen .north-breeze-input-field {
+        flex: 1 1 0;
+        height: 100% !important;
+        min-height: 0 !important;
+        max-height: 100% !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        font-size: 16px !important;
+        line-height: 1.7;
+        white-space: pre-wrap !important;
+        word-break: break-all !important;
+        overflow-wrap: anywhere !important;
+        overflow-x: hidden !important;
+        overflow-y: auto;
+        /* 关键：彻底阻断长文本滚动的"滚动链穿透"——否则滚动动量会逃逸到外层（body / 页面），
+           某些内核会因此把软键盘收起。overscroll-behavior: contain 让 textarea 自己处理滚动，
+           touch-action: pan-y 只允许纵向手势（避免被识别为横向手势如系统返回）。 */
+        overscroll-behavior: contain !important;
+        /* 编辑态全屏：禁用原生滚动，改为 JS 手动滚动（见 _bindBreezeMobileInput），
+           彻底切断"滚动→页面滚动→软键盘收起"的链路，键盘全程稳定不闪烁 */
+        touch-action: none !important;
+    }
+    /* 工具栏：固定底部，flex-shrink: 0，附顶部分隔线 + 最小高度保证可见 */
+    .north-breeze-input-area.mobile-sheet-visible.mobile-edit-fullscreen .north-breeze-input-toolbar {
+        flex-shrink: 0;
+        grid-row: 2;
+        margin-top: 10px;
+        padding-top: 10px;
+        padding-bottom: 4px;
+        border-top: 1px solid var(--b3-border-color);
+        min-height: 48px;
+        background: var(--b3-theme-background);
+        z-index: 2;
+        box-sizing: border-box;
+    }
+    /* 全屏编辑态下：底部"取消"按钮隐藏，由顶部返回箭头承担退出职责（更 Flomo） */
+    .north-breeze-input-area.mobile-sheet-visible.mobile-edit-fullscreen .north-breeze-cancel-btn {
+        display: none !important;
+    }
+    /* 全屏编辑态下：图片预览栏允许折行显示（长文编辑时常有多图） */
+    .north-breeze-input-area.mobile-sheet-visible.mobile-edit-fullscreen #breeze-image-preview-bar {
+        flex-wrap: wrap;
+    }
+
+    /* ===== Flomo 风格顶部导航栏（编辑态全屏显示，添加态隐藏） ===== */
+    .north-breeze-edit-topbar {
+        display: none;
+    }
+    .north-breeze-input-area.mobile-sheet-visible.mobile-edit-fullscreen .north-breeze-edit-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: calc(48px + env(safe-area-inset-top, 0px));
+        padding: env(safe-area-inset-top, 0px) 4px 0 4px;
+        flex-shrink: 0;
+        background: var(--b3-theme-background);
+        border-bottom: 1px solid var(--b3-border-color);
+        position: relative;
+        z-index: 1;
+    }
+    .north-breeze-edit-back {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: var(--b3-theme-on-background);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+        -webkit-tap-highlight-color: transparent;
+        padding: 0;
+        transition: background 0.15s;
+    }
+    .north-breeze-edit-back:active {
+        background: var(--b3-theme-surface-lighter);
+    }
+    .north-breeze-edit-title-block {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-width: 0;
+        line-height: 1;
+    }
+    .north-breeze-edit-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--b3-theme-on-background);
+        line-height: 1.2;
+    }
     /* 输入弹层遮罩 */
     .north-breeze-input-overlay {
         position: fixed;
