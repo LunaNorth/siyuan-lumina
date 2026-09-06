@@ -1225,6 +1225,127 @@ function breezeExtractTags(content) {
     return [...new Set(tags)];
 }
 
+/* 清风「有语音」判定（移动端搜索"更多条件"筛选用）：
+   附件 files（字符串或 {name,path}）以音频扩展名结尾，或正文中含指向音频文件的链接 */
+function breezeNoteHasVoice(note) {
+    if (!note) return false;
+    const audioExts = ['.mp3', '.wav', '.m4a', '.aac', '.flac', '.amr', '.ogg', '.oga', '.opus', '.weba'];
+    const isAudioPath = (p) => {
+        const s = String(p || '').toLowerCase();
+        return audioExts.some(e => s.endsWith(e));
+    };
+    const files = (note.files || []).map(f => (typeof f === 'string' ? f : (f && f.path))).filter(Boolean);
+    if (files.some(isAudioPath)) return true;
+    if ((note.images || []).some(isAudioPath)) return true;
+    const audioRe = /\[[^\]]*\]\([^)]*\.(?:mp3|wav|m4a|aac|flac|amr|ogg|oga|opus|weba)\)/i;
+    return audioRe.test(note.content || '');
+}
+
+/* 收集清风笔记中的全部标签（含出现次数，按次数降序、同次数按名称排序），供移动端"标签范围"弹层选择 */
+function breezeCollectAllTags(notes) {
+    const counts = {};
+    (notes || []).forEach(n => {
+        breezeExtractTags(n.content || '').forEach(t => { counts[t] = (counts[t] || 0) + 1; });
+    });
+    return Object.keys(counts)
+        .sort((a, b) => counts[b] - counts[a] || a.localeCompare(b))
+        .map(name => ({ name: name, count: counts[name] }));
+}
+
+/* 精确统计元素内文本的渲染行数：用 Range.getClientRects 按 top 合并行，
+   不受 line-height:normal、字体伸缩（Android 字体放大）和 scrollHeight 取整误差影响 */
+function breezeCountTextLines(el) {
+    try {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const rects = Array.from(range.getClientRects());
+        if (!rects.length) return 0;
+        let lines = 0;
+        let lastTop = null;
+        let lastBottom = null;
+        for (const r of rects) {
+            if (r.width === 0 && r.height === 0) continue;
+            /* 矩形起始位置低于上一行底部 → 新的一行；否则并入当前行 */
+            if (lastTop === null || r.top >= lastBottom - 1) {
+                lines++;
+                lastTop = r.top;
+                lastBottom = r.bottom;
+            } else if (r.bottom > lastBottom) {
+                lastBottom = r.bottom;
+            }
+        }
+        return lines;
+    } catch (e) {
+        return 0;
+    }
+}
+
+/* 对单张清风笔记卡片应用长笔记折叠判定（threshold<=0 视为关闭）。
+   关键修复：.north-breeze-note-card 为 content-visibility:auto，视口外卡片跳过布局，
+   同步测量 scrollHeight/行数会得到 0 → 折叠误判不生效（表现为长卡片/滚动后进入视口的
+   卡片不折叠）。测量前临时把卡片强制为可见布局，测完恢复。返回是否发生折叠。 */
+function breezeApplyFoldToCard(card, threshold) {
+    const textEls = card.querySelectorAll('.north-breeze-note-text');
+    /* 先清掉旧的折叠状态再测量"自然高度" */
+    textEls.forEach((t) => t.classList.remove('breeze-folded'));
+    card.classList.remove('breeze-has-fold', 'breeze-expanded');
+    if (threshold <= 0) return false;
+    const prevCV = card.style.contentVisibility;
+    card.style.contentVisibility = 'visible';
+    let hasFold = false;
+    textEls.forEach((textEl) => {
+        let lineCount = breezeCountTextLines(textEl);
+        /* 计算实际行高（折叠 max-height 用）：line-height 可能是 normal(NaN) */
+        const cs = getComputedStyle(textEl);
+        const lhRaw = parseFloat(cs.lineHeight);
+        const fontSize = parseFloat(cs.fontSize) || 14;
+        const lh = (!isNaN(lhRaw) && lhRaw >= 1) ? lhRaw : (fontSize * 1.6);
+        if (lineCount <= 0) {
+            /* Range 测量失败时回退到 scrollHeight/行高估算 */
+            lineCount = textEl.scrollHeight / lh;
+        }
+        if (lineCount > threshold) {
+            textEl.classList.add('breeze-folded');
+            textEl.style.setProperty('--breeze-fold-lines', String(threshold));
+            textEl.style.setProperty('--breeze-fold-line-h', lh + 'px');
+            hasFold = true;
+        }
+    });
+    card.style.contentVisibility = prevCV;
+    if (hasFold) card.classList.add('breeze-has-fold');
+    return hasFold;
+}
+
+/* 对列表内全部笔记卡片分批应用长笔记折叠：每帧 6 张，避免长列表一次性强制布局阻塞主线程。
+   首批同步执行（首屏卡片立即折叠，无闪烁），其余在 rAF 中继续 */
+function breezeApplyFoldToList(listEl, threshold) {
+    if (!listEl) return;
+    const cards = Array.from(listEl.querySelectorAll('.north-breeze-note-card'));
+    if (!cards.length) return;
+    let idx = 0;
+    const step = () => {
+        const batch = cards.slice(idx, idx + 6);
+        batch.forEach(card => breezeApplyFoldToCard(card, threshold));
+        idx += batch.length;
+        if (idx < cards.length) requestAnimationFrame(step);
+    };
+    step();
+}
+
+/* 将热力图自定义颜色变量注入到指定容器（贡献图与清风日历共用同一套深浅分级色）。
+   heatColor 为空时清除注入，回落到主题默认色 */
+function breezeApplyHeatVars(host, heatColor) {
+    if (!host) return;
+    if (heatColor) {
+        host.style.setProperty('--breeze-heat-4', heatColor);
+        host.style.setProperty('--breeze-heat-3', `color-mix(in srgb, ${heatColor} 75%, transparent)`);
+        host.style.setProperty('--breeze-heat-2', `color-mix(in srgb, ${heatColor} 50%, transparent)`);
+        host.style.setProperty('--breeze-heat-1', `color-mix(in srgb, ${heatColor} 25%, transparent)`);
+    } else {
+        ['1', '2', '3', '4'].forEach(k => host.style.removeProperty('--breeze-heat-' + k));
+    }
+}
+
 /* ===== 批注（MEMO 引用）：复刻轻语 [MEMO:id] 行为 =====
    - 发布时：content 中含 [MEMO:笔记ID] 表示这是一条批注
    - 渲染时：把 [MEMO:id] 替换成"↳ 日期 · 被引用笔记预览"的引用块（点击跳原笔记）
@@ -2808,10 +2929,30 @@ function breezeShowTagPicker(anchor, textarea, plugin) {
     }
     document.body.appendChild(picker);
     const rect = anchor.getBoundingClientRect();
+    /* 先隐藏渲染拿到浮层尺寸，再定位：优先向上弹出（移动端编辑态工具栏在屏幕底部、
+       键盘上方，向下弹会被系统键盘遮挡导致无法选择），上方空间不足时才回退向下 */
     picker.style.visibility = 'hidden';
-    picker.style.left = Math.max(8, rect.left) + 'px';
-    picker.style.top = (rect.bottom + 6) + 'px';
+    picker.style.top = '0px';
+    picker.style.left = '0px';
+    const pw = picker.offsetWidth;
+    const ph = picker.offsetHeight;
+    let left = Math.max(8, rect.left);
+    if (left + pw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - pw - 8);
+    let top;
+    const spaceAbove = rect.top - 8;
+    if (ph + 6 <= spaceAbove) {
+        top = rect.top - ph - 6;               /* 向上弹出（默认） */
+    } else {
+        top = Math.min(rect.bottom + 6, window.innerHeight - ph - 8); /* 上方放不下才向下 */
+    }
+    picker.style.left = left + 'px';
+    picker.style.top = Math.max(8, top) + 'px';
     picker.style.visibility = 'visible';
+    /* 触摸保护：浮层挂在 document.body 下，阻止 touch 事件冒泡到思源全局手势
+       （touchend 里可能有 activeBlur 收键盘逻辑），同时不影响 click 派发 */
+    ['touchstart', 'touchmove', 'touchend'].forEach((evtName) => {
+        picker.addEventListener(evtName, (ev) => ev.stopPropagation());
+    });
     picker.addEventListener('click', (ev) => {
         const item = ev.target.closest('.north-breeze-tag-picker-item');
         if (item) {
@@ -3416,7 +3557,7 @@ const SIDEBAR_VIEWS = [
                 </div>
             </div>
             <!-- 按日期筛选：清风日历弹层（与朋友圈日历同款结构与样式） -->
-            <div class="north-luna-moments-calendar-modal" id="breezeCalendarModal">
+            <div class="north-luna-moments-calendar-modal" id="breezeCalendarModal" data-prevent-swipe="true">
                 <div class="north-luna-moments-calendar-overlay" id="breezeCalendarOverlay"></div>
                 <div class="north-luna-moments-calendar-content">
                     <div class="north-luna-moments-calendar-header">
@@ -3538,7 +3679,7 @@ const SIDEBAR_VIEWS = [
                     <!-- 移动端统计子视图（记录/统计 切换；复用 Dock 栏统计，PC 端由 CSS 隐藏，不影响桌面布局） -->
                     <div class="north-lifelog-mobile-stats north-lifelog-dock-stats" id="lifelogMobileStats"></div>
                     <!-- LifeLog 日历弹层（与清风/朋友圈同款） -->
-                    <div class="north-luna-moments-calendar-modal" id="lifelogCalendarModal">
+                    <div class="north-luna-moments-calendar-modal" id="lifelogCalendarModal" data-prevent-swipe="true">
                         <div class="north-luna-moments-calendar-overlay" id="lifelogCalendarOverlay"></div>
                         <div class="north-luna-moments-calendar-content">
                             <div class="north-luna-moments-calendar-header">
@@ -4604,8 +4745,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                         const imgHtml = `<img class="north-luna-moments-calendar-photo-img" src="${breezeEsc(imgPath)}" data-kind="image" alt="" loading="lazy">`;
                                         rowCells += `<div class="north-luna-moments-calendar-photo-cell has-photo"${dateAttr} title="${tooltip}">${num}${imgHtml}</div>`;
                                     } else if (count > 0) {
-                                        // 有记录但当天没有图片：保留 data-date 以便点击交互，并显示小圆点标记
-                                        rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record"${dateAttr} title="${tooltip}">${num}<span class="north-luna-moments-calendar-photo-dot" aria-hidden="true"></span></div>`;
+                                        // 有记录但当天没有图片：底色深浅随记录条数（与贡献图热力图同级别），可点击筛选
+                                        let heatLevel = 1;
+                                        if (count >= 3) heatLevel = 2;
+                                        if (count >= 5) heatLevel = 3;
+                                        if (count >= 7) heatLevel = 4;
+                                        rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record level-${heatLevel}"${dateAttr} title="${tooltip}">${num}</div>`;
                                     } else {
                                         rowCells += `<div class="north-luna-moments-calendar-photo-cell" title="${tooltip}">${num}</div>`;
                                     }
@@ -4659,6 +4804,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         startDate.setDate(yearStart.getDate() - yearStart.getDay());
                         calendarBody.innerHTML = `<div class="north-luna-moments-calendar-grid">${this._breezeBuildPhotoCalendar(targetYear, startDate, dayCounts, dayFirstImg)}</div>`;
                         if (calendarCount) calendarCount.textContent = `${totalCount} 条记录`;
+                        /* 同步热力图自定义颜色：日历"有记录"底色与贡献图同色系 */
+                        breezeApplyHeatVars(calendarBody, this._getSetting('breezeHeatmapColor'));
                         // 异步加载所有 storage 图片
                         // 图片已通过 src 直接加载
                         // 滚动到当前月（若在当前年）
@@ -5560,34 +5707,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                    超过阈值则在文字 span 上加 .breeze-folded 类，并在卡片上加 .breeze-has-fold
                    显示底部"展开"按钮。图片段在 .north-breeze-image-grid / .north-breeze-note-file
                    中独立存在，不受影响，呼应"图片始终完整显示"。
-                   切换"永不折叠"/"8 行"等档位后，再调用一次即可在已渲染的卡片上重算。 */
+                   切换"永不折叠"/"8 行"等档位后，再调用一次即可在已渲染的卡片上重算。
+                   测量/分批细节见 breezeApplyFoldToCard / breezeApplyFoldToList
+                   （修复 content-visibility:auto 导致视口外卡片测量为 0 行、折叠失效的问题） */
                 this._applyBreezeLongNoteCollapse = (listEl) => {
                     if (!listEl) return;
                     const setting = this._getSetting('breezeLongNoteCollapse') || 'never';
                     const threshold = parseInt(setting, 10) || 0;
-                    listEl.querySelectorAll('.north-breeze-note-card').forEach((card) => {
-                        const textEls = card.querySelectorAll('.north-breeze-note-text');
-                        // 先清掉旧的折叠状态再测量"自然高度"
-                        textEls.forEach((t) => t.classList.remove('breeze-folded'));
-                        card.classList.remove('breeze-has-fold', 'breeze-expanded');
-                        if (threshold <= 0) return;
-                        let hasFold = false;
-                        textEls.forEach((textEl) => {
-                            // 计算"实际行高"：line-height 可能是 normal(NaN) 或 px 或 number
-                            const cs = getComputedStyle(textEl);
-                            const lhRaw = parseFloat(cs.lineHeight);
-                            const fs = parseFloat(cs.fontSize) || 14;
-                            const lh = (!isNaN(lhRaw) && lhRaw >= 1) ? lhRaw : (fs * 1.6);
-                            const lineCount = textEl.scrollHeight / lh;
-                            if (lineCount > threshold) {
-                                textEl.classList.add('breeze-folded');
-                                textEl.style.setProperty('--breeze-fold-lines', String(threshold));
-                                textEl.style.setProperty('--breeze-fold-line-h', lh + 'px');
-                                hasFold = true;
-                            }
-                        });
-                        if (hasFold) card.classList.add('breeze-has-fold');
-                    });
+                    breezeApplyFoldToList(listEl, threshold);
                 };
 
                 /* 绑定热力图 cell 的 hover tooltip：mouseover 读 data-lumina-tip 创建浮层，
@@ -6699,22 +6826,68 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             this._renderGalleryView(body);
                         });
                     });
-                    // 点击图片 → 跳转到清风视图定位该笔记（复刻轻语拾光）
+                    // 点击图片 → 跳转到清风视图定位该笔记（复刻轻语拾光）。
+                    // 优化：先按该记录的日期应用清风"日期筛选"再定位 —— 条数多时直接定位
+                    // 要滚很久（且分页时目标卡片可能根本没渲染）；按天筛选后目标必然在前几条。
+                    // 同时清掉标签/检索/内置检索等可能把目标记录挡住的其他筛选。
                     body.querySelectorAll('.north-luna-gallery-item .north-luna-gallery-img-wrapper').forEach(wrapper => {
                         wrapper.addEventListener('click', () => {
                             const item = wrapper.closest('.north-luna-gallery-item');
                             const noteId = item ? item.dataset.id : null;
                             if (!noteId) return;
-                            // 切换到清风视图
+                            /* 取该记录的日期（YYYY-MM-DD） */
+                            const allNotes = (plugin.data[RECORDS_STORAGE] || {}).breezeNotes || [];
+                            const targetNote = allNotes.find(n => n.id === noteId);
+                            const dateKey = targetNote ? String(targetNote.time || '').slice(0, 10) : '';
+                            /* 1. 应用日期筛选（tab 与移动端 dock 两套状态都写，渲染路径二选一），
+                                  并清除可能挡住目标的其他筛选（标签/标签范围/内置检索/关键词/日期范围） */
+                            if (dateKey) {
+                                this.breezeDateFilter = dateKey;
+                                this.breezePage = 1;
+                                this.breezeTagFilter = null;
+                                this.breezeQuickFilter = null;
+                                this.breezeSearchFilter = '';
+                                const breezeInput = this.container.querySelector('#breezeSearchInput');
+                                if (breezeInput) breezeInput.value = '';
+                                /* 切回「全部笔记」子视图，确保日期筛选结果可见（与热力图点击行为一致） */
+                                this.breezeSubView = 'all';
+                            }
+                            plugin._mobileBreezeDateFilter = dateKey || null;
+                            plugin._mobileBreezeDateRange = null;
+                            plugin._mobileBreezeTagFilter = null;
+                            plugin._mobileBreezeTagScope = null;
+                            plugin._mobileBreezeQuickFilter = null;
+                            plugin._mobileBreezeQuickFilterSet = null;
+                            if (plugin._lunaDockCtx) {
+                                plugin._lunaDockCtx.breezeMobileSearch = '';
+                                plugin._syncBreezeFilterChips(plugin._lunaDockCtx);
+                            }
+                            /* 2. 切换到清风视图 */
                             this.switchView('notes');
-                            // 轮询定位到目标卡片
+                            /* 3. 轮询定位到目标卡片（加上限，避免目标因任何原因未渲染时无限轮询） */
+                            let tries = 0;
                             const check = () => {
+                                tries++;
                                 const noteCard = this.container.querySelector('.north-breeze-note-card[data-id="' + noteId + '"]');
                                 if (noteCard) {
-                                    noteCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                    /* 只滚动清风列表自身的 scrollTop：
+                                       不能用 scrollIntoView —— 它会连带滚动所有可滚动祖先容器
+                                       （视图外层/思源布局层），把整个清风视图顶得向上偏移 */
+                                    const listEl = noteCard.closest('#breeze-notes-list');
+                                    if (listEl) {
+                                        const listRect = listEl.getBoundingClientRect();
+                                        const cardRect = noteCard.getBoundingClientRect();
+                                        /* 卡片中心对齐列表可视区中心 */
+                                        const delta = (cardRect.top + cardRect.height / 2) - (listRect.top + listRect.height / 2);
+                                        try {
+                                            listEl.scrollTo({ top: Math.max(0, listEl.scrollTop + delta), behavior: 'smooth' });
+                                        } catch (err) {
+                                            listEl.scrollTop = Math.max(0, listEl.scrollTop + delta);
+                                        }
+                                    }
                                     noteCard.classList.add('north-breeze-gallery-flash');
                                     setTimeout(() => noteCard.classList.remove('north-breeze-gallery-flash'), 2000);
-                                } else {
+                                } else if (tries < 25) {
                                     // 还没渲染，延迟重试
                                     setTimeout(check, 80);
                                 }
@@ -12645,8 +12818,16 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     <div class="mobile-search-input-wrapper">
                         <svg class="icon mobile-search-icon"><use xlink:href="#iconSearch"></use></svg>
                         <input type="text" class="mobile-search-input" id="luna-mobile-search-input" placeholder="搜索笔记...">
+                        <button type="button" class="mobile-search-filter-btn" id="luna-mobile-search-filter" title="筛选">
+                            <svg class="icon"><use xlink:href="#iconAlignCenter"></use></svg>
+                        </button>
                     </div>
                     <button class="mobile-search-close" id="luna-mobile-search-close">取消</button>
+                    <div class="mobile-search-filter-row" id="luna-mobile-search-filter-row">
+                        <button type="button" class="mobile-search-filter-chip" data-filter="date"><span class="chip-label">日期</span><svg class="icon"><use xlink:href="#iconDown"></use></svg></button>
+                        <button type="button" class="mobile-search-filter-chip" data-filter="tag"><span class="chip-label">标签</span><svg class="icon"><use xlink:href="#iconDown"></use></svg></button>
+                        <button type="button" class="mobile-search-filter-chip" data-filter="more"><span class="chip-label">检索</span><svg class="icon"><use xlink:href="#iconDown"></use></svg></button>
+                    </div>
                 </div>
                 <div class="north-luna-main-area">
                     <div class="north-luna-main-body"></div>
@@ -12689,8 +12870,33 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 mobileSearchBar.classList.toggle('show');
                 if (mobileSearchBar.classList.contains('show') && mobileSearchInput2) {
                     mobileSearchInput2.focus();
+                    /* 打开时同步筛选条目状态（已应用的筛选会显示在条目上） */
+                    plugin._syncBreezeFilterChips(ctx);
+                } else {
+                    /* 收起搜索栏时同时收起筛选条目行 */
+                    const frow = target.querySelector('#luna-mobile-search-filter-row');
+                    if (frow) frow.classList.remove('open');
+                    const fbtn = target.querySelector('#luna-mobile-search-filter');
+                    if (fbtn) fbtn.classList.remove('active');
                 }
             });
+        }
+        /* 移动端清风搜索：Flomo 风格筛选（日期/标签/更多条件），点击条目从底部弹出对应弹层 */
+        const mobileFilterBtn = target.querySelector('#luna-mobile-search-filter');
+        const mobileFilterRow = target.querySelector('#luna-mobile-search-filter-row');
+        if (mobileFilterBtn && mobileFilterRow) {
+            mobileFilterBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                mobileFilterRow.classList.toggle('open');
+                mobileFilterBtn.classList.toggle('active', mobileFilterRow.classList.contains('open'));
+            });
+            mobileFilterRow.querySelectorAll('.mobile-search-filter-chip[data-filter]').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    plugin._openBreezeFilterSheet(ctx, chip.dataset.filter);
+                });
+            });
+            plugin._syncBreezeFilterChips(ctx);
         }
         if (mobileSearchClose && mobileSearchBar) {
             mobileSearchClose.addEventListener('click', () => {
@@ -12706,6 +12912,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
                 } else {
                     ctx.breezeMobileSearch = '';
+                    /* 取消 = 退出搜索：清空关键词 + 全部筛选（Flomo 式搜索筛选 + 侧栏标签/日历单日/内置检索单选） */
+                    plugin._mobileBreezeDateRange = null;
+                    plugin._mobileBreezeTagScope = null;
+                    plugin._mobileBreezeQuickFilterSet = null;
+                    plugin._mobileBreezeDateFilter = null;
+                    plugin._mobileBreezeTagFilter = null;
+                    plugin._mobileBreezeQuickFilter = null;
+                    plugin._syncBreezeFilterChips(ctx);
                     /* 同步清空桌面端搜索框并触发过滤更新 */
                     const breezeInput = target.querySelector('#breezeSearchInput');
                     if (breezeInput) {
@@ -12714,6 +12928,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
                     ctx.renderMain();
                 }
+                /* 同时收起筛选条目行 */
+                const frow = target.querySelector('#luna-mobile-search-filter-row');
+                if (frow) frow.classList.remove('open');
+                const fbtn = target.querySelector('#luna-mobile-search-filter');
+                if (fbtn) fbtn.classList.remove('active');
             });
         }
         /* 移动端 LifeLog 视图：记录/统计 子视图切换（仅 LifeLog 视图显示该切换条，作用于 .north-luna-container） */
@@ -12863,6 +13082,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 resetContent();
                             }, true);
                         }
+                        /* 拦截 touchmove 冒泡（同清风日历）：弹窗内滑动时不让思源移动端的全局
+                           touch 手势收到事件，避免其 touchend 兜底 closePanel() 把承载视图的
+                           侧栏面板误关掉。只 stopPropagation 不 preventDefault，不影响弹窗内原生滚动。 */
+                        if (!modal._mobileTouchBound) {
+                            modal._mobileTouchBound = true;
+                            modal.addEventListener('touchmove', (ev) => ev.stopPropagation(), { passive: true });
+                        }
                     }
                     plugin._openLifeLogCalendar(bodyEl);
                     return;
@@ -12917,14 +13143,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     document.body.style.width = '100%';
                 }
                 /* 绑定弹窗 touchmove 拦截：防止触控事件穿透到底层视图，同时阻止思源"返回"手势误判
-                   注意：弹窗内容区域（content）允许垂直滚动，因此只拦截 overlay 层的 touchmove */
+                   注意：弹窗内容区域（content）允许垂直滚动（不 preventDefault），但仍需 stopPropagation：
+                   弹窗已被移到 document.body，思源移动端的全局 touchstart/touchmove/touchend 手势
+                   （document 冒泡监听）若收到这批事件，会在 touchend 兜底分支执行 closePanel()，
+                   把承载清风视图的侧栏面板关掉 —— 表现为"滑动日历触发了返回"。
+                   拦截后全局 xDiff/yDiff 保持 undefined，touchend 直接早退，滑动不再影响底层视图。 */
                 if (!modal._mobileTouchBound) {
                     modal._mobileTouchBound = true;
                     modal.addEventListener('touchmove', (ev) => {
-                        // 如果触摸目标在内容区域内允许垂直滚动，则不阻止
+                        // 触摸在内容区域：允许原生滚动，但不让事件冒泡到思源全局手势
                         const content = modal.querySelector('.north-luna-moments-calendar-content');
                         if (content && content.contains(ev.target)) {
-                            // 允许内容区域内的垂直滚动（CSS touch-action: pan-y 已处理水平方向）
+                            ev.stopPropagation();
                             return;
                         }
                         // 触摸在 overlay 遮罩区域，阻止所有触控行为
@@ -12966,6 +13196,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     content.style.setProperty('width', '92%', 'important');
                     content.style.setProperty('max-height', '70vh', 'important');
                 }
+                /* 移动端标记：弹窗已移到 document.body，无法通过 .is-mobile 祖先选择器命中，
+                   用该类让 CSS 把日历格子放宽到填满弹窗宽度（否则 44px 上限使网格窄于内容区，
+                   多余空间全部堆在右侧，左右边距不对称） */
+                modal.classList.add('north-luna-moments-calendar-mobile');
                 /* 填充年份选择器 */
                 const calendarYear = modal.querySelector('#breezeCalYear');
                 if (calendarYear) {
@@ -13034,6 +13268,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
         /* 切换视图时收起移动端搜索栏 */
         const mobileSearchBar3 = ctx.container.querySelector('#luna-mobile-search-bar');
         if (mobileSearchBar3) mobileSearchBar3.classList.remove('show');
+        /* 同时收起搜索筛选条目行（日期/标签/更多） */
+        const mobileFilterRow3 = ctx.container.querySelector('#luna-mobile-search-filter-row');
+        if (mobileFilterRow3) mobileFilterRow3.classList.remove('open');
+        const mobileFilterBtn3 = ctx.container.querySelector('#luna-mobile-search-filter');
+        if (mobileFilterBtn3) mobileFilterBtn3.classList.remove('active');
         ctx.activeViewId = viewId;
         const _lunaContainerEl = ctx.container.querySelector('.north-luna-container');
         if (_lunaContainerEl) _lunaContainerEl.setAttribute('data-active-view', viewId);
@@ -13829,8 +14068,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const tryRefocus = () => {
                 if (!plugin._mobileEditingNoteId || inputArea._suppressKbRefocus) return;
                 if (document.activeElement === input) return;
-                /* 标签选择器浮层打开时避让，等它关闭后再拉回键盘 */
-                if (inputArea.querySelector('.north-breeze-tag-picker')) { setTimeout(tryRefocus, 120); return; }
+                /* 标签选择器浮层打开时避让，等它关闭后再拉回键盘。
+                   注意浮层挂在 document.body 下（不在 inputArea 内），必须全局查 */
+                if (document.querySelector('.north-breeze-tag-picker')) { setTimeout(tryRefocus, 120); return; }
                 /* 标题输入框获焦时（点标题按钮展开）不抢焦点 */
                 const titleEl = inputArea.querySelector('#breeze-title-input') || inputArea.querySelector('#north-breeze-dock-title-input');
                 if (document.activeElement === titleEl) return;
@@ -13984,7 +14224,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
             insertAtCursor(text, '');
         };
         const tagBtn = inputArea.querySelector('#breeze-toolbar-tag');
-        if (tagBtn) tagBtn.addEventListener('click', () => breezeShowTagPicker(tagBtn, input, plugin));
+        if (tagBtn) {
+            /* 关键：pointerdown preventDefault 阻止焦点从 textarea 转移到按钮，
+               编辑态点击标签按钮时键盘全程不收起（click 仍正常触发）。
+               否则 Android 上 tap 按钮会转移焦点 → 输入框失焦 → 键盘收起，
+               随后失焦自动重聚焦又把键盘拉回，表现为键盘收起再唤出、浮层错位无法选择 */
+            tagBtn.addEventListener('pointerdown', (e) => e.preventDefault());
+            tagBtn.addEventListener('click', () => breezeShowTagPicker(tagBtn, input, plugin));
+        }
         const taskBtn = inputArea.querySelector('#breeze-toolbar-task');
         if (taskBtn) taskBtn.addEventListener('click', () => insertAtLineStart('- [ ] '));
         const ulBtn = inputArea.querySelector('#breeze-toolbar-ul');
@@ -14042,9 +14289,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
     /* 屏蔽思源键盘工具栏（#keyboardToolbar）：textarea 获焦时强制隐藏，
        并用 MutationObserver 防止思源重新显示它，失焦时断开。
-       复刻轻语 _suppressKeyboardToolbarOn（避免遮挡输入框快捷按钮栏） */
+       复刻轻语 _suppressKeyboardToolbarOn（避免遮挡输入框快捷按钮栏）。
+       注意：每个元素只绑定一次（每次打开弹层都会调用本函数，
+       重复绑定会让旧 MutationObserver 泄漏并持续干扰键盘工具栏显示） */
     _suppressKeyboardToolbarOn(el) {
         if (!el || !this.isMobile) return;
+        if (el._kbSuppressBound) return;
+        el._kbSuppressBound = true;
         el.addEventListener('focus', () => {
             const kb = document.getElementById('keyboardToolbar');
             if (!kb) return;
@@ -14151,12 +14402,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
             window.visualViewport.removeEventListener('resize', inputArea._vvHandler);
             inputArea._vvHandler = null;
         }
-        /* 清理编辑态全屏的手动滚动接管监听（window 捕获阶段） */
-        if (inputArea._editManualScroll) {
-            window.removeEventListener('touchstart', inputArea._editManualScroll.onEditTouchStart, { passive: true, capture: true });
-            window.removeEventListener('touchmove', inputArea._editManualScroll.onEditTouchMove, { passive: false, capture: true });
-            inputArea._editManualScroll = null;
-        }
+        /* 注意：不再移除编辑态的 window 捕获阶段滚动接管监听（_editManualScroll）。
+           该监听在 _bindBreezeMobileInput 中只安装一次（_mobileInputFullyBound 守卫，
+           重新打开弹层不会重新执行绑定），若在此处移除，第二次进入编辑时将失去
+           滑动接管 → 触摸事件穿透到思源原生处理 → activeBlur 收起键盘，
+           表现为键盘一闪一闪/滑动即收起。监听自身带状态门控：
+           非编辑全屏态（mobile-edit-fullscreen 类）或非编辑中（_mobileEditingNoteId）直接返回，
+           关闭状态下是空操作，常驻无害。 */
         /* 清理可能由 visualViewport 监听写入的 inline 高度/top（关闭时还原全屏） */
         inputArea.style.height = '';
         inputArea.style.top = '';
@@ -14227,6 +14479,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 /* 2. 输入框弹层（Bottom Sheet） */
                 const ctx = plugin._lunaDockCtx || (plugin._siyuTab ? { container: plugin._siyuTab.container } : null);
                 if (ctx) {
+                    /* 2.4 自绘日历日期选择器（日期范围弹层之上） */
+                    const datePop = document.querySelector('.north-breeze-date-pop');
+                    if (datePop) {
+                        plugin._closeBreezeDatePicker();
+                        return;
+                    }
+                    /* 2.5 搜索筛选弹层（日期范围/标签范围/更多条件） */
+                    const filterSheet = document.querySelector('.north-breeze-filter-sheet-wrap');
+                    if (filterSheet) {
+                        plugin._closeBreezeFilterSheet();
+                        return;
+                    }
                     const inputArea = ctx.container?.querySelector('.north-breeze-input-area.mobile-sheet-visible');
                     if (inputArea) {
                         plugin._closeMobileInputSheet(ctx);
@@ -14607,8 +14871,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const subView = ctx._mobileBreezeSubView || 'all';
                     const q = (ctx.breezeMobileSearch || '').trim().toLowerCase();
                     let notes;
-                    // 归档笔记默认不显示；若用户在内置检索选中「已归档」，则仅展示已归档笔记（覆盖默认隐藏）
-                    if (plugin._mobileBreezeQuickFilter === 'archived' && (ctx._mobileBreezeSubView || 'all') === 'all') {
+                    // 归档笔记默认不显示；若用户在内置检索/「更多条件」选中「已归档」，则仅展示已归档笔记（覆盖默认隐藏）
+                    const wantArchived = plugin._mobileBreezeQuickFilter === 'archived' ||
+                        (plugin._mobileBreezeQuickFilterSet && plugin._mobileBreezeQuickFilterSet['archived']);
+                    if (wantArchived && (ctx._mobileBreezeSubView || 'all') === 'all') {
                         notes = allNotes.filter(n => !!n.archived);
                     } else {
                         notes = visibleNotes;
@@ -14625,6 +14891,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (q) {
                         notes = notes.filter(n => (n.content || '').toLowerCase().includes(q) || (n.title || '').toLowerCase().includes(q));
                     }
+                    /* 日期范围筛选（Flomo 式搜索筛选：开始—结束，含边界；仅填一端则按单端过滤） */
+                    if (plugin._mobileBreezeDateRange && (plugin._mobileBreezeDateRange.start || plugin._mobileBreezeDateRange.end)) {
+                        const r = plugin._mobileBreezeDateRange;
+                        notes = notes.filter(n => {
+                            const d = (n.time || '').slice(0, 10);
+                            if (!d) return false;
+                            if (r.start && d < r.start) return false;
+                            if (r.end && d > r.end) return false;
+                            return true;
+                        });
+                    }
                     /* 日期筛选：移动端日历选中某天后仅显示该天笔记 */
                     if (plugin._mobileBreezeDateFilter) {
                         notes = notes.filter(n => (n.time || '').slice(0, 10) === plugin._mobileBreezeDateFilter);
@@ -14635,6 +14912,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         notes = notes.filter(n => {
                             const tags = breezeExtractTags(n.content || '');
                             return tags.some(t => t === sel || t.startsWith(sel + '/'));
+                        });
+                    }
+                    /* 标签范围筛选（Flomo 式搜索筛选）：全部内容 / 无标签 / 包含指定标签 / 排除指定标签 */
+                    const tagScope = plugin._mobileBreezeTagScope;
+                    if (tagScope && tagScope.mode && tagScope.mode !== 'all') {
+                        const sel = tagScope.tags || [];
+                        notes = notes.filter(n => {
+                            const ts = breezeExtractTags(n.content || '');
+                            if (tagScope.mode === 'none') return ts.length === 0;
+                            if (!sel.length) return true;
+                            const hit = ts.some(t => sel.some(s => t === s || t.startsWith(s + '/')));
+                            return tagScope.mode === 'include' ? hit : !hit;
                         });
                     }
                     /* 快速筛选（移动端内置检索，仅「全部笔记」子视图生效，复刻 PC breezeQuickFilter 行为） */
@@ -14655,6 +14944,28 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         } else if (kind === 'archived') {
                             notes = notes.filter(n => !!n.archived);
                         }
+                    }
+                    /* 更多条件（Flomo 式搜索筛选，多选叠加，仅「全部笔记」子视图生效）：
+                       与侧边栏内置检索同款选项（无标签/有图片/无图片/有链接/有任务/已归档）。
+                       已归档在起始集合处已切换为归档笔记，这里再叠加其余条件。 */
+                    const quickFilterSet = plugin._mobileBreezeQuickFilterSet;
+                    if (quickFilterSet && (ctx._mobileBreezeSubView || 'all') === 'all') {
+                        const kinds = Object.keys(quickFilterSet).filter(k => quickFilterSet[k] && k !== 'archived');
+                        kinds.forEach(kind => {
+                            if (kind === 'no-tag') {
+                                notes = notes.filter(n => breezeExtractTags(n.content || '').length === 0);
+                            } else if (kind === 'has-image') {
+                                notes = notes.filter(n => (n.images || []).length > 0);
+                            } else if (kind === 'no-image') {
+                                notes = notes.filter(n => (n.images || []).length === 0);
+                            } else if (kind === 'has-link') {
+                                const linkRe = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(?:^|\s)(https?:\/\/[^\s)]+)/;
+                                notes = notes.filter(n => linkRe.test(n.content || ''));
+                            } else if (kind === 'has-task') {
+                                const taskRe = /^\s*[-*+]\s+\[[ xX]\]/m;
+                                notes = notes.filter(n => taskRe.test(n.content || ''));
+                            }
+                        });
                     }
                     /* 分页：开启且总条数超过每页条数时才切片 + 显示分页器（复刻 PC _renderBreezeSubView） */
                     const paginationEnabled = !!plugin._getPluginSetting('breezePaginationEnabled');
@@ -14834,7 +15145,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             ctx.renderMain();
                         });
                     } else if (notes.length === 0) {
-                        const emptyHint = q ? '没有匹配的笔记' : (plugin._mobileBreezeDateFilter ? '该日期暂无笔记' : (subView === 'week' ? '本周暂无笔记' : '还没有笔记哦~'));
+                        /* 空状态提示：区分"确实没笔记"与"筛选条件组合后无结果"（关键词/日期范围/标签范围/更多条件/侧栏标签/日历单日/内置检索） */
+                        const hasActiveFilter = !!(q ||
+                            plugin._mobileBreezeDateFilter ||
+                            plugin._mobileBreezeTagFilter ||
+                            plugin._mobileBreezeQuickFilter ||
+                            plugin._mobileBreezeQuickFilterSet ||
+                            (plugin._mobileBreezeDateRange && (plugin._mobileBreezeDateRange.start || plugin._mobileBreezeDateRange.end)) ||
+                            (plugin._mobileBreezeTagScope && plugin._mobileBreezeTagScope.mode && plugin._mobileBreezeTagScope.mode !== 'all'));
+                        const emptyHint = q ? '没有匹配的笔记'
+                            : (plugin._mobileBreezeDateFilter ? '该日期暂无笔记'
+                                : (hasActiveFilter ? '没有符合条件的笔记，试试调整或清除筛选'
+                                    : (subView === 'week' ? '本周暂无笔记' : '还没有笔记哦~')));
                         const emptySub = q ? '换个关键词试试' : (plugin._mobileBreezeDateFilter ? '试试选择其他日期' : (subView === 'week' ? '这周还没有记录哦' : '在输入框写下第一条笔记吧'));
                         list.innerHTML = subViewHeader + '<div class="north-breeze-empty"><div class="north-breeze-empty-icon">✨</div><div class="north-breeze-empty-text">' + emptyHint + '</div><div class="north-breeze-empty-sub">' + emptySub + '</div></div>';
                     } else if (viewStyle === 'card') {
@@ -15037,31 +15359,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     list.style.setProperty('--breeze-double-w', doubleW + 'px');
                     list.style.setProperty('--breeze-four-w', fourW + 'px');
                     list.style.setProperty('--breeze-multi-w', multiW + 'px');
-                    /* 长笔记折叠（与 PC _applyBreezeLongNoteCollapse 同逻辑） */
+                    /* 长笔记折叠（与 PC _applyBreezeLongNoteCollapse 同逻辑）。
+                       修复"有时失效"：卡片为 content-visibility:auto，视口外卡片跳过布局，
+                       同步测量行数为 0 → 不折叠；长卡片/滚动后才进入视口的卡片因此失效。
+                       现改为强制可见布局 + Range 精确数行 + rAF 分批测量（见 breezeApplyFoldToList） */
                     const collapseSetting = plugin._getPluginSetting('breezeLongNoteCollapse') || 'never';
-                    const threshold = parseInt(collapseSetting, 10) || 0;
-                    if (threshold > 0) {
-                        list.querySelectorAll('.north-breeze-note-card').forEach((card) => {
-                            const textEls = card.querySelectorAll('.north-breeze-note-text');
-                            textEls.forEach((t) => t.classList.remove('breeze-folded'));
-                            card.classList.remove('breeze-has-fold', 'breeze-expanded');
-                            let hasFold = false;
-                            textEls.forEach((textEl) => {
-                                const cs = getComputedStyle(textEl);
-                                const lhRaw = parseFloat(cs.lineHeight);
-                                const fontSize = parseFloat(cs.fontSize) || 14;
-                                const lh = (!isNaN(lhRaw) && lhRaw >= 1) ? lhRaw : (fontSize * 1.6);
-                                const lineCount = textEl.scrollHeight / lh;
-                                if (lineCount > threshold) {
-                                    textEl.classList.add('breeze-folded');
-                                    textEl.style.setProperty('--breeze-fold-lines', String(threshold));
-                                    textEl.style.setProperty('--breeze-fold-line-h', lh + 'px');
-                                    hasFold = true;
-                                }
-                            });
-                            if (hasFold) card.classList.add('breeze-has-fold');
-                        });
-                    }
+                    const foldThreshold = parseInt(collapseSetting, 10) || 0;
+                    breezeApplyFoldToList(list, foldThreshold);
                     /* 滚动阻尼：移动端触摸惯性滚动（与 PC _bindScrollDamping 对应的触摸版本）
                        拦截 touchmove 手动控制 scrollTop，touchend 后 requestAnimationFrame 减速，
                        实现「手指抬起后内容继续滑行一小段」的阻尼效果。
@@ -15173,8 +15477,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const imgHtml = `<img class="north-luna-moments-calendar-photo-img" src="${breezeEsc(dayFirstImg[key])}" data-kind="image" alt="" loading="lazy">`;
                             rowCells += `<div class="north-luna-moments-calendar-photo-cell has-photo"${dateAttr} title="${tooltip}">${num}${imgHtml}</div>`;
                         } else if (count > 0) {
-                            // 有记录但当天没有图片：保留 data-date 以便点击交互，并显示小圆点标记
-                            rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record"${dateAttr} title="${tooltip}">${num}<span class="north-luna-moments-calendar-photo-dot" aria-hidden="true"></span></div>`;
+                            // 有记录但当天没有图片：底色深浅随记录条数（与贡献图热力图同级别），可点击筛选
+                            let heatLevel = 1;
+                            if (count >= 3) heatLevel = 2;
+                            if (count >= 5) heatLevel = 3;
+                            if (count >= 7) heatLevel = 4;
+                            rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record level-${heatLevel}"${dateAttr} title="${tooltip}">${num}</div>`;
                         } else {
                             rowCells += `<div class="north-luna-moments-calendar-photo-cell" title="${tooltip}">${num}</div>`;
                         }
@@ -15196,6 +15504,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const allMonths = Array.from({ length: 12 }, (_, i) => renderMonth(i)).join('');
         calendarBody.innerHTML = `<div class="north-luna-moments-calendar-grid"><div class="north-luna-moments-calendar-photo-twocol">${allMonths}</div></div>`;
         if (calendarCount) calendarCount.textContent = `${totalCount} 条记录`;
+        /* 同步热力图自定义颜色：日历"有记录"底色与贡献图同色系 */
+        breezeApplyHeatVars(calendarBody, this._getPluginSetting('breezeHeatmapColor'));
         /* 滚动到当前月 */
         const today = new Date();
         if (today.getFullYear() === targetYear) {
@@ -15222,6 +15532,428 @@ module.exports = class NorthLunaPlugin extends Plugin {
             ctx.renderMain();
         }
     }
+    /* ===== 移动端清风搜索：Flomo 风格筛选（日期范围/标签范围/更多条件，底部弹层） =====
+       状态挂 plugin（跨渲染保持），由移动端清风列表过滤管线消费：
+       - _mobileBreezeDateRange      { start:'YYYY-MM-DD', end:'YYYY-MM-DD' } | null
+       - _mobileBreezeTagScope       { mode:'none'|'include'|'exclude', tags:[...] } | null（all 即 null）
+       - _mobileBreezeQuickFilterSet { has-image/has-link/has-voice: true } | null（与侧边栏内置检索单选互斥） */
+    _breezeFmtISO(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    _breezeFmtDateShort(s) {
+        const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(s || ''));
+        if (!m) return '';
+        return parseInt(m[2], 10) + '/' + parseInt(m[3], 10);
+    }
+    /* 筛选条目（日期/标签/更多）状态回显：已应用时高亮并显示摘要文字 */
+    _syncBreezeFilterChips(ctx) {
+        const row = ctx && ctx.container ? ctx.container.querySelector('#luna-mobile-search-filter-row') : null;
+        if (!row) return;
+        const dateChip = row.querySelector('.mobile-search-filter-chip[data-filter="date"]');
+        if (dateChip) {
+            const dr = this._mobileBreezeDateRange;
+            const on = !!(dr && (dr.start || dr.end));
+            dateChip.classList.toggle('active', on);
+            let label = '日期';
+            if (on) {
+                const s = this._breezeFmtDateShort(dr.start);
+                const e = this._breezeFmtDateShort(dr.end);
+                if (dr.start && dr.end) label = (s === e) ? s : s + '-' + e;
+                else if (dr.start) label = s + '起';
+                else label = '至' + e;
+            }
+            dateChip.querySelector('.chip-label').textContent = label;
+        }
+        const tagChip = row.querySelector('.mobile-search-filter-chip[data-filter="tag"]');
+        if (tagChip) {
+            const sc = this._mobileBreezeTagScope;
+            const on = !!(sc && sc.mode && sc.mode !== 'all');
+            tagChip.classList.toggle('active', on);
+            const n = on ? (sc.tags || []).length : 0;
+            const label = !on ? '标签'
+                : (sc.mode === 'none' ? '无标签'
+                    : (sc.mode === 'include' ? (n ? '含' + n + '个标签' : '含标签') : (n ? '排除' + n + '个标签' : '排除标签')));
+            tagChip.querySelector('.chip-label').textContent = label;
+        }
+        const moreChip = row.querySelector('.mobile-search-filter-chip[data-filter="more"]');
+        if (moreChip) {
+            const qs = this._mobileBreezeQuickFilterSet;
+            const kinds = qs ? Object.keys(qs).filter(k => qs[k]) : [];
+            moreChip.classList.toggle('active', kinds.length > 0);
+            const names = { 'no-tag': '无标签', 'has-image': '图片', 'no-image': '无图片', 'has-link': '链接', 'has-task': '任务', 'archived': '归档' };
+            moreChip.querySelector('.chip-label').textContent = kinds.length ? '检索·' + kinds.map(k => names[k] || k).join('+') : '检索';
+        }
+    }
+    /* 构建弹层主体 HTML（草稿状态从当前已应用筛选恢复） */
+    _buildBreezeDateSheetBody() {
+        const dr = this._mobileBreezeDateRange || { start: '', end: '' };
+        const quickActive = (dr.start || dr.end) ? '' : ' active';
+        return '<div class="north-breeze-sheet-opts">' +
+                '<button type="button" class="sheet-opt' + quickActive + '" data-opt="none">不限时间</button>' +
+                '<button type="button" class="sheet-opt" data-opt="week">本周</button>' +
+                '<button type="button" class="sheet-opt" data-opt="month">本月</button>' +
+            '</div>' +
+            '<div class="north-breeze-sheet-daterange">' +
+                '<div class="sheet-date-field" data-role="start" data-value="' + breezeEsc(dr.start || '') + '">' +
+                    '<span class="df-text' + (dr.start ? ' has-value' : '') + '">' + (dr.start ? this._breezeFmtDateShort(dr.start) : '开始日期') + '</span>' +
+                '</div>' +
+                '<span class="sheet-date-sep">—</span>' +
+                '<div class="sheet-date-field" data-role="end" data-value="' + breezeEsc(dr.end || '') + '">' +
+                    '<span class="df-text' + (dr.end ? ' has-value' : '') + '">' + (dr.end ? this._breezeFmtDateShort(dr.end) : '结束日期') + '</span>' +
+                '</div>' +
+            '</div>';
+    }
+    _buildBreezeTagSheetBody() {
+        const sc = this._mobileBreezeTagScope || { mode: 'all', tags: [] };
+        const tags = breezeCollectAllTags(this.data[RECORDS_STORAGE].breezeNotes || []);
+        const showPick = (sc.mode === 'include' || sc.mode === 'exclude');
+        const sel = sc.tags || [];
+        let chips = '';
+        tags.forEach(o => {
+            chips += '<button type="button" class="sheet-tag-chip' + (sel.includes(o.name) ? ' selected' : '') + '" data-tag="' + breezeEsc(o.name) + '">#' + breezeEsc(o.name) +
+                '<span class="sheet-tag-count">' + o.count + '</span>' +
+            '</button>';
+        });
+        return '<div class="north-breeze-sheet-opts tag-mode">' +
+                '<button type="button" class="sheet-opt' + (!sc.mode || sc.mode === 'all' ? ' active' : '') + '" data-mode="all">全部内容</button>' +
+                '<button type="button" class="sheet-opt' + (sc.mode === 'none' ? ' active' : '') + '" data-mode="none">无标签</button>' +
+                '<button type="button" class="sheet-opt' + (sc.mode === 'include' ? ' active' : '') + '" data-mode="include">包含指定标签</button>' +
+                '<button type="button" class="sheet-opt' + (sc.mode === 'exclude' ? ' active' : '') + '" data-mode="exclude">排除指定标签</button>' +
+            '</div>' +
+            '<div class="north-breeze-sheet-tagpick' + (showPick ? '' : ' fn__none') + '">' +
+                (tags.length ? chips : '<div class="sheet-tag-empty">暂无标签</div>') +
+            '</div>';
+    }
+    _buildBreezeMoreSheetBody() {
+        /* 与侧边栏内置检索完全同款选项（多选叠加） */
+        const qs = this._mobileBreezeQuickFilterSet || {};
+        const row = (kind, label) =>
+            '<button type="button" class="sheet-more-row' + (qs[kind] ? ' on' : '') + '" data-kind="' + kind + '">' +
+                '<span class="sheet-more-label">' + label + '</span>' +
+                '<span class="sheet-more-radio"></span>' +
+            '</button>';
+        return '<div class="north-breeze-sheet-more">' +
+            row('no-tag', '无标签') +
+            row('has-image', '有图片') +
+            row('no-image', '无图片') +
+            row('has-link', '有链接') +
+            row('has-task', '有任务') +
+            row('archived', '已归档') +
+            '</div>';
+    }
+    _openBreezeFilterSheet(ctx, kind) {
+        const titles = { date: '日期范围', tag: '标签范围', more: '内置检索' };
+        if (!titles[kind]) return;
+        /* 收起键盘，避免遮挡弹层；重复打开先销毁旧弹层（含自绘日历选择器） */
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        this._closeBreezeDatePicker(true);
+        this._closeBreezeFilterSheet(true);
+        const plugin = this;
+        const wrap = document.createElement('div');
+        wrap.className = 'north-breeze-filter-sheet-wrap';
+        wrap.setAttribute('data-prevent-swipe', 'true');
+        const bodyHtml = kind === 'date' ? this._buildBreezeDateSheetBody()
+            : (kind === 'tag' ? this._buildBreezeTagSheetBody() : this._buildBreezeMoreSheetBody());
+        wrap.innerHTML =
+            '<div class="north-breeze-filter-sheet-overlay"></div>' +
+            '<div class="north-breeze-filter-sheet">' +
+                '<div class="north-breeze-filter-sheet-header">' +
+                    '<span class="north-breeze-filter-sheet-title">' + titles[kind] + '</span>' +
+                    '<button type="button" class="north-breeze-filter-sheet-close" aria-label="关闭">×</button>' +
+                '</div>' +
+                '<div class="north-breeze-filter-sheet-body">' + bodyHtml + '</div>' +
+                '<button type="button" class="north-breeze-filter-sheet-confirm">确定</button>' +
+            '</div>';
+        document.body.appendChild(wrap);
+        /* 触控保护（同清风日历弹窗）：弹层内 touchmove 不冒泡到思源全局手势，
+           遮罩层上的滑动直接吞掉；弹层内允许原生滚动（不 preventDefault） */
+        wrap.addEventListener('touchmove', (ev) => {
+            const sheet = wrap.querySelector('.north-breeze-filter-sheet');
+            if (sheet && sheet.contains(ev.target)) {
+                ev.stopPropagation();
+                return;
+            }
+            ev.preventDefault();
+            ev.stopPropagation();
+        }, { passive: false });
+        /* 点击不冒泡到 document.body（防止思源移动端识别为"点击插件外部"而返回/退出） */
+        wrap.addEventListener('click', (ev) => ev.stopPropagation());
+        /* 遮罩 / × ：关闭但不应用草稿 */
+        const closeNoApply = (ev) => {
+            if (ev) { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); }
+            plugin._closeBreezeFilterSheet();
+        };
+        wrap.querySelector('.north-breeze-filter-sheet-overlay').addEventListener('click', closeNoApply);
+        wrap.querySelector('.north-breeze-filter-sheet-close').addEventListener('click', closeNoApply);
+        /* 确定：收集草稿 → 应用 → 关闭 → 同步条目 + 刷新列表 */
+        wrap.querySelector('.north-breeze-filter-sheet-confirm').addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            plugin._applyBreezeFilterSheet(ctx, wrap, kind);
+        });
+        if (kind === 'date') {
+            const opts = wrap.querySelectorAll('.sheet-opt[data-opt]');
+            /* 快捷项：本周/本月直接把范围填进开始/结束字段（用户可再点字段手动微调） */
+            opts.forEach(o => o.addEventListener('click', () => {
+                opts.forEach(x => x.classList.remove('active'));
+                o.classList.add('active');
+                const opt = o.dataset.opt;
+                if (opt === 'week' || opt === 'month') {
+                    const now = new Date();
+                    let s, e;
+                    if (opt === 'week') {
+                        const dow = now.getDay();
+                        const monday = new Date(now); monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1)); monday.setHours(0, 0, 0, 0);
+                        const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+                        s = monday; e = sunday;
+                    } else {
+                        s = new Date(now.getFullYear(), now.getMonth(), 1);
+                        e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                    }
+                    plugin._setBreezeDateField(wrap, 'start', plugin._breezeFmtISO(s));
+                    plugin._setBreezeDateField(wrap, 'end', plugin._breezeFmtISO(e));
+                } else {
+                    /* 不限时间：清空两个字段 */
+                    plugin._setBreezeDateField(wrap, 'start', '');
+                    plugin._setBreezeDateField(wrap, 'end', '');
+                }
+            }));
+            /* 点按开始/结束字段 → 弹出自绘日历选择器 */
+            wrap.querySelectorAll('.sheet-date-field').forEach(field => {
+                field.addEventListener('click', () => {
+                    plugin._openBreezeDatePicker(ctx, wrap, field.dataset.role);
+                });
+            });
+        } else if (kind === 'tag') {
+            const confirmBtn = wrap.querySelector('.north-breeze-filter-sheet-confirm');
+            const opts = wrap.querySelectorAll('.sheet-opt[data-mode]');
+            const pick = wrap.querySelector('.north-breeze-sheet-tagpick');
+            const updateConfirm = () => {
+                const act = wrap.querySelector('.sheet-opt.active');
+                const mode = act ? act.dataset.mode : 'all';
+                const needPick = (mode === 'include' || mode === 'exclude');
+                const n = wrap.querySelectorAll('.sheet-tag-chip.selected').length;
+                confirmBtn.classList.toggle('disabled', needPick && n === 0);
+            };
+            opts.forEach(o => o.addEventListener('click', () => {
+                opts.forEach(x => x.classList.remove('active'));
+                o.classList.add('active');
+                const mode = o.dataset.mode;
+                pick.classList.toggle('fn__none', !(mode === 'include' || mode === 'exclude'));
+                updateConfirm();
+            }));
+            pick.addEventListener('click', (e) => {
+                const chip = e.target.closest('.sheet-tag-chip');
+                if (!chip) return;
+                chip.classList.toggle('selected');
+                updateConfirm();
+            });
+            updateConfirm();
+        } else {
+            wrap.querySelectorAll('.sheet-more-row').forEach(rowEl => {
+                rowEl.addEventListener('click', () => rowEl.classList.toggle('on'));
+            });
+        }
+        /* 底部滑入 */
+        requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('open')));
+    }
+    _closeBreezeFilterSheet(immediate) {
+        const wrap = document.querySelector('.north-breeze-filter-sheet-wrap');
+        if (!wrap) return;
+        if (immediate) { wrap.remove(); return; }
+        wrap.classList.remove('open');
+        setTimeout(() => wrap.remove(), 240);
+    }
+    /* ===== 自绘日历日期选择器（日期范围弹层的开始/结束字段用，替代系统原生日期选择） ===== */
+    _getBreezeDateField(wrap, role) {
+        const f = wrap ? wrap.querySelector('.sheet-date-field[data-role="' + role + '"]') : null;
+        return f ? (f.dataset.value || '') : '';
+    }
+    _setBreezeDateField(wrap, role, iso) {
+        const f = wrap ? wrap.querySelector('.sheet-date-field[data-role="' + role + '"]') : null;
+        if (!f) return;
+        f.dataset.value = iso || '';
+        const sp = f.querySelector('.df-text');
+        if (!sp) return;
+        if (iso) { sp.textContent = this._breezeFmtDateShort(iso); sp.classList.add('has-value'); }
+        else { sp.textContent = role === 'start' ? '开始日期' : '结束日期'; sp.classList.remove('has-value'); }
+    }
+    _openBreezeDatePicker(ctx, wrap, role) {
+        if (role !== 'start' && role !== 'end') return;
+        this._closeBreezeDatePicker(true);
+        const plugin = this;
+        /* 视图初始月份：优先当前字段已选值的月份，否则当前月 */
+        const initVal = this._getBreezeDateField(wrap, role);
+        const init = initVal ? /^(\d{4})-(\d{1,2})/.exec(initVal) : null;
+        let vy = init ? parseInt(init[1], 10) : new Date().getFullYear();
+        let vm = init ? (parseInt(init[2], 10) - 1) : new Date().getMonth();
+        const pop = document.createElement('div');
+        pop.className = 'north-breeze-date-pop';
+        pop.setAttribute('data-prevent-swipe', 'true');
+        pop.innerHTML =
+            '<div class="north-breeze-date-pop-overlay"></div>' +
+            '<div class="north-breeze-date-pop-panel">' +
+                '<div class="bdp-header">' +
+                    '<button type="button" class="bdp-nav" data-nav="prev" aria-label="上个月"><svg class="icon"><use xlink:href="#iconLeft"></use></svg></button>' +
+                    '<span class="bdp-title"></span>' +
+                    '<button type="button" class="bdp-nav" data-nav="next" aria-label="下个月"><svg class="icon"><use xlink:href="#iconRight"></use></svg></button>' +
+                '</div>' +
+                '<div class="bdp-chips">' +
+                    '<button type="button" class="bdp-chip" data-quick="today">今日</button>' +
+                    '<button type="button" class="bdp-chip" data-quick="tomorrow">明天</button>' +
+                    '<button type="button" class="bdp-chip" data-quick="weekend">本周末</button>' +
+                    '<button type="button" class="bdp-chip" data-quick="nextmonday">下周一</button>' +
+                    '<button type="button" class="bdp-chip danger" data-quick="clear">清除</button>' +
+                '</div>' +
+                '<div class="bdp-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>' +
+                '<div class="bdp-grid"></div>' +
+            '</div>';
+        document.body.appendChild(pop);
+        /* 标记当前编辑的字段（高亮边框），关闭时清除 */
+        const markField = (on) => {
+            const f = wrap.querySelector('.sheet-date-field[data-role="' + role + '"]');
+            if (f) f.classList.toggle('editing', on);
+        };
+        markField(true);
+        const grid = pop.querySelector('.bdp-grid');
+        const render = () => {
+            pop.querySelector('.bdp-title').textContent = vy + '年' + (vm + 1) + '月';
+            /* 周一起始：周一=0 … 周日=6 */
+            const first = new Date(vy, vm, 1);
+            const lead = (first.getDay() + 6) % 7;
+            const start = new Date(vy, vm, 1 - lead);
+            const todayIso = plugin._breezeFmtISO(new Date());
+            const sv = plugin._getBreezeDateField(wrap, 'start');
+            const ev = plugin._getBreezeDateField(wrap, 'end');
+            let html = '';
+            for (let i = 0; i < 42; i++) {
+                const d = new Date(start); d.setDate(start.getDate() + i);
+                const iso = plugin._breezeFmtISO(d);
+                let cls = 'bdp-cell';
+                if (d.getMonth() !== vm) cls += ' other-month';
+                if (iso === todayIso) cls += ' is-today';
+                if ((sv && iso === sv) || (ev && iso === ev)) cls += ' selected';
+                else if (sv && ev && iso > sv && iso < ev) cls += ' in-range';
+                html += '<button type="button" class="' + cls + '" data-date="' + iso + '">' + d.getDate() + '</button>';
+            }
+            grid.innerHTML = html;
+        };
+        /* 月份切换 */
+        pop.querySelectorAll('.bdp-nav').forEach(btn => btn.addEventListener('click', () => {
+            vm += btn.dataset.nav === 'prev' ? -1 : 1;
+            if (vm < 0) { vm = 11; vy--; } else if (vm > 11) { vm = 0; vy++; }
+            render();
+        }));
+        /* 快捷日期：写入当前编辑的字段 */
+        const quickDate = (kind) => {
+            const now = new Date();
+            if (kind === 'today') return now;
+            if (kind === 'tomorrow') { const d = new Date(now); d.setDate(d.getDate() + 1); return d; }
+            if (kind === 'weekend') {
+                /* 本周末：周六（周六/周日当天则取当天） */
+                const dow = (now.getDay() + 6) % 7; /* 周一=0 … 周日=6 */
+                const d = new Date(now);
+                d.setDate(d.getDate() + (dow >= 5 ? 0 : 5 - dow));
+                return d;
+            }
+            if (kind === 'nextmonday') {
+                const dow = (now.getDay() + 6) % 7;
+                const d = new Date(now);
+                d.setDate(d.getDate() + (dow === 0 ? 7 : 7 - dow));
+                return d;
+            }
+            return null;
+        };
+        pop.querySelectorAll('.bdp-chip').forEach(chip => chip.addEventListener('click', () => {
+            const kind = chip.dataset.quick;
+            if (kind === 'clear') {
+                plugin._setBreezeDateField(wrap, role, '');
+                wrap.querySelectorAll('.north-breeze-sheet-opts .sheet-opt.active').forEach(o => o.classList.remove('active'));
+                plugin._closeBreezeDatePicker();
+                return;
+            }
+            const d = quickDate(kind);
+            if (!d) return;
+            plugin._pickBreezeDate(ctx, wrap, role, plugin._breezeFmtISO(d));
+        }));
+        /* 点选具体日期 */
+        grid.addEventListener('click', (e) => {
+            const cell = e.target.closest('.bdp-cell');
+            if (!cell) return;
+            plugin._pickBreezeDate(ctx, wrap, role, cell.dataset.date);
+        });
+        /* 触控保护（同筛选弹层）：面板内 touchmove 不冒泡，遮罩层滑动直接吞掉 */
+        pop.addEventListener('touchmove', (ev) => {
+            const panel = pop.querySelector('.north-breeze-date-pop-panel');
+            if (panel && panel.contains(ev.target)) {
+                ev.stopPropagation();
+                return;
+            }
+            ev.preventDefault();
+            ev.stopPropagation();
+        }, { passive: false });
+        pop.addEventListener('click', (ev) => ev.stopPropagation());
+        pop.querySelector('.north-breeze-date-pop-overlay').addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            ev.stopImmediatePropagation();
+            plugin._closeBreezeDatePicker();
+        });
+        render();
+        /* 底部滑入 */
+        requestAnimationFrame(() => requestAnimationFrame(() => pop.classList.add('open')));
+    }
+    /* 选中某天：写入当前编辑字段；若与另一字段形成倒挂则收缩/延伸另一端；取消快捷项高亮 */
+    _pickBreezeDate(ctx, wrap, role, iso) {
+        if (!iso) return;
+        this._setBreezeDateField(wrap, role, iso);
+        const other = role === 'start' ? 'end' : 'start';
+        const oval = this._getBreezeDateField(wrap, other);
+        if (oval) {
+            if (role === 'start' && iso > oval) this._setBreezeDateField(wrap, 'end', iso);
+            if (role === 'end' && iso < oval) this._setBreezeDateField(wrap, 'start', iso);
+        }
+        /* 手动选择后取消"不限时间/本周/本月"快捷项高亮（此时以字段为准） */
+        wrap.querySelectorAll('.north-breeze-sheet-opts .sheet-opt.active').forEach(o => o.classList.remove('active'));
+        this._closeBreezeDatePicker();
+    }
+    _closeBreezeDatePicker(immediate) {
+        const pop = document.querySelector('.north-breeze-date-pop');
+        if (!pop) return;
+        const wrap = document.querySelector('.north-breeze-filter-sheet-wrap');
+        if (wrap) wrap.querySelectorAll('.sheet-date-field.editing').forEach(f => f.classList.remove('editing'));
+        if (immediate) { pop.remove(); return; }
+        pop.classList.remove('open');
+        setTimeout(() => pop.remove(), 220);
+    }
+    _applyBreezeFilterSheet(ctx, wrap, kind) {
+        if (kind === 'date') {
+            /* 确定以字段值为准（本周/本月等快捷项与自绘日历选择都会写入字段） */
+            const start = this._getBreezeDateField(wrap, 'start');
+            const end = this._getBreezeDateField(wrap, 'end');
+            if (!start && !end) this._mobileBreezeDateRange = null;
+            else if (start && end && start > end) this._mobileBreezeDateRange = { start: end, end: start };
+            else this._mobileBreezeDateRange = { start: start, end: end };
+            /* 与日历单日筛选互斥：应用范围时清除单日 */
+            if (this._mobileBreezeDateRange) this._mobileBreezeDateFilter = null;
+        } else if (kind === 'tag') {
+            const act = wrap.querySelector('.sheet-opt.active');
+            const mode = act ? act.dataset.mode : 'all';
+            const tags = Array.from(wrap.querySelectorAll('.sheet-tag-chip.selected')).map(b => b.dataset.tag);
+            if (!mode || mode === 'all') this._mobileBreezeTagScope = null;
+            else this._mobileBreezeTagScope = { mode: mode, tags: tags };
+            /* 与侧边栏标签筛选互斥 */
+            if (this._mobileBreezeTagScope) this._mobileBreezeTagFilter = null;
+        } else if (kind === 'more') {
+            const set = {};
+            wrap.querySelectorAll('.sheet-more-row.on').forEach(rowEl => { set[rowEl.dataset.kind] = true; });
+            this._mobileBreezeQuickFilterSet = Object.keys(set).length ? set : null;
+            /* 与侧边栏内置检索（单选）互斥 */
+            if (this._mobileBreezeQuickFilterSet) this._mobileBreezeQuickFilter = null;
+        }
+        this._closeBreezeFilterSheet();
+        this._syncBreezeFilterChips(ctx);
+        this._mobileBreezeRefresh(ctx);
+    }
     /* ===== 移动端「内置检索」支持（复刻 PC 端 _toggleBreezeQuickFilter / _applyBreezeQuickFilter / _syncBreezeQuickFilterUI）
        修复：移动端点击 chevron 箭头被误当作切换「全部笔记」且不展开的 BUG —— 这里独立存储
        plugin._mobileBreezeQuickFilter / plugin._mobileBreezeQuickFilterExpanded 状态（不依赖 tab 实例），
@@ -15236,6 +15968,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
     _mobileApplyBreezeQuickFilter(kind, ctx) {
         if (!this._getPluginSetting('breezeQuickFilterEnabled')) return;
         if (!ctx || !kind) return;
+        /* 与"更多条件"多选筛选互斥：侧边栏内置检索为单选，应用时清空多选集合 */
+        this._mobileBreezeQuickFilterSet = null;
         /* 仅在「全部笔记」子视图生效；其他子视图自动切回全部笔记 */
         if ((ctx._mobileBreezeSubView || 'all') !== 'all') {
             ctx._mobileBreezeSubView = 'all';

@@ -4255,6 +4255,8 @@
         background: var(--b3-theme-surface);
         border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
         flex: 0 0 auto;
+        /* 筛选条目行（日期/标签/更多）展开时折到第二行 */
+        flex-wrap: wrap;
     }
     .north-luna-mobile-search-bar.show {
         display: flex;
@@ -4297,6 +4299,486 @@
         flex-shrink: 0;
         padding: 4px 8px;
         -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ===== 移动端清风搜索：Flomo 风格筛选（搜索框内筛选图标 + 日期/标签/更多 条目行 + 底部弹层） ===== */
+    /* 非清风视图隐藏筛选入口（视图切换仅改 data-active-view，不重建搜索栏） */
+    .north-luna-container:not([data-active-view="notes"]) .mobile-search-filter-btn,
+    .north-luna-container:not([data-active-view="notes"]) .mobile-search-filter-row {
+        display: none !important;
+    }
+    /* 搜索框内右侧筛选图标（iconAlignCenter） */
+    .north-luna-mobile-search-bar .mobile-search-filter-btn {
+        border: none;
+        background: transparent;
+        color: var(--b3-theme-on-surface-light);
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        flex-shrink: 0;
+        padding: 0;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-luna-mobile-search-bar .mobile-search-filter-btn .icon {
+        width: 18px;
+        height: 18px;
+    }
+    .north-luna-mobile-search-bar .mobile-search-filter-btn.active,
+    .north-luna-mobile-search-bar .mobile-search-filter-btn:active {
+        color: var(--b3-theme-primary);
+    }
+    /* 筛选条目行（日期/标签/更多）：默认隐藏，点击筛选图标展开（flex-basis:100% 换行显示） */
+    .north-luna-mobile-search-bar .mobile-search-filter-row {
+        display: none;
+        flex-basis: 100%;
+        gap: 10px;
+        padding-top: 8px;
+    }
+    .north-luna-mobile-search-bar .mobile-search-filter-row.open {
+        display: flex;
+    }
+    .north-luna-mobile-search-bar .mobile-search-filter-chip {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        padding: 9px 12px;
+        background: var(--b3-theme-background);
+        border: 1px solid color-mix(in srgb, var(--b3-border-color) 40%, transparent);
+        border-radius: 10px;
+        font-size: 13px;
+        font-family: inherit;
+        color: var(--b3-theme-on-surface-light);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-luna-mobile-search-bar .mobile-search-filter-chip .chip-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .north-luna-mobile-search-bar .mobile-search-filter-chip .icon {
+        width: 12px;
+        height: 12px;
+        opacity: 0.7;
+        flex-shrink: 0;
+    }
+    .north-luna-mobile-search-bar .mobile-search-filter-chip.active {
+        color: var(--b3-theme-primary);
+        border-color: color-mix(in srgb, var(--b3-theme-primary) 45%, transparent);
+        background: color-mix(in srgb, var(--b3-theme-primary) 8%, var(--b3-theme-background));
+    }
+
+    /* 筛选底部弹层（挂在 document.body，从底部滑出） */
+    .north-breeze-filter-sheet-wrap {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10060;
+    }
+    .north-breeze-filter-sheet-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.35);
+        opacity: 0;
+        transition: opacity 0.22s ease;
+    }
+    .north-breeze-filter-sheet-wrap.open .north-breeze-filter-sheet-overlay {
+        opacity: 1;
+    }
+    .north-breeze-filter-sheet {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--b3-theme-background);
+        border-radius: 16px 16px 0 0;
+        padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+        transform: translateY(100%);
+        transition: transform 0.24s cubic-bezier(0, 0, 0.2, 1);
+        max-height: 78vh;
+        display: flex;
+        flex-direction: column;
+        touch-action: pan-y;
+        overscroll-behavior: contain;
+    }
+    .north-breeze-filter-sheet-wrap.open .north-breeze-filter-sheet {
+        transform: translateY(0);
+    }
+    .north-breeze-filter-sheet-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        margin-bottom: 14px;
+        flex-shrink: 0;
+    }
+    .north-breeze-filter-sheet-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--b3-theme-on-background);
+    }
+    .north-breeze-filter-sheet-close {
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 30px;
+        height: 30px;
+        border: none;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--b3-border-color) 45%, transparent);
+        color: var(--b3-theme-on-surface);
+        font-size: 16px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-breeze-filter-sheet-body {
+        overflow-y: auto;
+        min-height: 0;
+        /* 弹层内滚动条隐藏（与全局移动端风格一致） */
+        scrollbar-width: none;
+    }
+    .north-breeze-filter-sheet-body::-webkit-scrollbar {
+        display: none;
+    }
+    .north-breeze-filter-sheet-confirm {
+        margin-top: 14px;
+        width: 100%;
+        border: none;
+        border-radius: 12px;
+        padding: 13px 0;
+        background: var(--b3-theme-primary);
+        color: var(--b3-theme-primary-text, #fff);
+        font-size: 15px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        flex-shrink: 0;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-breeze-filter-sheet-confirm.disabled {
+        opacity: 0.45;
+        pointer-events: none;
+    }
+    /* 快捷选项（不限时间/本周/本月 与 标签四项） */
+    .north-breeze-sheet-opts {
+        display: flex;
+        gap: 10px;
+    }
+    .north-breeze-sheet-opts .sheet-opt {
+        flex: 1;
+        border: none;
+        border-radius: 10px;
+        padding: 11px 4px;
+        background: color-mix(in srgb, var(--b3-border-color) 28%, transparent);
+        color: var(--b3-theme-on-surface);
+        font-size: 14px;
+        font-family: inherit;
+        cursor: pointer;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-breeze-sheet-opts .sheet-opt.active {
+        background: color-mix(in srgb, var(--b3-theme-primary) 10%, var(--b3-theme-background));
+        color: var(--b3-theme-primary);
+    }
+    .north-breeze-sheet-opts.tag-mode {
+        flex-wrap: wrap;
+    }
+    .north-breeze-sheet-opts.tag-mode .sheet-opt {
+        flex: 0 0 calc(50% - 5px);
+    }
+    /* 日期范围行：开始日期 — 结束日期（点按弹出自绘日历选择器） */
+    .north-breeze-sheet-daterange {
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: color-mix(in srgb, var(--b3-border-color) 22%, transparent);
+        border-radius: 10px;
+        padding: 4px 10px;
+    }
+    .north-breeze-sheet-daterange .sheet-date-field {
+        flex: 1;
+        position: relative;
+        padding: 12px 4px;
+        text-align: center;
+        font-size: 14px;
+        color: var(--b3-theme-on-surface-light);
+        cursor: pointer;
+        border-radius: 8px;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-breeze-sheet-daterange .sheet-date-field .df-text.has-value {
+        color: var(--b3-theme-on-background);
+    }
+    .north-breeze-sheet-daterange .sheet-date-field.editing {
+        background: color-mix(in srgb, var(--b3-theme-primary) 12%, transparent);
+        color: var(--b3-theme-primary);
+    }
+    .north-breeze-sheet-daterange .sheet-date-field.editing .df-text.has-value {
+        color: var(--b3-theme-primary);
+    }
+    .north-breeze-sheet-daterange .sheet-date-sep {
+        color: var(--b3-theme-on-surface-light);
+        flex-shrink: 0;
+    }
+
+    /* ===== 自绘日历日期选择器（叠在筛选弹层之上） ===== */
+    .north-breeze-date-pop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10080;
+    }
+    .north-breeze-date-pop-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.35);
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+    .north-breeze-date-pop.open .north-breeze-date-pop-overlay {
+        opacity: 1;
+    }
+    .north-breeze-date-pop-panel {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--b3-theme-background);
+        border-radius: 16px 16px 0 0;
+        padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+        transform: translateY(100%);
+        transition: transform 0.22s cubic-bezier(0, 0, 0.2, 1);
+        touch-action: pan-y;
+        overscroll-behavior: contain;
+    }
+    .north-breeze-date-pop.open .north-breeze-date-pop-panel {
+        transform: translateY(0);
+    }
+    .north-breeze-date-pop-panel .bdp-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .north-breeze-date-pop-panel .bdp-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--b3-theme-on-background);
+        text-align: center;
+        flex: 1;
+    }
+    .north-breeze-date-pop-panel .bdp-nav {
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--b3-theme-on-surface);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        flex-shrink: 0;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-breeze-date-pop-panel .bdp-nav:active {
+        background: var(--b3-list-hover);
+    }
+    .north-breeze-date-pop-panel .bdp-nav .icon {
+        width: 16px;
+        height: 16px;
+    }
+    /* 快捷日期条目 */
+    .north-breeze-date-pop-panel .bdp-chips {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .north-breeze-date-pop-panel .bdp-chip {
+        flex: 1;
+        border: 1px solid color-mix(in srgb, var(--b3-border-color) 45%, transparent);
+        background: transparent;
+        color: var(--b3-theme-on-surface);
+        border-radius: 14px;
+        padding: 7px 2px;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-breeze-date-pop-panel .bdp-chip:active {
+        background: var(--b3-list-hover);
+    }
+    .north-breeze-date-pop-panel .bdp-chip.danger {
+        color: var(--b3-theme-error, #d23f31);
+        border-color: color-mix(in srgb, var(--b3-theme-error, #d23f31) 40%, transparent);
+    }
+    /* 星期表头（周一起始） */
+    .north-breeze-date-pop-panel .bdp-weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        margin-bottom: 2px;
+    }
+    .north-breeze-date-pop-panel .bdp-weekdays span {
+        text-align: center;
+        font-size: 12px;
+        color: var(--b3-theme-on-surface-light);
+        padding: 4px 0;
+    }
+    /* 日期网格 */
+    .north-breeze-date-pop-panel .bdp-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+    }
+    .north-breeze-date-pop-panel .bdp-cell {
+        position: relative;
+        aspect-ratio: 1;
+        border: none;
+        background: transparent;
+        color: var(--b3-theme-on-background);
+        font-size: 14px;
+        font-family: inherit;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-breeze-date-pop-panel .bdp-cell.other-month {
+        color: var(--b3-theme-on-surface-light);
+        opacity: 0.45;
+    }
+    .north-breeze-date-pop-panel .bdp-cell.in-range {
+        background: color-mix(in srgb, var(--b3-theme-primary) 12%, transparent);
+    }
+    .north-breeze-date-pop-panel .bdp-cell.is-today:not(.selected) {
+        box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--b3-theme-primary) 60%, transparent);
+        color: var(--b3-theme-primary);
+    }
+    .north-breeze-date-pop-panel .bdp-cell.selected {
+        background: var(--b3-theme-primary);
+        color: var(--b3-theme-primary-text, #fff);
+        font-weight: 600;
+    }
+    /* 标签选择区（包含/排除指定标签时显示） */
+    .north-breeze-sheet-tagpick {
+        margin-top: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        max-height: 34vh;
+        overflow-y: auto;
+        scrollbar-width: none;
+    }
+    .north-breeze-sheet-tagpick::-webkit-scrollbar {
+        display: none;
+    }
+    .north-breeze-sheet-tagpick .sheet-tag-chip {
+        border: 1px solid color-mix(in srgb, var(--b3-border-color) 45%, transparent);
+        background: transparent;
+        color: var(--b3-theme-on-surface);
+        border-radius: 16px;
+        padding: 7px 14px;
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-breeze-sheet-tagpick .sheet-tag-chip.selected {
+        background: color-mix(in srgb, var(--b3-theme-primary) 10%, var(--b3-theme-background));
+        border-color: color-mix(in srgb, var(--b3-theme-primary) 45%, transparent);
+        color: var(--b3-theme-primary);
+    }
+    .north-breeze-sheet-tagpick .sheet-tag-chip .sheet-tag-count {
+        margin-left: 6px;
+        font-size: 11px;
+        opacity: 0.55;
+    }
+    .north-breeze-sheet-tagpick .sheet-tag-empty {
+        color: var(--b3-theme-on-surface-light);
+        font-size: 13px;
+        padding: 8px 2px;
+    }
+    /* 更多条件行（有图片/有链接/有语音，右侧圆圈指示，点按切换） */
+    .north-breeze-sheet-more {
+        display: flex;
+        flex-direction: column;
+    }
+    .north-breeze-sheet-more .sheet-more-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 15px 4px;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 30%, transparent);
+        font-size: 15px;
+        color: var(--b3-theme-on-background);
+        font-family: inherit;
+        cursor: pointer;
+        text-align: left;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .north-breeze-sheet-more .sheet-more-row:last-child {
+        border-bottom: none;
+    }
+    .north-breeze-sheet-more .sheet-more-radio {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1.5px solid color-mix(in srgb, var(--b3-theme-on-surface-light) 80%, transparent);
+        position: relative;
+        flex-shrink: 0;
+        transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .north-breeze-sheet-more .sheet-more-row.on .sheet-more-radio {
+        background: var(--b3-theme-primary);
+        border-color: var(--b3-theme-primary);
+    }
+    .north-breeze-sheet-more .sheet-more-row.on .sheet-more-radio::after {
+        content: "";
+        position: absolute;
+        left: 6.5px;
+        top: 3.5px;
+        width: 4px;
+        height: 8px;
+        border: solid #fff;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
     }
 
     /* ===== 移动端：清风内置侧栏抽屉相关（CSS 已合并到上方统一块） ===== */
@@ -4721,6 +5203,16 @@
     overflow-x: auto;
     overflow-y: auto;
 }
+/* 清风日历：隐藏滚动条（保留滚动能力），与 LifeLog 侧栏等处理方式一致 */
+#breezeCalBody {
+    scrollbar-width: none;    /* Firefox 隐藏滚动条 */
+    -ms-overflow-style: none; /* 旧版 IE/Edge 隐藏滚动条 */
+}
+#breezeCalBody::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
 .north-luna-moments-calendar-grid {
     width: 100%;
     display: block;
@@ -4827,6 +5319,16 @@
     grid-template-columns: repeat(7, minmax(32px, 44px));
     gap: 6px;
 }
+/* 移动端清风日历：格子填满弹窗宽度，保证左右留白对称。
+   （弹窗被 JS 移到 document.body 后 .is-mobile 祖先选择器不命中，
+   由移动端打开逻辑给 modal 加 .north-luna-moments-calendar-mobile 类）。
+   否则 44px 上限使网格窄于内容区且默认左对齐，右侧留白明显偏大。 */
+.north-luna-moments-calendar-mobile .north-luna-moments-calendar-photo-row {
+    grid-template-columns: repeat(7, minmax(32px, 1fr));
+}
+.north-luna-moments-calendar-mobile .north-luna-moments-calendar-photo-cell {
+    max-width: none;
+}
 .north-luna-moments-calendar-photo-cell {
     position: relative;
     aspect-ratio: 1;
@@ -4856,9 +5358,30 @@
     background-color: transparent;
     border: 0;
 }
-/* 有记录但当天无图片：圆点标记 + 可点击，不额外加背景/边框 */
+/* 有记录但当天无图片：可点击（清风日历用主题色底色标记，朋友圈日历仍用小圆点） */
 .north-luna-moments-calendar-photo-cell.has-record {
     cursor: pointer;
+}
+/* 清风日历（PC/移动端共用 #breezeCalBody）：无图片但有记录的日期
+   用与贡献图热力图同款的分级底色（记录越多颜色越深，跟随热力图自定义颜色），不加边框 */
+#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-1 {
+    background-color: var(--breeze-heat-1, var(--b3-theme-primary-lightest));
+}
+#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-2 {
+    background-color: var(--breeze-heat-2, var(--b3-theme-primary-lighter));
+}
+#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-3 {
+    background-color: var(--breeze-heat-3, var(--b3-theme-primary-light));
+}
+#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-4 {
+    background-color: var(--breeze-heat-4, var(--b3-theme-primary));
+}
+#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record .north-luna-moments-calendar-photo-num {
+    background: transparent;
+}
+/* 最深一级为实心主题色，日期数字改用主题按钮文字色保证可读 */
+#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-4 .north-luna-moments-calendar-photo-num {
+    color: var(--b3-theme-primary-text, #fff);
 }
 .north-luna-moments-calendar-photo-cell.has-record:hover {
     transform: scale(1.05);
