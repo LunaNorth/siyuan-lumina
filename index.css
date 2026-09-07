@@ -5363,25 +5363,13 @@
     cursor: pointer;
 }
 /* 清风日历（PC/移动端共用 #breezeCalBody）：无图片但有记录的日期
-   用与贡献图热力图同款的分级底色（记录越多颜色越深，跟随热力图自定义颜色），不加边框 */
-#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-1 {
-    background-color: var(--breeze-heat-1, var(--b3-theme-primary-lightest));
-}
-#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-2 {
-    background-color: var(--breeze-heat-2, var(--b3-theme-primary-lighter));
-}
-#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-3 {
-    background-color: var(--breeze-heat-3, var(--b3-theme-primary-light));
-}
-#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-4 {
-    background-color: var(--breeze-heat-4, var(--b3-theme-primary));
-}
+   不再用主题色色块填充（在照片墙里显得突兀），仅将日期数字主题色高亮，
+   精确条数看悬停提示，可点击筛选（同 has-photo） */
 #breezeCalBody .north-luna-moments-calendar-photo-cell.has-record .north-luna-moments-calendar-photo-num {
     background: transparent;
-}
-/* 最深一级为实心主题色，日期数字改用主题按钮文字色保证可读 */
-#breezeCalBody .north-luna-moments-calendar-photo-cell.has-record.level-4 .north-luna-moments-calendar-photo-num {
-    color: var(--b3-theme-primary-text, #fff);
+    color: var(--b3-theme-primary);
+    font-weight: 600;
+    opacity: 1;
 }
 .north-luna-moments-calendar-photo-cell.has-record:hover {
     transform: scale(1.05);
@@ -9952,7 +9940,8 @@
     align-items: center;
     gap: 4px;
     padding: 6px 14px;
-    border-radius: 20px;
+    border-radius: 6px;
+    border: 1px solid var(--b3-border-color);
     font-size: 14px;
     cursor: default;
     transition: all 0.2s ease;
@@ -10153,6 +10142,7 @@
     .north-shuoshuo-contribution-section,
     .north-shuoshuo-monthly-distribution-section,
     .north-shuoshuo-word-distribution-section,
+    .north-shuoshuo-rhythm-section,
     .north-shuoshuo-tag-cloud-section {
         padding: 12px;
         border-radius: 8px;
@@ -12981,4 +12971,186 @@ a.north-breeze-link[data-lumina-title-state="pending"] {
    仅对清风评论面板关闭动画，朋友圈评论保持原样。 */
 .north-breeze-note-card .north-luna-moments-comment-panel {
     animation: none !important;
+}
+
+/* ============================================================
+   表格视图：可编辑单元格（标签列 / 归档列 / 创建与更新时间列）
+   ============================================================ */
+.north-breeze-table-tags-cell.north-breeze-table-tags-editable { cursor: pointer; }
+.north-breeze-table-tags-cell.north-breeze-table-tags-editable:hover { background: var(--b3-list-hover); }
+.north-breeze-table-tags-empty { font-size: 12px; color: var(--b3-theme-on-surface); opacity: 0.4; white-space: nowrap; }
+.north-breeze-table-tags-cell.north-breeze-table-tags-editable:hover .north-breeze-table-tags-empty { opacity: 1; color: var(--b3-theme-primary); }
+
+.north-breeze-table-archive-badge.north-breeze-table-archive-toggle { cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s; }
+.north-breeze-table-archive-badge.north-breeze-table-archive-toggle:hover { color: var(--b3-theme-primary); border-color: var(--b3-theme-primary); background: color-mix(in srgb, var(--b3-theme-primary) 10%, transparent); }
+
+.north-breeze-table-time-edit {
+    display: inline-block; padding: 2px 6px; border-radius: 4px;
+    cursor: pointer; transition: color 0.15s, background 0.15s;
+}
+.north-breeze-table-time-edit:hover { background: var(--b3-theme-surface-lighter); color: var(--b3-theme-primary); }
+.north-breeze-table-time-edit.empty { opacity: 0.45; }
+
+/* 标签编辑浮层（表格标签列点击弹出，固定定位锚定单元格） */
+.north-breeze-tags-editor {
+    position: fixed; z-index: 10010;
+    width: 272px; max-width: calc(100vw - 8px);
+    background: var(--b3-theme-surface);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    padding: 10px;
+    font-size: 12px;
+    color: var(--b3-theme-on-background);
+}
+.north-breeze-tags-editor-title {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; font-weight: 600; margin-bottom: 8px;
+}
+.north-breeze-tags-editor-close {
+    border: none; background: transparent; cursor: pointer;
+    color: var(--b3-theme-on-surface-light); font-size: 16px; line-height: 1; padding: 0 2px;
+}
+.north-breeze-tags-editor-close:hover { color: var(--b3-theme-on-background); }
+.north-breeze-tags-editor-chips {
+    max-height: 180px; overflow-y: auto;
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-bottom: 8px;
+}
+.north-breeze-tags-editor-empty { color: var(--b3-theme-on-surface); opacity: 0.5; padding: 4px 0; }
+.north-breeze-tags-editor-chip {
+    display: inline-block; padding: 2px 8px; border-radius: 3px;
+    font-size: 12px; line-height: 1.4; white-space: nowrap;
+    border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-surface-lighter);
+    color: var(--b3-theme-on-surface);
+    cursor: pointer; user-select: none;
+    transition: all 0.15s;
+}
+.north-breeze-tags-editor-chip:hover { border-color: var(--b3-theme-primary); color: var(--b3-theme-primary); }
+.north-breeze-tags-editor-chip.on {
+    background: color-mix(in srgb, var(--b3-theme-primary) 14%, transparent);
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+.north-breeze-tags-editor-add { display: flex; gap: 6px; margin-bottom: 8px; }
+.north-breeze-tags-editor-input {
+    flex: 1; min-width: 0;
+    padding: 4px 8px; border-radius: 4px;
+    border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-background);
+    font-size: 12px; outline: none;
+}
+.north-breeze-tags-editor-input:focus { border-color: var(--b3-theme-primary); }
+.north-breeze-tags-editor-add-btn {
+    padding: 4px 10px; border-radius: 4px;
+    border: 1px solid var(--b3-border-color);
+    background: var(--b3-theme-surface-lighter);
+    color: var(--b3-theme-on-surface);
+    cursor: pointer; font-size: 12px; white-space: nowrap;
+}
+.north-breeze-tags-editor-add-btn:hover { color: var(--b3-theme-primary); border-color: var(--b3-theme-primary); }
+.north-breeze-tags-editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.north-breeze-tags-editor-btn {
+    padding: 4px 12px; border-radius: 4px;
+    border: 1px solid var(--b3-border-color);
+    background: transparent;
+    color: var(--b3-theme-on-surface);
+    cursor: pointer; font-size: 12px;
+}
+.north-breeze-tags-editor-btn:hover { border-color: var(--b3-theme-primary); color: var(--b3-theme-primary); }
+.north-breeze-tags-editor-btn.north-breeze-tags-editor-ok {
+    background: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary);
+    color: #fff;
+}
+.north-breeze-tags-editor-btn.north-breeze-tags-editor-ok:hover { color: #fff; opacity: 0.9; }
+
+/* ============================================================
+   统计视图：落笔时刻（一天 24 小时折线图，纯 SVG + 主题变量）
+   ============================================================ */
+/* 外层卡片：与月度/每日/标签分布区同级同款（含 12px 下间距，避免与相邻区块贴死） */
+.north-shuoshuo-rhythm-section {
+    background: var(--b3-theme-background);
+    border-radius: 8px;
+    padding: 18px 20px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 60%, transparent);
+    box-shadow: none;
+    margin-bottom: 12px;
+}
+.north-shuoshuo-rhythm-headline {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+    margin: 8px 0 10px;
+}
+.north-shuoshuo-rhythm-peak-row {
+    display: flex;
+    align-items: stretch;
+    gap: 24px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.north-shuoshuo-rhythm-peak-item { min-width: 88px; }
+.north-shuoshuo-rhythm-peak-item + .north-shuoshuo-rhythm-peak-item {
+    border-left: 1px solid var(--b3-border-color);
+    padding-left: 24px;
+}
+.north-shuoshuo-rhythm-peak-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--b3-theme-on-background);
+    line-height: 1.3;
+}
+.north-shuoshuo-rhythm-peak-label {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    margin-top: 2px;
+}
+.north-shuoshuo-rhythm-chart {
+    width: 100%;
+    height: auto;
+    display: block;
+    margin: 4px 0 2px;
+    /* 绘图区顶满内容区两侧，首尾数据点允许略微溢出 viewBox 完整显示 */
+    overflow: visible;
+}
+.north-shuoshuo-rhythm-line {
+    fill: none;
+    stroke: var(--b3-theme-primary);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+.north-shuoshuo-rhythm-area {
+    fill: var(--b3-theme-primary);
+    opacity: 0.07;
+    stroke: none;
+}
+.north-shuoshuo-rhythm-dot {
+    fill: var(--b3-theme-background);
+    stroke: var(--b3-theme-primary);
+    stroke-width: 1.8;
+    transition: r 0.15s ease;
+}
+.north-shuoshuo-rhythm-chart .north-shuoshuo-rhythm-hit:hover + circle.north-shuoshuo-rhythm-dot,
+.north-shuoshuo-rhythm-chart circle.north-shuoshuo-rhythm-dot:hover { r: 5; }
+.north-shuoshuo-rhythm-dot-peak {
+    fill: var(--b3-theme-primary);
+    stroke: var(--b3-theme-background);
+    stroke-width: 1.5;
+}
+.north-shuoshuo-rhythm-axis-text {
+    fill: var(--b3-theme-on-surface-light);
+    font-size: 13px;
+}
+.north-shuoshuo-rhythm-hint {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--b3-theme-primary) 5%, var(--b3-theme-surface));
+    color: var(--b3-theme-on-surface);
+    font-size: 12.5px;
+    line-height: 1.6;
 }

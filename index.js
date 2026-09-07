@@ -49,9 +49,12 @@ function buildBreezeHeatmap(notes) {
     notes = notes || [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    /* 统计每天笔记数（time 格式 YYYY-MM-DD HH:MM） */
+    /* 统计每天笔记数（time 格式 YYYY-MM-DD HH:MM）
+       与「全部笔记」列表同口径：已归档不计入 —— 热力图点击会按日期筛选列表，
+       若这里计入已归档，会出现「格子上显示 1 条、点进去却没有」的不一致 */
     const dayCounts = {};
     notes.forEach(n => {
+        if (n.archived) return;
         const d = (n.time || '').slice(0, 10);
         if (d) dayCounts[d] = (dayCounts[d] || 0) + 1;
     });
@@ -79,6 +82,23 @@ function buildBreezeHeatmap(notes) {
     }
     return cells.join('');
 }
+/* 清风笔记按 id 去重：同 id 的重复条目会让「菜单按第一条判定归档态、列表却渲染出
+   另一条」等错位现象（历史版本/导入可能产生）。保留首次出现的条目，其余丢弃；
+   无重复时原数组原样返回（不产生副本）。 */
+function breezeDedupeNotesById(notes) {
+    if (!Array.isArray(notes)) return notes;
+    const seen = new Set();
+    const out = [];
+    let changed = false;
+    notes.forEach(n => {
+        const id = n && n.id;
+        if (id !== undefined && id !== null && seen.has(id)) { changed = true; return; }
+        if (id !== undefined && id !== null) seen.add(id);
+        out.push(n);
+    });
+    return changed ? out : notes;
+}
+
 /* 清风视图：热力图月份标签（与轻语 generateHeatmapMonths 一致）
    覆盖最近 3 个月（含本月），均匀落在 12 列的 2/4、6/8、10/12 区间居中 */
 function buildBreezeHeatmapMonths() {
@@ -222,9 +242,11 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                         plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
                     }
                 }
-                // 重渲染：让置顶项排到前面
-                if (plugin && plugin._siyuTab && typeof plugin._siyuTab.render === 'function') {
-                    plugin._siyuTab.render();
+                /* 局部刷新：只重渲染笔记列表 + 热力图 + 标签计数（与归档操作同款）。
+                   此前用 _siyuTab.render() 全量重建整个插件 UI（侧栏/输入框销毁重建 + opacity 0→1 淡入），
+                   表现为操作时页面明显闪烁；侧边栏越窄、笔记列表越宽，闪烁越明显 */
+                if (plugin && plugin._refreshActiveBreezeView) {
+                    try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
                 }
                 // 同步刷新 Dock 侧边栏列表（若启用），保证侧边栏置顶后立即重排
                 if (plugin && plugin._breezeNotifyDockChanged) {
@@ -330,8 +352,11 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                         if (plugin && plugin.saveData) {
                             plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
                         }
-                        if (plugin && plugin._siyuTab && typeof plugin._siyuTab.render === 'function') {
-                            plugin._siyuTab.render();
+                        /* 局部刷新：只重渲染笔记列表 + 热力图 + 标签计数（与归档操作同款）。
+                           此前用 _siyuTab.render() 全量重建整个插件 UI（侧栏/输入框销毁重建 + opacity 0→1 淡入），
+                           删除时页面会明显闪烁一下；侧边栏越窄、笔记列表越宽，闪烁越明显 */
+                        if (plugin && plugin._refreshActiveBreezeView) {
+                            try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
                         }
                         // 同步刷新 Dock 侧边栏列表（若启用），保证侧边栏删除后立即消失
                         if (plugin && plugin._breezeNotifyDockChanged) {
@@ -405,14 +430,46 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
             case 'archive':
                 // 切换归档状态
                 if (note) {
-                    note.archived = !note.archived;
+                    // 同 id 可能存在多条重复条目（历史数据），一并切换到相同状态，
+                    // 避免「菜单显示已归档、列表仍渲染另一条未归档副本」的错位
+                    const newState = !note.archived;
+                    ((storage || {}).breezeNotes || []).forEach(n => { if (n.id === id) n.archived = newState; });
                     plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
                     /* 刷新所有清风视图：PC 标签页 + 移动端抽屉 + PC Dock 侧边栏
                        与「新增笔记」后的刷新保持一致（见 _saveBreezeNote），避免归档后界面无反应
                        注意：Dock 列表 _refreshBreezeDockList 已过滤已归档，归档后笔记会立即从侧边栏消失 */
-                    try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
+                    try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { console.error('[轻饰笔记] 归档后刷新主视图失败', e); }
                     try { plugin._refreshActiveBreezeView(plugin._lunaDockCtx); } catch (e) { /* noop */ }
                     try { plugin._refreshBreezeDockList(); } catch (e) { /* noop */ }
+                    /* 明月视图（画廊 gallery，title=明月）联动刷新：归档后其聚合的已归档笔记图片应立即消失。
+                       若当前文档正在显示明月视图，重新收集媒体（下次打开也会自动过滤） */
+                    try {
+                        const _galleryBody = document.querySelector('.north-luna-main-body');
+                        if (_galleryBody && _galleryBody.querySelector('.north-luna-gallery-header, .north-luna-gallery-empty') && plugin._renderGalleryView) {
+                            plugin._renderGalleryView(_galleryBody);
+                        }
+                    } catch (e) { /* noop */ }
+                    /* 朋友圈（Moments）联动刷新：来自已归档笔记的「添加到朋友圈」动态随之隐藏（附带增强） */
+                    try {
+                        const _momentsBody = document.querySelector('.north-luna-moments-container');
+                        if (_momentsBody && plugin.refreshMomentsList) plugin.refreshMomentsList(_momentsBody);
+                    } catch (e) { /* noop */ }
+                    /* 自检兜底：若归档后列表 DOM 里仍能找到这条笔记（局部刷新因任何原因未生效），
+                       强制整体重建对应视图，确保「已归档 = 立即从界面消失」，而不是切走再切回才消失 */
+                    try {
+                        const _tab = plugin._siyuTab;
+                        if (_tab && _tab.activeViewId === 'notes' && _tab.container) {
+                            const _list = _tab.container.querySelector('#breeze-notes-list');
+                            if (_list && _list.querySelector('[data-id="' + id + '"]')) _tab.renderMain();
+                        }
+                    } catch (e) { /* noop */ }
+                    try {
+                        const _dctx = plugin._lunaDockCtx;
+                        if (_dctx && _dctx.activeViewId === 'notes' && _dctx.container) {
+                            const _dlist = _dctx.container.querySelector('#breeze-notes-list');
+                            if (_dlist && _dlist.querySelector('[data-id="' + id + '"]')) _dctx.renderMain();
+                        }
+                    } catch (e) { /* noop */ }
                 }
                 break;
             default:
@@ -653,10 +710,13 @@ function showBreezeShareModal(note, plugin) {
 /* 修改时间（复刻轻语：自建精致日历 + 时/分/秒 滚轮选择器弹窗，与轻语完全一致）。
    复用 index.css 中已有的 .north-luna-moments-datetime-* 样式（与轻语 lumina-moments-datetime-* 同源）。
    交互：日历选日期 → 点时间区弹出 时/分/秒 滚轮选择器 → 确定写入 note.time（YYYY-MM-DD HH:MM:SS）并持久化 + 重排。 */
-function changeBreezeNoteTime(id, storage, plugin) {
+function changeBreezeNoteTime(id, storage, plugin, opts) {
     const notes = ((storage || {}).breezeNotes) || [];
     const note = notes.find((n) => n.id === id);
     if (!note) return;
+    /* opts.field === 'updated' 时编辑「更新时间」（表格视图更新时间列）；缺省编辑创建时间 note.time */
+    const field = (opts && opts.field) === 'updated' ? 'updated' : 'time';
+    const pickerLabel = (opts && opts.label) || '修改时间';
 
     const formatDateKey = (d) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -676,7 +736,8 @@ function changeBreezeNoteTime(id, storage, plugin) {
     };
     closePicker(); // 保证单实例
 
-    const currentDate = parseNoteTime(note.time);
+    /* 更新时间未单独设置时，选择器预填当前显示值（跟随创建时间） */
+    const currentDate = parseNoteTime(field === 'updated' ? (note[field] || note.time) : note.time);
     let viewYear = currentDate.getFullYear();
     let viewMonth = currentDate.getMonth();
     let selectedDate = new Date(currentDate.getTime());
@@ -687,7 +748,7 @@ function changeBreezeNoteTime(id, storage, plugin) {
         <div class="north-luna-moments-datetime-overlay"></div>
         <div class="north-luna-moments-datetime-content">
             <div class="north-luna-moments-datetime-top">
-                <span class="north-luna-moments-datetime-label">修改时间</span>
+                <span class="north-luna-moments-datetime-label">${pickerLabel}</span>
                 <button class="north-luna-moments-datetime-close" type="button" aria-label="关闭">×</button>
             </div>
             <div class="north-luna-moments-datetime-body"></div>
@@ -800,6 +861,30 @@ function changeBreezeNoteTime(id, storage, plugin) {
         }
     });
 
+    /* 更新时间模式：追加「清除」按钮 —— 删除独立设置的 updated，恢复为跟随创建时间显示 */
+    if (field === 'updated' && note.updated) {
+        const actionsEl = picker.querySelector('.north-luna-moments-datetime-actions');
+        if (actionsEl) {
+            const resetBtn = document.createElement('button');
+            resetBtn.className = 'north-luna-moments-datetime-btn north-luna-moments-datetime-btn-reset';
+            resetBtn.type = 'button';
+            resetBtn.title = '清除已设置的更新时间，恢复为跟随创建时间显示';
+            resetBtn.style.marginRight = 'auto';
+            resetBtn.textContent = '清除';
+            actionsEl.insertBefore(resetBtn, actionsEl.firstChild);
+            resetBtn.addEventListener('click', () => {
+                delete note.updated;
+                if (plugin && plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
+                /* 局部刷新（表格视图下会重建表格） */
+                if (plugin && plugin._refreshActiveBreezeView) {
+                    try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
+                }
+                showMessage('已清除更新时间');
+                closePicker();
+            });
+        }
+    }
+
     // 确定保存
     picker.querySelector('.north-luna-moments-datetime-btn-confirm').addEventListener('click', () => {
         const display = picker.querySelector('.north-luna-moments-datetime-display');
@@ -810,13 +895,13 @@ function changeBreezeNoteTime(id, storage, plugin) {
         const newDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
             hours, minutes, seconds);
         const newTime = fmtFull(newDate);
-        const oldNorm = fmtFull(parseNoteTime(note.time));
+        const oldNorm = fmtFull(parseNoteTime(field === 'updated' ? (note[field] || note.time) : note.time));
         if (newTime === oldNorm) { closePicker(); return; } // 未变化不写
-        note.time = newTime;
+        note[field] = newTime;
         if (plugin && plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
-        // 重渲染：尊重标签/日期筛选 + 重新按时间倒序排序
-        if (plugin && plugin._siyuTab && typeof plugin._siyuTab.render === 'function') {
-            plugin._siyuTab.render();
+        /* 局部刷新：只重渲染笔记列表（重排含时间排序，尊重标签/日期筛选），不再整页重建导致闪烁 */
+        if (plugin && plugin._refreshActiveBreezeView) {
+            try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
         }
         showMessage('时间已修改');
         closePicker();
@@ -899,6 +984,137 @@ function changeBreezeNoteTime(id, storage, plugin) {
         const overlay = picker.querySelector('.north-luna-moments-datetime-overlay');
         if (overlay) overlay.addEventListener('click', () => popup.classList.remove('show'));
     })(picker, selectedDate);
+}
+
+/* 编辑清风笔记标签（表格视图「标签列」点击弹出，锚定单元格的浮层）：
+   - 列出当前所有笔记的全部标签，点选即加入/移出本笔记
+   - 支持输入新标签（回车或「添加」，支持 父/子 多级写法，字符集与 breezeExtractTags 一致）
+   - 确定后按最小改动重写正文：保留的原地不动、移除的删 token、新增的追加到末尾
+   opts: { anchor: 定位基准元素, onDone: 应用成功后的回调 } */
+function changeBreezeNoteTags(id, storage, plugin, opts) {
+    const notes = ((storage || {}).breezeNotes) || [];
+    const note = notes.find((n) => n.id === id);
+    if (!note) return;
+    const anchor = (opts && opts.anchor) || null;
+    const allTags = [...new Set(notes.flatMap((n) => breezeExtractTags(n.content || '')))].sort((a, b) => a.localeCompare(b, 'zh'));
+    const selected = new Set(breezeExtractTags(note.content || ''));
+
+    /* 单实例 */
+    document.querySelectorAll('.north-breeze-tags-editor').forEach((el) => el.remove());
+
+    const editor = document.createElement('div');
+    editor.className = 'north-breeze-tags-editor';
+    const renderChips = () => {
+        const list = [...allTags];
+        selected.forEach((t) => { if (!list.includes(t)) list.push(t); });
+        const chipsEl = editor.querySelector('.north-breeze-tags-editor-chips');
+        chipsEl.innerHTML = list.map((t) =>
+            `<span class="north-breeze-tags-editor-chip${selected.has(t) ? ' on' : ''}" data-tag="${breezeEscapeHtml(t)}" title="${selected.has(t) ? '点击移除' : '点击添加'}">${breezeEscapeHtml(t)}</span>`
+        ).join('') || '<div class="north-breeze-tags-editor-empty">暂无标签，在下方输入添加</div>';
+        chipsEl.scrollTop = 0;
+    };
+    editor.innerHTML = `
+        <div class="north-breeze-tags-editor-title">
+            <span>编辑标签</span>
+            <button type="button" class="north-breeze-tags-editor-close" title="关闭">×</button>
+        </div>
+        <div class="north-breeze-tags-editor-chips"></div>
+        <div class="north-breeze-tags-editor-add">
+            <input type="text" class="north-breeze-tags-editor-input" placeholder="输入新标签（可用 / 表示多级），回车添加">
+            <button type="button" class="north-breeze-tags-editor-add-btn">添加</button>
+        </div>
+        <div class="north-breeze-tags-editor-actions">
+            <button type="button" class="north-breeze-tags-editor-btn north-breeze-tags-editor-cancel">取消</button>
+            <button type="button" class="north-breeze-tags-editor-btn north-breeze-tags-editor-ok">确定</button>
+        </div>`;
+    document.body.appendChild(editor);
+    renderChips();
+
+    /* 定位：锚点单元格下方，越界时向上展开并收进视口（与表格操作菜单同策略） */
+    if (anchor) {
+        const rect = anchor.getBoundingClientRect();
+        const ew = editor.offsetWidth, eh = editor.offsetHeight;
+        let left = rect.left;
+        if (left + ew > window.innerWidth - 4) left = window.innerWidth - ew - 4;
+        if (left < 4) left = 4;
+        let top;
+        if (rect.bottom + 8 + eh <= window.innerHeight) top = rect.bottom + 4;
+        else if (rect.top - 8 - eh >= 0) top = rect.top - eh - 4;
+        else top = Math.max(4, window.innerHeight - eh - 4);
+        editor.style.left = left + 'px';
+        editor.style.top = top + 'px';
+    }
+
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const onDocMouseDown = (ev) => {
+        if (editor.contains(ev.target)) return;
+        if (anchor && anchor.contains(ev.target)) return; /* 再点锚点单元格交给其 click 处理 */
+        close();
+    };
+    function close() {
+        editor.remove();
+        document.removeEventListener('keydown', onKey);
+        document.removeEventListener('mousedown', onDocMouseDown, true);
+    }
+
+    const input = editor.querySelector('.north-breeze-tags-editor-input');
+    const addFromInput = () => {
+        const t = (input.value || '').trim().replace(/^#+/, '');
+        if (!t) return;
+        /* 字符集与 breezeExtractTags 保持一致，避免写入后无法被识别为标签 */
+        if (!/^[\w一-龥\/-]+$/.test(t)) {
+            if (typeof showMessage === 'function') showMessage('标签仅支持中英文、数字、下划线、连字符与 /');
+            return;
+        }
+        if (selected.has(t)) { input.value = ''; return; }
+        selected.add(t);
+        if (!allTags.includes(t)) allTags.push(t);
+        input.value = '';
+        renderChips();
+        input.focus();
+    };
+
+    editor.addEventListener('click', (e) => {
+        const chip = e.target.closest('.north-breeze-tags-editor-chip');
+        if (chip) {
+            const t = chip.dataset.tag;
+            if (selected.has(t)) selected.delete(t); else selected.add(t);
+            chip.classList.toggle('on', selected.has(t));
+            chip.title = selected.has(t) ? '点击移除' : '点击添加';
+            return;
+        }
+        if (e.target.closest('.north-breeze-tags-editor-close') || e.target.closest('.north-breeze-tags-editor-cancel')) { close(); return; }
+        if (e.target.closest('.north-breeze-tags-editor-add-btn')) addFromInput();
+    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addFromInput(); } });
+
+    /* 应用：仅改动有变化的部分 —— 保留的原地不动、移除的删 token、新增的追加末尾 */
+    editor.querySelector('.north-breeze-tags-editor-ok').addEventListener('click', () => {
+        const oldTags = breezeExtractTags(note.content || '');
+        const removed = oldTags.filter((t) => !selected.has(t)).sort((a, b) => b.length - a.length);
+        const added = [...selected].filter((t) => !oldTags.includes(t));
+        if (removed.length || added.length) {
+            let content = note.content || '';
+            /* 长标签优先移除（避免 #父 截断 #父/子）；吞掉其前导空格，避免留下连续空格 */
+            removed.forEach((t) => {
+                const escTag = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                content = content.replace(new RegExp(' ?#' + escTag + '(?=\\s|\\n|$|[，。！？；：\u0022\u0022\u0027\u0027（）【】])', 'g'), '');
+            });
+            content = content.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+            if (added.length) {
+                const tagLine = added.map((t) => '#' + t).join(' ');
+                content = content ? content + '\n' + tagLine : tagLine;
+            }
+            note.content = content;
+            if (plugin && plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
+        }
+        close();
+        if (opts && opts.onDone) opts.onDone();
+    });
+
+    setTimeout(() => document.addEventListener('mousedown', onDocMouseDown, true), 0);
+    document.addEventListener('keydown', onKey);
+    if (input) input.focus();
 }
 
 /* 修改朋友圈动态时间（复用 changeBreezeNoteTime 的日历 + 时/分/秒 滚轮选择器）。
@@ -1182,6 +1398,7 @@ function addBreezeNoteToMoments(id, storage, plugin) {
 
     const momentData = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        sourceNoteId: id, // 记录来源清风笔记 id，用于归档联动：原笔记归档后本动态在明月视图隐藏
         text: text,
         images: images,
         link: link,
@@ -1795,6 +2012,98 @@ function breezeGenMonthlyDistribution(notes, year) {
         </div>`;
 }
 
+/* 落笔时刻：一天 24 小时的记录条数分布（按年筛选，与月度/每日分布同口径）。
+   选型：直段折线 + 淡色面积填充（纯 SVG，无图表库）——小时桶是离散整数计数，
+   直线段读数准确、不暗示不存在的中间值；高峰小时实心点突出，悬停有深色 tooltip。 */
+function breezeGenRhythmChart(notes, year) {
+    const hours = new Array(24).fill(0);
+    let total = 0;
+    notes.forEach((note) => {
+        if (!note.created) return;
+        const d = new Date(note.created);
+        if (d.getFullYear() !== year) return;
+        hours[d.getHours()]++;
+        total++;
+    });
+    if (total === 0) {
+        return `<div class="north-shuoshuo-rhythm-section">
+            <div class="north-shuoshuo-distribution-header">
+                <span>落笔时刻</span>
+                <span class="north-shuoshuo-distribution-subtitle">${year} 年暂无记录</span>
+            </div>
+            <div style="text-align:center;color:var(--b3-theme-on-surface-light);padding:20px 0;">这一年还没有记录，落笔之后就能看到你的时刻分布了</div>
+        </div>`;
+    }
+    const maxCount = Math.max.apply(null, hours);
+    const peakHour = hours.indexOf(maxCount); /* 并列时取最早的高峰小时 */
+    const peakLabel = String(peakHour).padStart(2, '0') + ':00';
+    const pct = ((maxCount / total) * 100).toFixed(1);
+
+    /* 坐标系（viewBox 逻辑坐标，等比缩放；高度收敛以贴合统计页其它区块的密度）。
+       绘图区左右零内边距：折线与面积顶满内容区两侧（与峰值行同宽），Y 轴刻度内嵌在网格线上方 */
+    const W = 1000, H = 200;
+    const padL = 0, padR = 0, padT = 22, padB = 44;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const x = (i) => padL + (plotW * i) / 23;
+    const y = (c) => padT + plotH - (plotH * c) / maxCount;
+
+    /* Y 轴刻度：小数值逐条画格，大数值取整步长 */
+    let step;
+    if (maxCount <= 5) step = 1;
+    else if (maxCount <= 10) step = 2;
+    else step = Math.ceil(maxCount / 5);
+    const ticks = [];
+    for (let v = 0; v <= maxCount; v += step) ticks.push(v);
+
+    /* 折线与面积路径 */
+    const pts = hours.map((c, i) => x(i).toFixed(1) + ',' + y(c).toFixed(1));
+    const linePath = 'M' + pts.join(' L');
+    const areaPath = linePath + ' L' + x(23).toFixed(1) + ',' + y(0).toFixed(1) + ' L' + x(0).toFixed(1) + ',' + y(0).toFixed(1) + ' Z';
+
+    /* 网格线与 Y 轴标签（刻度内嵌图内：贴网格线左端上方，不占侧边空间） */
+    let gridHtml = '';
+    ticks.forEach((v) => {
+        gridHtml += `<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W - padR}" y2="${y(v).toFixed(1)}" stroke="var(--b3-border-color)" stroke-dasharray="4 5" stroke-width="1" opacity="0.55"/>`;
+        if (v !== 0) gridHtml += `<text x="${padL + 6}" y="${(y(v) - 5).toFixed(1)}" text-anchor="start" class="north-shuoshuo-rhythm-axis-text">${v}</text>`;
+    });
+
+    /* 数据点：普通点空心、高峰点实心放大；透明命中区放在可见点之前（相邻选择器联动放大 + 悬停 tooltip） */
+    let dotsHtml = '';
+    hours.forEach((c, i) => {
+        const isPeak = i === peakHour;
+        dotsHtml += `<circle cx="${x(i).toFixed(1)}" cy="${y(c).toFixed(1)}" r="10" fill="transparent" class="north-shuoshuo-rhythm-hit" data-lumina-tip="${String(i).padStart(2, '0')}:00 · ${c} 条"/>`;
+        dotsHtml += `<circle cx="${x(i).toFixed(1)}" cy="${y(c).toFixed(1)}" r="${isPeak ? 5 : 3.5}" class="${isPeak ? 'north-shuoshuo-rhythm-dot-peak' : 'north-shuoshuo-rhythm-dot'}"/>`;
+    });
+
+    /* X 轴标签（00:00 / 06:00 / 12:00 / 18:00 / 23:00）；首尾贴边改为左/右对齐，避免被 viewBox 裁切 */
+    const xLabelsHtml = [[0, '00:00'], [6, '06:00'], [12, '12:00'], [18, '18:00'], [23, '23:00']].map(([i, t]) => {
+        const anchor = i === 0 ? 'start' : (i === 23 ? 'end' : 'middle');
+        return `<text x="${x(i).toFixed(1)}" y="${H - padB + 22}" text-anchor="${anchor}" class="north-shuoshuo-rhythm-axis-text">${t}</text>`;
+    }).join('');
+
+    return `
+        <div class="north-shuoshuo-rhythm-section">
+            <div class="north-shuoshuo-distribution-header">
+                <span>落笔时刻</span>
+                <span class="north-shuoshuo-distribution-subtitle">${year} 年共 ${total} 条</span>
+            </div>
+            <div class="north-shuoshuo-rhythm-headline">哪些小时是你的落笔高峰？</div>
+            <div class="north-shuoshuo-rhythm-peak-row">
+                <div class="north-shuoshuo-rhythm-peak-item"><div class="north-shuoshuo-rhythm-peak-value">${peakLabel}</div><div class="north-shuoshuo-rhythm-peak-label">落笔高峰</div></div>
+                <div class="north-shuoshuo-rhythm-peak-item"><div class="north-shuoshuo-rhythm-peak-value">${maxCount} 条</div><div class="north-shuoshuo-rhythm-peak-label">单时峰值</div></div>
+                <div class="north-shuoshuo-rhythm-peak-item"><div class="north-shuoshuo-rhythm-peak-value">${pct}%</div><div class="north-shuoshuo-rhythm-peak-label">占全年笔记</div></div>
+            </div>
+            <svg class="north-shuoshuo-rhythm-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="一天 24 小时落笔时刻分布折线图">
+                ${gridHtml}
+                <path d="${areaPath}" class="north-shuoshuo-rhythm-area"/>
+                <path d="${linePath}" class="north-shuoshuo-rhythm-line"/>
+                ${dotsHtml}
+                ${xLabelsHtml}
+            </svg>
+            <div class="north-shuoshuo-rhythm-hint">✨ ${peakLabel} 是你的落笔高峰 —— ${year} 年共有 ${maxCount} 条笔记诞生于这个时段，占全年 ${pct}%</div>
+        </div>`;
+}
+
 /* 每日记录分布（当月按天；非当前年取记录最多的月份，与轻语一致） */
 function breezeGenDailyDistribution(notes, year) {
     const now = new Date();
@@ -2007,8 +2316,8 @@ function breezeGenTagCloud(notes) {
         </div>`;
     }
     const tagsHtml = sortedTags.map(([tag, count]) => {
-        const style = breezeTagColorStyle(tag);
-        return `<span class="north-shuoshuo-tag-cloud-item" style="${style}"> ${breezeEscapeHtml(tag)}<sup class="north-shuoshuo-tag-cloud-count">${count}</sup></span>`;
+        /* 标签云：不再内联彩色边框，统一样式交给 CSS（中性主题边框 + 小圆角） */
+        return `<span class="north-shuoshuo-tag-cloud-item"> ${breezeEscapeHtml(tag)}<sup class="north-shuoshuo-tag-cloud-count">${count}</sup></span>`;
     }).join('');
 
     return `
@@ -2099,8 +2408,8 @@ function renderBreezeTable(tab) {
         const archived = !!note.archived;
         const tagsHtml = tags.map(t => `<span class="north-breeze-table-tag-pill" data-tag="${breezeEscapeHtml(t)}" style="${breezeTableTagStyle(tab, t)}">${breezeEscapeHtml(t)}</span>`).join('');
         const archiveHtml = archived
-            ? '<span class="north-breeze-table-archive-badge archived">已归档</span>'
-            : '<span class="north-breeze-table-archive-badge">未归档</span>';
+            ? '<span class="north-breeze-table-archive-badge archived north-breeze-table-archive-toggle" data-id="' + breezeEscapeHtml(note.id) + '" title="点击取消归档">已归档</span>'
+            : '<span class="north-breeze-table-archive-badge north-breeze-table-archive-toggle" data-id="' + breezeEscapeHtml(note.id) + '" title="点击设为归档">未归档</span>';
 
         rows += `<tr class="north-breeze-table-row${checked ? ' selected' : ''}" data-id="${breezeEscapeHtml(note.id)}">
             <td class="north-breeze-table-cell north-breeze-table-checkbox-cell">
@@ -2109,10 +2418,10 @@ function renderBreezeTable(tab) {
             <td class="north-breeze-table-cell north-breeze-table-content-cell" title="${breezeEscapeHtml(content)}">
                 <span class="north-breeze-table-content-text">${breezeEscapeHtml(displayContent)}</span>
             </td>
-            <td class="north-breeze-table-cell north-breeze-table-tags-cell">${tagsHtml || '<span style="color:var(--b3-theme-on-surface);opacity:0.35">-</span>'}</td>
+            <td class="north-breeze-table-cell north-breeze-table-tags-cell north-breeze-table-tags-editable" title="点击编辑标签">${tagsHtml || '<span class="north-breeze-table-tags-empty">＋ 标签</span>'}</td>
             <td class="north-breeze-table-cell north-breeze-table-type-cell">${archiveHtml}</td>
-            <td class="north-breeze-table-cell north-breeze-table-time-cell">${breezeEscapeHtml(fmtTime(time))}</td>
-            <td class="north-breeze-table-cell north-breeze-table-time-cell">${breezeEscapeHtml(fmtTime(updated))}</td>
+            <td class="north-breeze-table-cell north-breeze-table-time-cell"><span class="north-breeze-table-time-edit${fmtTime(time) ? '' : ' empty'}" data-id="${breezeEscapeHtml(note.id)}" data-field="created" title="点击修改创建时间">${breezeEscapeHtml(fmtTime(time)) || '点击设置'}</span></td>
+            <td class="north-breeze-table-cell north-breeze-table-time-cell"><span class="north-breeze-table-time-edit${fmtTime(updated) ? '' : ' empty'}" data-id="${breezeEscapeHtml(note.id)}" data-field="updated" title="点击修改更新时间">${breezeEscapeHtml(fmtTime(updated)) || '点击设置'}</span></td>
             <td class="north-breeze-table-cell north-breeze-table-actions-cell">
                 <div class="north-breeze-table-row-actions">
                     <button class="north-breeze-table-action-btn archive${archived ? ' unarchive' : ''}" data-id="${breezeEscapeHtml(note.id)}" title="${archived ? '取消归档' : '归档'}">
@@ -2267,6 +2576,8 @@ function renderBreezeStats(tab) {
                 </div>
 
                 ${breezeGenStatsTagDetailTable(notes, year)}
+
+                ${breezeGenRhythmChart(notes, year)}
 
                 <div class="north-shuoshuo-tag-cloud-section">
                     ${breezeGenTagCloud(notes)}
@@ -3833,6 +4144,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (!d.breezeReviewHistory) d.breezeReviewHistory = {};
                 if (!d.tagMeta) d.tagMeta = {};
                 if (Array.isArray(d.breezeNotes)) {
+                    /* 同 id 重复条目自愈：重复会让归档态与列表显示错位（见 breezeDedupeNotesById 注释） */
+                    const deduped = breezeDedupeNotesById(d.breezeNotes);
+                    if (deduped !== d.breezeNotes) {
+                        d.breezeNotes = deduped;
+                        this.saveData(RECORDS_STORAGE, d).catch(() => {});
+                    }
                     let migrated = false;
                     d.breezeNotes.forEach(n => { if (breezeMigrateNote(n)) migrated = true; });
                     if (migrated) this.saveData(RECORDS_STORAGE, d).catch(() => {});
@@ -4273,6 +4590,42 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             this._bindBreezeStats();
                         }
                     });
+
+                    /* 记录节律折线图：数据点 hover 深色 tooltip（复用热力图 tooltip 的样式与定位策略） */
+                    const rhythmSvg = this.container.querySelector('.north-shuoshuo-rhythm-chart');
+                    if (rhythmSvg && !rhythmSvg._rhythmTipBound) {
+                        rhythmSvg._rhythmTipBound = true;
+                        const tipBaseStyle = 'position:fixed;left:0;top:0;z-index:99999;background:rgba(40,40,40,0.92);color:#fff;font-size:12px;padding:6px 10px;border-radius:6px;pointer-events:none;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.18);';
+                        const place = (tipEl, hit) => {
+                            const r = hit.getBoundingClientRect();
+                            const tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+                            /* 数据点上方居中（与热力图 tooltip 同款定位） */
+                            const tx = r.left + r.width / 2 - tw / 2;
+                            const ty = r.top - th - 6;
+                            tipEl.style.transform = 'translate3d(' + tx + 'px, ' + ty + 'px, 0)';
+                        };
+                        rhythmSvg.addEventListener('mouseover', (e) => {
+                            const hit = e.target.closest('.north-shuoshuo-rhythm-hit');
+                            if (!hit || !rhythmSvg.contains(hit)) return;
+                            const tip = hit.dataset.luminaTip;
+                            if (!tip) return;
+                            const oldTip = document.querySelector('.north-breeze-global-tooltip');
+                            if (oldTip) oldTip.remove();
+                            const tipEl = document.createElement('div');
+                            tipEl.className = 'north-breeze-global-tooltip';
+                            tipEl.textContent = tip;
+                            tipEl.style.cssText = tipBaseStyle + 'transform:translate3d(-9999px,-9999px,0);';
+                            document.body.appendChild(tipEl);
+                            place(tipEl, hit);
+                        });
+                        rhythmSvg.addEventListener('mouseout', (e) => {
+                            /* 仅当鼠标真的离开 svg 才移除 */
+                            if (!rhythmSvg.contains(e.relatedTarget)) {
+                                const tipEl = document.querySelector('.north-breeze-global-tooltip');
+                                if (tipEl) tipEl.remove();
+                            }
+                        });
+                    }
                 };
 
                 this._bindBreezeTable = () => {
@@ -4378,6 +4731,42 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const bd = list.querySelector('#table-batch-delete');
                     if (bd && !bd._b) { bd._b = true; bd.addEventListener('click', () => { const n = this._tableChecked.size; if (n === 0) return; const del = () => { this._tableChecked.forEach(id => this._deleteTableNote(id)); rerender(); }; if (confirm) confirm('批量删除', `确定要删除选中的 ${n} 条清风笔记吗？\n此操作不可恢复。`, del); else del(); }); }
 
+                    /* 标签列：点击编辑标签（浮层内点选/输入，确定后写回正文 #标签） */
+                    list.querySelectorAll('.north-breeze-table-tags-cell.north-breeze-table-tags-editable').forEach(cell => {
+                        if (cell._b) return; cell._b = true;
+                        cell.addEventListener('click', (e) => {
+                            if (e.target.closest('a, button, input')) return;
+                            const row = cell.closest('.north-breeze-table-row');
+                            const id = row && row.dataset.id;
+                            if (!id) return;
+                            changeBreezeNoteTags(id, this.plugin.data[RECORDS_STORAGE], this.plugin, { anchor: cell, onDone: () => rerender() });
+                        });
+                    });
+
+                    /* 归档列：点击徽标直接切换归档状态（操作列按钮保留，两者等效） */
+                    list.querySelectorAll('.north-breeze-table-archive-toggle').forEach(b => {
+                        if (b._b) return; b._b = true;
+                        b.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (!b.dataset.id) return;
+                            this._toggleTableArchive(b.dataset.id);
+                            rerender();
+                        });
+                    });
+
+                    /* 时间列：点击修改创建时间 / 更新时间（复用日历+滚轮选择器弹窗） */
+                    list.querySelectorAll('.north-breeze-table-time-edit').forEach(s => {
+                        if (s._b) return; s._b = true;
+                        s.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const id = s.dataset.id;
+                            if (!id) return;
+                            const storage = this.plugin.data[RECORDS_STORAGE];
+                            if (s.dataset.field === 'updated') changeBreezeNoteTime(id, storage, this.plugin, { field: 'updated', label: '修改更新时间' });
+                            else changeBreezeNoteTime(id, storage, this.plugin);
+                        });
+                    });
+
                     /* 标签行默认无action（与轻语一致：仅视觉展示） */
                 };
 
@@ -4389,8 +4778,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const s = this.plugin.data[RECORDS_STORAGE] || {};
                     const note = (s.breezeNotes || []).find(n => n.id === id);
                     if (!note) return;
-                    note.archived = !note.archived;
+                    /* 同 id 的重复条目一并切换到相同状态，避免归档态与列表显示错位 */
+                    const newState = !note.archived;
+                    (s.breezeNotes || []).forEach(n => { if (n.id === id) n.archived = newState; });
                     this.plugin.saveData(RECORDS_STORAGE, s).catch(() => {});
+                    /* 归档状态变化会影响「全部笔记/统计」等其它清风视图的缓存内容，先失效，
+                       避免切回时 re-attach 旧 DOM（已归档笔记仍显示在列表里） */
+                    if (this._viewDomCache) { delete this._viewDomCache.notes; delete this._viewDomCache.chart; }
+                    /* Dock 列表已过滤已归档，同步刷新让其立即消失 */
+                    if (this.plugin._breezeNotifyDockChanged) this.plugin._breezeNotifyDockChanged();
                 };
                 this._deleteTableNote = (id) => {
                     const s = this.plugin.data[RECORDS_STORAGE] || {};
@@ -4402,6 +4798,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     s.breezeNotes = (s.breezeNotes || []).filter(n => n.id !== id);
                     this.plugin.data[RECORDS_STORAGE] = s;
                     this.plugin.saveData(RECORDS_STORAGE, s);
+                    /* 删除会影响「全部笔记/统计」等其它清风视图的缓存内容，先失效 */
+                    if (this._viewDomCache) { delete this._viewDomCache.notes; delete this._viewDomCache.chart; }
+                    if (this.plugin._breezeNotifyDockChanged) this.plugin._breezeNotifyDockChanged();
                 };
 
                 this.renderMain = () => {
@@ -4532,17 +4931,38 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     const dateBottom = !!this._getSetting('breezeTitleDateBottom');
                                     const footerLabel = plugin._getProfileNickname();
                                     const footerSignature = this._getSetting('breezeFooterShowSignature') ? plugin._getProfileSignature() : '';
+                                    /* 归档过滤：与 _renderBreezeSubView 保持一致 —— 归档笔记默认不显示，
+                                       仅当用户在内置检索中选中「已归档」时才展示（覆盖默认隐藏） */
+                                    const _quickIsArchived = this.breezeQuickFilter === 'archived' && this.breezeSubView === 'all';
+                                    let filteredNotes = _quickIsArchived ? allNotes : allNotes.filter(n => !n.archived);
+                                    /* 标签筛选（与 _renderBreezeSubView 保持一致） */
+                                    if (this.breezeTagFilter) {
+                                        const sel = this.breezeTagFilter;
+                                        const prefix = sel + '/';
+                                        filteredNotes = filteredNotes.filter(n => {
+                                            const ts = breezeExtractTags(n.content || '');
+                                            return ts.some(t => t === sel || t.startsWith(prefix));
+                                        });
+                                    }
+                                    /* 日期筛选（与 _renderBreezeSubView 保持一致） */
+                                    if (this.breezeDateFilter) {
+                                        filteredNotes = filteredNotes.filter(n => (n.time || '').slice(0, 10) === this.breezeDateFilter);
+                                    }
+                                    /* 关键词搜索（与 _renderBreezeSubView 保持一致） */
+                                    if (this.breezeSearchFilter) {
+                                        filteredNotes = filteredNotes.filter(n => breezeMatchSearch(n, this.breezeSearchFilter));
+                                    }
                                     /* 分页：与 _renderBreezeSubView 同步——仅开启且超出一页时生效 */
                                     const paginationOn = !!this._getSetting('breezePaginationEnabled');
                                     const pageSz = Number(this._getSetting('breezePageSize')) || 20;
-                                    let renderNotes = allNotes;
+                                    let renderNotes = filteredNotes;
                                     let pagerH = '';
-                                    if (paginationOn && allNotes.length > pageSz) {
-                                        const tpg = Math.ceil(allNotes.length / pageSz);
+                                    if (paginationOn && filteredNotes.length > pageSz) {
+                                        const tpg = Math.ceil(filteredNotes.length / pageSz);
                                         if (this.breezePage > tpg) this.breezePage = tpg;
                                         if (this.breezePage < 1) this.breezePage = 1;
-                                        renderNotes = allNotes.slice((this.breezePage - 1) * pageSz, this.breezePage * pageSz);
-                                        pagerH = this._renderBreezePager(allNotes.length, tpg, pageSz);
+                                        renderNotes = filteredNotes.slice((this.breezePage - 1) * pageSz, this.breezePage * pageSz);
+                                        pagerH = this._renderBreezePager(filteredNotes.length, tpg, pageSz);
                                     } else if (paginationOn) {
                                         this.breezePage = 1;
                                     }
@@ -4562,7 +4982,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             /* 渲染热力图（基于真实 breezeNotes 统计每日笔记数）并绑定 hover tooltip */
                             const heatmapGrid = body.querySelector('.north-breeze-heatmap-grid');
                             if (heatmapGrid) {
-                                heatmapGrid.innerHTML = buildBreezeHeatmap(plugin.data[RECORDS_STORAGE].breezeNotes || []);
+                                heatmapGrid.innerHTML = buildBreezeHeatmap((plugin.data[RECORDS_STORAGE].breezeNotes || []).filter(n => !n.archived));
                                 this._bindBreezeHeatmapEvents(heatmapGrid);
                                 /* 若处于日期筛选态，re-render 后恢复选中高亮（innerHTML 重建会清空） */
                                 if (this.breezeDateFilter) {
@@ -4645,7 +5065,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                 /* ===== 清风：按日期筛选 · 清风日历（与朋友圈 generateMomentsCalendar 完全同款，仅数据源换成 breezeNotes） ===== */
                 this._breezeGenHeatmapYear = (year) => {
-                    const notes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
+                    /* 与「全部笔记」列表同口径：已归档不计入日历热力图 */
+                    const notes = (plugin.data[RECORDS_STORAGE].breezeNotes || []).filter(n => !n.archived);
                     const targetYear = year || new Date().getFullYear();
                     const yearStart = new Date(targetYear, 0, 1);
                     const startDate = new Date(yearStart);
@@ -4745,12 +5166,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                         const imgHtml = `<img class="north-luna-moments-calendar-photo-img" src="${breezeEsc(imgPath)}" data-kind="image" alt="" loading="lazy">`;
                                         rowCells += `<div class="north-luna-moments-calendar-photo-cell has-photo"${dateAttr} title="${tooltip}">${num}${imgHtml}</div>`;
                                     } else if (count > 0) {
-                                        // 有记录但当天没有图片：底色深浅随记录条数（与贡献图热力图同级别），可点击筛选
-                                        let heatLevel = 1;
-                                        if (count >= 3) heatLevel = 2;
-                                        if (count >= 5) heatLevel = 3;
-                                        if (count >= 7) heatLevel = 4;
-                                        rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record level-${heatLevel}"${dateAttr} title="${tooltip}">${num}</div>`;
+                                        // 有记录但当天没有图片：不再用色块填充（在照片墙里显得突兀），
+                                        // 仅将日期数字主题色高亮，与朋友圈日历同一套视觉语言；精确条数看悬停提示。
+                                        rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record"${dateAttr} title="${tooltip}">${num}</div>`;
                                     } else {
                                         rowCells += `<div class="north-luna-moments-calendar-photo-cell" title="${tooltip}">${num}</div>`;
                                     }
@@ -4776,7 +5194,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const targetYear = year || new Date().getFullYear();
                     if (calStyle === 'photo') {
                         // 汇总当年每日记录数与首图（与朋友圈图片封面模式一致）
-                        const notes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
+                        // 与「全部笔记」列表同口径：已归档不计入日历（日历点击会筛选列表，口径须一致）
+                        const notes = (plugin.data[RECORDS_STORAGE].breezeNotes || []).filter(n => !n.archived);
                         const dayCounts = {};
                         const dayAllImgs = {};
                         let totalCount = 0;
@@ -5071,6 +5490,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         // 同步刷新侧栏标签树与统计
                         this._renderBreezeTagList();
                         this._updateBreezeStats();
+                        /* 笔记数据变了，失效其它清风视图（统计/表格）的 DOM 缓存，避免切回时显示旧数据 */
+                        if (this._viewDomCache) { delete this._viewDomCache.notes; delete this._viewDomCache.chart; delete this._viewDomCache.table; }
                         // 同步刷新 Dock 面板（plugin 级方法，需用 plugin 引用）
                         plugin._breezeNotifyDockChanged && plugin._breezeNotifyDockChanged();
                         input.value = '';
@@ -5669,12 +6090,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 /* 清风视图：根据本地数据更新左侧统计（笔记数 / 标签数 / 天数） */
                 this._updateBreezeStats = () => {
                     const notes = (plugin.data[RECORDS_STORAGE] || {}).breezeNotes || [];
-                    const days = new Set(notes.map(n => (n.time || '').slice(0, 10))).size;
+                    /* 与「全部笔记」列表同口径：已归档不计入侧栏统计（笔记/标签/天数） */
+                    const visible = notes.filter(n => !n.archived);
+                    const days = new Set(visible.map(n => (n.time || '').slice(0, 10))).size;
                     const tagSet = new Set();
-                    notes.forEach(n => breezeExtractTags(n.content || '').forEach(t => tagSet.add(t)));
+                    visible.forEach(n => breezeExtractTags(n.content || '').forEach(t => tagSet.add(t)));
                     const nums = this.container.querySelectorAll('.north-breeze-stat-num');
                     if (nums.length >= 3) {
-                        nums[0].textContent = notes.length;
+                        nums[0].textContent = visible.length;
                         nums[1].textContent = tagSet.size;
                         nums[2].textContent = days;
                     }
@@ -5907,8 +6330,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const list = this.container.querySelector('#breeze-tags-list');
                     if (!list) return;
                     const notes = (plugin.data[RECORDS_STORAGE] || {}).breezeNotes || [];
+                    /* 与「全部笔记」列表同口径：已归档笔记的标签不计入侧栏标签树 */
+                    const visible = notes.filter(n => !n.archived);
                     const tagCounts = {};
-                    notes.forEach(n => {
+                    visible.forEach(n => {
                         breezeExtractTags(n.content || '').forEach(t => {
                             tagCounts[t] = (tagCounts[t] || 0) + 1;
                         });
@@ -6207,6 +6632,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             notes = notes.filter(n => !!n.archived);
                         }
                     }
+                    /* 重建列表前的状态保护（list 元素本身被复用，状态需手动复位）：
+                       1) 停掉进行中的阻尼惯性动画 —— 否则旧动画循环带着过期目标继续跑，列表会自己缓慢滑动
+                       2) 摘除旧 wheel 监听 —— 防止重绑后出现双份监听
+                       3) 记录刷新前的滚动位置与 wrap 阻尼偏移，重建后恢复，避免列表跳回顶部 */
+                    if (list._dampingAnimId) { cancelAnimationFrame(list._dampingAnimId); list._dampingAnimId = null; }
+                    if (list._dampingWheelHandler) { list.removeEventListener('wheel', list._dampingWheelHandler); list._dampingWheelHandler = null; }
+                    list._dampingBound = false;
+                    const _prevScrollBox = list.querySelector('.north-breeze-scroll-box');
+                    const _prevOffsetMatch = _prevScrollBox ? /translateY\((-?[\d.]+)px\)/.exec(_prevScrollBox.style.transform || '') : null;
+                    const _prevDampingOffset = _prevOffsetMatch ? parseFloat(_prevOffsetMatch[1]) : null;
+                    const _prevScrollTop = list.scrollTop;
+                    /* 与「上一次渲染时的子视图」比较（调用进来时 this.breezeSubView 已是新值）。
+                       注意 breezeSubView 的合法值包含 undefined（全部笔记），因此用 _hasRendered
+                       布尔标记判断「是否渲染过」，不能拿 undefined 当未记录哨兵 */
+                    const _prevSubView = list._hasRendered ? list._lastRenderedSubView : this.breezeSubView;
                     if (this.breezeSubView === 'review') {
                         if (this._breezeReviewStarted) this._renderBreezeReviewNotes(list);
                         else this._renderBreezeReview(list);
@@ -6249,20 +6689,31 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             // 清风链接标题：渲染完成后自动把裸网址替换为网页标题
                             try { breezeAutoFetchLinkTitles(list); } catch (e) { /* noop */ }
                         }
-                        // re-bind 滚动阻尼（innerHTML 会销毁 scroll-box）
-                        if (this._getSetting('breezeScrollDamping')) {
-                            this._bindScrollDamping(list);
-                        }
                         // 实时更新侧边栏热力图
                         const heatmapGrid = this.container.querySelector('.north-breeze-heatmap-grid');
                         if (heatmapGrid) {
-                            heatmapGrid.innerHTML = buildBreezeHeatmap(plugin.data[RECORDS_STORAGE].breezeNotes || []);
+                            heatmapGrid.innerHTML = buildBreezeHeatmap((plugin.data[RECORDS_STORAGE].breezeNotes || []).filter(n => !n.archived));
                             if (this.breezeDateFilter) {
                                 const selCell = heatmapGrid.querySelector('.north-breeze-heatmap-grid-cell[data-date="' + this.breezeDateFilter + '"]');
                                 if (selCell) selCell.classList.add('selected');
                             }
                         }
                     }
+                    /* 恢复滚动位置 + 重绑滚动阻尼（innerHTML 会销毁 scroll-box）。
+                       放在子视图分支之外：review / week 子视图同样会整体重建，统一重绑避免阻尼监听丢失；
+                       但仅在同一子视图内重建（同步刷新/翻页等）才恢复位置，切换子视图不带入旧位置 */
+                    if (this._getSetting('breezeScrollDamping')) {
+                        if (this.breezeSubView === _prevSubView) {
+                            /* lerp 模式以 scrollTop 为基准，先恢复位置再绑定 */
+                            list.scrollTop = _prevScrollTop;
+                            list._pendingDampingOffset = _prevDampingOffset;
+                        }
+                        this._bindScrollDamping(list);
+                    } else {
+                        if (this.breezeSubView === _prevSubView) list.scrollTop = _prevScrollTop;
+                    }
+                    list._lastRenderedSubView = this.breezeSubView;
+                    list._hasRendered = true;
                 };
 
                 /* ===== 清风分页器 ===== */
@@ -6390,8 +6841,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         };
                         scrollEl._dampingWheelHandler = onWheel;
                         scrollEl.addEventListener('wheel', onWheel, { passive: false });
-                        offset = 0;
-                        box.style.transform = 'translateY(0px)';
+                        /* 恢复列表重建前的偏移（_renderBreezeSubView 传入并按新内容高度钳制），防止同步刷新后内容跳回顶部 */
+                        if (typeof scrollEl._pendingDampingOffset === 'number' && Number.isFinite(scrollEl._pendingDampingOffset)) {
+                            const restoreMax = Math.max(0, box.scrollHeight - scrollEl.clientHeight);
+                            offset = Math.max(-restoreMax, Math.min(0, scrollEl._pendingDampingOffset));
+                        }
+                        scrollEl._pendingDampingOffset = null;
+                        box.style.transform = `translateY(${offset}px)`;
                     } else {
                         // lerp 模式：不动 DOM，用 requestAnimationFrame 虚拟滚动
                         let target = scrollEl.scrollTop;
@@ -6611,7 +7067,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const moments = (plugin.data[MOMENTS_STORAGE] || {}).items || [];
                     // 清风笔记中的图片/视频/文件
                     // 注意：清风存储时图片和视频都进了 n.images（4193 行），需按扩展名区分
+                    // 已归档笔记的图片/视频/文件不在明月（画廊）视图展示 —— 与清风视图「归档默认隐藏」保持一致，
+                    // 否则归档记录后其图片仍残留在明月视图，与「归档即不再展示」的预期不符
                     notes.forEach(n => {
+                        if (n.archived) return;
                         const time = n.time || '';
                         const dateStr = time.slice(0, 10);
                         (n.images || []).forEach(img => {
@@ -6625,6 +7084,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     // 朋友圈中的图片/视频（根据设置决定是否收集）
                     if (!plugin._getPluginSetting('galleryHideMoments')) {
                         moments.forEach(m => {
+                            // 来源笔记已归档的朋友圈动态，其图片同样不在明月视图展示（与清风归档联动）
+                            if (m.sourceNoteId) {
+                                const _srcNote = notes.find(n => n.id === m.sourceNoteId);
+                                if (_srcNote && _srcNote.archived) return;
+                            }
                             (m.images || []).forEach(img => {
                                 const kind = plugin._fileKindFromName(img);
                                 items.push({ id: m.id, type: kind === 'video' ? 'video' : 'image', src: img, created: m.createdAt || m.created, text: m.text || '', tags: [], source: 'moments' });
@@ -8543,7 +9007,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }).join("");
                     const cat = this._settingsSchema[this.activeSettingsCategory];
                     const itemMatches = (it) => !filter || (it.title || "").toLowerCase().includes(filter) || (it.desc || "").toLowerCase().includes(filter);
-                    const renderItems = (items) => (items || []).filter(itemMatches).map(it => {
+                    /* 单项渲染隔离：任一设置项渲染抛错时仅降级该项自身（保留标题），
+                       不再让整次渲染中断 —— 此前一项抛错会使 body.innerHTML 不更新，
+                       表现为点击左侧分类「完全没有反应」，且只能刷新思源才能恢复 */
+                    const _renderItemRaw = (it) => {
                         let val = this._getSetting(it.key);
                         /* 昵称/签名：与朋友圈保持同一取值口径（未在设置里改过时回落到朋友圈 config），
                            避免设置里显示默认值、朋友圈显示旧值的割裂 */
@@ -8696,6 +9163,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             </div>
                             <div class="north-luna-settings-item-ctrl">${ctrl}</div>
                         </div>`;
+                    };
+                    const renderItems = (items) => (items || []).filter(itemMatches).map(it => {
+                        try {
+                            return _renderItemRaw(it);
+                        } catch (err) {
+                            console.error('[siyuan-lumina] 设置项渲染失败，已降级显示：', it && (it.key || it.title), err);
+                            return `<div class="north-luna-settings-item"><div class="north-luna-settings-item-text"><div class="north-luna-settings-item-title">${plugin._esc((it && it.title) || '')}</div></div></div>`;
+                        }
                     }).join("");
                     // groups 存在时渲染多张卡片（每组：大标题在卡片外 + 卡片本身），否则回退单 group
                     const groups = cat.groups || [{ items: cat.items || [] }];
@@ -8720,12 +9195,31 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         <div class="north-luna-settings-main">
                             <div class="north-luna-settings-group">${groupsHtml}</div>
                         </div>`;
-                    // 左侧栏图标自定义：渲染后填充并绑定事件
+                    /* 分类切换：事件委托绑在 body（.north-luna-main-body，持久元素）上，仅绑一次。
+                       必须放在渲染后所有其它步骤之前 —— 此前分类按钮的 click 是在一长串绑定流程的
+                       末尾才挂上的，中途任何一步抛异常（如图标列表渲染失败）都会让侧栏全部分类按钮
+                       失联且无自愈路径（点分类本身就是要触发的重渲染），只能刷新思源恢复。
+                       委托绑定不随 body.children 重建而丢失，天然免疫后续步骤的异常。
+                       _userPickedCategory：本次渲染的「一次性」标志，重渲染时被消费，避免搜索时
+                       「自动跳到第一个匹配分类」覆盖用户的手动选择（体验上像点不动）。
+                       _userPickedDuringSearch：搜索期间是否手动切换过，清空搜索时用于判断是否恢复原分类。 */
+                    if (!body._lunaSettingsCatDelegated) {
+                        body._lunaSettingsCatDelegated = true;
+                        body.addEventListener("click", (e) => {
+                            const btn = e.target && e.target.closest ? e.target.closest(".north-luna-settings-cat-item") : null;
+                            if (!btn || !body.contains(btn)) return;
+                            this.activeSettingsCategory = btn.dataset.cat;
+                            this._userPickedCategory = true;
+                            this._userPickedDuringSearch = true;
+                            this._renderSettingsView(body);
+                        });
+                    }
+                    // 左侧栏图标自定义：渲染后填充并绑定事件（单步隔离：失败仅缺席该列表，不影响搜索框/其它控件绑定）
                     const sidebarIconList = body.querySelector('#sidebar-icons-custom-list');
-                    if (sidebarIconList) this._renderSidebarIcons(sidebarIconList);
-                    // 移动端底部标签栏图标自定义：渲染后填充并绑定事件（仅 4 个视图，独立数据）
+                    if (sidebarIconList) { try { this._renderSidebarIcons(sidebarIconList); } catch (err) { console.error('[siyuan-lumina] 左侧栏图标列表渲染失败：', err); } }
+                    // 移动端底部标签栏图标自定义：渲染后填充并绑定事件（仅 4 个视图，独立数据；单步隔离）
                     const mobileSidebarIconList = body.querySelector('#mobile-sidebar-icons-custom-list');
-                    if (mobileSidebarIconList) this._renderMobileSidebarIcons(mobileSidebarIconList);
+                    if (mobileSidebarIconList) { try { this._renderMobileSidebarIcons(mobileSidebarIconList); } catch (err) { console.error('[siyuan-lumina] 移动端底部标签栏图标列表渲染失败：', err); } }
                     // 「自定义视图排序」按钮：打开排序弹窗，排序变化后刷新预览列表与真实侧栏
                     const orderBtn = body.querySelector('.north-luna-sidebar-order-btn');
                     if (orderBtn) {
@@ -8784,17 +9278,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             this._searchFocusState = null;
                         }
                     }
-                    body.querySelectorAll(".north-luna-settings-cat-item").forEach(btn => {
-                        btn.addEventListener("click", () => {
-                            /* 标记这次切换是用户主动点击触发的，让重渲染时不要被「自动跳到第一个匹配分类」覆盖。
-                               _userPickedCategory：本次渲染的「一次性」标志，重渲染时被消费。
-                               _userPickedDuringSearch：搜索期间是否手动切换过，清空搜索时用于判断是否恢复原分类。 */
-                            this.activeSettingsCategory = btn.dataset.cat;
-                            this._userPickedCategory = true;
-                            this._userPickedDuringSearch = true;
-                            this._renderSettingsView(body);
-                        });
-                    });
+                    /* 分类按钮的点击已改为 body 级事件委托（见上方 _lunaSettingsCatDelegated），
+                       此处不再逐按钮绑定，避免同一点击触发两次重渲染 */
                     body.querySelectorAll("input[data-type=toggle]").forEach(inp => {
                         inp.addEventListener("change", () => {
                             this._setSetting(inp.dataset.key, inp.checked);
@@ -8997,6 +9482,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const trigger = cddl.querySelector(".north-luna-settings-cddl-trigger");
                         const popup = cddl.querySelector(".north-luna-settings-cddl-popup");
                         const valueEl = cddl.querySelector(".north-luna-settings-cddl-value");
+                        /* 结构不完整时跳过该下拉，避免中断后续控件（按钮/模板/文档选择器）的事件绑定 */
+                        if (!trigger || !popup || !valueEl) return;
                         /* 关闭时只移除 .open，.drop-up 保留到 transitionend 再清，
                            避免 top/bottom 瞬时跳回导致的"收回时向下展开"动作。 */
                         const closeAll = () => { body.querySelectorAll(".north-luna-settings-cddl.open").forEach(d => d.classList.remove("open")); };
@@ -9130,8 +9617,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         if (!btn.dataset.action) return;
                         btn.addEventListener("click", () => this._handleSettingsAction(btn.dataset.action));
                     });
-                    /* Flomo 同步面板：登录/登出/同步/目标切换等事件 */
-                    this._bindFlomoSettings(body);
+                    /* Flomo 同步面板：登录/登出/同步/目标切换等事件（单步隔离） */
+                    try { this._bindFlomoSettings(body); } catch (err) { console.error('[siyuan-lumina] Flomo 设置面板绑定失败：', err); }
                     /* 同步模板编辑器：点击按钮打开弹窗，在弹窗内选择预设并编辑模板 */
                     body.querySelectorAll(".north-luna-template-edit-btn").forEach(btn => {
                         btn.addEventListener("click", () => this._showTemplateEditor(btn.dataset.key, btn.dataset.templateTitle));
@@ -12448,7 +12935,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const now = Date.now();
                 if (this._lastBreezeSyncReload && now - this._lastBreezeSyncReload < 1500) return;
                 this._lastBreezeSyncReload = now;
+                /* 数据无变化则跳过重渲染：截图、Alt+Tab 切窗回焦等场景磁盘数据通常没变，
+                   此前无条件 _refreshActiveBreezeView 会把清风列表整列重建（卡片/图片节点全部重建），
+                   表现为记录区闪烁一下、滚动位置跳动。先比对数据签名，真正有变化（多端同步写入）才刷新。 */
+                const breezeDataSig = () => {
+                    try {
+                        const s = this.data[RECORDS_STORAGE] || {};
+                        /* tagMeta 用 || {} 归一化：首次重载会把 undefined 合并成空对象，避免误判为有变化 */
+                        return JSON.stringify(s.breezeNotes || null) + '|' + JSON.stringify(s.tagMeta || {});
+                    } catch (e) { return null; }
+                };
+                const beforeSig = breezeDataSig();
                 this._reloadBreezeRecords().then(() => {
+                    if (breezeDataSig() === beforeSig) return;
                     if (this._siyuTab) this._refreshActiveBreezeView(this._siyuTab);
                     if (this._lunaDockCtx) this._refreshActiveBreezeView(this._lunaDockCtx);
                 }).catch(() => {});
@@ -13372,7 +13871,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 /* 笔记列表以磁盘为准（含移动端经同步写入的新内容）；
                    tagMeta / 回顾历史做合并，避免覆盖当前端在内存中尚未落盘的改动 */
                 const merged = Object.assign({}, cur, d);
-                merged.breezeNotes = Array.isArray(d.breezeNotes) ? d.breezeNotes : (cur.breezeNotes || []);
+                /* 同 id 重复条目自愈（见 breezeDedupeNotesById）：避免归档态与列表显示错位 */
+                merged.breezeNotes = breezeDedupeNotesById(Array.isArray(d.breezeNotes) ? d.breezeNotes : (cur.breezeNotes || []));
                 merged.tagMeta = Object.assign({}, cur.tagMeta || {}, d.tagMeta || {});
                 merged.breezeReviewHistory = Object.assign({}, cur.breezeReviewHistory || {}, d.breezeReviewHistory || {});
                 this.data[RECORDS_STORAGE] = merged;
@@ -13385,6 +13885,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
        统计/表格等视图整体重渲染。非清风数据视图则跳过，避免误刷新。 */
     _refreshActiveBreezeView(ctx) {
         if (!ctx) return;
+        /* 先失效清风数据视图的 DOM 缓存：notes/chart/table 共用同一份笔记数据，
+           任何增删改/归档都会让其它视图的缓存变陈旧 —— 不失效的话切回该视图会
+           re-attach 旧 DOM，出现「已归档笔记仍显示在全部笔记里」这类不一致 */
+        if (ctx._viewDomCache) {
+            delete ctx._viewDomCache.notes;
+            delete ctx._viewDomCache.chart;
+            delete ctx._viewDomCache.table;
+        }
         const view = ctx.activeViewId;
         const breezeViews = ["notes", "chart", "table"];
         if (breezeViews.indexOf(view) === -1) return;
@@ -13392,15 +13900,23 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (view === "notes" && typeof ctx._renderBreezeSubView === "function") {
                 const list = ctx.container && ctx.container.querySelector("#breeze-notes-list");
                 if (list) {
-                    ctx._renderBreezeSubView();
-                    if (typeof ctx._renderBreezeTagList === "function") ctx._renderBreezeTagList();
+                    try {
+                        ctx._renderBreezeSubView();
+                        if (typeof ctx._renderBreezeTagList === "function") ctx._renderBreezeTagList();
+                    } catch (e) {
+                        /* 局部刷新失败（任何异常）都不能把旧 DOM 留在界面上 —— 回退整体重建 */
+                        console.error('[轻饰笔记] 列表局部刷新失败，回退整体重建:', e);
+                        if (typeof ctx.renderMain === "function") ctx.renderMain();
+                    }
                 } else if (typeof ctx.renderMain === "function") {
                     ctx.renderMain();
                 }
             } else if (typeof ctx.renderMain === "function") {
                 ctx.renderMain();
             }
-        } catch (e) { /* noop */ }
+        } catch (e) {
+            console.error('[轻饰笔记] _refreshActiveBreezeView 刷新失败:', e);
+        }
     }
 
     /* ===== 移动端：隐藏思源侧栏顶部 toolbar（清风与 LifeLog 视图时隐藏，切换离开即恢复） ===== */
@@ -14697,9 +15213,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const list = body.querySelector('#breeze-notes-list');
                 const allNotes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
                 const visibleNotes = allNotes.filter(n => !n.archived); // 归档笔记默认隐藏
-                /* 渲染热力图格子 */
+                /* 渲染热力图格子（与列表同口径：已归档不计入，保证点日期筛选一定有结果） */
                 const grid = body.querySelector('#breeze-heatmap-grid');
-                if (grid) grid.innerHTML = buildBreezeHeatmap(allNotes);
+                if (grid) grid.innerHTML = buildBreezeHeatmap(visibleNotes);
                 /* 热力图自定义颜色：按设置注入 CSS 变量（与 PC _renderMain 同逻辑） */
                 const heatColor = plugin._getPluginSetting('breezeHeatmapColor');
                 const heatContainer = body.querySelector('.north-breeze-heatmap');
@@ -15477,12 +15993,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const imgHtml = `<img class="north-luna-moments-calendar-photo-img" src="${breezeEsc(dayFirstImg[key])}" data-kind="image" alt="" loading="lazy">`;
                             rowCells += `<div class="north-luna-moments-calendar-photo-cell has-photo"${dateAttr} title="${tooltip}">${num}${imgHtml}</div>`;
                         } else if (count > 0) {
-                            // 有记录但当天没有图片：底色深浅随记录条数（与贡献图热力图同级别），可点击筛选
-                            let heatLevel = 1;
-                            if (count >= 3) heatLevel = 2;
-                            if (count >= 5) heatLevel = 3;
-                            if (count >= 7) heatLevel = 4;
-                            rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record level-${heatLevel}"${dateAttr} title="${tooltip}">${num}</div>`;
+                            // 有记录但当天没有图片：不再用色块填充（在照片墙里显得突兀），
+                            // 仅将日期数字主题色高亮，与朋友圈日历同一套视觉语言；精确条数看悬停提示。
+                            rowCells += `<div class="north-luna-moments-calendar-photo-cell has-record"${dateAttr} title="${tooltip}">${num}</div>`;
                         } else {
                             rowCells += `<div class="north-luna-moments-calendar-photo-cell" title="${tooltip}">${num}</div>`;
                         }
@@ -16450,6 +16963,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
                 if (this._siyuTab._renderBreezeTagList) {
                     try { this._siyuTab._renderBreezeTagList(); } catch (e) { /* noop */ }
+                }
+                /* 笔记数据变了，失效主视图其它清风视图（统计/表格）的 DOM 缓存 */
+                if (this._siyuTab._viewDomCache) {
+                    delete this._siyuTab._viewDomCache.notes;
+                    delete this._siyuTab._viewDomCache.chart;
+                    delete this._siyuTab._viewDomCache.table;
                 }
             }
             input.value = '';
@@ -23522,6 +24041,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!listEl) return;
         const nickname = this._getProfileNickname();
         const allItems = this.momentsData.items || [];
+        /* 存量兼容：早期「添加到朋友圈」的动态未记录 sourceNoteId，这里通过
+           「正文 + 图片集完全匹配某条已归档清风笔记」回溯来源，使其跟随归档隐藏 */
+        const _breezeAll = (this.data[RECORDS_STORAGE] || {}).breezeNotes || [];
+        let _momentsDirty = false;
+        allItems.forEach(m => {
+            if (m.sourceNoteId) return;
+            const mKey = (m.text || '') + '||' + (m.images || []).map(s => String(s)).sort().join(',');
+            const hit = _breezeAll.find(n => {
+                if (!n.archived) return false;
+                const nKey = (n.content || '') + '||' + ((n.images || []).concat((n.files || []).map(f => typeof f === 'string' ? f : (f && f.path)))).filter(Boolean).map(s => String(s)).sort().join(',');
+                return mKey === nKey && mKey.length > 2;
+            });
+            if (hit) { m.sourceNoteId = hit.id; _momentsDirty = true; }
+        });
+        if (_momentsDirty && plugin.saveMoments) plugin.saveMoments().catch(() => {});
         /* 视图模式决定主列表内容：
            - 'feed'：所有非置顶项
            - 'pinned'：所有置顶项（顶部缩略图条已隐藏，显示返回条） */
@@ -23536,6 +24070,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const filtered2 = this.momentsCategoryFilter
             ? filtered.filter(m => (m.category || '') === this.momentsCategoryFilter)
             : filtered;
+        /* 来自已归档清风笔记的「添加到朋友圈」动态默认隐藏（与清风视图归档联动）：
+           笔记归档后，明月视图中由它生成的动态应同步消失，而不是继续展示其图片/资源 */
+        const _breezeNotes = (this.data[RECORDS_STORAGE] || {}).breezeNotes || [];
+        const _archivedNoteIds = new Set(_breezeNotes.filter(n => n.archived).map(n => n.id));
+        const filtered3 = filtered2.filter(m => !(m.sourceNoteId && _archivedNoteIds.has(m.sourceNoteId)));
         // 同步筛选按钮的 active 高亮（置顶视图下隐藏）
         const moodBtn = container.querySelector('#momentsMoodFilterBtn');
         if (moodBtn) {
@@ -23560,7 +24099,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 catBtn.title = '按分类筛选朋友圈';
             }
         }
-        const sorted = inPinnedView ? this._sortMoments(filtered2) : this._sortMomentsForFeed(filtered2);
+        const sorted = inPinnedView ? this._sortMoments(filtered3) : this._sortMomentsForFeed(filtered3);
         if (sorted.length === 0) {
             const emptyMsg = inPinnedView
                 ? '<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">还没有置顶的动态</div>'
