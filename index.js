@@ -4112,7 +4112,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         // 注意：此处仅设置内存中的占位默认值
         if (!this.data[RECORDS_STORAGE]) this.data[RECORDS_STORAGE] = { breezeNotes: [], tagMeta: {}, breezeReviewHistory: {} };
-        if (!this.data[SETTINGS_STORAGE]) this.data[SETTINGS_STORAGE] = { activeView: "notes", settings: { resourceStorage: 'assets' }, navHidden: {}, navOrder: [], navIcons: {}, navNames: {}, mobileNavHidden: {}, mobileNavIcons: {}, mobileNavNames: {}, mobileNavOrder: [] };
+        if (!this.data[SETTINGS_STORAGE]) this.data[SETTINGS_STORAGE] = { activeView: "notes", settings: { resourceStorage: 'public' }, navHidden: {}, navOrder: [], navIcons: {}, navNames: {}, mobileNavHidden: {}, mobileNavIcons: {}, mobileNavNames: {}, mobileNavOrder: [] };
         if (!this.data[MOMENTS_STORAGE]) this.data[MOMENTS_STORAGE] = { config: { nickname: '月亮', signature: '言念君子，温其如玉' }, items: [] };
 
         // 朋友圈临时筛选状态（不持久化，刷新视图后重置）
@@ -7679,7 +7679,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'button', key: 'exportMomentsData', action: 'exportMomentsData', title: '导出朋友圈数据', desc: '将朋友圈动态导出为所选格式的文件（受「导出格式 / 时间范围 / 朋友圈导出范围」影响）', buttonText: '导出朋友圈数据' }
                         ]},
                         { title: '资源存储模式', items: [
-                            { type: 'select', key: 'resourceStorage', title: '存储位置', desc: '控制上传的图片与资源文件保存到思源 assets 资源目录，还是公共目录 public/siyuan-lumina/。公共目录脱离 assets 资源目录，不会被思源「未引用资源清理」删除。切换后只影响新上传的资源，已有引用不受影响。', default: 'assets', options: [{ value: 'assets', label: '思源资源目录 (assets)' }, { value: 'public', label: '公共目录 (public/siyuan-lumina/)' }] }
+                            { type: 'select', key: 'resourceStorage', title: '存储位置', desc: '控制上传的图片与资源文件保存到思源 assets 资源目录，还是公共目录 public/siyuan-lumina/。公共目录脱离 assets 资源目录，不会被思源「未引用资源清理」删除。切换后只影响新上传的资源，已有引用不受影响。', default: 'public', options: [{ value: 'assets', label: '思源资源目录 (assets)' }, { value: 'public', label: '公共目录 (public/siyuan-lumina/)' }] },
+                            { type: 'toggle', key: 'localizePublicOnSync', title: '插入笔记时转存为思源资源', desc: '存储位置选「公共目录」时，插入到思源笔记的图片与附件会自动转存一份到思源 assets 资源目录，让笔记引用本地资源（否则思源会把它当成外部图片，显示网络角标）；公共目录中的原文件会保留。默认开启，选「思源资源目录」时此项无影响。', default: true }
                         ]},
                         { title: '控制设置', items: [
                             { type: 'slider', key: 'sidebarIconSize', title: '左侧栏图标大小', desc: '自定义左侧导航栏图标的显示尺寸，默认 21px（即当前大小）', default: 21, min: 14, max: 40, step: 1 },
@@ -20803,7 +20804,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const storage = this.data[SETTINGS_STORAGE] || {};
         const settings = storage.settings || {};
         try {
-            const markdown = this._buildDailyNoteMarkdown(data, settings);
+            // 插入笔记前：把公共目录(public)的资源转存一份到 assets，让笔记引用本地资源
+            //（否则思源会把 public 路径当成外部图片，插图会显示网络角标）
+            const localized = await this._localizePublicResourcesForNote(data, settings);
+            const markdown = this._buildDailyNoteMarkdown(localized, settings);
             const result = await this._appendToDailyNoteTarget(markdown, data.time || '', settings);
             return { success: true, message: result.message || '已同步 ✅' };
         } catch (e) {
@@ -21209,8 +21213,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!file) return null;
         // HEIC/HEIF → JPEG 转码：浏览器无法直接解码 HEIC，上传时转为 JPEG 确保后续展示正常
         file = await this._heicToJpeg(file);
-        // 资源存储位置：assets（默认，思源资源目录）/ public（公共目录 public/siyuan-lumina/）。对标轻语 storageMode。
-        const _rs = (this.data[SETTINGS_STORAGE] && this.data[SETTINGS_STORAGE].settings && this.data[SETTINGS_STORAGE].settings.resourceStorage) || 'assets';
+        // 资源存储位置：public（默认，公共目录 public/siyuan-lumina/）/ assets（思源资源目录）。对标轻语 storageMode。
+        const _rs = (this.data[SETTINGS_STORAGE] && this.data[SETTINGS_STORAGE].settings && this.data[SETTINGS_STORAGE].settings.resourceStorage) || 'public';
         if (_rs === 'public') {
             return await this._uploadToPublicDir(file);
         }
@@ -21285,6 +21289,77 @@ module.exports = class NorthLunaPlugin extends Plugin {
         } catch (e) {
             showMessage('上传异常：' + (e && e.message ? e.message : e));
             return null;
+        }
+    }
+
+    /* 把「公共目录(public)」里的单个资源转存一份到思源 assets，返回 "/assets/xxx"。
+       用途：插入思源笔记时让笔记引用本地资源，否则思源会把 public 路径当成外部图片（显示网络角标）。
+       注意：这里刻意不走 _uploadResource —— 当 resourceStorage=public 时它会把文件又传回 public。
+       去重：转存时保留原文件名（public 侧本来就叫 stem-时间戳-随机.ext），
+             assets 中已存在同名文件则直接复用，避免每次同步都堆一份新副本。
+       失败返回 null（调用方保持原路径，不阻断同步）。 */
+    async _localizeResourceToAssets(rawPath, existingAssets) {
+        try {
+            const clean = String(rawPath || '').replace(/^\/+/, '');
+            if (!clean.startsWith('public/')) return null;   // 只处理公共目录的资源
+            const name = clean.split('/').pop();
+            if (!name) return null;
+            // 已存在同名文件 → 直接复用
+            const existing = existingAssets || await this._listAssetsFiles();
+            if (existing && existing.has(name)) return '/assets/' + name;
+            const token = window.siyuan?.config?.api?.token || '';
+            const headers = token ? { 'Authorization': 'Token ' + token } : {};
+            // 1) 读出公共目录中的原文件
+            const resp = await fetch('/api/file/getFile', {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: '/data/' + clean })
+            });
+            if (!resp.ok) return null;
+            const blob = await resp.blob();
+            if (!blob || !blob.size) return null;
+            const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+            // 2) 写入 data/assets/（保留原文件名，便于上面的去重判断）
+            const form = new FormData();
+            form.append('path', 'data/assets/' + name);
+            form.append('file', file);
+            form.append('isDir', 'false');
+            const up = await fetch('/api/file/putFile', { method: 'POST', body: form, headers });
+            const json = await up.json().catch(() => null);
+            if (!json || json.code !== 0) return null;
+            if (existing && typeof existing.add === 'function') existing.add(name);
+            return '/assets/' + name;
+        } catch (e) {
+            console.warn('[转存 assets 失败] ' + rawPath, e && e.message);
+            return null;
+        }
+    }
+
+    /* 同步笔记前：把 data.images / data.files 中指向公共目录(public)的资源转存到 assets 并替换路径，
+       让笔记引用本地资源（避免网络角标）。由设置 localizePublicOnSync 控制（默认开启）；
+       assets 模式的资源不受影响、原样返回；单项转存失败则保持原路径，不阻断整次同步。 */
+    async _localizePublicResourcesForNote(data, settings) {
+        try {
+            if ((settings || {}).localizePublicOnSync === false) return data;
+            const isPublic = (p) => /^\/?public\//.test(String(p || ''));
+            const pick = (it) => (typeof it === 'object' && it ? it.path : it) || '';
+            const images = Array.isArray(data.images) ? data.images : [];
+            const files = Array.isArray(data.files) ? data.files : [];
+            // 没有公共目录资源就直接返回，避免多余的一次 assets 目录读取
+            if (!images.some(it => isPublic(pick(it))) && !files.some(it => isPublic(pick(it)))) return data;
+            const existing = await this._listAssetsFiles();
+            const mapOne = async (it) => {
+                if (!isPublic(pick(it))) return it;
+                const to = await this._localizeResourceToAssets(pick(it), existing);
+                if (!to) return it;
+                return (typeof it === 'object' && it) ? { ...it, path: to } : to;
+            };
+            const newImages = await Promise.all(images.map(mapOne));
+            const newFiles = await Promise.all(files.map(mapOne));
+            return { ...data, images: newImages, files: newFiles };
+        } catch (e) {
+            console.warn('[同步前转存资源失败]', e && e.message);
+            return data;
         }
     }
 
@@ -23969,7 +24044,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             return [];
         };
 
-        const _rs = (this.data[SETTINGS_STORAGE] && this.data[SETTINGS_STORAGE].settings && this.data[SETTINGS_STORAGE].settings.resourceStorage) || 'assets';
+        const _rs = (this.data[SETTINGS_STORAGE] && this.data[SETTINGS_STORAGE].settings && this.data[SETTINGS_STORAGE].settings.resourceStorage) || 'public';
         const assetFiles = await readDirSafe('/data/assets/');
         const publicFiles = _rs === 'public' ? await readDirSafe('/data/public/siyuan-lumina/') : [];
 
