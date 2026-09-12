@@ -4194,10 +4194,16 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this.loadData(MOMENTS_STORAGE).then(data => {
             const d = data || { config: { nickname: '月亮', signature: '言念君子，温其如玉' }, items: [] };
             const cfg = d.config || (d.config = {});
-            if (cfg.nickname === '言念') cfg.nickname = '月亮';
-            if (cfg.signature === '温其如玉') cfg.signature = '言念君子，温其如玉';
+            /* 只在「文件不存在」或「字段被纠正」时才落盘。
+               此前这里是无条件 saveMoments()：插件每次加载（尤其是被重载）都会写一次插件存储文件，
+               而思源会把「同一内核下其它前端实例写入插件存储」广播给其它前端，
+               未覆盖 onDataChanged 的插件收到广播后会整体重载 → 重载时又写盘 →「写盘 ⇄ 重载」死循环，
+               表现为浏览器伺服时顶栏 / Dock 图标一直闪烁。 */
+            let needSave = !data;
+            if (cfg.nickname === '言念') { cfg.nickname = '月亮'; needSave = true; }
+            if (cfg.signature === '温其如玉') { cfg.signature = '言念君子，温其如玉'; needSave = true; }
             this.data[MOMENTS_STORAGE] = d;
-            this.saveMoments();
+            if (needSave) this.saveMoments();
         }).catch(() => {});
 
         // 4. 所有数据加载完毕 → 检测轻语旧数据
@@ -7220,7 +7226,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             </div>`;
                         }
                         const resolvedSrc = src.startsWith('/') ? src : (src.startsWith('assets/') ? '/' + src : src);
-                        const dateStr = typeof item.created === 'string' ? item.created.slice(0, 10) : '';
+                        /* 日期浮层：统一由 plugin.formatGalleryDate 规整（含「日期显示时分」开关，默认开启） */
+                        const dateStr = plugin.formatGalleryDate(item.created);
                         const tagsDisplay = (item.tags || []).join(' ');
                         // 视频：用 <video> 标签 + 播放图标覆盖层（与清风视图保持一致）
                         // 否则视频被当成 <img> 渲染会显示破图
@@ -7514,7 +7521,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 { value: '8', label: '8 列' },
                                 { value: '9', label: '9 列' }
                             ] },
-                            { type: 'input', key: 'galleryTitle', title: '自定义标题', desc: '明月视图顶部显示的标题，留空则使用默认「明月」', default: '明月' }
+                            { type: 'input', key: 'galleryTitle', title: '自定义标题', desc: '明月视图顶部显示的标题，留空则使用默认「明月」', default: '明月' },
+                            { type: 'toggle', key: 'galleryShowTime', title: '日期显示时分', desc: '开启后明月瀑布流的日期浮层显示到分钟（如「2026-09-12 20:59」）；关闭则只显示日期。默认开启，独立于朋友圈的「显示时分」。', default: true }
                         ]}
                     ]},
                     moments: { label: '朋友圈设置', title: '朋友圈', icon: 'iconRiffCard', groups: [
@@ -7536,6 +7544,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         ]},
                         { title: '控制设置', items: [
                             { type: 'toggle', key: 'momentsShowCommentTime', title: '显示评论日期', desc: '开启后评论的日期/时间才显示：PC 端为鼠标悬停该条评论时显示，移动端为点击昵称弹出菜单时显示；关闭后（默认）评论始终不显示日期。PC 与移动端同时生效。', default: false },
+                            { type: 'toggle', key: 'momentsShowTime', title: '显示时分', desc: '开启后朋友圈动态的时间显示到分钟（如「2026年9月12日 20:59」）；关闭后只显示到年月日。默认开启，PC 与移动端同时生效。', default: true },
                             { type: 'toggle', key: 'autoSyncMoments', title: '自动同步思源笔记文档', desc: '开启后，发布朋友圈动态时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
                             { type: 'toggle', key: 'galleryHideMoments', title: '在明月中隐藏朋友圈资源', desc: '开启后，朋友圈中添加的图片/视频/文件不会出现在明月（拾光）视图中。默认关闭。', default: false },
                             { type: 'select', key: 'momentsLongNoteCollapse', title: '长笔记自动折叠', desc: '超过设定行数的朋友圈动态会自动折叠，底部显示展开按钮。图片始终完整显示，只折叠文字部分。', default: 'never', options: [
@@ -9358,6 +9367,23 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             if (inp.dataset.key === 'momentsShowCommentTime') {
                                 const momentsContainer = this.container && this.container.querySelector(".north-luna-moments-container");
                                 if (momentsContainer) momentsContainer.classList.toggle("moments-hide-comment-time", !inp.checked);
+                            }
+                            if (inp.dataset.key === 'momentsShowTime') {
+                                /* 显示时分：动态里的时分始终渲染，切换设置只改容器类 → 当场生效、不重渲染列表。
+                                   全局扫一遍：设置面板与朋友圈列表通常不同视图，移动端 Dock 还可能有独立容器。 */
+                                document.querySelectorAll('.north-luna-moments-container').forEach(el => {
+                                    el.classList.toggle('moments-hide-item-time', !inp.checked);
+                                });
+                            }
+                            if (inp.dataset.key === 'galleryShowTime') {
+                                /* 明月日期浮层：时分是直接写进 HTML 的（没有 CSS 钩子），所以若明月视图正显示就就地重渲染。
+                                   注意 _renderGalleryView 挂在 tab 实例上（plugin 上没有该方法），别写错引用。 */
+                                const galleryBody = document.querySelector('.north-luna-main-body');
+                                const galleryTab = (this.plugin && this.plugin._siyuTab) || this;
+                                if (galleryBody && galleryBody.querySelector('.north-luna-gallery-header, .north-luna-gallery-empty')
+                                    && galleryTab && typeof galleryTab._renderGalleryView === 'function') {
+                                    try { galleryTab._renderGalleryView(galleryBody); } catch (e) { /* noop */ }
+                                }
                             }
                         });
                     });
@@ -13880,6 +13906,48 @@ module.exports = class NorthLunaPlugin extends Plugin {
         } catch (e) { /* 读取失败不影响当前视图 */ }
     }
 
+    /* ===== 插件存储变更后的数据重同步（onDataChanged 专用，只读不写） =====
+       1) 清风记录：breezeNotes 签名有变化才刷新界面（避免无谓重建列表、丢滚动位置与输入）
+       2) 设置：整体覆盖内存，界面下次渲染自然用新值
+       3) 朋友圈：条目有变化才重渲染当前的朋友圈视图 */
+    async _reloadPetalData(reason) {
+        const recordsSig = () => {
+            try { return JSON.stringify((this.data[RECORDS_STORAGE] || {}).breezeNotes || null); } catch (e) { return null; }
+        };
+        const before = recordsSig();
+        try { await this._reloadBreezeRecords(); } catch (e) { /* noop */ }
+        if (recordsSig() !== before) {
+            try { if (this._siyuTab) this._refreshActiveBreezeView(this._siyuTab); } catch (e) { /* noop */ }
+            try { if (this._lunaDockCtx) this._refreshActiveBreezeView(this._lunaDockCtx); } catch (e) { /* noop */ }
+            try { this._refreshBreezeDockList(); } catch (e) { /* noop */ }
+        }
+        try {
+            const s = await this.loadData(SETTINGS_STORAGE);
+            if (s && typeof s === 'object') this.data[SETTINGS_STORAGE] = s;
+        } catch (e) { /* noop */ }
+        try {
+            const m = await this.loadData(MOMENTS_STORAGE);
+            if (m && typeof m === 'object') {
+                const prev = JSON.stringify((this.data[MOMENTS_STORAGE] || {}).items || []);
+                this.data[MOMENTS_STORAGE] = m;
+                if (JSON.stringify(m.items || []) !== prev) this._refreshMomentsViews();
+            }
+        } catch (e) { /* noop */ }
+    }
+
+    /* 重渲染正在显示的朋友圈视图（PC 标签页 / 移动端 Dock）；当前不是朋友圈视图则不动 */
+    _refreshMomentsViews() {
+        const refresh = (ctx) => {
+            if (!ctx || !ctx.container) return;
+            const view = SIDEBAR_VIEWS.find(v => v.id === ctx.activeViewId);
+            if (!view || !view.isMoments) return;
+            const body = ctx.container.querySelector('.north-luna-main-body');
+            if (body) { try { this.renderMoments(body); } catch (e) { /* noop */ } }
+        };
+        refresh(this._siyuTab);
+        refresh(this._lunaDockCtx);
+    }
+
     /* 多端同步：刷新某渲染上下文（PC tab / 移动端 Dock）当前显示的清风视图。
        notes 视图优先走 _renderBreezeSubView（仅刷新列表/热力图/标签，不重建输入框，避免输入丢失）；
        统计/表格等视图整体重渲染。非清风数据视图则跳过，避免误刷新。 */
@@ -16553,7 +16621,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const gj = await g.json().catch(() => null);
             const list = (gj && gj.data) || [];
             const found = list.find(function (s) { return s.name === name && s.type === 'css'; });
-            if (found) id = found.id;
+            /* 已经处于禁用态就不再调 setSnippet 重写：此前每次插件加载都会重写同一份配置，
+               属于无意义写盘（也会让内核反复广播 conf 变更）。 */
+            if (found && found.enabled !== false) id = found.id;
         } catch (e) { return; }
         if (!id) return;
         try {
@@ -16633,6 +16703,24 @@ module.exports = class NorthLunaPlugin extends Plugin {
         });
         console.log(`${PLUGIN_NAME} plugin unloaded`);
     }
+
+    /* ===== 思源生命周期钩子：插件存储数据被改动时触发 =====
+       触发来源（思源会透传 reason）：
+         sync      —— 跨设备同步合并后，插件存储文件被更新；
+         overwrite —— 同一内核下「其它前端实例」（桌面主窗口 / 分离窗口 / 浏览器伺服页面）
+                      通过 saveData / removeData 写入了本插件的存储文件。
+       关键：**不覆盖这个方法时，思源会整体重载插件**（顶栏按钮与 Dock 图标被销毁后重建 →
+       表现为图标不停闪烁）。这里覆盖掉默认行为，改成「节流 + 按需重读磁盘 + 增量刷新界面」，
+       并且**绝不写回数据**，从而断开「A 写盘 → B 重载 → B 写盘 → A 重载」的写入回环。 */
+    onDataChanged(reason) {
+        if (this._petalChangedTimer) clearTimeout(this._petalChangedTimer);
+        this._petalChangedTimer = setTimeout(() => {
+            this._petalChangedTimer = null;
+            /* 500ms 防抖：多端同时写入时把连续多次通知合并成一次刷新 */
+            this._reloadPetalData(reason).catch(() => {});
+        }, 500);
+    }
+
     openTab() { openTab({ app: this.app, custom: { icon: "iconLightWord", title: PLUGIN_NAME, data: {}, id: this.name + TAB_TYPE } }); }
     // 卸载插件：保留用户笔记/朋友圈数据（RECORDS_STORAGE / MOMENTS_STORAGE），仅删除配置文件（SETTINGS_STORAGE）。对标轻语 uninstall。
     uninstall() { this.removeData(SETTINGS_STORAGE).catch(() => {}); }
@@ -19951,9 +20039,43 @@ module.exports = class NorthLunaPlugin extends Plugin {
         await this.saveData(MOMENTS_STORAGE, this.data[MOMENTS_STORAGE]).catch(() => {});
     }
 
+    /* 明月（画廊）日期浮层：把 created 统一规整成 "YYYY-MM-DD HH:MM"。
+       来源有两种格式：清风笔记的 n.time 是 "YYYY-MM-DD HH:MM" 字符串；
+       朋友圈的 createdAt / created 是毫秒时间戳 —— 旧实现只处理字符串，
+       于是朋友圈来源的图片在明月里日期是空的，这里一并归一。
+       是否显示时分由「明月设置 → 控制 → 日期显示时分」控制（默认开启）：
+       用 `!== false` 判断，键缺省（老用户没存过）时也视为开启。 */
+    formatGalleryDate(created) {
+        if (created === undefined || created === null || created === '') return '';
+        let datePart = '';
+        let timePart = '';
+        if (typeof created === 'string') {
+            const m = created.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+            if (!m) return '';
+            datePart = m[1] + '-' + m[2] + '-' + m[3];
+            timePart = m[4] ? m[4] + ':' + m[5] : '';
+        } else {
+            const d = new Date(created);
+            if (isNaN(d.getTime())) return '';
+            const p2 = n => String(n).padStart(2, '0');
+            datePart = d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+            timePart = p2(d.getHours()) + ':' + p2(d.getMinutes());
+        }
+        if (timePart && this._getPluginSetting('galleryShowTime') !== false) return datePart + ' ' + timePart;
+        return datePart;
+    }
+
+    /* 朋友圈动态时间：年月日 + 时分。
+       时分始终渲染，显隐交给容器类 `moments-hide-item-time`（见 index.css）——
+       这样「朋友圈设置 → 控制设置 → 显示时分」切换后无需重渲染列表即可立即生效，
+       也不会打断滚动位置或正在输入的评论。默认开启：设置项缺省（老用户没存过该键）时视为开启。
+       注意：时分单独包一层 span，父级 .north-luna-moments-meta-item 是 inline-flex，
+       节点之间的空白会被 flex 布局吃掉，所以「日期与时分之间的空格」由 CSS 的 margin-left 提供。 */
     formatMomentDate(ts) {
         const d = new Date(ts);
-        return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+        const p2 = n => String(n).padStart(2, '0');
+        const datePart = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+        return datePart + `<span class="north-luna-moments-item-time">${p2(d.getHours())}:${p2(d.getMinutes())}</span>`;
     }
 
     _formatCommentTime(timeStr) {
@@ -20141,7 +20263,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             : (settingsAll.momentsFontSize || 16);
 
         body.innerHTML = `
-            <div class="north-luna-moments-container${settingsAll.momentsHoverBorder === true ? ' moments-hover-border' : ''}${settingsAll.momentsShowCommentTime !== true ? ' moments-hide-comment-time' : ''}" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder === true ? '' : '--mom-mobile-item-border: none;'} ${settingsAll.momentsShowBorder === false ? '--mom-pc-item-border: none;' : ''}">
+            <div class="north-luna-moments-container${settingsAll.momentsHoverBorder === true ? ' moments-hover-border' : ''}${settingsAll.momentsShowCommentTime !== true ? ' moments-hide-comment-time' : ''}${settingsAll.momentsShowTime === false ? ' moments-hide-item-time' : ''}" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder === true ? '' : '--mom-mobile-item-border: none;'} ${settingsAll.momentsShowBorder === false ? '--mom-pc-item-border: none;' : ''}">
                 <div class="north-luna-moments-main" id="momentsMainPage">
                     <div class="north-luna-moments-nav" id="momentsNavBar">
                         <div class="north-luna-moments-nav-left"></div>

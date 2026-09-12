@@ -1308,8 +1308,10 @@
     margin: 6px 0;
     padding-left: 22px;
 }
-.north-luna-moments-item-text .north-breeze-task-list input[type="checkbox"] {
-    margin-right: 4px;
+/* 朋友圈视图的任务框间距：必须带 !important + 更高特异性，
+   否则会被上面「任务复选框外观锁」里 margin: 4px 0 0 0 !important 吃掉（那组是针对清风视图的） */
+.north-luna-moments-item-text .north-breeze-task-list input.north-breeze-task-checkbox[type="checkbox"] {
+    margin-right: 4px !important;
 }
 .north-luna-moments-item-text .north-breeze-quote {
     margin: 6px 0;
@@ -2013,6 +2015,15 @@
 /* 控制设置 → 显示评论日期：关闭时（默认）隐藏评论日期，PC/移动端一致；开启后沿用悬停/点击昵称的揭示逻辑 */
 .north-luna-moments-container.moments-hide-comment-time .north-luna-moments-comment-time {
     display: none;
+}
+/* 控制设置 → 显示时分：关闭时隐藏动态时间里的「 HH:MM」，只保留年月日（默认开启，故类名默认不存在） */
+.north-luna-moments-container.moments-hide-item-time .north-luna-moments-item-time {
+    display: none;
+}
+/* 时分的间距：父级 .north-luna-moments-meta-item 是 inline-flex（gap: 2px），
+   flex 会吃掉日期与时分之间的空白节点，这里补 2px 凑出约等于一个空格的视觉间距 */
+.north-luna-moments-meta-item .north-luna-moments-item-time {
+    margin-left: 2px;
 }
 /* 编辑/删除按钮：默认隐藏，仅通过右键菜单 / 长按触发 */
 .north-luna-moments-comment-del,
@@ -9331,41 +9342,86 @@
 .north-breeze-quote > .north-breeze-task-list {
     margin: 2px 0;
 }
-.north-breeze-task-item input[type="checkbox"] {
-    margin: 0;
-    margin-top: 4px;
-    flex-shrink: 0;
-    width: 16px;
-    height: 16px;
+/* —— 任务复选框外观锁 ——
+   思源主题（如 Neo）会全局改写 input[type="checkbox"]（变圆形、加渐变、改尺寸），
+   插件样式不加防护的话，任务框长什么样就跟着主题走。
+   这里做三件事：
+   1) 选择器用「2 个类 + 属性」= .north-breeze-task-item input.north-breeze-task-checkbox[type="checkbox"]，
+      比主题常见的 input[type=checkbox] / .protyle-wysiwyg input[type=checkbox] 都更具体；
+   2) 关键属性加 !important —— 主题即使也写 !important，也会因为特异性更低而压不过本规则；
+   3) 显式重置 mask-image —— Neo 这类主题是用「圆形 SVG 遮罩」而不是 border-radius 改形状的，
+      mask 会把元素连同圆角一起裁成遮罩形状，不关掉它、圆角写了也白写（2026-09 实测踩坑）。
+   例外：朋友圈视图另有 margin-right 覆盖，见 .north-luna-moments-item-text 那组（同样带 !important）。 */
+.north-breeze-task-item input.north-breeze-task-checkbox[type="checkbox"] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    box-sizing: border-box !important;
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
+    max-width: 16px !important;
+    min-height: 16px !important;
+    max-height: 16px !important;
+    /* 主题（Neo）会给复选框单独设 align-self:center —— 它会盖掉容器的 align-items:flex-start，
+       让框相对「整行盒」居中，再叠加上面的 margin-top 就比文字低一截。
+       这里锁成 flex-start，再用与第一行行高（.north-breeze-task-item 的 line-height: 1.6）匹配的
+       外边距，让它和第一行文字垂直居中；font-size: inherit 保证 em 取的是所在文本的字号，
+       所以主题换字号时对齐也不会跑偏（多行任务时框也只跟第一行对齐，不跑到两行中间）。 */
+    align-self: flex-start !important;
+    font-size: inherit !important;
+    margin: calc((1.6em - 16px) / 2) 0 0 0 !important;
+    padding: 0 !important;
+    border: 1px solid var(--b3-border-color) !important;
+    border-radius: 4px !important;
+    background: var(--b3-theme-surface) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    flex-shrink: 0 !important;
+    /* 关键：Neo 等主题用 mask-image（圆形 SVG）把复选框裁成圆形，
+       只写 border-radius 是无效的 —— 遮罩会把元素连同圆角一起裁成 mask 的形状。
+       必须显式关掉遮罩，形状才由本插件的 border-radius 决定。 */
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    -webkit-mask-repeat: no-repeat !important;
+    mask-repeat: no-repeat !important;
+    /* 主题的入场缩放动画（transform: scale）会盖过上面的 transform:none，一并关掉 */
+    animation: none !important;
     cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-    background: var(--b3-theme-surface);
-    border: 1px solid var(--b3-border-color);
-    border-radius: 4px;
-    position: relative;
     transition: all 0.2s ease;
 }
-.north-breeze-task-item input[type="checkbox"]:checked {
-    background: var(--b3-theme-primary);
-    border-color: var(--b3-theme-primary);
+/* 主题若用 ::before 给复选框画装饰（不少主题这么干），这里直接让伪元素不生成 */
+.north-breeze-task-item input.north-breeze-task-checkbox[type="checkbox"]::before {
+    content: none !important;
+    display: none !important;
 }
-.north-breeze-task-item input[type="checkbox"]:checked::after {
-    content: '';
-    position: absolute;
-    left: 4px;
-    top: 0px;
-    width: 5px;
-    height: 9px;
-    border: solid #fff;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
+.north-breeze-task-item input.north-breeze-task-checkbox[type="checkbox"]:checked {
+    background: var(--b3-theme-primary) !important;
+    background-image: none !important;
+    border-color: var(--b3-theme-primary) !important;
+}
+.north-breeze-task-item input.north-breeze-task-checkbox[type="checkbox"]:checked::after {
+    content: '' !important;
+    display: block !important;
+    position: absolute !important;
+    left: 4px !important;
+    top: 0 !important;
+    width: 5px !important;
+    height: 9px !important;
+    border: solid #fff !important;
+    border-width: 0 2px 2px 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    transform: rotate(45deg) !important;
 }
 .north-breeze-task-item > span {
     flex: 1;
     min-width: 0;
 }
-.north-breeze-task-item input[type="checkbox"]:checked + span {
+.north-breeze-task-item input.north-breeze-task-checkbox[type="checkbox"]:checked + span {
     text-decoration: line-through;
     opacity: 0.6;
 }
@@ -10711,9 +10767,14 @@
     text-align: center; padding: 10px 8px;
 }
 .north-breeze-table-checkbox {
-    width: 16px; height: 16px;
+    /* 锁成浏览器原生复选框 + 主题色着色：主题若全局改写 checkbox（appearance:none / 圆形等），
+       这里用 !important 顶回去，保证表格里的勾选框不随主题变形 */
+    -webkit-appearance: auto !important;
+    appearance: auto !important;
+    width: 16px !important;
+    height: 16px !important;
     cursor: pointer;
-    accent-color: var(--b3-theme-primary);
+    accent-color: var(--b3-theme-primary) !important;
 }
 
 /* 行与单元格 */
