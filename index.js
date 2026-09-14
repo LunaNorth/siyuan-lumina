@@ -8625,9 +8625,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             /* 批量获取文档图标：从 blocks.ial 解析 icon（思源文档图标存在 IAL 中，如 {: icon="..." type="doc"}） */
                             let iconMap = {};
                             try {
-                                const validIds = files.map(f => String(f.id)).filter(id => /^[0-9A-Za-z\-]{1,64}$/.test(id));
+                                const validIds = files.map(f => String(f.id)).filter(id => breezeValidSqlId(id));
                                 if (validIds.length) {
-                                    const ids = validIds.map(id => `'${id}'`).join(',');
+                                    const ids = validIds.map(id => `'${breezeValidSqlId(id)}'`).join(',');
                                     const iconResp = await fetch('/api/query/sql', { method: 'POST', headers: h, body: JSON.stringify({ stmt: `SELECT id, ial FROM blocks WHERE id IN (${ids}) AND type = 'd'` }) });
                                     const iconJson = await iconResp.json().catch(() => null);
                                     (iconJson && iconJson.data || []).forEach(r => {
