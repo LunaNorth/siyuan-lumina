@@ -13018,18 +13018,27 @@ module.exports = class NorthLunaPlugin extends Plugin {
         ];
         let hasLegacy = false;
         for (const p of legacyPaths) {
-            try {
-                const resp = await fetch('/api/file/getFile', {
-                    method: 'POST', headers,
-                    body: JSON.stringify({ path: p })
-                });
-                if (!resp.ok) continue;
-                const text = await resp.text();
-                if (!text) continue;
-                try { JSON.parse(text); } catch (_) { continue; }
-                hasLegacy = true;
-                break;
-            } catch (_) { continue; }
+            const tryPaths = p.startsWith('/') ? [p] : [p, '/' + p];
+            for (const pp of tryPaths) {
+                try {
+                    const resp = await fetch('/api/file/getFile', {
+                        method: 'POST', headers,
+                        body: JSON.stringify({ path: pp })
+                    });
+                    if (!resp.ok) continue;
+                    const text = await resp.text();
+                    if (!text) continue;
+                    let json;
+                    try { json = JSON.parse(text); } catch (_) { continue; }
+                    // 部分内核对不存在的文件返回 HTTP 200 + {code,msg} 错误结构，
+                    // 只检查「JSON 可解析」会把这类错误误判为旧数据，
+                    // 导致每次启动都弹「未找到轻语数据」提示（与 _importLuminaData 的 readFile 同款判断）
+                    if (json && typeof json === 'object' && typeof json.code === 'number' && typeof json.msg === 'string') continue;
+                    hasLegacy = true;
+                    break;
+                } catch (_) { continue; }
+            }
+            if (hasLegacy) break;
         }
         if (!hasLegacy) return;
         // 标记自动导入 - 自定义导入弹窗由 _importLuminaData 内部展示
