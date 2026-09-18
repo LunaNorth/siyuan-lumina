@@ -293,6 +293,13 @@
     --moments-comment-bar-bg: var(--b3-theme-surface);
     --moments-comment-input-bg: var(--b3-theme-background);
     --moments-highlight: var(--b3-theme-primary-lighter);
+    /* 朋友圈宽度基准：「置顶条 / 返回条」通过 calc 与动态卡片严格等宽，
+       改下面这几个值即可让两者同步变化（不必再去单独调置顶条的百分比）。
+       卡片实际宽 = ratio × (body 宽 − 2×列表左右内边距) + 2×卡片左右内边距 + 2×卡片左右边框 */
+    --moments-list-pad-x: 16px;
+    --moments-item-ratio: 0.73;
+    --moments-item-pad-x: 16px;
+    --moments-item-bw: 1px;
 }
 
 .north-luna-moments-main {
@@ -867,7 +874,16 @@
     gap: 20px;
     padding: 10px 16px;
     margin: 8px auto 0;
-    width: 74%;
+    /* 与 .north-luna-moments-item 严格等宽 —— 两者基数不同，用 calc 换算：
+       ① 卡片基于「列表内容盒」（body 宽 − 列表左右内边距），置顶条基于 body 宽；
+       ② 卡片是 content-box，实际宽度还要包含它自身的内边距与边框。
+       即 73% × (body − 2×16px) + 2×16px + 2×1px */
+    width: calc(
+        var(--moments-item-ratio) * 100%
+        - var(--moments-item-ratio) * 2 * var(--moments-list-pad-x)
+        + 2 * var(--moments-item-pad-x)
+        + 2 * var(--moments-item-bw)
+    );
     box-sizing: border-box;
     background-color: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
     border-radius: 8px;
@@ -1058,7 +1074,13 @@
     align-items: center;
     padding: 10px 16px;
     margin: 8px auto 0;
-    width: 74%;
+    /* 同 .north-luna-moments-pin-strip：与动态卡片严格等宽 */
+    width: calc(
+        var(--moments-item-ratio) * 100%
+        - var(--moments-item-ratio) * 2 * var(--moments-list-pad-x)
+        + 2 * var(--moments-item-pad-x)
+        + 2 * var(--moments-item-bw)
+    );
     box-sizing: border-box;
     border-radius: 8px;
     border: var(--mom-pc-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
@@ -1097,7 +1119,7 @@
 .north-luna-moments-list {
     contain: layout style;
     background-color: var(--moments-bg);
-    padding: 16px;
+    padding: 16px var(--moments-list-pad-x);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1110,11 +1132,11 @@
     display: flex;
     position: relative;
     border-radius: 8px;
-    padding: 16px;
+    padding: var(--moments-item-pad-x);
     position: relative;
     background-color: color-mix(in srgb, var(--b3-theme-surface) 30%, transparent);
     border: var(--mom-pc-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
-    width: 73%;
+    width: calc(var(--moments-item-ratio) * 100%);
 }
 
 /* 悬停边框变色（参考轻语） */
@@ -2287,10 +2309,10 @@
 .north-luna-moments-datetime-content {
     position: relative;
     z-index: 1;
-    width: 92%;
-    max-width: 340px;
-    padding: 20px 20px 18px;
-    border-radius: 20px;
+    width: 86%;
+    max-width: 292px;
+    padding: 16px 16px 14px;
+    border-radius: 18px;
     color: var(--moments-text, var(--b3-theme-on-background));
     background: var(--moments-modal-bg, var(--b3-theme-background));
     border: 1px solid color-mix(in srgb, var(--b3-theme-on-background) 8%, transparent);
@@ -2307,24 +2329,24 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .north-luna-moments-datetime-label {
-    font-size: 18px;
-    font-weight: 700;
+    font-size: 15px;
+    font-weight: 600;
     color: var(--moments-text, var(--b3-theme-on-background));
 }
 
 .north-luna-moments-datetime-close {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent;
     border: none;
-    font-size: 18px;
+    font-size: 15px;
     line-height: 1;
     color: color-mix(in srgb, var(--moments-text, var(--b3-theme-on-background)) 55%, transparent);
     cursor: pointer;
@@ -2344,25 +2366,25 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 0 16px;
+    padding: 6px 0 10px;
 }
 
 .north-luna-moments-datetime-title {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--moments-text, var(--b3-theme-on-background));
 }
 
 .north-luna-moments-datetime-prev,
 .north-luna-moments-datetime-next {
-    width: 32px;
-    height: 32px;
+    width: 26px;
+    height: 26px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent;
     border: none;
-    font-size: 17px;
+    font-size: 15px;
     color: color-mix(in srgb, var(--moments-text, var(--b3-theme-on-background)) 55%, transparent);
     cursor: pointer;
     border-radius: 50%;
@@ -2378,10 +2400,10 @@
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     text-align: center;
-    padding: 4px 0 12px;
+    padding: 2px 0 6px;
 }
 .north-luna-moments-datetime-weekdays span {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 500;
     color: color-mix(in srgb, var(--moments-text, var(--b3-theme-on-background)) 50%, transparent);
 }
@@ -2389,7 +2411,7 @@
 .north-luna-moments-datetime-days {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 5px;
+    gap: 3px;
     text-align: center;
 }
 
@@ -2398,10 +2420,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--moments-text, var(--b3-theme-on-background));
-    border-radius: 10px;
+    border-radius: 9px;
     cursor: pointer;
     position: relative;
     transition: background 0.15s, transform 0.10s, color 0.15s;
@@ -2422,15 +2444,15 @@
     background-color: var(--moments-primary);
     color: var(--moments-on-primary, #fff);
     font-weight: 600;
-    box-shadow: 0 5px 14px color-mix(in srgb, var(--moments-primary, #2ecc71) 30%, transparent);
+    box-shadow: 0 4px 10px color-mix(in srgb, var(--moments-primary, #2ecc71) 30%, transparent);
 }
 
 .north-luna-moments-datetime-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-top: 18px;
-    padding-top: 14px;
+    margin-top: 14px;
+    padding-top: 12px;
     border-top: 1px solid color-mix(in srgb, var(--b3-theme-on-background) 10%, transparent);
     gap: 12px;
 }
@@ -2441,8 +2463,8 @@
     gap: 8px;
     flex: 1;
     min-width: 0;
-    padding: 6px 10px;
-    border-radius: 10px;
+    padding: 5px 8px;
+    border-radius: 9px;
     background: color-mix(in srgb, var(--b3-theme-on-background) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--b3-theme-on-background) 10%, transparent);
 }
@@ -2461,9 +2483,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: flex-start;
-    height: 26px;
+    height: 24px;
     padding: 0 2px;
-    font-size: 14px;
+    font-size: 13px;
     font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
     letter-spacing: 0.5px;
     color: var(--moments-text, var(--b3-theme-on-background));
@@ -2481,9 +2503,9 @@
     bottom: calc(100% + 8px);
     z-index: 10;
     display: none;
-    width: 210px;
-    padding: 10px 8px;
-    border-radius: 14px;
+    width: 136px;
+    padding: 8px 6px;
+    border-radius: 12px;
     background: var(--moments-modal-bg, var(--b3-theme-background));
     border: 1px solid color-mix(in srgb, var(--b3-theme-on-background) 12%, transparent);
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
@@ -2513,7 +2535,7 @@
 }
 .north-luna-moments-datetime-time-list {
     width: 100%;
-    height: 170px;
+    height: 150px;
     overflow-y: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -2525,11 +2547,11 @@
     display: none;
 }
 .north-luna-moments-datetime-time-item {
-    height: 30px;
+    height: 26px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 13px;
+    font-size: 12px;
     font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
     color: var(--moments-text, var(--b3-theme-on-background));
     border-radius: 6px;
@@ -2544,7 +2566,7 @@
     background-color: var(--moments-primary);
     color: var(--moments-on-primary, #fff);
     font-weight: 700;
-    box-shadow: 0 3px 8px color-mix(in srgb, var(--moments-primary, #2ecc71) 35%, transparent);
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--moments-primary, #2ecc71) 35%, transparent);
 }
 
 .north-luna-moments-datetime-actions {
@@ -2554,11 +2576,11 @@
 }
 
 .north-luna-moments-datetime-btn {
-    height: 34px;
-    padding: 0 15px;
+    height: 30px;
+    padding: 0 13px;
     border: none;
-    border-radius: 10px;
-    font-size: 14px;
+    border-radius: 9px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     font-family: inherit;
@@ -2577,10 +2599,10 @@
 .north-luna-moments-datetime-btn-confirm {
     background-color: var(--moments-primary);
     color: var(--moments-on-primary, #fff);
-    box-shadow: 0 5px 14px color-mix(in srgb, var(--moments-primary, #2ecc71) 30%, transparent);
+    box-shadow: 0 4px 10px color-mix(in srgb, var(--moments-primary, #2ecc71) 30%, transparent);
 }
 .north-luna-moments-datetime-btn-confirm:hover {
-    box-shadow: 0 7px 18px color-mix(in srgb, var(--moments-primary, #2ecc71) 40%, transparent);
+    box-shadow: 0 6px 14px color-mix(in srgb, var(--moments-primary, #2ecc71) 40%, transparent);
 }
 
 /* 互动�?*/
@@ -3653,7 +3675,7 @@
 
     /* 移动端朋友圈宽度与说说视图对�?*/
     .north-luna-moments-list {
-        padding: 12px 16px;
+        padding: 12px var(--moments-list-pad-x);
         align-items: stretch;
     }
     .north-luna-moments-item {
@@ -3661,14 +3683,16 @@
         box-sizing: border-box;
         border: var(--mom-mobile-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
     }
-    /* 移动端：置顶条与下方朋友圈卡片对齐（覆盖桌面端 74% 宽度） */
+    /* 移动端：置顶条 / 返回条与下方朋友圈卡片等宽。
+       移动端卡片是 width:100% + border-box，即「body 宽 − 列表左右内边距」；
+       而置顶条的百分比基数本就是 body 宽，因此减去同样的内边距即可严格对齐 */
     .north-luna-moments-pin-strip {
-        width: 93%;
+        width: calc(100% - 2 * var(--moments-list-pad-x));
         box-sizing: border-box;
         border: var(--mom-mobile-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
     }
     .north-luna-moments-pin-back-bar {
-        width: 93%;
+        width: calc(100% - 2 * var(--moments-list-pad-x));
         box-sizing: border-box;
         border-radius: 8px;
         border: var(--mom-mobile-item-border, 1px solid color-mix(in srgb, var(--moments-card-border) 75%, transparent));
@@ -3798,12 +3822,10 @@
     /* 移动端：点击卡片时边框变色（对标 PC :hover，同效果但用 :active） */
     .north-breeze-notes-list.breeze-hover-border .north-breeze-note-card:active {
         border-color: color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
-        box-shadow: 0 2px 10px color-mix(in srgb, var(--b3-theme-primary) 15%, transparent);
     }
     /* 移动端：点击卡片后持久显示主题色边框（:active 太短暂，用 JS .mobile-touched 类保持到点下一张或点空白处） */
     .north-breeze-notes-list.breeze-hover-border .north-breeze-note-card.mobile-touched {
         border-color: color-mix(in srgb, var(--b3-theme-primary) 55%, transparent) !important;
-        box-shadow: 0 2px 10px color-mix(in srgb, var(--b3-theme-primary) 15%, transparent) !important;
     }
     /* 移动端去除系统点击灰色高亮（iOS/Android 默认 tap 背景） */
     .north-breeze-note-card {
@@ -7982,8 +8004,8 @@
     border-color: color-mix(in srgb, var(--b3-border-color) 70%, transparent);
 }
 .north-breeze-notes-list.breeze-hover-border .north-breeze-note-card:hover {
+    /* 只变边框色，不加阴影、不做位移 —— 与朋友圈的 .moments-hover-border（纯 outline 变色）保持一致 */
     border-color: color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
-    box-shadow: 0 2px 10px color-mix(in srgb, var(--b3-theme-primary) 15%, transparent);
 }
 
 /* 紧凑模式：压缩列表内边距 / 卡片间距与内边距 / 行高，一屏显示更多动态
@@ -10674,9 +10696,20 @@
     background-color: var(--b3-theme-surface-light);
 }
 .north-breeze-table-header-checkbox {
-    width: 16px; height: 16px;
+    /* 表头「全选」框：与 .north-breeze-table-checkbox 同一套主题防护，
+       否则 Neo 下会变成"表头是圆点、表体是方块"，对不上 */
+    -webkit-appearance: auto !important;
+    appearance: auto !important;
+    width: 16px !important;
+    height: 16px !important;
     cursor: pointer;
-    accent-color: var(--b3-theme-primary);
+    accent-color: var(--b3-theme-primary) !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    -webkit-mask-repeat: no-repeat !important;
+    mask-repeat: no-repeat !important;
+    animation: none !important;
+    transform: none !important;
 }
 .north-breeze-table-toolbar-label { font-size: 13px; color: var(--b3-theme-on-surface); user-select: none; }
 
@@ -10768,13 +10801,23 @@
 }
 .north-breeze-table-checkbox {
     /* 锁成浏览器原生复选框 + 主题色着色：主题若全局改写 checkbox（appearance:none / 圆形等），
-       这里用 !important 顶回去，保证表格里的勾选框不随主题变形 */
+       这里用 !important 顶回去，保证表格里的勾选框不随主题变形。
+       ⚠️ 光写 appearance:auto 挡不住 Neo —— 它是用「圆形 SVG 遮罩」改形状的
+       （input[type=checkbox]:not(.b3-switch) { mask-image: url('data:image/svg+xml,<圆形>') }，
+       选中态还有第二个遮罩），遮罩会把原生控件连同圆角一起裁成圆形，
+       必须显式关掉 mask-image 才治本。与清风任务框同一套防护（见上方任务复选框外观锁）。 */
     -webkit-appearance: auto !important;
     appearance: auto !important;
     width: 16px !important;
     height: 16px !important;
     cursor: pointer;
     accent-color: var(--b3-theme-primary) !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    -webkit-mask-repeat: no-repeat !important;
+    mask-repeat: no-repeat !important;
+    animation: none !important;
+    transform: none !important;
 }
 
 /* 行与单元格 */

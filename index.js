@@ -754,7 +754,7 @@ function changeBreezeNoteTime(id, storage, plugin, opts) {
             <div class="north-luna-moments-datetime-body"></div>
             <div class="north-luna-moments-datetime-footer">
                 <div class="north-luna-moments-datetime-time">
-                    <svg class="icon" style="width:16px;height:16px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>
+                    <svg class="icon" style="width:15px;height:15px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>
                     <div class="north-luna-moments-datetime-time-wrapper">
                         <div class="north-luna-moments-datetime-display" data-hours="${String(selectedDate.getHours()).padStart(2, '0')}" data-minutes="${String(selectedDate.getMinutes()).padStart(2, '0')}" data-seconds="${String(selectedDate.getSeconds()).padStart(2, '0')}">${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}:${String(selectedDate.getSeconds()).padStart(2, '0')}</div>
                         <div class="north-luna-moments-datetime-time-popup">
@@ -765,10 +765,6 @@ function changeBreezeNoteTime(id, storage, plugin, opts) {
                             <div class="north-luna-moments-datetime-time-col" data-col="minutes">
                                 <div class="north-luna-moments-datetime-time-header">分</div>
                                 <div class="north-luna-moments-datetime-time-list" data-col="minutes"></div>
-                            </div>
-                            <div class="north-luna-moments-datetime-time-col" data-col="seconds">
-                                <div class="north-luna-moments-datetime-time-header">秒</div>
-                                <div class="north-luna-moments-datetime-time-list" data-col="seconds"></div>
                             </div>
                         </div>
                     </div>
@@ -917,19 +913,22 @@ function changeBreezeNoteTime(id, storage, plugin, opts) {
         const popup = picker.querySelector('.north-luna-moments-datetime-time-popup');
         if (!display || !popup) return;
 
-        const ranges = { hours: { max: 24, pad: 2 }, minutes: { max: 60, pad: 2 }, seconds: { max: 60, pad: 2 } };
+        /* 只保留 时 / 分 两列：朋友圈卡片和清风笔记的时间都只展示到"分"（formatMomentDate / fmtTime
+           都截到 HH:MM），秒在界面上根本看不到，留着这一列只会让人以为设置没完成。 */
+        const ranges = { hours: { max: 24, pad: 2 }, minutes: { max: 60, pad: 2 } };
 
         const updateDisplay = () => {
-            display.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            display.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
             display.dataset.hours = String(hours).padStart(2, '0');
             display.dataset.minutes = String(minutes).padStart(2, '0');
+            /* 秒不展示，但原值原样带着走 —— 用户只是改个时间，不该被悄悄清零 */
             display.dataset.seconds = String(seconds).padStart(2, '0');
         };
 
         const scrollToSelected = () => {
             popup.querySelectorAll('.north-luna-moments-datetime-time-list').forEach(list => {
                 const col = list.dataset.col;
-                const val = col === 'hours' ? hours : col === 'minutes' ? minutes : seconds;
+                const val = col === 'hours' ? hours : minutes;
                 const active = list.querySelector(`[data-time-value="${val}"]`);
                 if (active && list.scrollTop !== active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2) {
                     list.scrollTo({ top: active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2, behavior: 'auto' });
@@ -937,24 +936,36 @@ function changeBreezeNoteTime(id, storage, plugin, opts) {
             });
         };
 
-        const renderColumns = () => {
+        /* 构建三列滚动项 —— 只在初始化时跑一次。
+           ⚠️ 早期实现是"每次点击都 rebuild 三列 innerHTML"，踩了一个很隐蔽的雷：
+           被点的那个 item 元素当场被销毁，事件继续冒泡到 picker 上的「点击外部关闭」判断时，
+           popup.contains(e.target) 已变成 false → 弹层被误判成"点了外面"而立刻关闭，
+           于是设 时/分/秒 得分别点开三次。现在改成：DOM 只建一次，点击只切高亮 class。 */
+        const buildColumns = () => {
             popup.querySelectorAll('.north-luna-moments-datetime-time-list').forEach(list => {
                 const col = list.dataset.col;
                 const max = ranges[col].max;
-                const current = col === 'hours' ? hours : col === 'minutes' ? minutes : seconds;
                 let html = '';
                 for (let i = 0; i < max; i++) {
-                    const val = String(i).padStart(2, '0');
-                    const cls = i === current ? 'north-luna-moments-datetime-time-item selected' : 'north-luna-moments-datetime-time-item';
-                    html += `<div class="${cls}" data-time-value="${i}" data-col="${col}">${val}</div>`;
+                    html += `<div class="north-luna-moments-datetime-time-item" data-time-value="${i}" data-col="${col}">${String(i).padStart(2, '0')}</div>`;
                 }
                 list.innerHTML = html;
             });
-            setTimeout(scrollToSelected, 0);
+        };
+
+        /* 只切换选中高亮，不重建 DOM —— 既保留各列滚动位置，也不会销毁事件目标 */
+        const markSelected = () => {
+            popup.querySelectorAll('.north-luna-moments-datetime-time-item').forEach(el => {
+                const col = el.dataset.col;
+                const cur = col === 'hours' ? hours : minutes;
+                el.classList.toggle('selected', parseInt(el.dataset.timeValue) === cur);
+            });
         };
 
         updateDisplay();
-        renderColumns();
+        buildColumns();
+        markSelected();
+        setTimeout(scrollToSelected, 0);
 
         display.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -963,15 +974,17 @@ function changeBreezeNoteTime(id, storage, plugin, opts) {
         });
 
         popup.addEventListener('click', (e) => {
+            /* 阻止冒泡到 picker 的「点外部关闭」判断：即使将来这里又改回重建 DOM，
+               也不会因为事件目标被销毁而被误判成点了弹层外面 */
+            e.stopPropagation();
             const item = e.target.closest('.north-luna-moments-datetime-time-item[data-time-value]');
             if (!item) return;
             const col = item.dataset.col;
             const val = parseInt(item.dataset.timeValue);
             if (col === 'hours') hours = val;
             else if (col === 'minutes') minutes = val;
-            else if (col === 'seconds') seconds = val;
             updateDisplay();
-            renderColumns();
+            markSelected();
         });
 
         // 点击弹窗外或遮罩层关闭时间选择面板
@@ -1156,7 +1169,7 @@ function changeMomentsItemTime(mid, plugin) {
             <div class="north-luna-moments-datetime-body"></div>
             <div class="north-luna-moments-datetime-footer">
                 <div class="north-luna-moments-datetime-time">
-                    <svg class="icon" style="width:16px;height:16px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>
+                    <svg class="icon" style="width:15px;height:15px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>
                     <div class="north-luna-moments-datetime-time-wrapper">
                         <div class="north-luna-moments-datetime-display" data-hours="${String(selectedDate.getHours()).padStart(2, '0')}" data-minutes="${String(selectedDate.getMinutes()).padStart(2, '0')}" data-seconds="${String(selectedDate.getSeconds()).padStart(2, '0')}">${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}:${String(selectedDate.getSeconds()).padStart(2, '0')}</div>
                         <div class="north-luna-moments-datetime-time-popup">
@@ -1167,10 +1180,6 @@ function changeMomentsItemTime(mid, plugin) {
                             <div class="north-luna-moments-datetime-time-col" data-col="minutes">
                                 <div class="north-luna-moments-datetime-time-header">分</div>
                                 <div class="north-luna-moments-datetime-time-list" data-col="minutes"></div>
-                            </div>
-                            <div class="north-luna-moments-datetime-time-col" data-col="seconds">
-                                <div class="north-luna-moments-datetime-time-header">秒</div>
-                                <div class="north-luna-moments-datetime-time-list" data-col="seconds"></div>
                             </div>
                         </div>
                     </div>
@@ -1298,19 +1307,22 @@ function changeMomentsItemTime(mid, plugin) {
         const popup = picker.querySelector('.north-luna-moments-datetime-time-popup');
         if (!display || !popup) return;
 
-        const ranges = { hours: { max: 24, pad: 2 }, minutes: { max: 60, pad: 2 }, seconds: { max: 60, pad: 2 } };
+        /* 只保留 时 / 分 两列：朋友圈卡片和清风笔记的时间都只展示到"分"（formatMomentDate / fmtTime
+           都截到 HH:MM），秒在界面上根本看不到，留着这一列只会让人以为设置没完成。 */
+        const ranges = { hours: { max: 24, pad: 2 }, minutes: { max: 60, pad: 2 } };
 
         const updateDisplay = () => {
-            display.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            display.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
             display.dataset.hours = String(hours).padStart(2, '0');
             display.dataset.minutes = String(minutes).padStart(2, '0');
+            /* 秒不展示，但原值原样带着走 —— 用户只是改个时间，不该被悄悄清零 */
             display.dataset.seconds = String(seconds).padStart(2, '0');
         };
 
         const scrollToSelected = () => {
             popup.querySelectorAll('.north-luna-moments-datetime-time-list').forEach(list => {
                 const col = list.dataset.col;
-                const val = col === 'hours' ? hours : col === 'minutes' ? minutes : seconds;
+                const val = col === 'hours' ? hours : minutes;
                 const active = list.querySelector(`[data-time-value="${val}"]`);
                 if (active && list.scrollTop !== active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2) {
                     list.scrollTo({ top: active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2, behavior: 'auto' });
@@ -1318,24 +1330,36 @@ function changeMomentsItemTime(mid, plugin) {
             });
         };
 
-        const renderColumns = () => {
+        /* 构建三列滚动项 —— 只在初始化时跑一次。
+           ⚠️ 早期实现是"每次点击都 rebuild 三列 innerHTML"，踩了一个很隐蔽的雷：
+           被点的那个 item 元素当场被销毁，事件继续冒泡到 picker 上的「点击外部关闭」判断时，
+           popup.contains(e.target) 已变成 false → 弹层被误判成"点了外面"而立刻关闭，
+           于是设 时/分/秒 得分别点开三次。现在改成：DOM 只建一次，点击只切高亮 class。 */
+        const buildColumns = () => {
             popup.querySelectorAll('.north-luna-moments-datetime-time-list').forEach(list => {
                 const col = list.dataset.col;
                 const max = ranges[col].max;
-                const current = col === 'hours' ? hours : col === 'minutes' ? minutes : seconds;
                 let html = '';
                 for (let i = 0; i < max; i++) {
-                    const val = String(i).padStart(2, '0');
-                    const cls = i === current ? 'north-luna-moments-datetime-time-item selected' : 'north-luna-moments-datetime-time-item';
-                    html += `<div class="${cls}" data-time-value="${i}" data-col="${col}">${val}</div>`;
+                    html += `<div class="north-luna-moments-datetime-time-item" data-time-value="${i}" data-col="${col}">${String(i).padStart(2, '0')}</div>`;
                 }
                 list.innerHTML = html;
             });
-            setTimeout(scrollToSelected, 0);
+        };
+
+        /* 只切换选中高亮，不重建 DOM —— 既保留各列滚动位置，也不会销毁事件目标 */
+        const markSelected = () => {
+            popup.querySelectorAll('.north-luna-moments-datetime-time-item').forEach(el => {
+                const col = el.dataset.col;
+                const cur = col === 'hours' ? hours : minutes;
+                el.classList.toggle('selected', parseInt(el.dataset.timeValue) === cur);
+            });
         };
 
         updateDisplay();
-        renderColumns();
+        buildColumns();
+        markSelected();
+        setTimeout(scrollToSelected, 0);
 
         display.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1344,15 +1368,17 @@ function changeMomentsItemTime(mid, plugin) {
         });
 
         popup.addEventListener('click', (e) => {
+            /* 阻止冒泡到 picker 的「点外部关闭」判断：即使将来这里又改回重建 DOM，
+               也不会因为事件目标被销毁而被误判成点了弹层外面 */
+            e.stopPropagation();
             const item = e.target.closest('.north-luna-moments-datetime-time-item[data-time-value]');
             if (!item) return;
             const col = item.dataset.col;
             const val = parseInt(item.dataset.timeValue);
             if (col === 'hours') hours = val;
             else if (col === 'minutes') minutes = val;
-            else if (col === 'seconds') seconds = val;
             updateDisplay();
-            renderColumns();
+            markSelected();
         });
 
         const closePopupFn = (e) => {
@@ -20108,6 +20134,24 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
+    /* 解析朋友圈的发表时刻（毫秒时间戳）。
+       ⚠️ <input type="date"> 的值是 "YYYY-MM-DD"，直接 new Date("YYYY-MM-DD") 会按 UTC 午夜解析，
+       在 UTC+8 下就得到当天 08:00 —— 这就是"默认时间都是 8 点"的根因。
+       规则：
+       - 没指定日期、或指定的就是基准日当天 → 用真实发表时刻（基准时间本身）
+       - 指定了其它日期 → 取那天的本地 0 点起，叠加基准时间的时分秒
+         （用户只填了日期没填时间，沿用当前时分秒比强行归零 00:00 更符合直觉）
+       baseTs 可选：编辑场景传入原 created，这样"日期没动时时间也不会跳"。 */
+    _resolvePublishTs(dateStr, baseTs) {
+        const now = new Date(baseTs || Date.now());
+        const key = String(dateStr || '').trim();
+        if (!key || key === this.formatDateKey(now)) return now.getTime();
+        const m = key.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if (!m) return now.getTime();
+        return new Date(+m[1], +m[2] - 1, +m[3],
+            now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds()).getTime();
+    }
+
     /* 朋友圈动态排序：按"真实发表时刻"createdAt 倒序（后发表的永远在最前），
        与显示用的日期 created 解耦；旧数据缺 createdAt 时回退到 created，再回退到原数组顺序 */
     _sortMoments(items) {
@@ -22313,7 +22357,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 weatherInputEl.value = '';
                 moodInputEl.value = '';
                 locationEl.value = '';
-                dateEl.value = new Date().toISOString().split('T')[0];
+                /* 用本地日期，不用 toISOString()：后者取的是 UTC 日期，
+                   东八区凌晨 0:00~7:59 打开表单会被填成"昨天" */
+                dateEl.value = this.formatDateKey(new Date());
                 publishDate = dateEl.value;
                 submitBtnEl.textContent = '发表';
                 applyDraftToForm();   // 恢复上次保留的草稿（若有）
@@ -22717,11 +22763,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
             }
 
+            /* 发表时刻：默认取真实发表时刻。
+               此前是 new Date(publishDate).getTime()，而日期框的值形如 "2026-09-18"，
+               会被按 UTC 午夜解析 → 东八区显示成当天 08:00（用户反馈的"默认都是 8 点"） */
+            const publishTs = this._resolvePublishTs(publishDate);
             const momentData = {
                 text, images: finalImages, link: publishLink,
                 weather: publishWeather, mood: publishMood, category: publishCategory, location: publishLocation,
-                created: publishDate ? new Date(publishDate).getTime() : Date.now(),
-                createdAt: publishDate ? new Date(publishDate).getTime() : Date.now(), // 用户选了日期就按所选日期排序；否则按真实发表时刻
+                created: publishTs,
+                createdAt: publishTs, // 日期没改（或就是今天）→ 真实发表时刻；选了其它日期 → 那天 + 当前时分秒
                 liked: false,
                 comments: [],
                 pinned: false,
@@ -22733,6 +22783,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const orig = this.data[MOMENTS_STORAGE].items[idx];
                     // 编辑时保留首次发表时刻，不抢占置顶
                     momentData.createdAt = orig.createdAt || orig.created || Date.now();
+                    /* 编辑不该改动原发表时刻（只改了文字/图片，时间不能跳）：
+                       日期没动 → 原样保留；用户手动换了日期 → 只挪日期，时分秒沿用原值 */
+                    momentData.created = this._resolvePublishTs(publishDate, orig.created || orig.createdAt);
                     // 保留点赞状态、已有评论、置顶状态
                     momentData.liked = orig.liked || false;
                     momentData.comments = orig.comments || [];
