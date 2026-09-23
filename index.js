@@ -143,6 +143,17 @@ function breezeFormatTitleDate(timeStr) {
     const min = String(d.getMinutes()).padStart(2, '0');
     return y + '年' + m + '月' + day + '日 ' + w + ' ' + h + ':' + min;
 }
+/* 列表卡片上的时间显示：统一成 "YYYY-MM-DD HH:mm"（精确到分，不显示秒）。
+   历史数据里 note.time 有两种写法 —— 新建时写 "YYYY-MM-DD HH:mm"，
+   后来在时间选择器里改过时间的会写成 "YYYY-MM-DD HH:mm:ss"（带秒），
+   直接输出原始值就会出现"有的带秒、有的不带秒"的参差。渲染前统一裁到分。
+   非 "YYYY-MM-DD HH:mm*" 形态的值原样返回，避免吞掉异常数据。 */
+function breezeFormatCardTime(timeStr) {
+    if (timeStr == null || timeStr === '') return '';
+    const s = String(timeStr).trim();
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+    return m ? m[1] + ' ' + m[2] : s;
+}
 /* 文件扩展名 → 徽章背景色（与轻语 _fileExtColor 同源配色表） */
 function breezeFileExtColor(ext) {
     const colors = {
@@ -1075,8 +1086,8 @@ function changeBreezeNoteTags(id, storage, plugin, opts) {
         const t = (input.value || '').trim().replace(/^#+/, '');
         if (!t) return;
         /* 字符集与 breezeExtractTags 保持一致，避免写入后无法被识别为标签 */
-        if (!/^[\w一-龥\/-]+$/.test(t)) {
-            if (typeof showMessage === 'function') showMessage('标签仅支持中英文、数字、下划线、连字符与 /');
+        if (!BREEZE_TAG_VALID_RE.test(t)) {
+            if (typeof showMessage === 'function') showMessage('标签仅支持文字、数字、下划线、连字符与 / 分隔');
             return;
         }
         if (selected.has(t)) { input.value = ''; return; }
@@ -1453,12 +1464,36 @@ function addBreezeNoteToMoments(id, storage, plugin) {
     }
 }
 
+/* ===== 标签字符集（全插件统一口径）=====
+   [历史问题] 旧实现各处写死 [\w\/一-龥-]，其中「一-龥」只覆盖 CJK 基本汉字
+   （U+4E00-U+9FA5），日文假名（U+3040-U+30FF）与韩文谚文都不在范围内。
+   结果：#じぶん 这类日文标签既无法被识别为标签，也参与不了重命名 / 删除的边界匹配；
+   在「全部标签」面板里把它改名成日文后，会直接从列表里消失。
+   现统一为：英文字母 / 数字 / 下划线 / 连字符 / 斜杠（多级标签分隔）
+   + CJK 汉字（含扩展 A 与兼容区）+ 日文平假名 / 片假名 / 半角片假名
+   + 日文叠字符号（々〆〤）+ 韩文谚文。 */
+const BREEZE_TAG_CHARS = 'A-Za-z0-9_\\-\\/\\u3005-\\u3007\\u3040-\\u309F\\u30A0-\\u30FF\\uFF66-\\uFF9F\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\uAC00-\\uD7AF\\u1100-\\u11FF';
+/* 标签结束边界：空白 / 行尾 / 全角标点（含日文「」『』）。
+   注意：这里刻意不收半角 , . ! ? ; : —— 旧实现就没收，
+   否则 CSS 里的 color:#0066cc、URL 片段等会被误判成标签（见 breezeRenderContent 前的高亮正则）。 */
+const BREEZE_TAG_END = '\\s|$|[，。！？；：、·…—～「」『』〈〉《》〔〕［］｛｝]';
+/* 标签名整体（含量词 +），供 new RegExp 字符串拼接使用 */
+const BREEZE_TAG_NAME = '[' + BREEZE_TAG_CHARS + ']+';
+/* 多级标签的子路径片段（/子/孙…）：删除父标签时整段吃掉，避免残留半截标签 */
+const BREEZE_TAG_SUBPATH = '(?:\\/[' + BREEZE_TAG_CHARS + ']+)*';
+/* 标签名校验（新建标签时用）：只允许标签字符，禁止空格与其它符号 */
+const BREEZE_TAG_VALID_RE = new RegExp('^[' + BREEZE_TAG_CHARS + ']+$');
+/* 提取标签用的全局正则：每次新建，避免共享正则对象的 lastIndex 状态互相污染 */
+function breezeTagRegex() {
+    return new RegExp('#(' + BREEZE_TAG_NAME + ')(?=' + BREEZE_TAG_END + ')', 'g');
+}
+
 /* 提取笔记正文中的 #标签（与轻语 extractTags 同源）：只匹配开头 #，后面跟着
-   中英文字符 / 数字 / 下划线 / 斜杠 / 连字符；后接空白 / 换行 / 字符串结束 / 中文标点；
-   负向先行 (?!#) 排除 #A#B 这种环绕写法；支持多级标签 父/子 用 / 分隔 */
+   标签字符（见 BREEZE_TAG_CHARS，含中英日韩文字）；后接空白 / 换行 / 字符串结束 / 标点；
+   支持多级标签 父/子 用 / 分隔 */
 function breezeExtractTags(content) {
     if (!content) return [];
-    const tagRegex = /#([\w\/一-龥-]+)(?=\s|\n|$|[，。！？；：""''（）【】])/g;
+    const tagRegex = breezeTagRegex();
     const tags = [];
     let m;
     while ((m = tagRegex.exec(content)) !== null) {
@@ -1466,6 +1501,13 @@ function breezeExtractTags(content) {
         if (t) tags.push(t);
     }
     return [...new Set(tags)];
+}
+
+/* 清风「有评论」判定（侧边栏内置检索 / 移动端「更多条件」筛选用）：
+   清风笔记的评论存在 note.comments 数组（见评论面板 breezeRenderCommentPanel）；
+   删除评论走 filter 摘除，不会残留空壳，所以「数组非空」即「有评论」。 */
+function breezeNoteHasComment(note) {
+    return !!(note && Array.isArray(note.comments) && note.comments.length > 0);
 }
 
 /* 清风「有语音」判定（移动端搜索"更多条件"筛选用）：
@@ -2423,11 +2465,12 @@ function renderBreezeTable(tab) {
 
     /* 行 */
     let rows = '';
+    /* 正文预览里剔除 #标签：与 breezeExtractTags 同一套字符集（含日文），循环外构建一次复用 */
+    const tagStripRe = breezeTagRegex();
     sorted.forEach(note => {
         const time = note.time || '';
         const updated = note.updated || time;
         const tags = breezeExtractTags(note.content || '');
-        const tagStripRe = /#([\w\/一-龥-]+)(?=\s|\n|$|[，。！？；：""''（）【】])/g;
         const content = (note.content || '').replace(/<[^>]*>/g, '').replace(tagStripRe, '').replace(/\s+/g, ' ').trim();
         const displayContent = content.length > 60 ? content.slice(0, 60) + '…' : content;
         const checked = tab._tableChecked.has(note.id);
@@ -3047,8 +3090,10 @@ function breezeRenderTextWithTags(raw, q) {
     }
 
     /* 行内格式 + #标签 高亮：先 escape（含搜索词高亮），再行内 markdown，再 #标签。
-       #标签加后行断言 (?<![:="\'\w])：排除紧跟在 :=" 或字母数字之后的 #（如 style="color:#0066cc" 里的 #hex），避免误匹配成标签 */
-    const renderInline = (s) => breezeInlineFormat(breezeHighlightText(s, q)).replace(/(?<![:="\'\w])#([\w\/一-龥-]+)(?![\w\/一-龥-])(?!#)/g, (m) => `<span class="north-breeze-tag">${m}</span>`);
+       #标签加后行断言 (?<![:="\'\w])：排除紧跟在 :=" 或字母数字之后的 #（如 style="color:#0066cc" 里的 #hex），避免误匹配成标签。
+       字符集改用统一的 BREEZE_TAG_CHARS，日文/韩文标签同样能高亮 */
+    const tagInlineRe = new RegExp('(?<![:="\'\\w])#(' + BREEZE_TAG_NAME + ')(?![' + BREEZE_TAG_CHARS + '])(?!#)', 'g');
+    const renderInline = (s) => breezeInlineFormat(breezeHighlightText(s, q)).replace(tagInlineRe, (m) => `<span class="north-breeze-tag">${m}</span>`);
     let html = '';
     segments.forEach((seg, idx) => {
         /* 还原段与段之间的空行：N 个空行 → N+1 个 <br>（1 个结束上一行，其余为空白行）。
@@ -3589,7 +3634,7 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
         const label = (footerLabel || '月亮');
         const sig = (footerSignature || '').trim();
         const labelHtml = sig ? breezeEsc(label) + ' <span style="opacity:0.55;margin:0 2px;">|</span> ' + breezeEsc(sig) : breezeEsc(label);
-        const dateStr = hasTitle ? breezeFormatTitleDate(it.time) : (dateBottomEnabled ? breezeFormatTitleDate(it.time) : breezeEsc(it.time));
+        const dateStr = hasTitle ? breezeFormatTitleDate(it.time) : (dateBottomEnabled ? breezeFormatTitleDate(it.time) : breezeEsc(breezeFormatCardTime(it.time)));
         const footerHtml = '<div class="north-breeze-footer-bar">' +
             '<div class="north-breeze-footer-bar-left">' +
             '<svg class="north-breeze-footer-bar-icon"><use xlink:href="#iconSpreadEven"></use></svg>' +
@@ -3640,7 +3685,7 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
     /* 无标题：日期在顶部；根据设置决定日期格式 */
     return '<div class="north-breeze-note-card" data-id="' + breezeEsc(it.id) + '">' +
         '<div class="north-breeze-note-header">' +
-        '<span class="north-breeze-note-date">' + (dateBottomEnabled ? breezeFormatTitleDate(it.time) : breezeEsc(it.time)) + '</span>' +
+        '<span class="north-breeze-note-date">' + (dateBottomEnabled ? breezeFormatTitleDate(it.time) : breezeEsc(breezeFormatCardTime(it.time))) + '</span>' +
         (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>置顶</span>' : '') +
         '<div class="north-breeze-note-actions">' +
         '<span class="north-breeze-note-menu" data-id="' + breezeEsc(it.id) + '">' + moreSvg + '</span>' +
@@ -3762,6 +3807,12 @@ const SIDEBAR_VIEWS = [
                                     <svg viewBox="0 0 24 24"><use xlink:href="#iconTag"></use></svg>
                                 </span>
                                 <span>无标签</span>
+                            </div>
+                            <div class="north-breeze-quick-filter-item" data-breeze-quick="has-comment">
+                                <span class="north-breeze-quick-filter-icon">
+                                    <svg viewBox="0 0 24 24"><use xlink:href="#iconMark"></use></svg>
+                                </span>
+                                <span>有评论</span>
                             </div>
                             <div class="north-breeze-quick-filter-item" data-breeze-quick="has-image">
                                 <span class="north-breeze-quick-filter-icon">
@@ -4476,7 +4527,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                     // 更新笔记内容：替换 #旧名（含子路径）
                     const escapedOld = oldFullTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const regex = new RegExp(`#${escapedOld}(?=[\\s\\n\\/\一-\龥　-〿＀-￯，。！？；：""''（）【】]|$)`, 'g');
+                    /* 边界改用统一字符集 BREEZE_TAG_END（含日文假名），并额外允许 / ——
+                       旧标签若还是某条更长路径的前缀（内容里写着 #父/子/孙、重命名的却是 #父/子），
+                       其后跟的 / 仍是合法的子路径分隔符，不能被漏掉 */
+                    const regex = new RegExp('#(?:' + escapedOld + ')(?=' + BREEZE_TAG_END + '|\\/)', 'g');
                     notes.forEach(n => {
                         n.content = n.content.replace(regex, '#' + newFullTag);
                     });
@@ -4491,7 +4545,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                 /* 删除标签：清理 tagMeta + 从所有笔记中移除该标签
                    支持多级标签：删除父标签时同时清理所有子路径文本（#父 以及 #父/子/孙 整段一并移除）。
-                   正则用 (\/[\w一-龥-]+)* 贪婪匹配所有子路径——
+                   正则用 BREEZE_TAG_SUBPATH 贪婪匹配所有子路径（字符集含日文假名）——
                    不能用前瞻判断 / ：前瞻是零宽断言不消耗字符，会导致 #父 匹配后 /子/孙 残留。 */
                 this._deleteBreezeTag = (fullTag) => {
                     const data = this.plugin.data[RECORDS_STORAGE] || {};
@@ -4507,9 +4561,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
 
                     // 2) 从笔记中移除 #fullTag 自身及所有 #fullTag/子/孙... 整段文本
-                    //    (\/[\w一-龥-]+)* 贪婪吃掉所有 /子路径，避免残留 /孙
+                    //    BREEZE_TAG_SUBPATH 贪婪吃掉所有 /子路径，避免残留 /孙；
+                    //    字符集与 breezeExtractTags 同源（含日文假名），日文父标签也能整段删除
                     const escapedTag = fullTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const regex = new RegExp(`\\s*#${escapedTag}(\\/[\\w\一-\龥-]+)*(?=[\\s\\n\一-\龥　-〿＀-￯，。！？；：""''（）【】]|$)`, 'g');
+                    const regex = new RegExp('\\s*#(?:' + escapedTag + ')' + BREEZE_TAG_SUBPATH + '(?=' + BREEZE_TAG_END + ')', 'g');
                     notes.forEach(n => {
                         n.content = n.content.replace(regex, '').trim();
                     });
@@ -6352,7 +6407,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this.breezeTagFilter = null; // 当前选中的标签全路径（null = 全部）
                 this.breezeSearchFilter = ''; // 当前搜索关键词（'' = 不过滤）
                 this.breezePage = 1; // 分页当前页码（分页关闭时无意义）
-                this.breezeQuickFilter = null; // 快速筛选：'no-tag' | 'has-image' | 'no-image' | 'has-link' | 'has-task' | 'archived' | null
+                this.breezeQuickFilter = null; // 快速筛选：'no-tag' | 'has-comment' | 'has-image' | 'no-image' | 'has-link' | 'has-task' | 'archived' | null
                 this.breezeQuickFilterExpanded = false; // 子菜单是否展开
                 this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncNotebookId: '', syncDocId: '', flomoSyncedSlugs: [] };
                 // 从存储中读回 Flomo 配置
@@ -6645,11 +6700,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (this.breezeSearchFilter) {
                         notes = notes.filter(n => breezeMatchSearch(n, this.breezeSearchFilter));
                     }
-                    /* 快速筛选（仅在「全部笔记」子视图生效）：无标签 / 有图片 / 无图片 / 有链接 / 有任务 */
+                    /* 快速筛选（仅在「全部笔记」子视图生效）：无标签 / 有评论 / 有图片 / 无图片 / 有链接 / 有任务 */
                     if (this.breezeQuickFilter && this.breezeSubView === 'all') {
                         const kind = this.breezeQuickFilter;
                         if (kind === 'no-tag') {
                             notes = notes.filter(n => breezeExtractTags(n.content || '').length === 0);
+                        } else if (kind === 'has-comment') {
+                            notes = notes.filter(n => breezeNoteHasComment(n));
                         } else if (kind === 'has-image') {
                             notes = notes.filter(n => (n.images || []).length > 0);
                         } else if (kind === 'no-image') {
@@ -7475,7 +7532,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'slider', key: 'breezeLetterSpacing', title: '字间距', desc: '字间距，默认 0。单位 px，数值越大字越分散', default: 0, min: 0, max: 3, step: 0.1 }
                         ]},
                         { title: '控制设置', items: [
-                            { type: 'toggle', key: 'breezeQuickFilterEnabled', title: '内置检索', desc: '开启后，「全部笔记」右侧出现箭头，点击展开快速筛选（无标签/有图片/无图片/有链接/有任务/已归档）。默认关闭。', default: false },
+                            { type: 'toggle', key: 'breezeQuickFilterEnabled', title: '内置检索', desc: '开启后，「全部笔记」右侧出现箭头，点击展开快速筛选（无标签/有评论/有图片/无图片/有链接/有任务/已归档）。默认关闭。', default: false },
                             { type: 'toggle', key: 'breezeScrollDamping', title: '滚动阻尼', desc: '开启后页面滚动更加丝滑，滚轮停止后内容还会惯性滑行一小段。', default: false },
                             { type: 'toggle', key: 'breezePaginationEnabled', title: '笔记分页', desc: '开启后，清风全部笔记视图将按设定条数分页，底部显示页码导航。默认关闭。', default: false },
                             { type: 'slider', key: 'breezePageSize', title: '每页笔记条数', desc: '分页开启时生效，决定每页显示的笔记数量。', default: 20, min: 10, max: 50, step: 2 },
@@ -11029,7 +11086,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         content = content.replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n').replace(/^\s+|\s+$/g, '').replace(/(\S)[ \t]{2,}/g, '$1 ');
                         /* 标签去重：从正文中已存在的 #标签 不重复追加（参考轻语 _saveFlomoMemosToShuoshuo） */
                         const existingTags = new Set();
-                        const tagRe = /#([\w\/一-龥-]+)(?![\w\/一-龥-])(?!#)/g;
+                        const tagRe = new RegExp('#(' + BREEZE_TAG_NAME + ')(?![' + BREEZE_TAG_CHARS + '])(?!#)', 'g');
                         let tm;
                         while ((tm = tagRe.exec(content)) !== null) { if (!/^\d+$/.test(tm[1])) existingTags.add(tm[1]); }
                         const uniqueTags = (m.tags || []).filter(t => !existingTags.has(t));
@@ -15551,6 +15608,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const kind = plugin._mobileBreezeQuickFilter;
                         if (kind === 'no-tag') {
                             notes = notes.filter(n => breezeExtractTags(n.content || '').length === 0);
+                        } else if (kind === 'has-comment') {
+                            notes = notes.filter(n => breezeNoteHasComment(n));
                         } else if (kind === 'has-image') {
                             notes = notes.filter(n => (n.images || []).length > 0);
                         } else if (kind === 'no-image') {
@@ -15566,7 +15625,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         }
                     }
                     /* 更多条件（Flomo 式搜索筛选，多选叠加，仅「全部笔记」子视图生效）：
-                       与侧边栏内置检索同款选项（无标签/有图片/无图片/有链接/有任务/已归档）。
+                       与侧边栏内置检索同款选项（无标签/有评论/有图片/无图片/有链接/有任务/已归档）。
                        已归档在起始集合处已切换为归档笔记，这里再叠加其余条件。 */
                     const quickFilterSet = plugin._mobileBreezeQuickFilterSet;
                     if (quickFilterSet && (ctx._mobileBreezeSubView || 'all') === 'all') {
@@ -15574,6 +15633,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         kinds.forEach(kind => {
                             if (kind === 'no-tag') {
                                 notes = notes.filter(n => breezeExtractTags(n.content || '').length === 0);
+                            } else if (kind === 'has-comment') {
+                                notes = notes.filter(n => breezeNoteHasComment(n));
                             } else if (kind === 'has-image') {
                                 notes = notes.filter(n => (n.images || []).length > 0);
                             } else if (kind === 'no-image') {
@@ -15868,7 +15929,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             plugin._mobileToggleBreezeQuickFilter(ctx);
                             return;
                         }
-                        /* 2. 快速筛选项（无标签/有图片/无图片/有链接/有任务）→ 应用筛选，不切换子视图、不关闭抽屉 */
+                        /* 2. 快速筛选项（无标签/有评论/有图片/无图片/有链接/有任务）→ 应用筛选，不切换子视图、不关闭抽屉 */
                         const quickItem = ev.target.closest('.north-breeze-quick-filter-item');
                         if (quickItem) {
                             ev.stopPropagation();
@@ -16153,7 +16214,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
        状态挂 plugin（跨渲染保持），由移动端清风列表过滤管线消费：
        - _mobileBreezeDateRange      { start:'YYYY-MM-DD', end:'YYYY-MM-DD' } | null
        - _mobileBreezeTagScope       { mode:'none'|'include'|'exclude', tags:[...] } | null（all 即 null）
-       - _mobileBreezeQuickFilterSet { has-image/has-link/has-voice: true } | null（与侧边栏内置检索单选互斥） */
+       - _mobileBreezeQuickFilterSet { 'no-tag' / 'has-comment' / 'has-image' / 'no-image' / 'has-link' / 'has-task': true } | null（与侧边栏内置检索单选互斥） */
     _breezeFmtISO(d) {
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
@@ -16197,7 +16258,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const qs = this._mobileBreezeQuickFilterSet;
             const kinds = qs ? Object.keys(qs).filter(k => qs[k]) : [];
             moreChip.classList.toggle('active', kinds.length > 0);
-            const names = { 'no-tag': '无标签', 'has-image': '图片', 'no-image': '无图片', 'has-link': '链接', 'has-task': '任务', 'archived': '归档' };
+            const names = { 'no-tag': '无标签', 'has-comment': '评论', 'has-image': '图片', 'no-image': '无图片', 'has-link': '链接', 'has-task': '任务', 'archived': '归档' };
             moreChip.querySelector('.chip-label').textContent = kinds.length ? '检索·' + kinds.map(k => names[k] || k).join('+') : '检索';
         }
     }
@@ -16251,6 +16312,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             '</button>';
         return '<div class="north-breeze-sheet-more">' +
             row('no-tag', '无标签') +
+            row('has-comment', '有评论') +
             row('has-image', '有图片') +
             row('no-image', '无图片') +
             row('has-link', '有链接') +
