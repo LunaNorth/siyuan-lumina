@@ -348,13 +348,13 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                 // 删除笔记并清理对应资源文件（带确认提示）
                 if (note) {
                     const doDelete = () => {
-                        // 清理图片
+                        /* 清理图片（仍被朋友圈动态引用的资源保留，见 _isMediaUsedByMoments） */
                         (note.images || []).forEach(img => {
-                            if (plugin && plugin.deletePluginImage) plugin.deletePluginImage(img);
+                            if (plugin && plugin.deletePluginImage && !plugin._isMediaUsedByMoments(img)) plugin.deletePluginImage(img);
                         });
                         // 清理文件
                         (note.files || []).forEach(f => {
-                            if (plugin && plugin.deletePluginImage && f.path) plugin.deletePluginImage(f.path);
+                            if (plugin && plugin.deletePluginImage && f.path && !plugin._isMediaUsedByMoments(f.path)) plugin.deletePluginImage(f.path);
                         });
                         // 从数组中移除
                         const notes = ((storage || {}).breezeNotes) || [];
@@ -460,11 +460,8 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                             plugin._renderGalleryView(_galleryBody);
                         }
                     } catch (e) { /* noop */ }
-                    /* 朋友圈（Moments）联动刷新：来自已归档笔记的「添加到朋友圈」动态随之隐藏（附带增强） */
-                    try {
-                        const _momentsBody = document.querySelector('.north-luna-moments-container');
-                        if (_momentsBody && plugin.refreshMomentsList) plugin.refreshMomentsList(_momentsBody);
-                    } catch (e) { /* noop */ }
+                    /* 朋友圈（Moments）不再联动：动态自建立起就是独立记录，
+                       归档来源笔记不会让它消失（此处原先的联动刷新已移除） */
                     /* 自检兜底：若归档后列表 DOM 里仍能找到这条笔记（局部刷新因任何原因未生效），
                        强制整体重建对应视图，确保「已归档 = 立即从界面消失」，而不是切走再切回才消失 */
                     try {
@@ -1403,9 +1400,12 @@ function changeMomentsItemTime(mid, plugin) {
     })(picker, selectedDate);
 }
 
-/* 添加到朋友圈（复刻轻语 addShuoshuoToMoments：把一条清风笔记转成朋友圈动态）。
+/* 添加到朋友圈（把一条清风笔记转成朋友圈动态）。
+   语义 = 「迁移」：动态落盘后这条说说即从清风列表移出，且从此与清风笔记完全解耦 ——
+   之后在清风侧删除 / 归档这条笔记，都不再影响这条朋友圈动态（动态是独立的一条记录）。
    清风笔记的图片/文件存于插件私有目录 data/storage/petal/siyuan-lumina/，与朋友圈同目录，
-   路径可直接复用到 moment.images，无需镜像到 assets；moment 渲染走 _renderMediaItem 支持任意类型。 */
+   路径可直接复用到 moment.images，无需镜像到 assets；moment 渲染走 _renderMediaItem 支持任意类型。
+   注意：移出清风时只摘记录、**不删资源文件** —— 资源已随 moment.images 迁给朋友圈动态。 */
 function addBreezeNoteToMoments(id, storage, plugin) {
     const notes = ((storage || {}).breezeNotes) || [];
     const note = notes.find((n) => n.id === id);
@@ -1435,7 +1435,6 @@ function addBreezeNoteToMoments(id, storage, plugin) {
 
     const momentData = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        sourceNoteId: id, // 记录来源清风笔记 id，用于归档联动：原笔记归档后本动态在明月视图隐藏
         text: text,
         images: images,
         link: link,
@@ -1451,10 +1450,29 @@ function addBreezeNoteToMoments(id, storage, plugin) {
     plugin.data[MOMENTS_STORAGE].items.unshift(momentData);
 
     const finish = () => {
-        showMessage('已添加到朋友圈');
-        // 若当前正在朋友圈视图（DOM 中存在列表），刷新显示
-        if (document.querySelector('#momentsList') && plugin._siyuTab && typeof plugin._siyuTab.render === 'function') {
-            plugin._siyuTab.render();
+        /* 迁移：从清风记录里摘掉这条说说（保留图片/文件，资源已归朋友圈动态所有） */
+        storage.breezeNotes = ((storage || {}).breezeNotes || []).filter((n) => n.id !== id);
+        const done = () => {
+            showMessage('已添加到朋友圈');
+            /* 「关闭这条说说」：若这条正被加载进输入框编辑，一并退出编辑态 */
+            try {
+                [plugin._siyuTab, plugin._lunaDockCtx].forEach((t) => {
+                    if (t && t._editingNoteId === id && typeof t._cancelEdit === 'function') t._cancelEdit();
+                });
+            } catch (e) { /* noop */ }
+            /* 清风侧：列表 + 热力图 + 标签计数 + Dock 侧栏一起刷新，让这条说说立即消失 */
+            try { if (plugin._refreshActiveBreezeView) plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
+            try { if (plugin._refreshActiveBreezeView) plugin._refreshActiveBreezeView(plugin._lunaDockCtx); } catch (e) { /* noop */ }
+            try { if (plugin._refreshBreezeDockList) plugin._refreshBreezeDockList(); } catch (e) { /* noop */ }
+            /* 朋友圈侧：失效视图 DOM 缓存 + 正在显示的朋友圈立即重渲染。
+               此前只在「当前 DOM 里已存在 #momentsList」时才刷新，而本操作发生在清风视图下，
+               缓存里的朋友圈旧 DOM 会在切回时被 re-attach，表现为「要重启插件才看得到新动态」 */
+            try { if (plugin._refreshMomentsViews) plugin._refreshMomentsViews(); } catch (e) { /* noop */ }
+        };
+        if (plugin.saveData) {
+            plugin.saveData(RECORDS_STORAGE, storage).then(done).catch(done);
+        } else {
+            done();
         }
     };
     if (plugin.saveMoments) {
@@ -4345,9 +4363,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const doDelete = () => {
                                 const s = this.plugin.data[RECORDS_STORAGE] || {};
                                 if (!s.breezeNotes) return;
-                                // 清理该笔记关联的资源（图片/视频/文件）
-                                (note.images || []).forEach(img => { if (this.plugin.deletePluginImage) this.plugin.deletePluginImage(img); });
-                                (note.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path) this.plugin.deletePluginImage(f.path); });
+                                // 清理该笔记关联的资源（图片/视频/文件；仍被朋友圈动态引用的保留）
+                                (note.images || []).forEach(img => { if (this.plugin.deletePluginImage && !this.plugin._isMediaUsedByMoments(img)) this.plugin.deletePluginImage(img); });
+                                (note.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path && !this.plugin._isMediaUsedByMoments(f.path)) this.plugin.deletePluginImage(f.path); });
                                 s.breezeNotes = s.breezeNotes.filter(n => n.id !== note.id);
                                 this.plugin.data[RECORDS_STORAGE] = s;
                                 this.plugin.saveData(RECORDS_STORAGE, s);
@@ -4599,9 +4617,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const tags = breezeExtractTags(n.content || '');
                         const shouldDelete = tags.some(t => t === fullTag || t.startsWith(prefix));
                         if (shouldDelete) {
-                            // 清理被删除笔记关联的资源（图片/视频/文件）
-                            (n.images || []).forEach(img => { if (this.plugin.deletePluginImage) this.plugin.deletePluginImage(img); });
-                            (n.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path) this.plugin.deletePluginImage(f.path); });
+                            // 清理被删除笔记关联的资源（图片/视频/文件；仍被朋友圈动态引用的保留）
+                            (n.images || []).forEach(img => { if (this.plugin.deletePluginImage && !this.plugin._isMediaUsedByMoments(img)) this.plugin.deletePluginImage(img); });
+                            (n.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path && !this.plugin._isMediaUsedByMoments(f.path)) this.plugin.deletePluginImage(f.path); });
                         } else {
                             remaining.push(n);
                         }
@@ -4879,9 +4897,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const s = this.plugin.data[RECORDS_STORAGE] || {};
                     const note = (s.breezeNotes || []).find(n => n.id === id);
                     if (!note) return;
-                    // 清理该笔记关联的资源（图片/视频/文件）
-                    (note.images || []).forEach(img => { if (this.plugin.deletePluginImage) this.plugin.deletePluginImage(img); });
-                    (note.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path) this.plugin.deletePluginImage(f.path); });
+                    // 清理该笔记关联的资源（图片/视频/文件；仍被朋友圈动态引用的保留）
+                    (note.images || []).forEach(img => { if (this.plugin.deletePluginImage && !this.plugin._isMediaUsedByMoments(img)) this.plugin.deletePluginImage(img); });
+                    (note.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path && !this.plugin._isMediaUsedByMoments(f.path)) this.plugin.deletePluginImage(f.path); });
                     s.breezeNotes = (s.breezeNotes || []).filter(n => n.id !== id);
                     this.plugin.data[RECORDS_STORAGE] = s;
                     this.plugin.saveData(RECORDS_STORAGE, s);
@@ -7172,13 +7190,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     });
                     // 朋友圈中的图片/视频（根据设置决定是否收集）
                     if (!plugin._getPluginSetting('galleryHideMoments')) {
+                        /* 按 src 去重：同一张图可能同时被清风笔记与朋友圈动态引用（历史数据），
+                           不去重会在明月里出现同一张图两张卡片 */
+                        const _srcSeen = new Set(items.map(i => i.src));
                         moments.forEach(m => {
-                            // 来源笔记已归档的朋友圈动态，其图片同样不在明月视图展示（与清风归档联动）
-                            if (m.sourceNoteId) {
-                                const _srcNote = notes.find(n => n.id === m.sourceNoteId);
-                                if (_srcNote && _srcNote.archived) return;
-                            }
                             (m.images || []).forEach(img => {
+                                if (_srcSeen.has(img)) return;
+                                _srcSeen.add(img);
                                 const kind = plugin._fileKindFromName(img);
                                 items.push({ id: m.id, type: kind === 'video' ? 'video' : 'image', src: img, created: m.createdAt || m.created, text: m.text || '', tags: [], source: 'moments' });
                             });
@@ -7629,7 +7647,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'momentsShowCommentTime', title: '显示评论日期', desc: '开启后评论的日期/时间才显示：PC 端为鼠标悬停该条评论时显示，移动端为点击昵称弹出菜单时显示；关闭后（默认）评论始终不显示日期。PC 与移动端同时生效。', default: false },
                             { type: 'toggle', key: 'momentsShowTime', title: '显示时分', desc: '开启后朋友圈动态的时间显示到分钟（如「2026年9月12日 20:59」）；关闭后只显示到年月日。默认开启，PC 与移动端同时生效。', default: true },
                             { type: 'toggle', key: 'autoSyncMoments', title: '自动同步思源笔记文档', desc: '开启后，发布朋友圈动态时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
-                            { type: 'toggle', key: 'galleryHideMoments', title: '在明月中隐藏朋友圈资源', desc: '开启后，朋友圈中添加的图片/视频/文件不会出现在明月（拾光）视图中。默认关闭。', default: false },
+                            { type: 'toggle', key: 'galleryHideMoments', title: '在明月中隐藏朋友圈资源', desc: '开启后，朋友圈中添加的图片/视频/文件不会出现在明月（拾光）视图中。默认开启。', default: true },
                             { type: 'select', key: 'momentsLongNoteCollapse', title: '长笔记自动折叠', desc: '超过设定行数的朋友圈动态会自动折叠，底部显示展开按钮。图片始终完整显示，只折叠文字部分。', default: 'never', options: [
                                 { value: 'never', label: '永不折叠' },
                                 { value: '4', label: '4 行' },
@@ -14028,17 +14046,32 @@ module.exports = class NorthLunaPlugin extends Plugin {
         } catch (e) { /* noop */ }
     }
 
-    /* 重渲染正在显示的朋友圈视图（PC 标签页 / 移动端 Dock）；当前不是朋友圈视图则不动 */
+    /* 重渲染正在显示的朋友圈视图（PC 标签页 / 移动端 Dock）；当前不是朋友圈视图则只失效缓存。
+       关键：无论当前是否显示朋友圈，都要先失效 globe 视图的 DOM 缓存 ——
+       切换视图时 renderMain 会把当前视图 DOM detach 进 _viewDomCache，
+       若数据变了却没失效缓存，切回朋友圈会 re-attach 旧 DOM，
+       表现为「新增/删除动态后要重启插件才看得到」。 */
     _refreshMomentsViews() {
+        const ctxs = [this._siyuTab, this._lunaDockCtx];
+        ctxs.forEach((ctx) => { if (ctx && ctx._viewDomCache) delete ctx._viewDomCache.globe; });
+        let rendered = false;
         const refresh = (ctx) => {
             if (!ctx || !ctx.container) return;
             const view = SIDEBAR_VIEWS.find(v => v.id === ctx.activeViewId);
             if (!view || !view.isMoments) return;
             const body = ctx.container.querySelector('.north-luna-main-body');
-            if (body) { try { this.renderMoments(body); } catch (e) { /* noop */ } }
+            if (body) {
+                try { this.renderMoments(body); rendered = true; } catch (e) { /* noop */ }
+            }
         };
         refresh(this._siyuTab);
         refresh(this._lunaDockCtx);
+        /* 兜底：上下文之外仍挂载着的朋友圈列表（如移动端底部标签栏的副本）只刷新列表 */
+        if (!rendered) {
+            document.querySelectorAll('.north-luna-moments-container').forEach((el) => {
+                try { this.refreshMomentsList(el.parentElement || el); } catch (e) { /* noop */ }
+            });
+        }
     }
 
     /* 多端同步：刷新某渲染上下文（PC tab / 移动端 Dock）当前显示的清风视图。
@@ -21520,6 +21553,46 @@ module.exports = class NorthLunaPlugin extends Plugin {
     }
 
     // 删除插件资源文件（assets 或 public 目录），插件内部的删除 = 真正删除，不再触发备份恢复
+    /* 资源路径归一化：去掉可能的前导 '/'，便于跨记录比对同一份文件 */
+    _normMediaPath(p) {
+        const s = String(p || '');
+        return s.startsWith('/') ? s.slice(1) : s;
+    }
+
+    /* 资源是否仍被朋友圈动态引用。
+       「添加到朋友圈」会把清风笔记的图片/文件路径直接搬进 moment.images，
+       两者共用同一个 petal 文件；删除清风笔记时若把它删掉，朋友圈那条动态就会变空白/图裂。
+       因此删除前先查一遍：还有动态引用着的资源一律保留。 */
+    _isMediaUsedByMoments(filePath) {
+        const target = this._normMediaPath(filePath);
+        if (!target) return false;
+        const items = (this.data[MOMENTS_STORAGE] || {}).items || [];
+        for (const m of items) {
+            const list = (m && m.images) || [];
+            for (const p of list) {
+                if (this._normMediaPath(p) === target) return true;
+            }
+        }
+        return false;
+    }
+
+    /* 资源是否仍被清风笔记引用（删除朋友圈动态时的镜像保护，避免删掉仍被笔记使用的同一份文件） */
+    _isMediaUsedByBreezeNotes(filePath) {
+        const target = this._normMediaPath(filePath);
+        if (!target) return false;
+        const notes = (this.data[RECORDS_STORAGE] || {}).breezeNotes || [];
+        for (const n of notes) {
+            for (const img of (n.images || [])) {
+                if (this._normMediaPath(img) === target) return true;
+            }
+            for (const f of (n.files || [])) {
+                const p = typeof f === 'string' ? f : (f && f.path);
+                if (this._normMediaPath(p) === target) return true;
+            }
+        }
+        return false;
+    }
+
     async deletePluginImage(filePath) {
         if (!filePath) return;
         const clean = filePath.startsWith('/') ? filePath.substring(1) : filePath;
@@ -23331,8 +23404,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const delImages = delItem ? (delItem.images || []) : [];
                 if (confirm) confirm('删除', '确定要删除这条朋友圈吗？', () => {
                     this.data[MOMENTS_STORAGE].items = (this.data[MOMENTS_STORAGE].items || []).filter(m => m.id !== mid);
-                    // 清理被删除动态的图片
-                    delImages.forEach(img => this.deletePluginImage(img));
+                    /* 清理被删除动态的图片（仍被清风笔记引用的保留，见 _isMediaUsedByBreezeNotes） */
+                    delImages.forEach(img => { if (!this._isMediaUsedByBreezeNotes(img)) this.deletePluginImage(img); });
                     this.saveMoments().then(() => {
                         showMessage('已删除');
                         this.refreshMomentsList(body);
@@ -24362,21 +24435,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!listEl) return;
         const nickname = this._getProfileNickname();
         const allItems = this.momentsData.items || [];
-        /* 存量兼容：早期「添加到朋友圈」的动态未记录 sourceNoteId，这里通过
-           「正文 + 图片集完全匹配某条已归档清风笔记」回溯来源，使其跟随归档隐藏 */
-        const _breezeAll = (this.data[RECORDS_STORAGE] || {}).breezeNotes || [];
-        let _momentsDirty = false;
-        allItems.forEach(m => {
-            if (m.sourceNoteId) return;
-            const mKey = (m.text || '') + '||' + (m.images || []).map(s => String(s)).sort().join(',');
-            const hit = _breezeAll.find(n => {
-                if (!n.archived) return false;
-                const nKey = (n.content || '') + '||' + ((n.images || []).concat((n.files || []).map(f => typeof f === 'string' ? f : (f && f.path)))).filter(Boolean).map(s => String(s)).sort().join(',');
-                return mKey === nKey && mKey.length > 2;
-            });
-            if (hit) { m.sourceNoteId = hit.id; _momentsDirty = true; }
-        });
-        if (_momentsDirty && plugin.saveMoments) plugin.saveMoments().catch(() => {});
         /* 视图模式决定主列表内容：
            - 'feed'：所有非置顶项
            - 'pinned'：所有置顶项（顶部缩略图条已隐藏，显示返回条） */
@@ -24391,11 +24449,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const filtered2 = this.momentsCategoryFilter
             ? filtered.filter(m => (m.category || '') === this.momentsCategoryFilter)
             : filtered;
-        /* 来自已归档清风笔记的「添加到朋友圈」动态默认隐藏（与清风视图归档联动）：
-           笔记归档后，明月视图中由它生成的动态应同步消失，而不是继续展示其图片/资源 */
-        const _breezeNotes = (this.data[RECORDS_STORAGE] || {}).breezeNotes || [];
-        const _archivedNoteIds = new Set(_breezeNotes.filter(n => n.archived).map(n => n.id));
-        const filtered3 = filtered2.filter(m => !(m.sourceNoteId && _archivedNoteIds.has(m.sourceNoteId)));
+        /* 朋友圈动态是**独立记录**：由清风笔记「添加到朋友圈」生成后即与来源笔记解耦，
+           来源笔记的归档 / 删除都不再影响它（否则归档一条笔记会连带让朋友圈里的动态消失） */
         // 同步筛选按钮的 active 高亮（置顶视图下隐藏）
         const moodBtn = container.querySelector('#momentsMoodFilterBtn');
         if (moodBtn) {
@@ -24420,7 +24475,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 catBtn.title = '按分类筛选朋友圈';
             }
         }
-        const sorted = inPinnedView ? this._sortMoments(filtered3) : this._sortMomentsForFeed(filtered3);
+        const sorted = inPinnedView ? this._sortMoments(filtered2) : this._sortMomentsForFeed(filtered2);
         if (sorted.length === 0) {
             const emptyMsg = inPinnedView
                 ? '<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">还没有置顶的动态</div>'
