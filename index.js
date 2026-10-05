@@ -15,15 +15,19 @@ const PLUGIN_NAME = "轻语";
 // 自定义图标（通过 this.addIcons 注册为思源全局图标，用于标签页+顶栏）
 const PLUGIN_ICON = `<symbol id="iconLightWord" viewBox="0 0 1024 1024"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M33.248 887.349h225.296l591.398-591.398c28.828-28.828 46.659-68.657 46.659-112.646 0-87.983-71.325-159.306-159.306-159.306-43.992 0-83.819 17.833-112.646 46.659l-591.398 591.398v225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M568.318 126.981l225.296 225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M878.102 662.060l-112.646 168.971h225.296l-112.646 168.971"/></symbol><symbol id="iconMobileDevice" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><line x1="11" y1="18" x2="13" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol><symbol id="iconBreezeComment" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><circle cx="8.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"/></symbol>`;
 
-/* 文档图标渲染：与文件树弹窗一致（思源内置图标名→SVG、路径→emojis 图片、十六进制→Emoji、兜底原样显示）。
+/* 文档图标渲染：与思源文件树保持一致。
+   优先用文档自己的自定义图标（内置图标名 → SVG、路径 → emojis 图片、十六进制码点 → Emoji 字符）；
+   没有自定义图标时，用思源内置的默认图标（与思源前端同一套映射：
+     { notebook: 'iconNotebook', folder: 'iconFileText', file: 'iconFile' }）——
+     笔记本 → iconNotebook；有子文档的文档 → iconFileText；叶子文档 → iconFile。
+   此前兜底用的是 📓 / 📁 / 📄 这些 emoji，和思源原生图标对不上，故改为内置 SVG。
    定义为模块级函数，避免依赖 this/plugin 引用在不同作用域下取不到的问题。 */
-function renderDocIconHtml(icon, def) {
+function renderDocIconHtml(icon, defIcon) {
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const wrap = (inner) => `<span class="north-luna-doc-tree-icon">${inner}</span>`;
-    if (!icon) return wrap(def);
-    if (/^icon[A-Z]/.test(icon)) {
-        return `<span class="north-luna-doc-tree-icon"><svg class="icon"><use xlink:href="#${esc(icon)}"></use></svg></span>`;
-    }
+    const svg = (name) => `<span class="north-luna-doc-tree-icon"><svg class="icon"><use xlink:href="#${esc(name)}"></use></svg></span>`;
+    if (!icon) return svg(defIcon || 'iconFile');
+    if (/^icon[A-Z]/.test(icon)) return svg(icon);
     if (/[\\/.]/.test(icon)) {
         return `<img class="north-luna-doc-tree-icon" src="/emojis/${esc(icon)}" alt="">`;
     }
@@ -342,6 +346,12 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                         source: 'breeze'
                     });
                     if (typeof showMessage === 'function') showMessage(result.message);
+                    /* 手动同步成功也打「已同步」标记，供批量同步的「跳过已同步记录」判断，
+                       否则手动同步过的内容批量时会被再写一遍 */
+                    if (result.success) {
+                        note.docSyncedAt = Date.now();
+                        if (plugin && plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
+                    }
                 })();
                 break;
             case 'delete':
@@ -7671,6 +7681,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 { value: 'doc', label: '指定文档' }
                             ]},
                             { type: 'doc', key: 'dailyNoteDocId', nameKey: 'dailyNoteDocName', title: '指定文档', desc: '仅同步目标为「指定文档」时生效。点击「选择文档」从工作区树中选取，或手动粘贴文档块 ID。内容会按日期分组建标题后插入。', default: '' },
+                            { type: 'select', key: 'docGroupOrder', title: '日期分组顺序', desc: '仅同步目标为「指定文档」时生效。倒序：新的日期分组排在前面，打开文档先看到最近的内容；正序：旧的排在前面。默认倒序。', default: 'desc', options: [
+                                { value: 'desc', label: '倒序（新的在前）' },
+                                { value: 'asc', label: '正序（旧的在前）' }
+                            ]},
                             { type: 'toggle', key: 'syncJumpToDoc', title: '同步后跳转到文档', desc: '开启后，手动或自动同步日记后会跳转到对应文档。关闭则后台静默写入，不打断当前操作。默认开启。', default: true }
                         ]},
                         { title: '同步模板', items: [
@@ -7686,6 +7700,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 { value: 'CAUTION', label: 'Caution' }
                             ]},
                             { type: 'template', key: 'dailyNoteCustomTemplate', title: '同步模板', desc: '仅在同步模式为「自定义模板」时生效。点击按钮打开编辑器，可点选「年/月/日/时/分/秒」与分隔符自由组合日期时间。清风与朋友圈共用此模板。可用占位符：{{date}} 日期 / {{time}} 时间 / {{datetime}} 完整时间 / {{year}} 年 / {{month}} 月 / {{day}} 日 / {{hour}} 时 / {{minute}} 分 / {{second}} 秒 / {{tags}} 标签 / {{content}} 正文 / {{resources}} 图片与附件 / {{comments}} 评论 / {{mood}} 心情 / {{weather}} 天气 / {{category}} 分类 / {{location}} 地点（后四者仅朋友圈同步时有值，清风同步时为空）', default: '' }
+                        ]},
+                        { title: '批量同步', items: [
+                            { type: 'toggle', key: 'batchSyncSkipSynced', title: '跳过已同步记录', desc: '开启后，只写入还没同步过的记录（手动同步、自动同步过的也算已同步），重复执行不会重复写入；关闭则每次全部重新写入。默认开启。', default: true },
+                            { type: 'button', action: 'batchSyncBreeze', title: '批量同步清风笔记', desc: '把全部清风笔记写入思源笔记文档。写入目标沿用上方「数据同步」的「日记笔记本 / 指定文档」，内容格式沿用「同步模板」。批量同步不会跳转文档。', buttonText: '开始同步' },
+                            { type: 'button', action: 'batchSyncMoments', title: '批量同步朋友圈动态', desc: '把全部朋友圈动态写入思源笔记文档。写入目标沿用上方「数据同步」的「日记笔记本 / 指定文档」，内容格式沿用「同步模板」。批量同步不会跳转文档。', buttonText: '开始同步' }
                         ]},
                         { title: '数据导入', items: [
                             { type: 'button', action: 'importLumina', title: '导入轻语数据', desc: '从轻语（siyuan-lumina）插件导入说说（清风笔记）和朋友圈动态。导入时自动转换数据格式：轻语说说的图片从正文 markdown 分离为独立字段、时间戳转为时间字符串；轻语朋友圈字段一一映射。已存在的同 ID 数据会跳过，不会覆盖当前数据。', buttonText: '导入' }
@@ -8741,7 +8760,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             container.innerHTML = files.map(f => {
                                 const subCount = f.subFileCount;
                                 const mayHaveChildren = subCount === undefined || subCount > 0;
-                                const defIcon = subCount > 0 ? '📁' : '📄';
+                                /* 默认图标跟思源文件树一致：有子文档用 iconFileText，叶子文档用 iconFile */
+                                const defIcon = subCount > 0 ? 'iconFileText' : 'iconFile';
                                 return `<div class="north-luna-doc-tree-row" data-id="${esc(f.id)}" data-path="${esc(f.path)}" data-name="${esc(f.name)}" data-icon="${esc(iconMap[f.id] || '')}" data-maychildren="${mayHaveChildren ? 1 : 0}">
                                     <div class="north-luna-doc-tree-content">
                                         <span class="north-luna-doc-tree-toggle${mayHaveChildren ? '' : ' north-luna-doc-tree-toggle-hidden'}"><svg class="icon"><use xlink:href="#iconRight"></use></svg></span>
@@ -8794,7 +8814,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             treeList.innerHTML = notebooks.map(n => `<div class="north-luna-doc-tree-row north-luna-doc-tree-notebook" data-id="${esc(n.id)}" data-name="${esc(n.name)}">
                                 <div class="north-luna-doc-tree-content">
                                     <span class="north-luna-doc-tree-toggle"><svg class="icon"><use xlink:href="#iconRight"></use></svg></span>
-                                    ${renderIcon(n.icon, '📓')}
+                                    ${renderIcon(n.icon, 'iconNotebook')}
                                     <span class="north-luna-doc-tree-name">${esc(n.name)}</span>
                                 </div>
                             </div>`).join('');
@@ -9263,10 +9283,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             </div>`;
                         }
                         const _docTarget = (plugin.data[SETTINGS_STORAGE] || {}).settings || {};
-                        const _hiddenByTarget = !filter && it.key === 'dailyNoteDocId' && (_docTarget.dailyNoteTarget || 'dailynote') !== 'doc';
+                        const _hiddenByTarget = !filter && (it.key === 'dailyNoteDocId' || it.key === 'docGroupOrder') && (_docTarget.dailyNoteTarget || 'dailynote') !== 'doc';
                         const _docName = (it.type === 'doc' && ((plugin.data[SETTINGS_STORAGE] || {}).settings || {})[it.nameKey]) || '';
                         const _docIcon = (it.type === 'doc' && ((plugin.data[SETTINGS_STORAGE] || {}).settings || {})['dailyNoteDocIcon']) || '';
-                        const _docNameHtml = _docName ? `<span class="north-luna-settings-doc-name">${_docIcon ? renderDocIconHtml(_docIcon, '📄') + ' ' : '📄 '}${plugin._esc(_docName)}</span>` : '';
+                        const _docNameHtml = _docName ? `<span class="north-luna-settings-doc-name">${renderDocIconHtml(_docIcon, 'iconFile')} ${plugin._esc(_docName)}</span>` : '';
                         return `<div class="north-luna-settings-item"${_hiddenByTarget ? ' style="display:none"' : ''}>
                             <div class="north-luna-settings-item-text">
                                 <div class="north-luna-settings-item-title">${plugin._esc(it.title)}${_docNameHtml}</div>
@@ -9743,7 +9763,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     body.addEventListener("click", body._cddlClickOutside);
                     body.querySelectorAll(".north-luna-settings-btn").forEach(btn => {
                         if (!btn.dataset.action) return;
-                        btn.addEventListener("click", () => this._handleSettingsAction(btn.dataset.action));
+                        /* 把 btn 一并传入：批量同步需要在按钮上显示进度并禁用，避免重复触发 */
+                        btn.addEventListener("click", () => this._handleSettingsAction(btn.dataset.action, btn));
                     });
                     /* Flomo 同步面板：登录/登出/同步/目标切换等事件（单步隔离） */
                     try { this._bindFlomoSettings(body); } catch (err) { console.error('[siyuan-lumina] Flomo 设置面板绑定失败：', err); }
@@ -9763,8 +9784,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             let el = titleEl.querySelector('.north-luna-settings-doc-name');
                             if (name) {
                                 if (!el) { el = document.createElement('span'); el.className = 'north-luna-settings-doc-name'; titleEl.appendChild(el); }
-                                const iconHtml = icon ? renderDocIconHtml(icon, '📄') : '';
-                                el.innerHTML = (iconHtml ? iconHtml + ' ' : '📄 ') + plugin._esc(name);
+                                el.innerHTML = renderDocIconHtml(icon, 'iconFile') + ' ' + plugin._esc(name);
                             } else if (el) {
                                 el.remove();
                             }
@@ -9874,7 +9894,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     setTimeout(() => modal.querySelector("#northLunaProfileNick").focus(), 50);
                 };
 
-                this._handleSettingsAction = (action) => {
+                this._handleSettingsAction = (action, btn) => {
                     if (action === "exportMoments") {
                         const data = JSON.stringify(plugin.momentsData, null, 2);
                         const blob = new Blob([data], { type: "application/json" });
@@ -10226,6 +10246,34 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             showMessage('导出失败：' + (e && e.message ? e.message : '未知错误'));
                             console.error('[轻语] 导出异常:', e);
                         });
+                    } else if (action === "batchSyncBreeze" || action === "batchSyncMoments") {
+                        /* 批量同步：把全部清风笔记 / 朋友圈动态逐条写入思源笔记文档。
+                           按钮上实时显示进度并禁用，避免重复点击。 */
+                        const kind = action === "batchSyncBreeze" ? 'breeze' : 'moments';
+                        const label = kind === 'breeze' ? '清风笔记' : '朋友圈动态';
+                        if (this._batchSyncing) { showMessage('已有批量同步正在进行，请稍候'); return; }
+                        this._batchSyncing = true;
+                        const oldText = btn ? btn.textContent : '';
+                        if (btn) { btn.disabled = true; btn.textContent = '同步中…'; }
+                        showMessage(`正在批量同步${label}…`);
+                        (async () => {
+                            try {
+                                const r = await plugin._batchSyncToSiYuan(kind, (done, total) => {
+                                    if (btn) btn.textContent = `同步中 ${done}/${total}`;
+                                });
+                                if (!r.total) { showMessage(`暂无${label}可同步`); return; }
+                                const parts = [`已同步 ${r.synced} 条`];
+                                if (r.skipped) parts.push(`跳过已同步 ${r.skipped} 条`);
+                                if (r.failed) parts.push(`失败 ${r.failed} 条`);
+                                showMessage(`${label}批量同步完成：` + parts.join('，'));
+                            } catch (e) {
+                                showMessage('批量同步失败：' + (e && e.message ? e.message : '未知错误'));
+                                console.error('[轻语] 批量同步异常:', e);
+                            } finally {
+                                this._batchSyncing = false;
+                                if (btn) { btn.disabled = false; btn.textContent = oldText || '开始同步'; }
+                            }
+                        })();
                     }
                 };
 
@@ -17168,6 +17216,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             files: note.files,
                             time: note.time,
                             source: 'breeze'
+                        }).then((result) => {
+                            /* 自动同步成功也打「已同步」标记（同手动同步），批量同步据此跳过 */
+                            if (result && result.success) {
+                                note.docSyncedAt = Date.now();
+                                this.saveData(RECORDS_STORAGE, this.data[RECORDS_STORAGE]).catch(() => {});
+                            }
                         }).catch(() => {});
                     }, 1000);
                 }
@@ -20948,7 +21002,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
        - files:   附件数组，元素可以是字符串或 {name, path}
        - time:    时间字符串，如 "2026-07-25 11:47:06"
        返回值：{ success, message } */
-    async _syncToDailyNote(data) {
+    async _syncToDailyNote(data, options) {
         const storage = this.data[SETTINGS_STORAGE] || {};
         const settings = storage.settings || {};
         try {
@@ -20956,12 +21010,102 @@ module.exports = class NorthLunaPlugin extends Plugin {
             //（否则思源会把 public 路径当成外部图片，插图会显示网络角标）
             const localized = await this._localizePublicResourcesForNote(data, settings);
             const markdown = this._buildDailyNoteMarkdown(localized, settings);
-            const result = await this._appendToDailyNoteTarget(markdown, data.time || '', settings);
+            const result = await this._appendToDailyNoteTarget(markdown, data.time || '', settings, options);
             return { success: true, message: result.message || '已同步 ✅' };
         } catch (e) {
             console.error('[清风] 同步失败:', e);
             return { success: false, message: e.message || '同步失败' };
         }
+    }
+
+    /* 批量同步：把全部「清风笔记」或「朋友圈动态」逐条写入思源笔记文档。
+       与单条同步 `_syncToDailyNote` 复用同一套目标与模板设置，差别只有：
+         - 目标完全沿用「数据同步」的「同步目标」（每日日记 / 指定文档），不另设一份；
+         - 逐条写入且强制不跳转（批量条数多，逐条开文档会刷爆标签，所以屏蔽 syncJumpToDoc）；
+         - 每条成功后打上 docSyncedAt 标记，「跳过已同步记录」开启时下次不再重复写入；
+           手动「插入今日日记」、发布时的自动同步同样会打这个标记（见各自调用处），
+           所以判定口径是「本插件任何一次成功同步」，而不只是批量同步。
+       kind: 'breeze' | 'moments'
+       onProgress: 可选，(done, total) => void，用于 UI 展示进度
+       返回 { total, synced, skipped, failed, target }；目标未配置时抛出 Error。 */
+    async _batchSyncToSiYuan(kind, onProgress) {
+        const storage = this.data[SETTINGS_STORAGE] || {};
+        const settings = storage.settings || {};
+        const target = settings.dailyNoteTarget === 'doc' ? 'doc' : 'dailynote';
+        // 目标配置预检：缺配置直接抛错，让调用处提示用户，不进入空转
+        if (target === 'dailynote' && !(settings.dailyNotebookId || '').trim()) {
+            throw new Error('请先在「数据同步」中选择日记笔记本');
+        }
+        if (target === 'doc' && !(settings.dailyNoteDocId || '').trim()) {
+            throw new Error('请先在「数据同步」中选择指定文档');
+        }
+        const skipSynced = settings.batchSyncSkipSynced !== false;
+        // 收集待同步条目：ref 为原始对象引用，成功后直接在其上打同步标记
+        const items = [];
+        if (kind === 'breeze') {
+            const notes = ((this.data[RECORDS_STORAGE] || {}).breezeNotes) || [];
+            notes.forEach(n => {
+                if (!n || (!n.content && !n.time)) return;
+                items.push({
+                    ref: n,
+                    date: (n.time || '').slice(0, 10),
+                    data: { content: n.content || '', images: n.images || [], files: n.files || [], time: n.time || '', source: 'breeze' }
+                });
+            });
+        } else {
+            const moments = (this.momentsData && this.momentsData.items) || [];
+            moments.forEach(m => {
+                if (!m || (!m.text && !m.created)) return;
+                const ts = m.created ? this._formatLocalDateTime(m.created) : '';
+                items.push({
+                    ref: m,
+                    date: ts.slice(0, 10),
+                    data: {
+                        content: m.text || '', images: m.images || [], files: [],
+                        time: ts,
+                        mood: m.mood || '', category: m.category || '', weather: m.weather || '', location: m.location || '',
+                        comments: m.comments || [], commentNickname: this._getProfileNickname(), source: 'moments'
+                    }
+                });
+            });
+        }
+        const total = items.length;
+        if (!total) return { total: 0, synced: 0, skipped: 0, failed: 0, target };
+        let synced = 0, skipped = 0, failed = 0, done = 0;
+        /* 目标为「指定文档」时，整批共用一份文档结构镜像（见 _appendToDocWithDateGroup 注释）：
+           思源 SQL 索引有延迟，逐条回查会把刚插入的分组当成不存在。 */
+        const docSession = { model: null };
+        for (const it of items) {
+            done++;
+            if (skipSynced && it.ref.docSyncedAt) {
+                skipped++;
+                /* 历史遗留修复：早期版本用 createDocWithMd 建的日记文档缺 custom-dailynote-*，
+                   正文虽跳过，仍按日期给对应日记文档补一次属性（按日期查文档、带会话缓存）。 */
+                if (target === 'dailynote' && it.date) {
+                    const docId = await this._resolveDailyNoteDocId(settings.dailyNotebookId, it.date);
+                    if (docId) await this._markDailyNoteAttr(docId, it.date);
+                }
+                if (onProgress) onProgress(done, total);
+                continue;
+            }
+            let ok = false;
+            try {
+                /* 带上 session：整批共用同一份文档结构镜像，避免「写完立刻查 SQL」查不到
+                   刚插入的分组，导致同一天反复建标题、位置算错（思源 SQL 索引有延迟） */
+                const r = await this._syncToDailyNote(it.data, { noJump: true, session: docSession });
+                ok = !!(r && r.success);
+            } catch (e) {
+                ok = false;
+            }
+            if (ok) { it.ref.docSyncedAt = Date.now(); synced++; } else { failed++; }
+            if (onProgress) onProgress(done, total);
+        }
+        // 同步标记落盘（失败不阻断结果返回）
+        try {
+            if (kind === 'breeze') await this.saveData(RECORDS_STORAGE, this.data[RECORDS_STORAGE]);
+            else await this.saveMoments();
+        } catch (e) { console.warn('[清风] 批量同步标记落盘失败:', e && e.message); }
+        return { total, synced, skipped, failed, target };
     }
 
     /* 构造日记/文档同步用的 Markdown。
@@ -21119,8 +21263,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
     /* 将构造好的 Markdown 追加到设置里指定的目标（每日日记 或 指定文档）。
        成功返回 { targetId, message }；失败抛出 Error。 */
-    async _appendToDailyNoteTarget(markdown, timeStr, settings) {
+    async _appendToDailyNoteTarget(markdown, timeStr, settings, options) {
+        // 目标沿用「数据同步 → 同步目标」；options.noJump：批量同步逐条写入时强制不跳转
         const target = settings.dailyNoteTarget || 'dailynote';
+        /* 批量同步不允许逐条跳转（条数多，逐条开文档会刷爆标签），
+           用一份覆盖了 syncJumpToDoc 的副本继续向下传，其余逻辑保持不变。 */
+        const effSettings = (options && options.noJump) ? Object.assign({}, settings, { syncJumpToDoc: false }) : settings;
         const token = window.siyuan?.config?.api?.token || '';
         const authHeaders = Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Token ' + token } : {});
         if (target === 'doc') {
@@ -21132,21 +21280,22 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const checkResp = await fetch('/api/query/sql', { method: 'POST', headers: authHeaders, body: JSON.stringify({ stmt: `SELECT id FROM blocks WHERE id = '${safeDocId}' LIMIT 1` }) });
             const checkJson = await checkResp.json().catch(() => null);
             if (!checkJson || checkJson.code !== 0 || !checkJson.data || checkJson.data.length === 0) throw new Error('指定的文档不存在，请检查文档块 ID');
-            const blockId = await this._appendToDocWithDateGroup(safeDocId, markdown, timeStr);
+            /* session：批量同步带下来的文档结构镜像，让同一批次内不再回查 SQL（索引有延迟） */
+            const blockId = await this._appendToDocWithDateGroup(safeDocId, markdown, timeStr, settings.docGroupOrder || 'desc', options && options.session);
             if (!blockId) throw new Error('插入指定文档失败：未知错误');
-            if (settings.syncJumpToDoc !== false && this.app && typeof openTab === 'function') {
+            if (effSettings.syncJumpToDoc !== false && this.app && typeof openTab === 'function') {
                 try { openTab({ app: this.app, doc: { id: safeDocId, action: ['cb-get-hl'] } }); } catch (e) { console.warn('[清风] 打开指定文档失败:', e); }
             }
-            return { targetId: safeDocId, message: '已插入指定文档（按日期分组）' + (settings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
+            return { targetId: safeDocId, message: '已插入指定文档（按日期分组）' + (effSettings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
         }
         // 同步目标：每日日记（按动态的实际日期定位对应日期的日记，而非固定写入今天）
         const notebookId = settings.dailyNotebookId || '';
         if (!notebookId) throw new Error('请先在「数据同步」中选择日记笔记本');
         const dateStr = (timeStr || '').slice(0, 10);
         if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-            return this._appendToDailyNoteByDate(notebookId, markdown, dateStr, settings);
+            return this._appendToDailyNoteByDate(notebookId, markdown, dateStr, effSettings);
         }
-        return this._appendToTodayDailyNote(notebookId, markdown, settings);
+        return this._appendToTodayDailyNote(notebookId, markdown, effSettings);
     }
 
     /* 把「今日日记」追加逻辑独立出来（原 appendDailyNoteBlock 逻辑），
@@ -21220,11 +21369,77 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return out;
     }
 
+    /* 给文档补记思源原生日记属性 custom-dailynote-YYYYMMDD=YYYYMMDD。
+       思源 2.11.1 起在「创建日记」时会写这个属性（内核常量 DailyNoteAttrPrefix，
+       见 Issue #9807），用于区分日记与普通文档、供插件按属性检索日记。
+       官方「扩展开发」规范：走 /api/filetree/createDailyNote 会自动补；用
+       createDocWithMd 手动建日记文档则由开发者自行补 —— 这里就是补这一步。
+       （createDailyNote 无日期参数，只能建「今天」，所以历史/未来日期只能手动建+手动补。）
+       setBlockAttrs 是合并写入，不会动文档其它属性。
+       带会话级去重：同一文档一次会话内只补一次，批量同步不会对同一日期反复写。
+       best-effort：失败只告警，不影响正文写入。 */
+    async _markDailyNoteAttr(docId, dateStr) {
+        const compact = String(dateStr || '').replace(/-/g, '');
+        if (!docId || !/^\d{8}$/.test(compact)) return;
+        if (!this._dailyNoteAttrMarked) this._dailyNoteAttrMarked = new Set();
+        if (this._dailyNoteAttrMarked.has(docId)) return;
+        const token = window.siyuan?.config?.api?.token || '';
+        const authHeaders = Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Token ' + token } : {});
+        try {
+            const resp = await fetch('/api/attr/setBlockAttrs', {
+                method: 'POST', headers: authHeaders,
+                body: JSON.stringify({ id: docId, attrs: { ['custom-dailynote-' + compact]: compact } })
+            });
+            const json = await resp.json().catch(() => null);
+            if (json && json.code === 0) this._dailyNoteAttrMarked.add(docId);
+            else console.warn('[清风] 写入日记属性失败:', json && json.msg);
+        } catch (e) {
+            console.warn('[清风] 写入日记属性异常:', e && e.message);
+        }
+    }
+
+    /* 按日期定位「每日日记」文档 ID（只查不建）：读日记路径模板 → 渲染 hpath → 按路径查文档。
+       查不到返回空串。带会话级缓存（notebook + 日期），供批量同步给历史遗留文档补属性时复用，
+       避免同一天反复拉笔记本配置与查询。 */
+    async _resolveDailyNoteDocId(notebookId, dateStr) {
+        if (!notebookId || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) return '';
+        if (!this._dailyNoteDocIdByDate) this._dailyNoteDocIdByDate = {};
+        const cacheKey = notebookId + '|' + dateStr;
+        if (this._dailyNoteDocIdByDate[cacheKey] !== undefined) return this._dailyNoteDocIdByDate[cacheKey];
+        const token = window.siyuan?.config?.api?.token || '';
+        const authHeaders = Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Token ' + token } : {});
+        let docId = '';
+        try {
+            const confResp = await fetch('/api/notebook/getNotebookConf', { method: 'POST', headers: authHeaders, body: JSON.stringify({ notebook: notebookId }) });
+            const confJson = await confResp.json().catch(() => null);
+            const tpl = (confJson && confJson.code === 0 && confJson.data && confJson.data.conf && confJson.data.conf.dailyNoteSavePath) || '';
+            const hpath = tpl ? this._renderDailyNotePath(tpl, dateStr) : '';
+            if (hpath) {
+                const idsResp = await fetch('/api/filetree/getIDsByHPath', { method: 'POST', headers: authHeaders, body: JSON.stringify({ path: hpath, notebook: notebookId }) });
+                const idsJson = await idsResp.json().catch(() => null);
+                const ids = (idsJson && idsJson.code === 0 && Array.isArray(idsJson.data)) ? idsJson.data : [];
+                docId = ids[0] || '';
+            }
+        } catch (e) { docId = ''; }
+        this._dailyNoteDocIdByDate[cacheKey] = docId;
+        return docId;
+    }
+
     /* 按指定日期定位「每日日记」文档并追加内容。
        appendDailyNoteBlock 只会写「今天」，无法指定历史日期，故手动：
        读日记路径模板 → 渲染目标日期 hpath → 查找/创建该日记文档 → appendBlock 追加。
        返回 { targetId, message }；任一步失败则回退到「今日日记」。 */
     async _appendToDailyNoteByDate(notebookId, markdown, dateStr, settings) {
+        /* 目标日期就是「今天」时，交给内核的创建日记流程（/api/block/appendDailyNoteBlock
+           内部即 model.CreateDailyNote），比自己拼路径更正确：
+             - 日记属性 custom-dailynote-YYYYMMDD 由内核写入，不必我们手动补；
+               内核若发现今日日记已存在且缺该属性，也会自行补上（顺带修复旧文档）；
+             - 笔记本配置里的「日记模板」由内核套用；
+             - 省掉「读日记路径模板 + 按路径查文档」两次请求。
+           只有历史/未来日期才需要手动定位文档——createDailyNote 没有日期参数，无法指定日期。 */
+        if (dateStr === this._formatLocalDateTime(Date.now()).slice(0, 10)) {
+            return this._appendToTodayDailyNote(notebookId, markdown, settings);
+        }
         const token = window.siyuan?.config?.api?.token || '';
         const authHeaders = Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Token ' + token } : {});
         // 1) 读取笔记本日记路径模板
@@ -21253,6 +21468,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             } catch (e) { docId = ''; }
         }
         if (!docId) return this._appendToTodayDailyNote(notebookId, markdown, settings);
+        // 3.5) 补记思源原生日记属性：createDocWithMd 建出来的文档不带 custom-dailynote-*，
+        //      （思源 2.11.1+ 用「创建日记」建的才带），不补的话第三方按属性查日记会查不到。
+        await this._markDailyNoteAttr(docId, dateStr);
         // 4) 向该日记文档追加内容
         const appendResp = await fetch('/api/block/appendBlock', { method: 'POST', headers: authHeaders, body: JSON.stringify({ dataType: 'markdown', data: markdown, parentID: docId }) });
         const appendJson = await appendResp.json().catch(() => null);
@@ -21272,53 +21490,110 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return { targetId, message: '已同步到 ' + dateStr + ' 的日记' + (settings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
     }
 
-    /* 向指定文档按日期分组追加内容（移植自轻语 appendToDocWithDateGroup）。
-       在 docId 内查找/创建 `## 日期` h2，并把 content 插入到该分组最后。
+    /* 向指定文档按日期分组写入内容（移植自轻语 appendToDocWithDateGroup，加日期排序 + 本地镜像）。
+       在 docId 内找 `## 日期` 分组：已有则把 content 追加到该分组末尾；
+       没有则新建分组，并按日期插到「应该待的位置」。
+       order: 'desc' 新的日期分组排前面（默认）｜'asc' 旧的排前面。
+       session: 批量同步传入的对象，内部缓存文档结构镜像（配合 _batchSyncToSiYuan 复用）。
+
+       为什么需要本地镜像：思源 SQL 索引有延迟（内核专门提供 /api/sqlite/flushTransaction，
+       就是给「写完立刻要查」的场景用的）。旧实现每条都回查 SQL，同一批次里刚插入的分组查不到，
+       于是每条都被当成「没有该日期分组」→ 同一天反复建标题、位置也全算成插最前
+       （实测表现为同一天 5 个标题 + 顺序变成正序，9 个标题的 id 全部落在同一秒）。
+       现在结构只在批次开始时读一次，之后靠镜像推进，不再回查。
        返回插入块的 ID，失败返回 null。 */
-    async _appendToDocWithDateGroup(docId, content, ts) {
+    async _appendToDocWithDateGroup(docId, content, ts, order, session) {
         const safeDocId = breezeValidSqlId(docId);
         if (!safeDocId) return null;
+        const desc = order !== 'asc';
         const tk = window.siyuan?.config?.api?.token || '';
         const hh = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
-        const dStr = (ts || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+        const dStr = (ts || '').slice(0, 10) || this._formatLocalDateTime(Date.now()).slice(0, 10);
         const safeDStr = /^\d{4}-\d{2}-\d{2}$/.test(dStr) ? dStr : '';
-        const safeTs = (s) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(s)) ? String(s) : '';
         const sql = (stmt) => fetch('/api/query/sql', { method: 'POST', headers: hh, body: JSON.stringify({ stmt }) }).then(r => r.json()).catch(() => null);
+        /* prevId 有值 → 插到该块之后；prevId 为 null → 插到文档最前。
+           仅用于「单块 markdown」插入：多块插入时返回的 doOperations 里最后一条不是最后一块
+           （实测给的是第一块的 id，LiteDo / QingTrail 也都取第一条），拿它当锚点会错位。 */
+        const insertInto = async (prevId, markdown) => {
+            const url = prevId ? '/api/block/insertBlock' : '/api/block/prependBlock';
+            const body = prevId
+                ? { dataType: 'markdown', data: markdown, previousID: prevId }
+                : { dataType: 'markdown', data: markdown, parentID: safeDocId };
+            const res = await fetch(url, { method: 'POST', headers: hh, body: JSON.stringify(body) }).then(r => r.json()).catch(() => null);
+            const ops = (res && res.code === 0 && res.data && res.data[0] && Array.isArray(res.data[0].doOperations)) ? res.data[0].doOperations : [];
+            return ops.length > 0 ? ops[ops.length - 1].id : null;
+        };
         try {
-            const h2 = await sql(`SELECT id, created FROM blocks WHERE root_id = '${safeDocId}' AND type = 'h' AND subtype = 'h2' AND content LIKE '${safeDStr}%' ORDER BY created LIMIT 1`);
-            let previousId = null;
-            if (h2 && h2.code === 0 && h2.data && h2.data.length > 0) {
-                const h2Id = h2.data[0].id;
-                const h2Created = safeTs(h2.data[0].created);
-                const next = await sql(`SELECT created FROM blocks WHERE root_id = '${safeDocId}' AND type = 'h' AND subtype = 'h2' AND created > '${h2Created}' ORDER BY created LIMIT 1`);
-                const nextCreated = (next && next.code === 0 && next.data && next.data.length > 0) ? safeTs(next.data[0].created) : '';
-                let q = `SELECT id, created FROM blocks WHERE root_id = '${safeDocId}' AND type NOT IN ('d','l','b','s') AND parent_id = '${safeDocId}' AND created > '${h2Created}'`;
-                if (nextCreated) q += ` AND created < '${nextCreated}'`;
-                q += ` ORDER BY created DESC LIMIT 1`;
-                const last = await sql(q);
-                previousId = (last && last.code === 0 && last.data && last.data.length > 0) ? last.data[0].id : h2Id;
-            } else {
-                const last = await sql(`SELECT id, created FROM blocks WHERE root_id = '${safeDocId}' AND type NOT IN ('d','l','b','s') AND parent_id = '${safeDocId}' ORDER BY created DESC LIMIT 1`);
-                const h2Data = `## ${safeDStr}\n\n`;
-                if (last && last.code === 0 && last.data && last.data.length > 0) {
-                    const ins = await fetch('/api/block/insertBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: h2Data, previousID: last.data[0].id }) }).then(r => r.json()).catch(() => null);
-                    if (ins && ins.code === 0 && ins.data && ins.data[0] && ins.data[0].doOperations && ins.data[0].doOperations.length > 0) previousId = ins.data[0].doOperations[ins.data[0].doOperations.length - 1].id;
-                } else {
-                    const app = await fetch('/api/block/appendBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: h2Data, parentID: safeDocId }) }).then(r => r.json()).catch(() => null);
-                    if (app && app.code === 0 && app.data && app.data[0] && app.data[0].doOperations && app.data[0].doOperations.length > 0) previousId = app.data[0].doOperations[app.data[0].doOperations.length - 1].id;
-                }
+            /* 文档结构镜像：
+               topAnchorId 首个日期分组之前的内容（永远留在最上面）；
+               order 各分组日期按文档先后；
+               groups 日期 → 该分组最后一个块 id（追加锚点）；
+               tailId 文档最后一个块 id。 */
+            let model = (session && session.model && session.model.docId === safeDocId) ? session.model : null;
+            if (!model) {
+                // 取文档直接子块，按文档顺序（sort/created/id 三重排序，社区插件查同级都用这套）
+                const kidsResp = await sql(`SELECT id, content, type, subtype FROM blocks WHERE parent_id = '${safeDocId}' ORDER BY sort ASC, created ASC, id ASC`);
+                const kids = (kidsResp && kidsResp.code === 0 && Array.isArray(kidsResp.data)) ? kidsResp.data : [];
+                const isH2 = (k) => k.type === 'h' && k.subtype === 'h2';
+                const h2Date = (k) => { const m = String(k.content || '').trim().match(/^(\d{4}-\d{2}-\d{2})/); return m ? m[1] : ''; };
+                model = { docId: safeDocId, topAnchorId: null, order: [], groups: new Map(), tailId: null };
+                kids.forEach((k) => {
+                    const d = isH2(k) ? h2Date(k) : '';
+                    if (d) {
+                        model.order.push(d);
+                        model.groups.set(d, { lastId: k.id });
+                    } else if (model.order.length === 0) {
+                        model.topAnchorId = k.id;   // 第一个分组之前的内容
+                    } else {
+                        model.groups.get(model.order[model.order.length - 1]).lastId = k.id;
+                    }
+                });
+                model.tailId = kids.length ? kids[kids.length - 1].id : null;
+                if (session) session.model = model;
             }
-            const insertInto = async (prevId) => {
-                if (!prevId) {
-                    const app = await fetch('/api/block/appendBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: content, parentID: safeDocId }) }).then(r => r.json()).catch(() => null);
-                    return (app && app.code === 0 && app.data && app.data[0] && app.data[0].doOperations && app.data[0].doOperations.length > 0) ? app.data[0].doOperations[app.data[0].doOperations.length - 1].id : null;
+            /* 1) 已有同日期分组 → 追加到该分组末尾。
+               注：调用方传进来的 content 通常是单块（Callout 模式就是一个 callout 块），
+               单块插入返回的 id 可靠；自定义模板若渲染成多块，锚点可能偏到内容开头，
+               属于已知边界（会表现为该日期后续内容插在这一条中间）。 */
+            const g = model.groups.get(safeDStr);
+            if (g && g.lastId) {
+                const wasTail = g.lastId === model.tailId;
+                const newId = await insertInto(g.lastId, content);
+                if (newId) {
+                    g.lastId = newId;
+                    if (wasTail) model.tailId = newId;
                 }
-                const ins = await fetch('/api/block/insertBlock', { method: 'POST', headers: hh, body: JSON.stringify({ dataType: 'markdown', data: content, previousID: prevId }) }).then(r => r.json()).catch(() => null);
-                return (ins && ins.code === 0 && ins.data && ins.data[0] && ins.data[0].doOperations && ins.data[0].doOperations.length > 0) ? ins.data[0].doOperations[ins.data[0].doOperations.length - 1].id : null;
-            };
-            return await insertInto(previousId);
+                return newId;
+            }
+            // 2) 新建分组：插入位置 = 第一个「该排在目标后面」的分组
+            let idx = model.order.length;
+            for (let i = 0; i < model.order.length; i++) {
+                const d = model.order[i];
+                // desc：新的在前 → 第一个比目标更旧的分组；asc：旧的在前 → 第一个比目标更新的分组
+                if (desc ? (d < safeDStr) : (d > safeDStr)) { idx = i; break; }
+            }
+            let anchor;
+            if (idx === model.order.length) anchor = model.tailId;          // 排最后 → 接文档末尾
+            else if (idx === 0) anchor = model.topAnchorId;                 // 排最前 → 接首个分组之前的内容（可能为 null）
+            else anchor = (model.groups.get(model.order[idx - 1]) || {}).lastId || model.tailId || null;
+            const appendedAtEnd = (idx === model.order.length);
+            /* 标题与内容分两次「单块插入」，不能一次插 `## 日期\n\n内容`：
+               多块插入时返回的 ops 最后一条不是最后一块（实测是标题块 id），
+               拿它当分组锚点，会让该分组后续追加的内容插到标题与内容之间、甚至掉到分组外面
+               （实测整批内容错位：标题下空着，内容全堆在文档末尾）。
+               单块插入时 ops[0] / ops[last] 都是这一块本身，取 id 才可靠。 */
+            const headingId = await insertInto(anchor, '## ' + safeDStr);
+            if (!headingId) return null;
+            // 先把分组登记进镜像：万一内容插入失败，下次也不会重复建同名标题（届时内容会追加到标题下）
+            model.order.splice(idx, 0, safeDStr);
+            model.groups.set(safeDStr, { lastId: headingId });
+            const newId = await insertInto(headingId, content);
+            if (!newId) return null;
+            model.groups.get(safeDStr).lastId = newId;
+            if (appendedAtEnd) model.tailId = newId;
+            return newId;
         } catch (e) {
-            console.error('[清风] 向指定文档追加内容失败:', e);
+            console.error('[清风] 向指定文档写入内容失败:', e);
             return null;
         }
     }
@@ -22956,6 +23231,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             comments: momentData.comments || [],
                             commentNickname: this._getProfileNickname(),
                             source: 'moments'
+                        }).then((result) => {
+                            /* 自动同步成功也打「已同步」标记，供批量同步的「跳过已同步记录」判断 */
+                            if (result && result.success) {
+                                momentData.docSyncedAt = Date.now();
+                                this.saveMoments().catch(() => {});
+                            }
                         }).catch(() => {});
                     }, 1000);
                 }
@@ -23376,6 +23657,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         });
                         if (typeof showMessage === 'function') showMessage(result.message);
                         if (result.success) {
+                            /* 手动同步成功也打「已同步」标记，批量同步的「跳过已同步记录」据此判断 */
+                            m.docSyncedAt = Date.now();
+                            this.saveMoments().catch(() => {});
                             if (iconUse) iconUse.setAttribute('xlink:href', '#iconCloudSucc');
                             setTimeout(() => {
                                 if (iconUse) iconUse.setAttribute('xlink:href', originalHref);

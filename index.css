@@ -6676,6 +6676,11 @@
     color: var(--b3-theme-primary, #5b8def);
 }
 
+.north-luna-settings-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 .north-luna-settings-btn-danger {
     color: #d23f31;
     border-color: color-mix(in srgb, #d23f31 50%, var(--b3-border-color));
@@ -11130,8 +11135,10 @@
 .north-luna-settings-doc-name {
     margin-left: 8px; font-size: 12px; color: var(--b3-theme-on-surface-light);
     word-break: break-all;
+    display: inline-flex; align-items: center; gap: 4px;
 }
-.north-luna-settings-doc-name .north-luna-doc-tree-icon { vertical-align: middle; }
+.north-luna-settings-doc-name .north-luna-doc-tree-icon { width: 14px; height: 14px; vertical-align: middle; }
+.north-luna-settings-doc-name .north-luna-doc-tree-icon svg.icon { width: 14px; height: 14px; }
 
 /* ---------- 文件树弹窗（选择文档） ---------- */
 .north-luna-doc-picker-mask {
