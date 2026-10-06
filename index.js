@@ -2777,12 +2777,101 @@ function breezeHighlightText(raw, q) {
     return out;
 }
 
-/* 行内 markdown 格式：在「已 escape」的字符串上替换（清风 & 朋友圈共用）。
-   支持：`code`、==mark==（黄底高亮，思源标记语法）、~~del~~、**bold**、
-        [color=c]文字[/color]（字体色）、[bg=c]文字[/bg]（背景色）。
-   颜色值允许：颜色名 / #hex / rgb() / var(--b3-font-colorN 等思源 CSS 变量）。
-   输出 span 自带 data-type="text"，与思源原生内联 span 格式一致，迁回日记时无需转换。
-   不做斜体（单星号语法易与数值或符号误判，如 2乘3）。
+/* ===== 清风 markdown 渲染管线（Lute 版）=====
+   输入框输入的 markdown 统一用思源同款 Lute 引擎渲染，取代原先手写的正则行内替换；
+   有序/任务/无序列表与引用仍由 breezeRenderTextWithTags 的块级解析负责（样式与勾选
+   交互不变），Lute 只负责列表项文本与普通文本段的格式。
+   两路管线，按 Lute 可用性自动选择（引擎获取与配置见 breezeGetLute）：
+     1) Lute 路径：escape → [color]/[bg]（插件自定义语法，Lute 不认识）→ Lute.Md2HTML
+        （文本段按「行尾两空格硬换行」连接整段渲染，从而支持 # 标题、``` 代码块、表格、
+        --- 分隔线等块级语法；单行只做行内格式，剥掉 <p> 外壳）→ 装饰（搜索高亮 +
+        #标签，按 <tag> 切分只处理文本 run，code/pre 内跳过）→ 裸网址成链。
+     2) 回落路径：window.Lute 缺失或探测失败时走旧 breezeInlineFormat 正则链（行为同旧版）。
+   安全模型：进入 Lute 前文本已整体 escape（breezeEsc），Lute 只会收到我们注入的
+   <mark>/<span data-type="text"> 行内 HTML；用户输入的原始 <script> 等不会以 HTML 透传。 */
+
+/* Lute 引擎获取（单例）：全局 window.Lute 只是 Go 包的函数表（不同版本暴露的包级方法
+   不同，很多版本没有 Md2HTML），必须 Lute.New() 自建引擎实例再配置——思源 protyle 也是这么做的。
+   配置对齐思源 protyle 实例的关键项（带 typeof 防御，不同 lute 版本缺项时跳过）：
+   - SetSanitize(false)：我们要注入 <mark>/<span data-type="text"> 行内 HTML（用户内容
+     已在管线里整体 escape），开了 sanitize 注入标签会被转义成可见文本，必须关闭；
+   - SetGFMAutoLink(false)：关闭引擎自动链接，裸网址统一由 breezeAutoBareLinks 处理
+     （引擎会把句尾标点吞进 URL 并百分号编码，破坏「链接文字==网址」的自动取标题匹配）；
+   - SetMark(true)/SetGFMStrikethrough(true)：==标记== 与 ~~删除线~~ 生效；
+   - SetIndentCodeBlock(false)：4 空格缩进不当代码块（对齐思源，避免随手缩进被代码化）。
+   实例构建/探测失败时永久回落旧正则链；lute.min.js 尚未加载时返回 null 不缓存（下次再试）。 */
+let _breezeLuteEngine = null;
+let _breezeLuteInited = false;
+function breezeGetLute() {
+    if (_breezeLuteInited) return _breezeLuteEngine;
+    const Lute = (typeof window !== 'undefined') ? window.Lute : null;
+    if (!Lute || typeof Lute.New !== 'function') return null;
+    _breezeLuteInited = true;
+    try {
+        const engine = Lute.New();
+        [['SetHeadingID', false], ['SetYamlFrontMatter', false], ['SetToC', false],
+         ['SetIndentCodeBlock', false], ['SetParagraphBeginningSpace', true], ['SetSetext', false],
+         ['SetFootnotes', false], ['SetLinkRef', false], ['SetSanitize', false],
+         ['SetImgPathAllowSpace', true], ['SetKramdownIAL', true], ['SetSuperBlock', true],
+         ['SetCallout', true], ['SetTabs', true], ['SetInlineAsterisk', true], ['SetInlineUnderscore', true],
+         ['SetSup', true], ['SetSub', true], ['SetTag', true], ['SetInlineMath', true],
+         ['SetInlineMathAllowDigitAfterOpenMarker', true],
+         ['SetGFMStrikethrough1', false], ['SetGFMStrikethrough', true],
+         ['SetMark', true], ['SetProtyleWYSIWYG', false], ['SetSpellcheck', false],
+         ['SetProtyleMarkNetImg', false], ['SetFileAnnotationRef', true], ['SetHTMLTag', true],
+         ['SetBlockRef', true], ['SetUnorderedListMarker', '-'], ['SetDataTask', true],
+         ['SetArbitraryTaskListItemMarker', true], ['SetGFMAutoLink', false]
+        ].forEach((pair) => { if (typeof engine[pair[0]] === 'function') engine[pair[0]](pair[1]); });
+        /* 能力探测：markdown 生效（**b**→<strong>）+ 注入的行内 HTML 原样透传 */
+        const probe = engine.Md2HTML('<span data-type="text" style="color:red">a</span> **b**');
+        if (probe && probe.indexOf('<strong>') !== -1 && probe.indexOf('style="color:red"') !== -1) {
+            _breezeLuteEngine = engine;
+        }
+    } catch (e) { _breezeLuteEngine = null; }
+    return _breezeLuteEngine;
+}
+
+/* #标签 chip 正则（工厂：每次返回新实例，避免 /g 的 lastIndex 在多处 replace 间串扰） */
+function breezeTagInlineRe() {
+    return new RegExp('(?<![:="\'\\w])#(' + BREEZE_TAG_NAME + ')(?![' + BREEZE_TAG_CHARS + '])(?!#)', 'g');
+}
+
+/* [color=c]文字[/color] / [bg=c]文字[/bg]：插件自定义语法（非 markdown），Lute 不认识，
+   两种管线都在已 escape 的文本上先做这一步。颜色值允许：颜色名 / #hex / rgb() /
+   var(--b3-font-colorN 等思源 CSS 变量）。输出 span 自带 data-type="text"，
+   与思源原生内联 span 格式一致，迁回日记时无需转换。 */
+function breezeFormatColorBg(t) {
+    if (!t) return t;
+    t = t.replace(/\[color=(var\(--[\w-]+\)|[a-zA-Z]+|#[0-9a-fA-F]{3,8}|rgb\(\d{1,3}(?:,\s*\d{1,3}){2}\))\]([\s\S]*?)\[\/color\]/g,
+        (m, c, txt) => '<span data-type="text" style="color:' + c + '">' + txt + '</span>');
+    /* 背景颜色：[bg=var(--b3-font-backgroundN)]...[/bg]，与字体颜色配对 */
+    t = t.replace(/\[bg=(var\(--[\w-]+\)|[a-zA-Z]+|#[0-9a-fA-F]{3,8}|rgb\(\d{1,3}(?:,\s*\d{1,3}){2}\))\]([\s\S]*?)\[\/bg\]/g,
+        (m, c, txt) => '<span data-type="text" style="background-color:' + c + '">' + txt + '</span>');
+    return t;
+}
+
+/* 裸网址自动识别成可点击链接：在渲染产物的 HTML 上做（注入前不做——
+   Lute 对 [文字](网址) 会输出自己的 <a>，注入前处理有相互嵌套的风险）。
+   先给 Lute 输出的 <a>（markdown 链接等）补上清风链接类与外开属性
+   （已带 class 的锚点不重复处理，如 Lute 脚注引用），再识别裸网址：
+   负向后顾排除 " ' ( > ：已处于 href 属性值里或 <a> 文本内的网址不重复包裹；
+   结尾标点（句点/逗号等）还原到链接外，避免把标点包进链接。 */
+function breezeAutoBareLinks(t) {
+    if (!t) return t;
+    t = t.replace(/<a (?![^>]*\bclass=)([^>]*href="[^"]*"[^>]*)>/gi,
+        '<a class="north-breeze-link" target="_blank" rel="noopener noreferrer" $1>');
+    return t.replace(/(?<![\("'>])https?:\/\/[^\s<>"')\]]+/gi, (url) => {
+        const m = url.match(/^(.*?)([.,;:。，、；：！？）】」』]+)$/);
+        let tail = '';
+        if (m) { url = m[1]; tail = m[2]; }
+        return '<a class="north-breeze-link" href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>' + tail;
+    });
+}
+
+/* 行内 markdown 格式（旧正则链）：现仅作 Lute 不可用时的回落路径。
+   朋友圈/其他模块的行内渲染有独立实现，不受本文件改动影响。
+   支持：`code`、==mark==（黄底高亮，思源标记语法）、~~del~~、**bold**、*italic*、
+        [color]/[bg]、[文字](网址) 与裸网址。
    正则内容用否定字符类排除对应标记符与 < ，避免跨 HTML 标签或跨标记破坏结构。 */
 function breezeInlineFormat(t) {
     if (!t) return t;
@@ -2792,24 +2881,265 @@ function breezeInlineFormat(t) {
     t = t.replace(/\*\*([^*<]+)\*\*/g, '<strong>$1</strong>');
     /* 斜体：前后非单词字符（避免 2*3*4 / a*b*c 误判；*italic* 与 * italic * 都能匹配） */
     t = t.replace(/(?<!\w)\*([^*\n]+?)\*(?!\w)/g, '<em>$1</em>');
-    t = t.replace(/\[color=(var\(--[\w-]+\)|[a-zA-Z]+|#[0-9a-fA-F]{3,8}|rgb\(\d{1,3}(?:,\s*\d{1,3}){2}\))\]([\s\S]*?)\[\/color\]/g,
-        (m, c, txt) => '<span data-type="text" style="color:' + c + '">' + txt + '</span>');
-    /* 背景颜色：[bg=var(--b3-font-backgroundN)]...[/bg]，与字体颜色配对 */
-    t = t.replace(/\[bg=(var\(--[\w-]+\)|[a-zA-Z]+|#[0-9a-fA-F]{3,8}|rgb\(\d{1,3}(?:,\s*\d{1,3}){2}\))\]([\s\S]*?)\[\/bg\]/g,
-        (m, c, txt) => '<span data-type="text" style="background-color:' + c + '">' + txt + '</span>');
-    /* 裸链接自动识别：http(s):// 开头的网址直接变可点击链接
-       解决用户从网页复制的纯文本网址无法点开的问题（之前只有 [文字](网址) 表单式可点击）
-       放在 Markdown 链接之前处理；用负向后顾 (?<!\()"') 避免误伤 [文字](网址) 里的网址（其前是 "("） */
-    t = t.replace(/(?<![\("'])https?:\/\/[^\s<>"')\]]+/gi, (url) => {
-        /* 去掉结尾可能被误吞的标点（英文句点/逗号等），还原到链接外，避免把标点包进链接 */
-        const m = url.match(/^(.*?)([.,;:。，、；：！？）】」』]+)$/);
-        let tail = '';
-        if (m) { url = m[1]; tail = m[2]; }
-        return '<a class="north-breeze-link" href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>' + tail;
-    });
+    t = breezeFormatColorBg(t);
+    t = breezeAutoBareLinks(t);
     /* Markdown 超链接：[文字](网址) → <a>，放在最后避免与其它内联格式互相干扰 */
     t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="north-breeze-link" href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
     return t;
+}
+
+/* 去掉 Lute 单行/单段输出最外层的 <p>…</p> 外壳（产物还要拼进 <li>/<span> 等容器）。
+   只在「整个输出就是一个段落」时剥壳；含代码块/表格等多个块级节点时原样返回。 */
+function breezeStripOuterParagraph(html) {
+    const s = String(html || '').trim();
+    const m = s.match(/^<p[^>]*>([\s\S]*)<\/p>$/i);
+    if (m && m[1].toLowerCase().indexOf('</p>') === -1) return m[1];
+    return s;
+}
+
+/* 搜索高亮（转义后文本版）：入参已是转义文本（Lute 管线里转义发生在渲染前），
+   命中处直接包 <mark class="north-breeze-hl">，不再二次转义 */
+function breezeHighlightEscapedText(run, q) {
+    if (!q || !run) return run;
+    let re;
+    try { re = new RegExp(breezeEscapeRegExp(q), 'ig'); } catch (e) { return run; }
+    return run.replace(re, (m) => '<mark class="north-breeze-hl">' + m + '</mark>');
+}
+
+/* 渲染产物装饰：按 <tag> 切分，只处理「文本 run」（标签与属性原样保留）——
+   - 搜索高亮 <mark class="north-breeze-hl">（传 q 时；run 已转义，直接包裹）
+   - #标签 chip（同旧逻辑）
+   - <code>/<pre> 内部（行级代码、代码块）跳过，避免把代码内容误渲染成标签/高亮
+   文本已整体转义，run 里不会出现裸的 < >，按尖括号切分是安全的 */
+function breezeDecorateHtml(html, q) {
+    const parts = String(html || '').split(/(<[^>]+>)/g);
+    let inCode = false;
+    for (let i = 0; i < parts.length; i++) {
+        if (i % 2 === 1) {
+            if (/^<(code|pre)[\s>]/i.test(parts[i])) inCode = true;
+            else if (/^<\/(code|pre)[\s>]/i.test(parts[i])) inCode = false;
+            continue;
+        }
+        if (!parts[i] || inCode) continue;
+        /* 非 code/pre 的文本 run 里不应残留裸换行符：Lute 在块级元素间、<br> 后
+           都会输出排版用 \n，清风容器 white-space:normal 下不可见，但朋友圈容器
+           是 pre-wrap，会把它们显示成多余空行——真实换行都已转成 <br>，直接剔除；
+           代码块内的换行是内容本身，inCode 的 run 跳过不受影响 */
+        parts[i] = parts[i].replace(/\n/g, '');
+        parts[i] = breezeHighlightEscapedText(parts[i], q)
+            .replace(breezeTagInlineRe(), (m) => '<span class="north-breeze-tag">' + m + '</span>');
+    }
+    return parts.join('');
+}
+
+/* 单行行内渲染（列表项文本 / 引用文本）：escape → [color]/[bg] → Lute（剥 <p> 壳）→
+   装饰（搜索高亮 + #标签）→ 裸网址成链。Lute 不可用时回落旧正则链（行为同旧版）。 */
+function breezeRenderLineMd(line, q) {
+    const h = breezeFormatColorBg(breezeEsc(line));
+    const lute = breezeGetLute();
+    if (lute) {
+        let out = '';
+        try { out = lute.Md2HTML(h); } catch (e) { out = ''; }
+        if (out) {
+            out = breezeStripOuterParagraph(out);
+            out = breezeDecorateHtml(out, q);
+            return breezeAutoBareLinks(out);
+        }
+    }
+    return breezeDecorateHtml(breezeInlineFormat(breezeHighlightText(line, q)), null);
+}
+
+/* 文本段渲染（普通段落，非列表/引用）：整段交给 Lute 以支持块级 markdown
+   （# 标题、``` 代码块、表格、--- 分隔线、4 空格缩进代码等）。
+   段内单换行用「行尾两空格」硬换行保真：markdown 软换行默认不折行，
+   加两空格强制输出 <br>，与旧的逐行 <br> 拼接视觉一致；
+   代码块内行尾的两空格只是代码内容的尾部空白，不可见、无副作用。
+   行级预处理（escape / [color]/[bg]）仍逐行做，再拼段渲染。 */
+function breezeRenderSegmentMd(lines, q) {
+    const legacy = () => lines.map((ln) => breezeDecorateHtml(breezeInlineFormat(breezeHighlightText(ln, q)), null)).join('<br>');
+    const lute = breezeGetLute();
+    if (!lute) return legacy();
+    const md = lines.map((ln) => breezeFormatColorBg(breezeEsc(ln)) + '  ').join('\n');
+    let out = '';
+    try { out = lute.Md2HTML(md); } catch (e) { out = ''; }
+    if (!out) return legacy();
+    out = breezeStripOuterParagraph(out);
+    out = breezeDecorateHtml(out, q);
+    return breezeAutoBareLinks(out);
+}
+
+/* 代码块语法高亮：Lute 只输出 <pre><code class="language-xxx">，着色交给思源内置的
+   highlight.js（window.hljs，protyle 同款）。注意思源对 hljs 脚本与其 token 配色样式
+   都是「懒加载」——打开编辑器才注入，只用清风视图时两者都不存在，所以要按需补：
+   breezeEnsureHljs 会用与思源相同的注入方式加载思源自带的 hljs 脚本与配色
+   （资源直接取自 /stage/protyle/js/highlight.js/，不引入外部库），加载完成后自动重扫。
+   - 有 language 类且 hljs 认识 → 按该语言高亮
+   - language 类但 hljs 不认识（如 mermaid）→ 不处理（对齐思源的 plaintext 回落，避免乱着色）
+   - 无 language 类（``` 不带语言）→ highlightElement 自动检测
+   处理前先打 data-lumina-hl 标记：高亮本身会产生 DOM 变更，标记避免观察器循环重复处理。 */
+function breezeHighlightCodeBlocks(root) {
+    const hljs = (typeof window !== 'undefined') ? window.hljs : null;
+    if (!hljs || typeof hljs.highlightElement !== 'function') {
+        breezeEnsureHljs();
+        return;
+    }
+    const blocks = root.querySelectorAll('.north-breeze-note-content pre code, .north-breeze-memo-card-content pre code, .north-luna-moments-item-text pre code');
+    blocks.forEach((code) => {
+        if (code.hasAttribute('data-lumina-hl')) return;
+        code.setAttribute('data-lumina-hl', 'done');
+        try {
+            /* 包一层容器并挂语言标签 + 复制按钮（对齐思源 protyle 代码块的悬浮工具条） */
+            const pre = code.parentElement;
+            if (pre && pre.tagName === 'PRE') breezeDecorateCodeBlock(pre, code);
+            const m = (code.className || '').match(/language-([\w+#.-]+)/);
+            if (m && !hljs.getLanguage(m[1])) return;
+            hljs.highlightElement(code);
+        } catch (e) { /* 高亮失败保持原样 */ }
+    });
+}
+
+/* 代码块容器包装：pre 外包 .north-breeze-code-wrap（定位基准），
+   左上角挂语言标签（取 code 的 language-xxx 类）、右上角挂复制按钮。
+   不把标签/按钮放进 pre 内部：pre 是横向滚动容器，absolute 子元素会随滚动跑偏 */
+function breezeDecorateCodeBlock(pre, code) {
+    if (pre.parentElement && pre.parentElement.classList && pre.parentElement.classList.contains('north-breeze-code-wrap')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'north-breeze-code-wrap';
+    if (pre.parentNode) {
+        pre.parentNode.insertBefore(wrap, pre);
+        wrap.appendChild(pre);
+    }
+    const m = (code.className || '').match(/language-([\w+#.-]+)/);
+    if (m && m[1]) {
+        const lang = document.createElement('span');
+        lang.className = 'north-breeze-code-lang';
+        lang.textContent = m[1];
+        wrap.appendChild(lang);
+    }
+    const btn = document.createElement('span');
+    btn.className = 'north-breeze-code-copy b3-tooltips b3-tooltips__w';
+    btn.setAttribute('aria-label', '复制');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13"><rect x="9" y="9" width="11" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15 9V5.5A1.5 1.5 0 0 0 13.5 4h-8A1.5 1.5 0 0 0 4 5.5v8A1.5 1.5 0 0 0 5.5 15H9" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>';
+    wrap.appendChild(btn);
+}
+
+/* 复制按钮点击：全局事件委托（绑定一次），覆盖卡片/批注弹窗等所有出现位置 */
+let _breezeCodeCopyBound = false;
+function breezeInstallCodeCopyHandler() {
+    if (_breezeCodeCopyBound || typeof document === 'undefined') return;
+    _breezeCodeCopyBound = true;
+    document.addEventListener('click', (ev) => {
+        const btn = ev.target && ev.target.closest ? ev.target.closest('.north-breeze-code-copy') : null;
+        if (!btn) return;
+        const wrap = btn.parentElement;
+        const code = wrap ? wrap.querySelector('pre code') : null;
+        if (!code) return;
+        const text = (code.textContent || '').replace(/\n$/, '');
+        const done = () => {
+            btn.classList.add('copied');
+            btn.setAttribute('aria-label', '已复制');
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.setAttribute('aria-label', '复制');
+            }, 1500);
+        };
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done, () => { breezeCopyTextFallback(text); done(); });
+            } else {
+                breezeCopyTextFallback(text);
+                done();
+            }
+        } catch (e) {
+            try { breezeCopyTextFallback(text); done(); } catch (e2) { /* noop */ }
+        }
+    });
+}
+/* 剪贴板 API 不可用时的兜底：隐藏 textarea + execCommand('copy') */
+function breezeCopyTextFallback(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) { /* noop */ }
+    ta.remove();
+}
+
+/* 代码块高亮观察器：与链接标题观察器分开，防抖用 rAF（逐帧合并）。
+   链接标题的 400ms 防抖是为网络抓取节流，而高亮是纯本地操作，
+   挂 400ms 防抖会让首次渲染出现「先素后亮」的闪烁；rAF 让渲染当帧即完成高亮。
+   高亮/包装自身产生的 DOM 变更也会再触发本观察器，但已处理的代码块有
+   data-lumina-hl 标记，重扫是无变更的空跑，一帧后自然停住 */
+let breezeCodeHlObserver = null;
+function breezeInstallCodeHighlightObserver() {
+    if (breezeCodeHlObserver || typeof MutationObserver === 'undefined' || typeof requestAnimationFrame === 'undefined') return;
+    breezeCodeHlObserver = new MutationObserver(() => {
+        if (breezeCodeHlObserver._raf) return; /* 本帧已排队 */
+        breezeCodeHlObserver._raf = requestAnimationFrame(() => {
+            breezeCodeHlObserver._raf = null;
+            breezeHighlightCodeBlocks(document.body);
+        });
+    });
+    try { breezeCodeHlObserver.observe(document.body, { childList: true, subtree: true }); } catch (e) { /* noop */ }
+}
+function breezeUninstallCodeHighlightObserver() {
+    if (!breezeCodeHlObserver) return;
+    if (breezeCodeHlObserver._raf) cancelAnimationFrame(breezeCodeHlObserver._raf);
+    breezeCodeHlObserver.disconnect();
+    breezeCodeHlObserver = null;
+}
+
+/* 确保 hljs 脚本可用（单例注入）：缺脚本时注入思源自带的 highlight.min.js + third-languages.js，
+   完成后按当前明暗主题补 token 配色样式并重扫一遍代码块；脚本已在则直接补样式后返回 */
+let _breezeHljsLoading = null;
+function breezeEnsureHljs() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return Promise.resolve();
+    if (window.hljs && typeof window.hljs.highlightElement === 'function') {
+        breezeEnsureHljsStyle();
+        return Promise.resolve();
+    }
+    if (_breezeHljsLoading) return _breezeHljsLoading;
+    _breezeHljsLoading = new Promise((resolve) => {
+        const loadScript = (src, id) => new Promise((res) => {
+            try {
+                if (document.getElementById(id)) { res(); return; }
+                const s = document.createElement('script');
+                s.id = id;
+                s.src = src;
+                s.onload = () => res();
+                s.onerror = () => res(); /* 加载失败也算完成：代码块保持无高亮，不阻塞 */
+                document.head.appendChild(s);
+            } catch (e) { res(); }
+        });
+        loadScript('/stage/protyle/js/highlight.js/highlight.min.js?v=11.12.0', 'lumina-hljs-script')
+            .then(() => loadScript('/stage/protyle/js/highlight.js/third-languages.js?v=2.0.1', 'lumina-hljs-third-script'))
+            .then(() => {
+                breezeEnsureHljsStyle();
+                /* 注入完成时往往已没有新的 DOM 变更来触发观察器，这里主动重扫 */
+                breezeHighlightCodeBlocks(document.body);
+                resolve();
+            });
+    });
+    return _breezeHljsLoading;
+}
+
+/* 补 hljs token 配色样式：主题取自思源外观配置（mode 0=浅色，否则深色），
+   与思源注入的 protyleHljsStyle 同源同款；任一已存在则不重复注入 */
+function breezeEnsureHljsStyle() {
+    try {
+        if (document.getElementById('lumina-hljs-style') || document.getElementById('protyleHljsStyle')) return;
+        const conf = (window.siyuan && window.siyuan.config && window.siyuan.config.appearance) || {};
+        const dark = conf.mode !== 0;
+        let theme = dark ? conf.codeBlockThemeDark : conf.codeBlockThemeLight;
+        if (!theme) theme = dark ? 'github-dark' : 'default';
+        const link = document.createElement('link');
+        link.id = 'lumina-hljs-style';
+        link.rel = 'stylesheet';
+        link.href = '/stage/protyle/js/highlight.js/styles/' + theme + '.min.css?v=11.12.0';
+        document.head.appendChild(link);
+    } catch (e) { /* noop */ }
 }
 
 /* ============================================================
@@ -3068,8 +3398,10 @@ function breezeBuildListTree(items, startIdx, levelIndent, renderInline) {
    - 任务：^(\s*)([-*+])\s+\[([ xX])\]\s+(.*)$ —— 用 ul.task-list + li 含 checkbox（disabled 防误点）
    - 有序：^(\s*)(\d+)\.\s+(.*)$ —— 用 ol + li，start 跟随首个序号
    - 无序：^(\s*)([-*+])\s+(.*)$ —— 用 ul.bullet-list + li
-   - 普通段：剩余行用 <br> 拼接 + #标签 高亮（保留原行为）
-   命中前先 escape HTML，再做 #标签 替换——避免用户输入的 < 之类的字符在替换时和标签 span 混在一起 */
+   - 普通段：整段交给 Lute 渲染 markdown（# 标题 / 代码块 / 表格 / 分隔线，见
+     breezeRenderSegmentMd），Lute 不可用时回落为逐行 <br> 拼接（保留原行为）
+   行内格式、搜索高亮与 #标签 替换统一在 breezeRenderLineMd / breezeRenderSegmentMd 的
+   装饰步骤完成——escape 先行，用户输入的 < 之类的字符不会和标签 span 混在一起 */
 function breezeRenderTextWithTags(raw, q) {
     if (raw == null) return '';
     const text = String(raw);
@@ -3120,8 +3452,10 @@ function breezeRenderTextWithTags(raw, q) {
     /* 行内格式 + #标签 高亮：先 escape（含搜索词高亮），再行内 markdown，再 #标签。
        #标签加后行断言 (?<![:="\'\w])：排除紧跟在 :=" 或字母数字之后的 #（如 style="color:#0066cc" 里的 #hex），避免误匹配成标签。
        字符集改用统一的 BREEZE_TAG_CHARS，日文/韩文标签同样能高亮 */
-    const tagInlineRe = new RegExp('(?<![:="\'\\w])#(' + BREEZE_TAG_NAME + ')(?![' + BREEZE_TAG_CHARS + '])(?!#)', 'g');
-    const renderInline = (s) => breezeInlineFormat(breezeHighlightText(s, q)).replace(tagInlineRe, (m) => `<span class="north-breeze-tag">${m}</span>`);
+    /* 行内/段渲染走 Lute 管线（breezeRenderLineMd / breezeRenderSegmentMd，内部含
+       escape、搜索高亮、#标签 chip、[color]/[bg]、裸网址成链与 Lute 回落），
+       块级结构（任务/有序/无序列表、引用、空行还原）仍由本函数解析，保持原样式 */
+    const renderInline = (s) => breezeRenderLineMd(s, q);
     let html = '';
     segments.forEach((seg, idx) => {
         /* 还原段与段之间的空行：N 个空行 → N+1 个 <br>（1 个结束上一行，其余为空白行）。
@@ -3130,7 +3464,7 @@ function breezeRenderTextWithTags(raw, q) {
             html += '<br>'.repeat(seg.blankBefore + 1);
         }
         if (seg.type === 'text') {
-            html += seg.lines.map(renderInline).join('<br>');
+            html += breezeRenderSegmentMd(seg.lines, q);
         } else if (seg.type === 'list') {
             const minIndent = Math.min.apply(null, seg.items.map(it => it.indent));
             const res = breezeBuildListTree(seg.items, 0, minIndent, renderInline);
@@ -4230,6 +4564,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         breezeLinkTitlePlugin = this;
         breezeLoadLinkTitleCache(this);
         breezeInstallLinkTitleObserver();
+        /* 代码块复制按钮的全局点击委托（绑定一次） */
+        breezeInstallCodeCopyHandler();
+        /* 代码块高亮观察器（rAF 防抖，渲染当帧即高亮，消除首次进入的闪烁） */
+        breezeInstallCodeHighlightObserver();
         if (!this._pluginDeletedAssets) this._pluginDeletedAssets = new Set();
 
         // 注册自定义图标（供标签页+顶栏使用）
@@ -4258,6 +4596,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     let migrated = false;
                     d.breezeNotes.forEach(n => { if (breezeMigrateNote(n)) migrated = true; });
                     if (migrated) this.saveData(RECORDS_STORAGE, d).catch(() => {});
+                    /* 代码块高亮预热：笔记里存在代码块时提前注入 hljs（思源对 hljs 懒加载，
+                       不预热的话首次渲染会「先素后亮」）；没有代码块就不加载，等出现时按需补 */
+                    try {
+                        if (d.breezeNotes.some((n) => String(n.content || '').indexOf('```') !== -1)) breezeEnsureHljs();
+                    } catch (e) { /* noop */ }
                 }
             }
         }).catch(() => {});
@@ -16872,6 +17215,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
     onunload() {
         breezeUninstallLinkTitleObserver();
+        breezeUninstallCodeHighlightObserver();
         this.unhookMobileGoBack();
         if (this._toolbarObserver) {
             this._toolbarObserver.disconnect();

@@ -9330,7 +9330,7 @@
     left: 4px;
     height: 6px;
     width: 6px;
-    margin-top: -3px;
+    margin-top: -1px;
     border-radius: 50%;
     background-color: var(--b3-theme-on-surface);
 }
@@ -13277,4 +13277,231 @@ a.north-breeze-link[data-lumina-title-state="pending"] {
     color: var(--b3-theme-on-surface);
     font-size: 12.5px;
     line-height: 1.6;
+}
+
+/* ============================================================
+   清风 Markdown（Lute 渲染）补充样式
+   正文由 window.Lute.Md2HTML 渲染，可能包含标题/代码块/表格/分隔线/图片/
+   思源标记等节点；行内 strong/em/del/code 与 a.north-breeze-link 已有样式，
+   这里只补齐块级节点与 Lute 特有输出。作用域限定清风卡片正文
+   （.north-breeze-note-text / .north-breeze-note-content / .north-breeze-memo-card-content），
+   不影响朋友圈等其他视图。
+   ============================================================ */
+
+/* 标题（# ~ ######）：卡片内尺寸收敛，避免瀑布流卡片失衡 */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) :is(h1, h2, h3, h4, h5, h6) {
+    margin: 8px 0 4px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: inherit;
+}
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) h1 { font-size: 1.25em; }
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) h2 { font-size: 1.15em; }
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) h3 { font-size: 1.08em; }
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) :is(h4, h5, h6) { font-size: 1em; }
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) :is(h1, h2, h3, h4, h5, h6):first-child,
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) :is(h1, h2, h3, h4, h5, h6):last-child {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* 代码块（``` 围栏或 4 空格缩进）：圆角浅底 + 横向滚动 */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) pre {
+    margin: 6px 0;
+    padding: 8px 10px;
+    background-color: color-mix(in srgb, currentColor 5%, transparent);
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.88em;
+    line-height: 1.6;
+}
+/* 行级 code 的底色/边框在代码块内还原为普通排版 */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) pre code {
+    color: inherit;
+    background-color: transparent;
+    outline: none;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+}
+
+/* 表格（GFM）：宽表横向滚动不撑破卡片 */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) table {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+    margin: 6px 0;
+    font-size: 0.92em;
+}
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) :is(th, td) {
+    border: 1px solid var(--b3-border-color);
+    padding: 3px 8px;
+    text-align: left;
+    vertical-align: top;
+}
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) th {
+    font-weight: 600;
+    background-color: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+/* 分隔线（--- 或 ***） */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) hr {
+    border: none;
+    border-top: 1px solid var(--b3-border-color);
+    margin: 10px 0;
+}
+
+/* 图片（markdown 图片语法；本地 petal 资源早已抽出为九宫格，这里是外链/截图等） */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) img {
+    max-width: 100%;
+    border-radius: 6px;
+    vertical-align: middle;
+}
+
+/* 思源标记 ==文字==（Lute 输出 <mark> 或 <span data-type="mark">，观感对齐旧 .north-breeze-mark） */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) mark,
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) [data-type="mark"] {
+    background-color: var(--b3-protyle-inline-mark-background);
+    color: inherit;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+/* Lute 直接输出的无 class 列表（如 "1)" 语法落入文本段时）：
+   :not([class]) 确保不覆盖自定义 .north-breeze-ordered-list / task-list / bullet-list 样式 */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) :is(ul, ol):not([class]) {
+    margin: 4px 0;
+    padding-left: 1.5em;
+}
+/* Lute 宽松列表会给 li 包 <p>，压掉默认段落边距 */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) li > p {
+    margin: 0;
+}
+
+/* Lute 直接输出的引用块（裸 ">" 行落入文本段时）：排除自定义 .north-breeze-quote */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) blockquote:not(.north-breeze-quote) {
+    margin: 6px 0;
+    padding: 4px 10px;
+    border-left: 3px solid var(--b3-border-color);
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* ============================================================
+   代码块工具条：语言标签（左上）+ 复制按钮（右上），常显
+   （标签/按钮挂在 .north-breeze-code-wrap 上，pre 横向滚动时
+   工具条固定在容器两角，不随内容滚动；pre 顶部加大留白给工具条）
+   ============================================================ */
+.north-breeze-code-wrap {
+    position: relative;
+}
+:is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) .north-breeze-code-wrap pre {
+    padding-top: 28px;
+}
+/* wrap 内 code 的强制重置：特异性 (0,2,1) 必须压过 hljs 主题的
+   pre code.hljs { padding:1em }（(0,1,2)，与基础重置打平时按加载顺序会反过来赢，
+   导致代码内容顶部多出 1em 空隙），否则工具条与首行代码之间隔一大截。
+   字体按需求固定 Consolas（思源代码块同款；monospace 作非 Windows 回落） */
+:is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) .north-breeze-code-wrap code {
+    display: block;
+    color: inherit;
+    background-color: transparent;
+    outline: none;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+    font-family: Consolas, monospace !important;
+}
+/* 注释字体大小（对齐思源 .hljs-comment { font-size: 13px }，仅作用于清风代码块） */
+:is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) .north-breeze-code-wrap .hljs-comment {
+    font-size: 13px;
+}
+.north-breeze-code-lang,
+.north-breeze-code-copy {
+    position: absolute;
+    top: 6px;
+    z-index: 1;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.north-breeze-code-lang {
+    left: 14px;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--b3-theme-on-surface-light);
+    font-family: var(--b3-font-family-code, monospace);
+    pointer-events: none;
+}
+.north-breeze-code-copy {
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--b3-theme-on-surface-light);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.north-breeze-code-copy:hover {
+    color: var(--b3-theme-primary);
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+}
+.north-breeze-code-copy.copied {
+    color: var(--b3-theme-primary);
+}
+
+/* ============================================================
+   适配 Neo-Plus 插件「彩色标题」
+   Neo-Plus 启用彩色标题时会在 <html> 挂 .neo-coloredheadings，并注入
+   --_coloredheadings-* 系列变量（跟随其 风格 soft/default/vivid、
+   颜色来源 theme/fixed/accent、初始色相 等设置，作用域为 .neo-mode-light/dark）。
+   这里对清风卡片内的 markdown 标题与笔记卡片标题按 Neo 同款公式取色：
+   h1~h6 沿 initial-hue 每 级 +50 色相（0/50/100/150/200/250），
+   颜色来源为 fixed/accent 时统一取 --_coloredheadings-fixed-color。
+   未开启（html 无 .neo-coloredheadings）时以下规则完全不生效。
+   ============================================================ */
+.neo-coloredheadings :is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) :is(h1, h2, h3, h4, h5, h6) {
+    color: var(--neo-coloredheadings-color, inherit);
+}
+.neo-coloredheadings :is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) h1 {
+    --neo-coloredheadings-color: var(--_coloredheadings-fixed-color, oklch(from var(--_coloredheadings-base) var(--_coloredheadings-l) var(--_coloredheadings-c) calc(var(--_coloredheadings-initial-hue) + 0)));
+}
+.neo-coloredheadings :is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) h2 {
+    --neo-coloredheadings-color: var(--_coloredheadings-fixed-color, oklch(from var(--_coloredheadings-base) var(--_coloredheadings-l) var(--_coloredheadings-c) calc(var(--_coloredheadings-initial-hue) + 50)));
+}
+.neo-coloredheadings :is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) h3 {
+    --neo-coloredheadings-color: var(--_coloredheadings-fixed-color, oklch(from var(--_coloredheadings-base) var(--_coloredheadings-l) var(--_coloredheadings-c) calc(var(--_coloredheadings-initial-hue) + 100)));
+}
+.neo-coloredheadings :is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) h4 {
+    --neo-coloredheadings-color: var(--_coloredheadings-fixed-color, oklch(from var(--_coloredheadings-base) var(--_coloredheadings-l) var(--_coloredheadings-c) calc(var(--_coloredheadings-initial-hue) + 150)));
+}
+.neo-coloredheadings :is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) h5 {
+    --neo-coloredheadings-color: var(--_coloredheadings-fixed-color, oklch(from var(--_coloredheadings-base) var(--_coloredheadings-l) var(--_coloredheadings-c) calc(var(--_coloredheadings-initial-hue) + 200)));
+}
+.neo-coloredheadings :is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) h6 {
+    --neo-coloredheadings-color: var(--_coloredheadings-fixed-color, oklch(from var(--_coloredheadings-base) var(--_coloredheadings-l) var(--_coloredheadings-c) calc(var(--_coloredheadings-initial-hue) + 250)));
+}
+/* 笔记卡片标题（「设置标题」的笔记，头部标题文字）：取 h1 同款颜色 */
+.neo-coloredheadings .north-breeze-note-title-in-header {
+    color: var(--_coloredheadings-fixed-color, oklch(from var(--_coloredheadings-base) var(--_coloredheadings-l) var(--_coloredheadings-c) calc(var(--_coloredheadings-initial-hue) + 0)));
+}
+
+/* 朋友圈视图：Lute 输出的元素级样式补齐（mark / em / 链接），观感对齐清风卡片 */
+.north-luna-moments-item-text mark,
+.north-luna-moments-item-text .north-breeze-mark {
+    background-color: var(--b3-protyle-inline-mark-background);
+    color: inherit;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+.north-luna-moments-item-text em {
+    font-style: italic;
+}
+.north-luna-moments-item-text .north-breeze-link {
+    color: var(--b3-theme-primary);
+    text-decoration: none;
+    word-break: break-all;
+}
+.north-luna-moments-item-text .north-breeze-link:hover {
+    text-decoration: underline;
 }
