@@ -3,6 +3,8 @@ const { Plugin, openTab, getFrontend, showMessage, confirm, openEmoji, fetchSync
 const RECORDS_STORAGE = "lumina-records";
 const SETTINGS_STORAGE = "lumina-settings";
 const MOMENTS_STORAGE = "lumina-moments";
+/* 旅行视图（旅游攻略画布）独立存储：与碎碎念笔记数据完全解耦 */
+const TRAVEL_STORAGE = "lumina-travel";
 
 // Flomo API 配置
 const FLOMO_API_BASE = "https://flomoapp.com/api/v1";
@@ -4490,6 +4492,7 @@ const SIDEBAR_VIEWS = [
             </div>
         </div>
     ` },
+    { id: "travel", icon: "iconSend", title: "行程" },
     { id: "settings", icon: "iconSettings", title: "设置", isBottom: true, isSettings: true, isFixed: true, cannotHide: true, render: null },
 ];
 
@@ -4540,8 +4543,14 @@ const SIDEBAR_DEFAULT_ICONS = {
     chart: '<svg class="icon"><use xlink:href="#iconGraph"></use></svg>',
     globe: '<svg class="icon"><use xlink:href="#iconGlobe"></use></svg>',
     lifelog: '<svg class="icon"><use xlink:href="#iconSpreadEven"></use></svg>',
-    settings: '<svg class="icon"><use xlink:href="#iconSettings"></use></svg>'
+    settings: '<svg class="icon"><use xlink:href="#iconSettings"></use></svg>',
+    travel: '<svg class="icon"><use xlink:href="#iconSend"></use></svg>'
 };
+
+/* ===== 旅行视图（旅游攻略画布）=====
+   刻意不预置任何示例行程：发布版首次打开应当是干净的，
+   由用户自己点「新建行程」开始，不做任何数据"塞入"。 */
+const TRAVEL_DAY_COLORS = ['#7c6bd6', '#3b82c4', '#2fa88a', '#5b7c9d', '#c4736b', '#a8863b'];
 
 module.exports = class NorthLunaPlugin extends Plugin {
 
@@ -4553,6 +4562,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!this.data[RECORDS_STORAGE]) this.data[RECORDS_STORAGE] = { breezeNotes: [], tagMeta: {}, breezeReviewHistory: {} };
         if (!this.data[SETTINGS_STORAGE]) this.data[SETTINGS_STORAGE] = { activeView: "notes", settings: { resourceStorage: 'public' }, navHidden: {}, navOrder: [], navIcons: {}, navNames: {}, mobileNavHidden: {}, mobileNavIcons: {}, mobileNavNames: {}, mobileNavOrder: [] };
         if (!this.data[MOMENTS_STORAGE]) this.data[MOMENTS_STORAGE] = { config: { nickname: '月亮', signature: '言念君子，温其如玉' }, items: [] };
+        if (!this.data[TRAVEL_STORAGE]) this.data[TRAVEL_STORAGE] = { trips: [], groups: [] };
 
         // 朋友圈临时筛选状态（不持久化，刷新视图后重置）
         this.momentsMoodFilter = null;
@@ -4654,7 +4664,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (needSave) this.saveMoments();
         }).catch(() => {});
 
-        // 4. 所有数据加载完毕 → 检测轻语旧数据
+        // 4. 加载旅行视图数据（只在内存里兜底成空结构，不预置示例、也不写盘）
+        this.loadData(TRAVEL_STORAGE).then(data => {
+            const d = (data && typeof data === "object") ? data : null;
+            if (!d || !Array.isArray(d.trips)) {
+                this.data[TRAVEL_STORAGE] = { trips: [], groups: [] };
+            } else {
+                if (!Array.isArray(d.groups)) d.groups = [];
+                this.data[TRAVEL_STORAGE] = d;
+            }
+        }).catch(() => {});
+
+        // 5. 所有数据加载完毕 → 检测轻语旧数据
         Promise.all([_loadRecords, _loadSettings]).then(() => {
             this._maybeAutoImportLumina();
         }).catch(() => {});
@@ -5348,6 +5369,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         body.classList.remove('north-luna-moments-body');
                         body.innerHTML = renderBreezeStats(this);
                         this._bindBreezeStats();
+                    } else if (view.id === 'travel') {
+                        /* 旅行视图：旅游攻略画布，独占主区域（横向滚动 + 缩放），独立数据 lumina-travel
+                           注意：此处 this 是 tab 实例（不是 plugin），渲染函数挂在 plugin 上，必须走 this.plugin */
+                        body.style.cssText = 'flex:1;overflow:hidden;padding:0;background:var(--b3-theme-background);';
+                        body.classList.remove('north-luna-moments-body');
+                        this.plugin._renderTravelCanvas(body);
                     } else if (view.id === 'table') {
                         body.style.cssText = 'flex:1;overflow:hidden;padding:0;background:var(--b3-theme-background);';
                         body.classList.remove('north-luna-moments-body');
@@ -15737,6 +15764,1308 @@ module.exports = class NorthLunaPlugin extends Plugin {
         }
     }
 
+    /* ============================================================
+     * 旅行视图（旅游攻略画布）
+     * - 独立于清风数据，读写 lumina-travel
+     * - 中心行程节点 + 若干 Day 分支 + 打卡点（含时长与配图）
+     * - 支持横向滚动与缩放（0.4x 至 1.5x）
+     * ============================================================ */
+    _renderTravelCanvas(body) {
+        const plugin = this;
+        const esc = (s) => plugin._esc(s == null ? '' : String(s));
+
+        if (typeof plugin.travelScale !== 'number') plugin.travelScale = 1;
+        /* 记住宿主与视图根节点，供编辑弹层与局部重绘使用 */
+        plugin._travelBody = body;
+
+        const trip = plugin._getActiveTrip();
+        const _tripsStore = plugin.data[TRAVEL_STORAGE] || {};
+        const allTrips = Array.isArray(_tripsStore.trips) ? _tripsStore.trips : [];
+
+        if (!trip) {
+            body.innerHTML = `
+            <div class="north-travel">
+                <div class="north-travel-empty">
+                    <div class="north-travel-empty-title">还没有行程</div>
+                    <div class="north-travel-empty-desc">新建一份行程，开始规划你的路线</div>
+                    <button class="north-travel-btn north-travel-btn--primary" data-travel-action="new-trip" type="button">新建行程</button>
+                </div>
+            </div>`;
+            plugin._travelRoot = body.querySelector('.north-travel');
+            plugin._bindTravelCanvas(body);
+            return;
+        }
+
+        const days = Array.isArray(trip.days) ? trip.days : [];
+        let stopCount = 0;
+        const daysHtml = days.map((day, di) => {
+            const color = day.color || TRAVEL_DAY_COLORS[di % TRAVEL_DAY_COLORS.length];
+            const items = Array.isArray(day.items) ? day.items : [];
+            stopCount += items.length;
+            const itemsHtml = items.map((it) => {
+                let mediaHtml = '';
+                if (it.image) {
+                    const src = (typeof _resolveMediaUrl === 'function') ? _resolveMediaUrl(it.image) : it.image;
+                    mediaHtml = '<div class="north-travel-stop-media"><img src="' + esc(src) + '" alt="" loading="lazy"></div>';
+                }
+                return '<div class="north-travel-stop" data-stop-id="' + esc(it.id) + '" data-day-id="' + esc(day.id) + '" title="点击编辑">' +
+                    mediaHtml +
+                    '<div class="north-travel-stop-info">' +
+                    '<div class="north-travel-stop-name">' + esc(it.name || '打卡点') + '</div>' +
+                    (it.duration ? '<div class="north-travel-stop-duration">' + esc(it.duration) + '</div>' : '') +
+                    '</div>' +
+                    '</div>';
+            }).join('');
+            return '<div class="north-travel-day" data-day-id="' + esc(day.id) + '" style="--travel-day-color:' + esc(color) + '">' +
+                '<div class="north-travel-day-head" data-travel-action="edit-day" data-day-id="' + esc(day.id) + '" title="点击编辑这一天">' + esc(day.label || ('Day ' + (di + 1))) + '</div>' +
+                '<div class="north-travel-day-body">' + itemsHtml + '</div>' +
+                '<button class="north-travel-day-add" data-day-id="' + esc(day.id) + '" type="button">+ 打卡点</button>' +
+                '</div>';
+        }).join('');
+
+        /* 中心节点的自定义配色（背景 / 文字），没设置过就交给 CSS 默认值 */
+        const centerStyle = (() => {
+            const parts = [];
+            if (trip.centerColor) parts.push('background:' + trip.centerColor);
+            if (trip.centerTextColor) parts.push('color:' + trip.centerTextColor);
+            return parts.length ? ' style="' + esc(parts.join(';')) + '"' : '';
+        })();
+
+        body.innerHTML = `
+        <div class="north-travel">
+            <div class="north-travel-toolbar">
+                <div class="north-travel-toolbar-left">
+                    <button class="north-travel-trip-picker" data-travel-action="pick-trip" type="button" title="管理行程">
+                        <span class="north-travel-title">${esc(trip.title || '未命名行程')}</span>
+                        <svg class="north-travel-picker-arrow"><use xlink:href="#iconMore"></use></svg>
+                    </button>
+                    <span class="north-travel-meta">${days.length} 天 · ${stopCount} 个打卡点</span>
+                    ${allTrips.length > 1 ? '<span class="north-travel-trip-count">共 ' + allTrips.length + ' 个行程</span>' : ''}
+                </div>
+                <div class="north-travel-toolbar-right">
+                    <button class="north-travel-btn" data-travel-action="edit-trip" type="button">管理行程</button>
+                    <button class="north-travel-btn" data-travel-action="add-day" type="button">添加一天</button>
+                    <span class="north-travel-toolbar-divider"></span>
+                    <button class="north-travel-zoom-btn" data-travel-zoom="out" title="缩小" type="button">-</button>
+                    <span class="north-travel-zoom-value" data-travel-zoom-value>${Math.round(plugin.travelScale * 100)}%</span>
+                    <button class="north-travel-zoom-btn" data-travel-zoom="in" title="放大" type="button">+</button>
+                    <button class="north-travel-zoom-btn" data-travel-zoom="reset" title="重置缩放" type="button">重置</button>
+                </div>
+            </div>
+            <div class="north-travel-viewport">
+                <div class="north-travel-canvas">
+                    <div class="north-travel-top">
+                        <div class="north-travel-endpoint north-travel-endpoint--start">${esc(trip.startPoint || '')}</div>
+                        <div class="north-travel-center" data-travel-action="pick-center-color" title="点击设置配色"${centerStyle}>${esc(trip.title || '行程')}</div>
+                        <div class="north-travel-endpoint north-travel-endpoint--end">${esc(trip.endPoint || '')}</div>
+                    </div>
+                    <div class="north-travel-days">${daysHtml}</div>
+                    <svg class="north-travel-links" aria-hidden="true"></svg>
+                </div>
+            </div>
+        </div>`;
+
+        plugin._travelRoot = body.querySelector('.north-travel');
+        this._bindTravelCanvas(body);
+    }
+
+    /* 旅行画布事件：工具栏按钮 + 缩放 + 点击编辑 + 尺寸变化重绘 */
+    _bindTravelCanvas(body) {
+        const plugin = this;
+
+        /* 工具栏按钮：空状态（没有画布）时也要可用，所以放在 canvas 判断之前 */
+        body.querySelectorAll('[data-travel-action]').forEach(btn => {
+            if (btn._travelActionBound) return;
+            btn._travelActionBound = true;
+            btn.addEventListener('click', () => {
+                const act = btn.dataset.travelAction;
+                if (act === 'edit-trip') plugin._openTravelTripsModal({ editTripId: plugin.travelActiveTripId });
+                else if (act === 'new-trip') plugin._openTravelTripsModal({ startNew: true });
+                else if (act === 'add-day') plugin._addTravelDay();
+                else if (act === 'pick-trip') plugin._openTravelTripsModal();
+                else if (act === 'pick-center-color') plugin._openTravelCenterColor(btn);
+                else if (act === 'edit-day') plugin._openTravelDayEditor(btn.dataset.dayId);
+            });
+        });
+
+        const canvas = body.querySelector('.north-travel-canvas');
+        if (!canvas) return;
+        if (!canvas._travelBound) {
+            canvas._travelBound = true;
+            /* 点击打卡点 → 编辑该打卡点 */
+            body.querySelectorAll('.north-travel-stop').forEach(el => {
+                if (el._travelStopBound) return;
+                el._travelStopBound = true;
+                el.addEventListener('click', () => {
+                    plugin._openTravelStopEditor(el.dataset.dayId, el.dataset.stopId);
+                });
+            });
+            /* 点击配图 → 看大图（复用朋友圈那套媒体查看器，支持滚轮缩放 / 拖拽 / 左右翻页）。
+               必须 stopPropagation，否则会连带触发上面打卡点的编辑。 */
+            body.querySelectorAll('.north-travel-stop-media img').forEach(img => {
+                if (img._travelPreviewBound) return;
+                img._travelPreviewBound = true;
+                img.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const src = img.getAttribute('src');
+                    if (!src || typeof plugin.showMomentsMediaPreview !== 'function') return;
+                    /* 把整份行程的配图一起传进去，方便在大图里左右翻 */
+                    const trip = plugin._getActiveTrip();
+                    const list = [];
+                    /* -1 表示还没找到；取第一次匹配，避免同图重复时定位偏到最后一个 */
+                    let idx = -1;
+                    ((trip && trip.days) || []).forEach(d => {
+                        ((d && d.items) || []).forEach(it => {
+                            if (!it.image) return;
+                            const s = (typeof _resolveMediaUrl === 'function') ? _resolveMediaUrl(it.image) : it.image;
+                            if (idx === -1 && s === src) idx = list.length;
+                            list.push({ src: String(s).replace(/^\//, ''), isVideo: false });
+                        });
+                    });
+                    if (!list.length) return;
+                    plugin.showMomentsMediaPreview(list, idx < 0 ? 0 : idx);
+                });
+            });
+            /* 点击每天的「+ 打卡点」→ 在该天新增 */
+            body.querySelectorAll('.north-travel-day-add').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    plugin._openTravelStopEditor(btn.dataset.dayId, null);
+                });
+            });
+            const applyScale = (next) => {
+                const s = Math.min(1.5, Math.max(0.4, Number(next.toFixed(2))));
+                plugin.travelScale = s;
+                canvas.style.setProperty('--travel-scale', s);
+                const val = body.querySelector('[data-travel-zoom-value]');
+                if (val) val.textContent = Math.round(s * 100) + '%';
+                plugin._drawTravelLinks(body);
+            };
+            canvas.style.setProperty('--travel-scale', plugin.travelScale);
+            body.querySelectorAll('[data-travel-zoom]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const act = btn.dataset.travelZoom;
+                    if (act === 'in') applyScale(plugin.travelScale + 0.1);
+                    else if (act === 'out') applyScale(plugin.travelScale - 0.1);
+                    else applyScale(1);
+                });
+            });
+            canvas._travelResizeHandler = () => plugin._drawTravelLinks(body);
+            window.addEventListener('resize', canvas._travelResizeHandler);
+            /* 视图从隐藏容器恢复显示（移动端抽屉、标签页切回）或布局尺寸变化时自愈重绘连线。
+               首次渲染若落在 display:none 的容器里，量到的宽高为 0，连线会画不出来，
+               靠这里补一次；SVG 是绝对定位，改它的尺寸不会反过来触发本观察器。 */
+            if (typeof ResizeObserver === 'function') {
+                canvas._travelResizeObserver = new ResizeObserver(() => plugin._drawTravelLinks(body));
+                canvas._travelResizeObserver.observe(canvas);
+            }
+        }
+        requestAnimationFrame(() => plugin._drawTravelLinks(body));
+        /* 图片是异步撑开布局的，加载完成后要重绘一次连线，避免首帧错位 */
+        body.querySelectorAll('.north-travel-stop-media img').forEach(img => {
+            if (img.complete) return;
+            img.addEventListener('load', () => plugin._drawTravelLinks(body), { once: true });
+        });
+    }
+
+    /* 绘制中心节点到各 Day 标题的虚线连接（测量实际位置后生成 SVG 曲线） */
+    _drawTravelLinks(body) {
+        const canvas = body.querySelector('.north-travel-canvas');
+        const svg = body.querySelector('.north-travel-links');
+        const center = body.querySelector('.north-travel-center');
+        if (!canvas || !svg || !center) return;
+        const scale = this.travelScale || 1;
+        const cRect = canvas.getBoundingClientRect();
+        const w = cRect.width / scale;
+        const h = cRect.height / scale;
+        if (w <= 0 || h <= 0) return;
+        svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+        svg.setAttribute('width', w);
+        svg.setAttribute('height', h);
+        const toLocal = (r) => ({
+            left: (r.left - cRect.left) / scale,
+            top: (r.top - cRect.top) / scale,
+            width: r.width / scale,
+            height: r.height / scale
+        });
+        const ce = toLocal(center.getBoundingClientRect());
+        const cx = ce.left + ce.width / 2;
+        const cy = ce.top + ce.height;
+        const parts = [];
+        const dayEls = Array.prototype.slice.call(body.querySelectorAll('.north-travel-day'));
+        dayEls.forEach((day) => {
+            const head = day.querySelector('.north-travel-day-head');
+            if (!head) return;
+            const he = toLocal(head.getBoundingClientRect());
+            const tx = he.left + he.width / 2;
+            const ty = he.top;
+            const color = (day.style.getPropertyValue('--travel-day-color') || '').trim() || '#8a8a8a';
+            const midY = cy + (ty - cy) * 0.55;
+            const d = 'M' + cx.toFixed(1) + ' ' + cy.toFixed(1) +
+                ' C' + cx.toFixed(1) + ' ' + midY.toFixed(1) + ' ' + tx.toFixed(1) + ' ' + midY.toFixed(1) + ' ' + tx.toFixed(1) + ' ' + ty.toFixed(1);
+            parts.push('<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.45"/>');
+        });
+        /* 起点 / 终点：分别连到行程的第一天与最后一天 */
+        [{ sel: '.north-travel-endpoint--start', day: dayEls[0] },
+        { sel: '.north-travel-endpoint--end', day: dayEls[dayEls.length - 1] }].forEach((cfg) => {
+            const epEl = body.querySelector(cfg.sel);
+            if (!epEl || !cfg.day) return;
+            const head = cfg.day.querySelector('.north-travel-day-head');
+            if (!head) return;
+            const ee = toLocal(epEl.getBoundingClientRect());
+            const he = toLocal(head.getBoundingClientRect());
+            const sx = ee.left + ee.width / 2;
+            const sy = ee.top + ee.height;
+            const tx = he.left + he.width / 2;
+            const ty = he.top;
+            const midY = sy + (ty - sy) * 0.5;
+            parts.push('<path d="M' + sx.toFixed(1) + ' ' + sy.toFixed(1) +
+                ' C' + sx.toFixed(1) + ' ' + midY.toFixed(1) + ' ' + tx.toFixed(1) + ' ' + midY.toFixed(1) + ' ' + tx.toFixed(1) + ' ' + ty.toFixed(1) +
+                '" fill="none" stroke="var(--b3-theme-on-surface-lighter, #b4b2a9)" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6"/>');
+        });
+        svg.innerHTML = parts.join('');
+    }
+
+    /* ---------- 中心节点配色 ---------- */
+
+    /* 点中心节点弹配色面板：字体颜色 / 背景颜色 / 色彩梯度。
+       全部基于思源原生 --b3-font-colorN 与 --b3-font-backgroundN，
+       换主题时颜色自动跟着走，不会沉淀成一堆写死的色值。 */
+    _openTravelCenterColor(anchor) {
+        const plugin = this;
+        this._closeTravelCenterColor();
+        const trip = this._getActiveTrip();
+        if (!trip || !anchor) return;
+
+        const COUNT = 13;
+        let fontItems = '';
+        let bgItems = '';
+        for (let n = 1; n <= COUNT; n++) {
+            fontItems += '<span class="north-travel-color-font" data-text-n="' + n + '" style="color: var(--b3-font-color' + n + ')" title="字体颜色 ' + n + '">A</span>';
+            bgItems += '<span class="north-travel-color-swatch" data-bg-n="' + n + '" style="background: var(--b3-font-background' + n + ')" title="背景颜色 ' + n + '"></span>';
+        }
+
+        /* 色彩梯度取自当前选中的基色；没选过就先用 6 号色打底 */
+        const base = trip.centerColorBase || 'var(--b3-font-background6)';
+        const RAMP = [15, 32, 50, 68, 85, 100];
+        const rampItems = RAMP.map(p =>
+            '<span class="north-travel-color-swatch" data-ramp="' + p + '" style="background: color-mix(in srgb, ' + base + ' ' + p + '%, var(--b3-theme-background))" title="明度 ' + p + '%"></span>'
+        ).join('');
+
+        const pop = document.createElement('div');
+        pop.className = 'north-travel-color-pop';
+        pop.innerHTML =
+            '<div class="north-travel-color-section">'
+            + '<div class="north-travel-color-label">字体颜色</div>'
+            + '<div class="north-travel-color-grid">' + fontItems + '</div>'
+            + '</div>'
+            + '<div class="north-travel-color-section">'
+            + '<div class="north-travel-color-label">背景颜色</div>'
+            + '<div class="north-travel-color-grid">'
+            + '<span class="north-travel-color-swatch north-travel-color-none" data-bg-n="" title="默认背景"></span>'
+            + bgItems
+            + '</div>'
+            + '</div>'
+            + '<div class="north-travel-color-section">'
+            + '<div class="north-travel-color-label">色彩梯度</div>'
+            + '<div class="north-travel-color-grid">' + rampItems + '</div>'
+            + '</div>';
+        anchor.appendChild(pop);
+        anchor.classList.add('is-picking');
+
+        pop.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const fontEl = e.target.closest('[data-text-n]');
+            const bgEl = e.target.closest('[data-bg-n]');
+            const rampEl = e.target.closest('[data-ramp]');
+            if (!fontEl && !bgEl && !rampEl) return;
+
+            if (fontEl) {
+                const n = fontEl.dataset.textN;
+                trip.centerTextColor = n ? ('var(--b3-font-color' + n + ')') : '';
+            }
+            if (bgEl) {
+                const n = bgEl.dataset.bgN;
+                trip.centerColor = n ? ('var(--b3-font-background' + n + ')') : '';
+                if (n) trip.centerColorBase = trip.centerColor;
+            }
+            if (rampEl) {
+                const p = rampEl.dataset.ramp;
+                const b = trip.centerColorBase || 'var(--b3-font-background6)';
+                trip.centerColorBase = b;
+                trip.centerColor = 'color-mix(in srgb, ' + b + ' ' + p + '%, var(--b3-theme-background))';
+            }
+            plugin._saveTravelStore();
+
+            /* 就地更新中心节点外观：整体重绘会把面板一起销毁 */
+            anchor.style.background = trip.centerColor || '';
+            anchor.style.color = trip.centerTextColor || '';
+
+            /* 换了基色就重建面板，让「色彩梯度」跟着新基色走 */
+            if (bgEl) plugin._openTravelCenterColor(anchor);
+        });
+
+        /* 点面板以外的地方收起 */
+        setTimeout(() => {
+            document.addEventListener('click', () => plugin._closeTravelCenterColor(), { once: true });
+        }, 0);
+    }
+
+    _closeTravelCenterColor() {
+        document.querySelectorAll('.north-travel-color-pop').forEach(el => el.remove());
+        document.querySelectorAll('.north-travel-center.is-picking').forEach(el => el.classList.remove('is-picking'));
+    }
+
+    /* ---------- 旅行数据读写 ---------- */
+
+    /* 取当前行程：内存值优先，其次读持久化设置，最后回落到第一份 */
+    _getActiveTrip() {
+        const store = this.data[TRAVEL_STORAGE] || { trips: [] };
+        const trips = Array.isArray(store.trips) ? store.trips : [];
+        let id = this.travelActiveTripId;
+        if (!id) {
+            const saved = ((this.data[SETTINGS_STORAGE] || {}).settings || {}).travelActiveTripId;
+            if (saved) {
+                id = saved;
+                this.travelActiveTripId = saved;
+            }
+        }
+        if (!id || !trips.some(t => t.id === id)) {
+            id = trips[0] ? trips[0].id : null;
+            this.travelActiveTripId = id;
+        }
+        return trips.find(t => t.id === id) || null;
+    }
+
+    /* 记住当前查看的行程，重开插件后仍停留在这一份 */
+    _persistTravelActiveTrip() {
+        const s = this.data[SETTINGS_STORAGE] || (this.data[SETTINGS_STORAGE] = {});
+        if (!s.settings) s.settings = {};
+        s.settings.travelActiveTripId = this.travelActiveTripId || '';
+        this.saveData(SETTINGS_STORAGE, s).catch(() => {});
+    }
+
+    _saveTravelStore() {
+        const store = this.data[TRAVEL_STORAGE] || { trips: [] };
+        if (!Array.isArray(store.trips)) store.trips = [];
+        this.data[TRAVEL_STORAGE] = store;
+        return this.saveData(TRAVEL_STORAGE, store).catch(() => {});
+    }
+
+    _travelUid(prefix) {
+        return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
+    /* 局部重绘。resetScroll 为真时回到画布左上角（切换行程用） */
+    _travelRerender(resetScroll) {
+        const body = this._travelBody;
+        if (!body || !body.isConnected) return;
+        const vp = body.querySelector('.north-travel-viewport');
+        const keep = !resetScroll && vp;
+        const sl = keep ? vp.scrollLeft : 0;
+        const st = keep ? vp.scrollTop : 0;
+        this._renderTravelCanvas(body);
+        const vp2 = body.querySelector('.north-travel-viewport');
+        if (vp2) {
+            vp2.scrollLeft = sl;
+            vp2.scrollTop = st;
+        }
+    }
+
+    /* ---------- 行程管理弹窗（切换 / 搜索 / 分组 / 新建） ---------- */
+
+    /* 全部分组名：先按 store.groups 里登记的顺序，再补上行程里出现过但没登记的。
+       分组用「名称数组 + trip.group 字符串」表示，不引入 id 映射，省掉一层同步。 */
+    _travelGroups() {
+        const store = this.data[TRAVEL_STORAGE] || {};
+        const declared = Array.isArray(store.groups) ? store.groups : [];
+        const trips = Array.isArray(store.trips) ? store.trips : [];
+        const list = [];
+        declared.forEach(g => {
+            const v = String(g || '').trim();
+            if (v && list.indexOf(v) === -1) list.push(v);
+        });
+        trips.forEach(t => {
+            const v = String(t.group || '').trim();
+            if (v && list.indexOf(v) === -1) list.push(v);
+        });
+        return list;
+    }
+
+    _saveTravelGroups(list) {
+        const store = this.data[TRAVEL_STORAGE] || (this.data[TRAVEL_STORAGE] = { trips: [] });
+        store.groups = (list || []).slice();
+        this.data[TRAVEL_STORAGE] = store;
+        return this.saveData(TRAVEL_STORAGE, store).catch(() => {});
+    }
+
+    _travelFindTrip(id) {
+        const store = this.data[TRAVEL_STORAGE] || { trips: [] };
+        const trips = Array.isArray(store.trips) ? store.trips : [];
+        return trips.find(t => t.id === id) || null;
+    }
+
+    _closeTravelTripsModal() {
+        const root = this._travelRoot;
+        if (root) {
+            root.querySelectorAll('.north-travel-trips-modal').forEach(el => el.remove());
+        }
+        document.querySelectorAll('.north-travel-trips-modal').forEach(el => el.remove());
+        this._travelEditingTripId = null;
+        this._travelTripBackup = null;
+        /* 弹窗里改过当前行程时，画布延到关窗再刷新，避免编辑中被重建打断 */
+        if (this._travelPendingRerender) {
+            this._travelPendingRerender = false;
+            this._travelRerender(true);
+        }
+    }
+
+    _openTravelTripsModal(opts) {
+        const plugin = this;
+        const o = opts || {};
+        this._closeTravelEditor();
+        this._closeTravelTripsModal();
+        /* 关旧窗时可能顺带刷新了画布，root 必须在这之后再取，
+           否则会把新弹窗挂到已经脱离文档的旧节点上（表现为弹窗"打不开"） */
+        const root = this._travelRoot;
+        if (!root || !root.isConnected) return;
+
+        if (typeof this._travelGroupFilter !== 'string') this._travelGroupFilter = '';
+        if (typeof this._travelTripKeyword !== 'string') this._travelTripKeyword = '';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'north-travel-trips-modal';
+        wrap.innerHTML = `
+            <div class="north-travel-trips-mask" data-trips-action="close"></div>
+            <div class="north-travel-trips-panel">
+                <div class="north-travel-trips-head">
+                    <span class="north-travel-trips-title">我的行程</span>
+                    <button class="north-travel-trips-close" data-trips-action="close" type="button" title="关闭">×</button>
+                </div>
+                <div class="north-travel-trips-body">
+                    <aside class="north-travel-groups-pane">
+                        <div class="north-travel-pane-head">
+                            <span>分组</span>
+                            <span class="north-travel-pane-head-actions">
+                                <button class="north-travel-mini-btn" data-group-action="rename" type="button" title="重命名当前分组"><svg class="north-travel-mini-icon"><use xlink:href="#iconMark"></use></svg></button>
+                                <button class="north-travel-mini-btn north-travel-mini-btn--danger" data-group-action="delete" type="button" title="删除当前分组"><svg class="north-travel-mini-icon"><use xlink:href="#iconClose"></use></svg></button>
+                                <button class="north-travel-mini-btn" data-group-action="add" type="button" title="新建分组"><svg class="north-travel-mini-icon"><use xlink:href="#iconAdd"></use></svg></button>
+                            </span>
+                        </div>
+                        <div class="north-travel-groups-list" data-pane="groups"></div>
+                    </aside>
+                    <section class="north-travel-trips-pane">
+                        <div class="north-travel-pane-head">
+                            <span data-pane="trips-title">行程</span>
+                            <button class="north-travel-btn north-travel-btn--primary north-travel-btn--sm" data-trips-action="new" type="button">新建行程</button>
+                        </div>
+                        <div class="north-travel-trips-search-wrap">
+                            <svg class="north-travel-trips-search-icon"><use xlink:href="#iconSearch"></use></svg>
+                            <input class="north-travel-trips-search" data-pane="search" placeholder="搜索行程名称">
+                        </div>
+                        <div class="north-travel-trips-list" data-pane="trips"></div>
+                    </section>
+                </div>
+                <div class="north-travel-trips-foot">
+                    <span class="north-travel-trips-hint" data-pane="foot"></span>
+                    <button class="north-travel-btn north-travel-btn--primary" data-trips-action="done" type="button">完成</button>
+                </div>
+            </div>
+        `;
+        root.appendChild(wrap);
+
+        const searchEl = wrap.querySelector('[data-pane="search"]');
+        if (searchEl) {
+            searchEl.value = this._travelTripKeyword || '';
+            searchEl.addEventListener('input', () => {
+                plugin._travelTripKeyword = searchEl.value || '';
+                plugin._paintTravelTripsPane(wrap);
+            });
+        }
+
+        wrap.querySelectorAll('[data-trips-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const act = btn.dataset.tripsAction;
+                if (act === 'close' || act === 'done') plugin._closeTravelTripsModal();
+                else if (act === 'new') plugin._travelCreateTrip();
+            });
+        });
+        wrap.querySelectorAll('[data-group-action="add"]').forEach(btn => {
+            btn.addEventListener('click', () => plugin._travelAddGroup(wrap));
+        });
+        /* 「改 / ×」作用于左侧当前选中的分组（分组项本身不再挂操作按钮） */
+        wrap.querySelectorAll('[data-group-action="rename"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cur = plugin._travelGroupFilter;
+                if (!cur || cur === '__none__') return;
+                plugin._travelBeginRenameGroup(wrap, cur);
+            });
+        });
+        wrap.querySelectorAll('[data-group-action="delete"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cur = plugin._travelGroupFilter;
+                if (!cur || cur === '__none__') return;
+                plugin._travelDeleteGroup(wrap, cur);
+            });
+        });
+
+        this._paintTravelGroupsPane(wrap);
+        this._paintTravelTripsPane(wrap);
+
+        if (o.startNew) {
+            this._travelCreateTrip();
+        } else if (o.editTripId && this._travelFindTrip(o.editTripId)) {
+            this._travelStartEditTrip(wrap, o.editTripId);
+        }
+    }
+
+    /* ---------- 左侧：分组导航 ---------- */
+
+    _paintTravelGroupsPane(wrap) {
+        const plugin = this;
+        const listEl = wrap.querySelector('[data-pane="groups"]');
+        if (!listEl) return;
+        const esc = (s) => plugin._esc(s == null ? '' : String(s));
+        const store = plugin.data[TRAVEL_STORAGE] || {};
+        const trips = Array.isArray(store.trips) ? store.trips : [];
+        const groups = plugin._travelGroups();
+        const ungrouped = trips.filter(t => !(t.group || '').trim()).length;
+        const active = plugin._travelGroupFilter || '';
+
+        const items = [{ key: '', label: '全部行程', count: trips.length }];
+        /* 只有确实存在未分组行程时才给这一项 */
+        if (ungrouped) items.push({ key: '__none__', label: '未分组', count: ungrouped });
+        groups.forEach(g => {
+            items.push({ key: g, label: g, count: trips.filter(t => (t.group || '').trim() === g).length, real: true });
+        });
+
+        listEl.innerHTML = items.map(it =>
+            '<div class="north-travel-group-item' + (it.key === active ? ' active' : '') + '" data-group-key="' + esc(it.key) + '">'
+            + '<span class="north-travel-group-item-name"' + (it.real ? ' data-group-name="' + esc(it.key) + '"' : '') + '>' + esc(it.label) + '</span>'
+            + '<span class="north-travel-group-item-count">' + it.count + '</span>'
+            + '</div>'
+        ).join('');
+
+        listEl.querySelectorAll('.north-travel-group-item').forEach(el => {
+            el.addEventListener('click', (e) => {
+                if (e.target.isContentEditable) return;
+                plugin._travelGroupFilter = el.dataset.groupKey || '';
+                plugin._paintTravelGroupsPane(wrap);
+                plugin._paintTravelTripsPane(wrap);
+            });
+        });
+
+        /* 「改 / ×」只对真实分组可用；停在「全部行程」或「未分组」时置灰 */
+        const usable = !!active && active !== '__none__';
+        ['rename', 'delete'].forEach(act => {
+            wrap.querySelectorAll('[data-group-action="' + act + '"]').forEach(btn => {
+                btn.disabled = !usable;
+            });
+        });
+    }
+
+    /* 新建分组后立刻进入重命名态（点「改」也能进来） */
+    _travelBeginRenameGroup(wrap, name) {
+        const plugin = this;
+        let nameEl = null;
+        wrap.querySelectorAll('.north-travel-group-item-name').forEach(el => {
+            if (el.dataset.groupName === name) nameEl = el;
+        });
+        if (!nameEl) return;
+
+        nameEl.contentEditable = 'true';
+        nameEl.focus();
+        const range = document.createRange();
+        range.selectNodeContents(nameEl);
+        const sel = window.getSelection();
+        if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
+        const commit = () => {
+            nameEl.removeEventListener('blur', commit);
+            nameEl.contentEditable = 'false';
+            const next = String(nameEl.textContent || '').replace(/\s+/g, ' ').trim();
+            const old = nameEl.dataset.groupName || '';
+            if (!next || next === old) {
+                plugin._paintTravelGroupsPane(wrap);
+                return;
+            }
+            plugin._travelRenameGroup(wrap, old, next);
+        };
+        nameEl.addEventListener('blur', commit);
+        nameEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                nameEl.blur();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                nameEl.textContent = nameEl.dataset.groupName || '';
+                nameEl.blur();
+            }
+        });
+    }
+
+    _travelAddGroup(wrap) {
+        const list = this._travelGroups();
+        let name = '新分组';
+        let i = 2;
+        while (list.indexOf(name) !== -1) {
+            name = '新分组 ' + i;
+            i++;
+        }
+        const next = list.slice();
+        next.push(name);
+        this._travelGroupFilter = name;
+        this._saveTravelGroups(next);
+        this._paintTravelGroupsPane(wrap);
+        this._paintTravelTripsPane(wrap);
+        this._travelBeginRenameGroup(wrap, name);
+    }
+
+    /* 重命名分组 = 把该组名下所有行程的 group 一起改掉；撞名则等于合并 */
+    _travelRenameGroup(wrap, oldName, newName) {
+        const store = this.data[TRAVEL_STORAGE] || { trips: [] };
+        const trips = Array.isArray(store.trips) ? store.trips : [];
+        trips.forEach(t => {
+            if ((t.group || '').trim() === oldName) t.group = newName;
+        });
+        store.trips = trips;
+        const groups = this._travelGroups().filter(g => g !== oldName);
+        if (groups.indexOf(newName) === -1) groups.push(newName);
+        store.groups = groups;
+        if (this._travelGroupFilter === oldName) this._travelGroupFilter = newName;
+        this._saveTravelStore();
+        this._paintTravelGroupsPane(wrap);
+        this._paintTravelTripsPane(wrap);
+        if (this._travelPendingRerender !== true) this._travelPendingRerender = true;
+    }
+
+    /* 删除分组：组里的行程不删除，退回未分组 */
+    _travelDeleteGroup(wrap, name) {
+        const plugin = this;
+        const store = plugin.data[TRAVEL_STORAGE] || { trips: [] };
+        const trips = Array.isArray(store.trips) ? store.trips : [];
+        const n = trips.filter(t => (t.group || '').trim() === name).length;
+        const text = n > 0
+            ? '「' + name + '」里的 ' + n + ' 个行程会退回未分组，行程本身不会被删除。'
+            : '分组「' + name + '」下还没有行程。';
+        plugin._travelConfirm(wrap, {
+            title: '删除分组',
+            text: text,
+            okText: '删除',
+            danger: true
+        }, () => {
+            trips.forEach(t => {
+                if ((t.group || '').trim() === name) t.group = '';
+            });
+            store.trips = trips;
+            store.groups = plugin._travelGroups().filter(g => g !== name);
+            if (plugin._travelGroupFilter === name) plugin._travelGroupFilter = '';
+            plugin._saveTravelStore();
+            plugin._paintTravelGroupsPane(wrap);
+            plugin._paintTravelTripsPane(wrap);
+        });
+    }
+
+    /* 弹窗内的自绘确认层：不依赖思源的 confirm，层级和样式都自己说了算 */
+    _travelConfirm(wrap, opts, onOk) {
+        const plugin = this;
+        const esc = (s) => plugin._esc(s == null ? '' : String(s));
+        const host = wrap.querySelector('.north-travel-trips-panel') || wrap;
+        const o = opts || {};
+        const box = document.createElement('div');
+        box.className = 'north-travel-confirm';
+        box.innerHTML = `
+            <div class="north-travel-confirm-mask" data-confirm="cancel"></div>
+            <div class="north-travel-confirm-box">
+                <div class="north-travel-confirm-title">${esc(o.title || '确认')}</div>
+                <div class="north-travel-confirm-text">${esc(o.text || '')}</div>
+                <div class="north-travel-confirm-actions">
+                    <button class="north-travel-btn north-travel-btn--sm" data-confirm="cancel" type="button">${esc(o.cancelText || '取消')}</button>
+                    <button class="north-travel-btn north-travel-btn--sm ${o.danger ? 'north-travel-btn--danger-solid' : 'north-travel-btn--primary'}" data-confirm="ok" type="button">${esc(o.okText || '确定')}</button>
+                </div>
+            </div>
+        `;
+        host.appendChild(box);
+        box.querySelectorAll('[data-confirm]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const ok = btn.dataset.confirm === 'ok';
+                box.remove();
+                if (ok && typeof onOk === 'function') onOk();
+            });
+        });
+    }
+
+    /* ---------- 右侧：行程列表 ---------- */
+
+    _paintTravelTripsPane(wrap) {
+        const plugin = this;
+        const listEl = wrap.querySelector('[data-pane="trips"]');
+        if (!listEl) return;
+        const titleEl = wrap.querySelector('[data-pane="trips-title"]');
+        const footEl = wrap.querySelector('[data-pane="foot"]');
+
+        const store = plugin.data[TRAVEL_STORAGE] || {};
+        const trips = Array.isArray(store.trips) ? store.trips : [];
+        const filter = plugin._travelGroupFilter || '';
+        const keyword = String(plugin._travelTripKeyword || '').trim().toLowerCase();
+
+        let list;
+        if (filter === '__none__') list = trips.filter(t => !(t.group || '').trim());
+        else if (filter) list = trips.filter(t => (t.group || '').trim() === filter);
+        else list = trips.slice();
+        if (keyword) list = list.filter(t => String(t.title || '').toLowerCase().indexOf(keyword) !== -1);
+
+        if (titleEl) titleEl.textContent = filter === '__none__' ? '未分组' : (filter || '全部行程');
+        if (footEl) footEl.textContent = '共 ' + trips.length + ' 个行程，' + plugin._travelGroups().length + ' 个分组';
+
+        const editingId = plugin._travelEditingTripId;
+        if (!list.length && !(editingId && plugin._travelFindTrip(editingId))) {
+            listEl.innerHTML = '<div class="north-travel-trips-empty">'
+                + (keyword ? '没有匹配的行程' : (filter ? '这个分组下还没有行程' : '还没有行程，点右上角「新建行程」开始'))
+                + '</div>';
+            return;
+        }
+
+        listEl.innerHTML = list.map(t => (t.id === editingId)
+            ? plugin._travelTripFormHtml(t)
+            : plugin._travelTripCardHtml(t)
+        ).join('');
+
+        /* 点卡片 = 切到这份行程并关窗（看攻略是高频动作）；改内容走卡片上的「改」 */
+        listEl.querySelectorAll('.north-travel-trip-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (card.classList.contains('is-editing')) return;
+                if (e.target.closest('[data-trip-action]')) return;
+                plugin._switchTravelTrip(card.dataset.tripId);
+            });
+        });
+        listEl.querySelectorAll('[data-trip-action]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const act = btn.dataset.tripAction;
+                const id = btn.dataset.tripId || '';
+                if (act === 'edit') plugin._travelStartEditTrip(wrap, id);
+                else if (act === 'delete') plugin._travelDeleteTrip(wrap, id);
+                else if (act === 'done') plugin._travelFinishEditTrip(wrap);
+                else if (act === 'cancel') plugin._travelCancelEditTrip(wrap);
+            });
+        });
+        /* 表单输入直接写回数据（即时保存，不重绘，避免打断输入） */
+        listEl.querySelectorAll('[data-trip-field]').forEach(inp => {
+            inp.addEventListener('input', () => {
+                const card = inp.closest('[data-trip-id]');
+                const t = card ? plugin._travelFindTrip(card.dataset.tripId) : null;
+                if (t) t[inp.dataset.tripField] = inp.value;
+            });
+        });
+        /* 分组快选胶囊 */
+        listEl.querySelectorAll('[data-group-value]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const card = btn.closest('[data-trip-id]');
+                const input = card ? card.querySelector('[data-trip-field="group"]') : null;
+                if (!input) return;
+                input.value = btn.dataset.groupValue;
+                const t = plugin._travelFindTrip(card.dataset.tripId);
+                if (t) t.group = input.value;
+                input.focus();
+            });
+        });
+
+        if (editingId) {
+            const first = listEl.querySelector('[data-trip-field="title"]');
+            if (first && document.activeElement !== first) {
+                first.focus();
+                if (first.setSelectionRange) {
+                    const len = first.value.length;
+                    first.setSelectionRange(len, len);
+                }
+            }
+        }
+    }
+
+    _travelTripCardHtml(t) {
+        const esc = (s) => this._esc(s == null ? '' : String(s));
+        const dayCount = (t.days || []).length;
+        const stopNum = (t.days || []).reduce((sum, d) => sum + ((d.items || []).length), 0);
+        const isActive = t.id === this.travelActiveTripId;
+        const route = [t.startPoint, t.endPoint].filter(Boolean).join(' → ');
+        return '<div class="north-travel-trip-card' + (isActive ? ' active' : '') + '" data-trip-id="' + esc(t.id) + '">'
+            + '<div class="north-travel-trip-card-info">'
+            + '<div class="north-travel-trip-card-title">' + esc(t.title || '未命名行程')
+            + (isActive ? '<span class="north-travel-trip-card-badge">当前</span>' : '')
+            + '</div>'
+            + (route ? '<div class="north-travel-trip-card-route">' + esc(route) + '</div>' : '')
+            + '<div class="north-travel-trip-card-meta">' + dayCount + ' 天 · ' + stopNum + ' 个打卡点</div>'
+            + '</div>'
+            + '<div class="north-travel-trip-card-actions">'
+            + '<button class="north-travel-mini-btn" data-trip-action="edit" data-trip-id="' + esc(t.id) + '" type="button" title="编辑"><svg class="north-travel-mini-icon"><use xlink:href="#iconMark"></use></svg></button>'
+            + '<button class="north-travel-mini-btn north-travel-mini-btn--danger" data-trip-action="delete" data-trip-id="' + esc(t.id) + '" type="button" title="删除"><svg class="north-travel-mini-icon"><use xlink:href="#iconClose"></use></svg></button>'
+            + '</div>'
+            + '</div>';
+    }
+
+    _travelTripFormHtml(t) {
+        const esc = (s) => this._esc(s == null ? '' : String(s));
+        const groups = this._travelGroups();
+        return '<div class="north-travel-trip-card is-editing" data-trip-id="' + esc(t.id) + '">'
+            + '<div class="north-travel-field">'
+            + '<div class="north-travel-field-label">行程名称</div>'
+            + '<input class="north-travel-field-input" data-trip-field="title" value="' + esc(t.title || '') + '" placeholder="例如：北京四日游">'
+            + '</div>'
+            + '<div class="north-travel-field-row">'
+            + '<div class="north-travel-field"><div class="north-travel-field-label">起点</div>'
+            + '<input class="north-travel-field-input" data-trip-field="startPoint" value="' + esc(t.startPoint || '') + '" placeholder="北京站"></div>'
+            + '<div class="north-travel-field"><div class="north-travel-field-label">终点</div>'
+            + '<input class="north-travel-field-input" data-trip-field="endPoint" value="' + esc(t.endPoint || '') + '" placeholder="大兴机场"></div>'
+            + '</div>'
+            + '<div class="north-travel-field">'
+            + '<div class="north-travel-field-label">分组</div>'
+            + '<input class="north-travel-field-input" data-trip-field="group" value="' + esc(t.group || '') + '" placeholder="例如：地点">'
+            + (groups.length
+                ? '<div class="north-travel-group-chips">' + groups.map(g => '<button class="north-travel-group-chip" data-group-value="' + esc(g) + '" type="button">' + esc(g) + '</button>').join('') + '</div>'
+                : '')
+            + '</div>'
+            + '<div class="north-travel-trip-card-form-actions">'
+            + '<button class="north-travel-btn north-travel-btn--danger north-travel-btn--sm" data-trip-action="delete" data-trip-id="' + esc(t.id) + '" type="button">删除</button>'
+            + '<span class="north-travel-spacer"></span>'
+            + '<button class="north-travel-btn north-travel-btn--sm" data-trip-action="cancel" type="button">取消</button>'
+            + '<button class="north-travel-btn north-travel-btn--primary north-travel-btn--sm" data-trip-action="done" type="button">完成</button>'
+            + '</div>'
+            + '</div>';
+    }
+
+    /* ---------- 行程的新建 / 编辑 / 删除 ---------- */
+
+    _travelCreateTrip() {
+        const store = this.data[TRAVEL_STORAGE] || (this.data[TRAVEL_STORAGE] = { trips: [] });
+        if (!Array.isArray(store.trips)) store.trips = [];
+        const filter = this._travelGroupFilter || '';
+        const t = {
+            id: this._travelUid('trip'),
+            title: '',
+            startPoint: '',
+            endPoint: '',
+            group: (filter && filter !== '__none__') ? filter : '',
+            days: [{ id: this._travelUid('td'), label: 'Day 1', color: TRAVEL_DAY_COLORS[0], items: [] }]
+        };
+        store.trips.push(t);
+        this._travelEditingTripId = t.id;
+        this._travelTripBackup = { __isNew: true };
+        this._saveTravelStore();
+        const wrap = this._travelRoot ? this._travelRoot.querySelector('.north-travel-trips-modal') : null;
+        if (wrap) {
+            this._paintTravelGroupsPane(wrap);
+            this._paintTravelTripsPane(wrap);
+        }
+    }
+
+    _travelStartEditTrip(wrap, id) {
+        const t = this._travelFindTrip(id);
+        if (!t) return;
+        /* 上一张还在编辑就先落定，避免丢改动 */
+        if (this._travelEditingTripId && this._travelEditingTripId !== id) {
+            this._travelFinishEditTrip(wrap, true);
+        }
+        this._travelEditingTripId = id;
+        this._travelTripBackup = JSON.parse(JSON.stringify(t));
+        this._paintTravelTripsPane(wrap);
+    }
+
+    /* silent 为真时不重绘（用于"切到另一张卡片"时的隐式落定） */
+    _travelFinishEditTrip(wrap, silent) {
+        const id = this._travelEditingTripId;
+        if (!id) return;
+        const t = this._travelFindTrip(id);
+        if (t && !String(t.title || '').trim()) t.title = '未命名行程';
+        const wasNew = !!(this._travelTripBackup && this._travelTripBackup.__isNew);
+        this._travelEditingTripId = null;
+        this._travelTripBackup = null;
+        this._saveTravelStore();
+
+        if (wasNew && t) {
+            /* 新建的行程直接切过去，省得用户再点一次 */
+            this.travelActiveTripId = t.id;
+            this._persistTravelActiveTrip();
+            this._travelPendingRerender = true;
+        } else if (t && t.id === this.travelActiveTripId) {
+            this._travelPendingRerender = true;
+        }
+        if (silent) return;
+        this._paintTravelGroupsPane(wrap);
+        this._paintTravelTripsPane(wrap);
+    }
+
+    _travelCancelEditTrip(wrap) {
+        const id = this._travelEditingTripId;
+        const backup = this._travelTripBackup;
+        if (!id) return;
+        const store = this.data[TRAVEL_STORAGE] || { trips: [] };
+        if (backup && backup.__isNew) {
+            store.trips = (store.trips || []).filter(t => t.id !== id);
+        } else if (backup) {
+            const t = this._travelFindTrip(id);
+            /* 逐字段还原，避免把表单期间新增的字段一起抹掉 */
+            if (t) {
+                t.title = backup.title;
+                t.startPoint = backup.startPoint;
+                t.endPoint = backup.endPoint;
+                t.group = backup.group;
+            }
+        }
+        this.data[TRAVEL_STORAGE] = store;
+        this._travelEditingTripId = null;
+        this._travelTripBackup = null;
+        this._saveTravelStore();
+        this._paintTravelGroupsPane(wrap);
+        this._paintTravelTripsPane(wrap);
+    }
+
+    _travelDeleteTrip(wrap, id) {
+        const plugin = this;
+        const t = plugin._travelFindTrip(id);
+        if (!t) return;
+        const title = String(t.title || '').trim();
+        const text = title
+            ? '「' + title + '」及其中的全部打卡点会被删除，此操作不可撤销。'
+            : '这个行程及其中的全部打卡点会被删除，此操作不可撤销。';
+        plugin._travelConfirm(wrap, {
+            title: '删除行程',
+            text: text,
+            okText: '删除',
+            danger: true
+        }, () => {
+            const store = plugin.data[TRAVEL_STORAGE] || { trips: [] };
+            store.trips = (store.trips || []).filter(x => x.id !== id);
+            plugin.data[TRAVEL_STORAGE] = store;
+            if (plugin._travelEditingTripId === id) {
+                plugin._travelEditingTripId = null;
+                plugin._travelTripBackup = null;
+            }
+            if (plugin.travelActiveTripId === id) {
+                plugin.travelActiveTripId = store.trips[0] ? store.trips[0].id : null;
+                plugin._persistTravelActiveTrip();
+                plugin._travelPendingRerender = true;
+            }
+            plugin._saveTravelStore();
+            plugin._paintTravelGroupsPane(wrap);
+            plugin._paintTravelTripsPane(wrap);
+        });
+    }
+
+
+    _switchTravelTrip(tripId) {
+        if (!tripId) {
+            this._closeTravelTripsModal();
+            return;
+        }
+        this._closeTravelTripsModal();
+        /* 点的就是当前行程：只关窗，不打断正在看的画布 */
+        if (tripId === this.travelActiveTripId) return;
+        this.travelActiveTripId = tripId;
+        this._persistTravelActiveTrip();
+        this._travelRerender(true);
+    }
+
+    /* 在行程末尾追加一天 */
+    _addTravelDay() {
+        const trip = this._getActiveTrip();
+        if (!trip) {
+            this._openTravelTripsModal({ startNew: true });
+            return;
+        }
+        if (!Array.isArray(trip.days)) trip.days = [];
+        const idx = trip.days.length;
+        trip.days.push({
+            id: this._travelUid('td'),
+            label: 'Day ' + (idx + 1),
+            color: TRAVEL_DAY_COLORS[idx % TRAVEL_DAY_COLORS.length],
+            items: []
+        });
+        this._saveTravelStore();
+        this._travelRerender();
+    }
+
+    /* Day 编辑弹层：可以改名，也可以删除这一天（与打卡点一样，点元素就编辑） */
+    _openTravelDayEditor(dayId) {
+        const plugin = this;
+        const root = this._travelRoot;
+        if (!root || !root.isConnected) return;
+        const trip = this._getActiveTrip();
+        if (!trip || !dayId) return;
+        const days = Array.isArray(trip.days) ? trip.days : [];
+        const idx = days.findIndex(d => d.id === dayId);
+        if (idx === -1) return;
+
+        const day = days[idx];
+        const canDelete = days.length > 1;
+        const stopNum = (day.items || []).length;
+        const esc = (s) => plugin._esc(s == null ? '' : String(s));
+        const color = day.color || TRAVEL_DAY_COLORS[idx % TRAVEL_DAY_COLORS.length];
+        const label = day.label || ('Day ' + (idx + 1));
+
+        this._closeTravelEditor();
+
+        const wrap = document.createElement('div');
+        wrap.className = 'north-travel-editor';
+        wrap.innerHTML = `
+            <div class="north-travel-editor-mask" data-travel-editor="cancel"></div>
+            <div class="north-travel-editor-panel">
+                <div class="north-travel-editor-head">
+                    <span class="north-travel-editor-title">编辑这一天</span>
+                    <span class="north-travel-editor-tag" style="--travel-editor-color:${esc(color)}">${esc(label)}</span>
+                </div>
+                <div class="north-travel-editor-body">
+                    <div class="north-travel-field">
+                        <div class="north-travel-field-label">名称</div>
+                        <input class="north-travel-field-input" id="travelDayLabel" placeholder="例如：Day 1 / 抵达日" value="${esc(label)}">
+                    </div>
+                    <div class="north-travel-field-note">这天有 ${stopNum} 个打卡点${canDelete ? '' : '；行程至少要保留一天，所以不能删除'}</div>
+                </div>
+                <div class="north-travel-editor-actions">
+                    <button class="north-travel-btn north-travel-btn--danger" data-day-editor="delete" type="button"${canDelete ? '' : ' disabled'}>删除这一天</button>
+                    <div class="north-travel-editor-actions-right">
+                        <button class="north-travel-btn" data-day-editor="cancel" type="button">取消</button>
+                        <button class="north-travel-btn north-travel-btn--primary" data-day-editor="save" type="button">保存</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        root.appendChild(wrap);
+
+        wrap.querySelectorAll('[data-day-editor]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const act = btn.dataset.dayEditor;
+                if (act === 'cancel') {
+                    plugin._closeTravelEditor();
+                    return;
+                }
+                if (act === 'delete') {
+                    plugin._closeTravelEditor();
+                    plugin._deleteTravelDay(dayId);
+                    return;
+                }
+                if (act === 'save') {
+                    const next = (wrap.querySelector('#travelDayLabel').value || '').trim();
+                    day.label = next || ('Day ' + (idx + 1));
+                    plugin._saveTravelStore();
+                    plugin._closeTravelEditor();
+                    plugin._travelRerender();
+                }
+            });
+        });
+
+        setTimeout(() => {
+            const el = wrap.querySelector('#travelDayLabel');
+            if (el) el.focus();
+        }, 30);
+    }
+
+    /* 删除某一天（连同这天的打卡点）。行程至少要留一天，所以最后一天不给删 */
+    _deleteTravelDay(dayId) {
+        const plugin = this;
+        const trip = this._getActiveTrip();
+        if (!trip || !dayId) return;
+        const days = Array.isArray(trip.days) ? trip.days : [];
+        const idx = days.findIndex(d => d.id === dayId);
+        if (idx === -1) return;
+
+        if (days.length <= 1) {
+            showMessage('行程至少要保留一天');
+            return;
+        }
+
+        const day = days[idx];
+        const label = day.label || ('Day ' + (idx + 1));
+        const stopNum = (day.items || []).length;
+        const text = stopNum > 0
+            ? '「' + label + '」及其中的 ' + stopNum + ' 个打卡点会被删除，此操作不可撤销。'
+            : '删除「' + label + '」？此操作不可撤销。';
+
+        const run = () => {
+            trip.days = days.filter(d => d.id !== dayId);
+            /* 标题还是默认「Day N」格式的，删完顺手把编号重排一遍；
+               用户自己改过标题的（不是 Day N）保持不动 */
+            trip.days.forEach((d, i) => {
+                if (/^Day \d+$/.test(String(d.label || '').trim())) d.label = 'Day ' + (i + 1);
+            });
+            plugin._saveTravelStore();
+            plugin._travelRerender(true);
+        };
+
+        /* 画布上没有弹窗宿主，确认层直接挂到视图根节点上 */
+        plugin._travelConfirm(plugin._travelRoot || plugin._travelBody, {
+            title: '删除这一天',
+            text: text,
+            okText: '删除',
+            danger: true
+        }, run);
+    }
+
+    /* ---------- 编辑弹层 ---------- */
+
+    _closeTravelEditor() {
+        const root = this._travelRoot;
+        if (root) {
+            root.querySelectorAll('.north-travel-editor').forEach(el => el.remove());
+        }
+        /* 视图根节点可能已被缓存 detached，兜底清一次游离节点 */
+        document.querySelectorAll('.north-travel-editor').forEach(el => el.remove());
+    }
+
+    /* 打卡点编辑弹层：stopId 为空表示在该天下新增 */
+    _openTravelStopEditor(dayId, stopId) {
+        const plugin = this;
+        const root = this._travelRoot;
+        if (!root || !root.isConnected) return;
+        const trip = this._getActiveTrip();
+        if (!trip) return;
+        const day = (trip.days || []).find(d => d.id === dayId);
+        if (!day) return;
+        const isEdit = !!stopId;
+        const stop = isEdit ? (day.items || []).find(i => i.id === stopId) : null;
+        if (isEdit && !stop) return;
+
+        const esc = (s) => plugin._esc(s == null ? '' : String(s));
+        this._closeTravelEditor();
+
+        const wrap = document.createElement('div');
+        wrap.className = 'north-travel-editor';
+        wrap.innerHTML = `
+            <div class="north-travel-editor-mask" data-travel-editor="cancel"></div>
+            <div class="north-travel-editor-panel">
+                <div class="north-travel-editor-head">
+                    <span class="north-travel-editor-title">${isEdit ? '编辑打卡点' : '添加打卡点'}</span>
+                    <span class="north-travel-editor-tag" style="--travel-editor-color:${esc(day.color || '#7c6bd6')}">${esc(day.label || 'Day')}</span>
+                </div>
+                <div class="north-travel-editor-body">
+                    <div class="north-travel-field">
+                        <div class="north-travel-field-label">名称</div>
+                        <input class="north-travel-field-input" id="travelStopName" placeholder="例如：故宫博物院" value="${esc(stop ? stop.name : '')}">
+                    </div>
+                    <div class="north-travel-field">
+                        <div class="north-travel-field-label">时长</div>
+                        <input class="north-travel-field-input" id="travelStopDuration" placeholder="例如：2小时" value="${esc(stop ? stop.duration : '')}">
+                    </div>
+                    <div class="north-travel-field">
+                        <div class="north-travel-field-label">图片</div>
+                        <div class="north-travel-uploader" id="travelStopUploader"></div>
+                    </div>
+                </div>
+                <div class="north-travel-editor-actions">
+                    ${isEdit ? '<button class="north-travel-btn north-travel-btn--danger" data-travel-editor="delete" type="button">删除</button>' : '<span></span>'}
+                    <div class="north-travel-editor-actions-right">
+                        <button class="north-travel-btn" data-travel-editor="cancel" type="button">取消</button>
+                        <button class="north-travel-btn north-travel-btn--primary" data-travel-editor="save" type="button">保存</button>
+                    </div>
+                </div>
+            </div>
+            <input type="file" class="north-travel-file" accept="image/*">
+        `;
+        root.appendChild(wrap);
+
+        let imagePath = stop ? (stop.image || '') : '';
+        const uploader = wrap.querySelector('#travelStopUploader');
+        const fileInput = wrap.querySelector('.north-travel-file');
+
+        /* 用 onclick 赋值而不是 addEventListener：重绘预览时会反复调用，避免监听器累积 */
+        const paintUploader = () => {
+            uploader.onclick = () => fileInput.click();
+            if (imagePath) {
+                const src = (typeof _resolveMediaUrl === 'function') ? _resolveMediaUrl(imagePath) : imagePath;
+                uploader.innerHTML = '<div class="north-travel-uploader-preview">'
+                    + '<img src="' + esc(src) + '" alt="">'
+                    + '<span class="north-travel-uploader-remove" title="移除图片">×</span>'
+                    + '</div>';
+                const rm = uploader.querySelector('.north-travel-uploader-remove');
+                if (rm) {
+                    rm.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        imagePath = '';
+                        paintUploader();
+                    });
+                }
+            } else {
+                uploader.innerHTML = '<div class="north-travel-uploader-empty">'
+                    + '<span class="north-travel-uploader-plus">+</span>'
+                    + '<span>点击上传图片</span>'
+                    + '</div>';
+            }
+        };
+        paintUploader();
+
+        fileInput.addEventListener('change', async () => {
+            const f = fileInput.files && fileInput.files[0];
+            if (!f) return;
+            uploader.onclick = null;
+            uploader.innerHTML = '<div class="north-travel-uploader-loading">上传中...</div>';
+            let path = null;
+            try {
+                /* 复用插件通用上传：自动处理 HEIC 转码、公共目录/思源 assets 切换、备份 */
+                path = await plugin._uploadResource(f);
+            } catch (e) {
+                path = null;
+            }
+            imagePath = path || '';
+            fileInput.value = '';
+            paintUploader();
+        });
+
+        wrap.querySelectorAll('[data-travel-editor]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const act = btn.dataset.travelEditor;
+                if (act === 'cancel') {
+                    plugin._closeTravelEditor();
+                    return;
+                }
+                if (act === 'delete') {
+                    day.items = (day.items || []).filter(i => i.id !== stop.id);
+                    plugin._saveTravelStore();
+                    plugin._closeTravelEditor();
+                    plugin._travelRerender();
+                    return;
+                }
+                if (act === 'save') {
+                    const nameEl = wrap.querySelector('#travelStopName');
+                    const name = (nameEl.value || '').trim();
+                    if (!name) {
+                        showMessage('请填写打卡点名称');
+                        nameEl.focus();
+                        return;
+                    }
+                    const duration = (wrap.querySelector('#travelStopDuration').value || '').trim();
+                    if (stop) {
+                        stop.name = name;
+                        stop.duration = duration;
+                        stop.image = imagePath;
+                    } else {
+                        if (!Array.isArray(day.items)) day.items = [];
+                        day.items.push({
+                            id: plugin._travelUid('ts'),
+                            name: name,
+                            duration: duration,
+                            image: imagePath
+                        });
+                    }
+                    plugin._saveTravelStore();
+                    plugin._closeTravelEditor();
+                    plugin._travelRerender();
+                }
+            });
+        });
+
+        setTimeout(() => {
+            const nameEl = wrap.querySelector('#travelStopName');
+            if (nameEl) nameEl.focus();
+        }, 30);
+    }
+
+
     /* ===== 独立视图渲染（Dock 无 tab 时 fallback） ===== */
     _renderMainDirect(ctx) {
         const body = ctx.container.querySelector('.north-luna-main-body');
@@ -15777,6 +17106,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
             body.classList.remove('north-luna-moments-body');
             /* renderBreezeStats 依赖 tab.plugin，用 { plugin } 满足其接口 */
             body.innerHTML = renderBreezeStats({ plugin: plugin, statsYear: null });
+        } else if (view.id === 'travel') {
+            /* 旅行视图：Dock 无 tab 时的独立渲染路径 */
+            body.style.cssText = 'flex:1;overflow:hidden;padding:0;background:var(--b3-theme-background);';
+            body.classList.remove('north-luna-moments-body');
+            this._renderTravelCanvas(body);
         } else if (view.id === 'lifelog') {
             body.style.cssText = 'flex:1;overflow:hidden;padding:0;background:var(--b3-theme-background);';
             body.classList.remove('north-luna-moments-body');

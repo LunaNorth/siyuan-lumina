@@ -13505,3 +13505,1104 @@ a.north-breeze-link[data-lumina-title-state="pending"] {
 .north-luna-moments-item-text .north-breeze-link:hover {
     text-decoration: underline;
 }
+
+/* ============================================================
+   旅行视图（旅游攻略画布）
+   独立视图：中心行程节点 + 若干 Day 分支 + 打卡点，支持横向滚动与缩放
+   ============================================================ */
+.north-travel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-background);
+}
+
+/* ---------- 顶部工具栏 ---------- */
+.north-travel-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--b3-border-color);
+}
+.north-travel-toolbar-left {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+}
+.north-travel-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--b3-theme-on-background);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.north-travel-meta {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    white-space: nowrap;
+}
+.north-travel-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.north-travel-zoom-btn {
+    min-width: 26px;
+    height: 26px;
+    padding: 0 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--b3-theme-on-surface);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+.north-travel-zoom-btn:hover {
+    background: var(--b3-list-hover);
+}
+.north-travel-zoom-value {
+    min-width: 42px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 画布视口（横向 + 纵向滚动） ---------- */
+.north-travel-viewport {
+    flex: 1;
+    overflow: auto;
+    padding: 28px 32px 56px;
+}
+.north-travel-canvas {
+    position: relative;
+    width: max-content;
+    zoom: var(--travel-scale, 1);
+}
+
+/* ---------- 顶部：起点 + 中心节点 + 终点 ---------- */
+.north-travel-top {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 64px;
+    min-height: 116px;
+    padding: 0 12px;
+}
+.north-travel-endpoint {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    white-space: nowrap;
+}
+.north-travel-center {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 92px;
+    padding: 16px 24px;
+    border-radius: 48px;
+    background: var(--b3-theme-surface);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.3;
+    text-align: center;
+    color: var(--b3-theme-on-background);
+    cursor: pointer;
+}
+
+/* ---------- 中心节点配色面板（字体色 / 背景色 / 色彩梯度） ---------- */
+.north-travel-color-pop {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    z-index: 20;
+    margin-top: 8px;
+    padding: 12px;
+    transform: translateX(-50%);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 7px;
+    background: var(--b3-menu-background, var(--b3-theme-background));
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    cursor: default;
+}
+.north-travel-color-section + .north-travel-color-section {
+    margin-top: 10px;
+}
+.north-travel-color-label {
+    margin-bottom: 6px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--b3-theme-on-surface-light);
+}
+.north-travel-color-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 26px);
+    gap: 5px;
+}
+.north-travel-color-swatch {
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 7px;
+    cursor: pointer;
+    transition: border-color 0.12s ease;
+}
+/* 悬停只换边框色，不做缩放位移 */
+.north-travel-color-swatch:hover {
+    border-color: var(--b3-theme-primary);
+}
+.north-travel-color-font {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 7px;
+    background: var(--b3-theme-background);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 0.12s ease;
+}
+/* 悬停只换边框色，不做缩放位移 */
+.north-travel-color-font:hover {
+    border-color: var(--b3-theme-primary);
+}
+.north-travel-color-none {
+    position: relative;
+    background: transparent;
+}
+.north-travel-color-none::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 14px;
+    height: 1px;
+    background: var(--b3-theme-on-surface-light);
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* ---------- 连接曲线层 ---------- */
+.north-travel-links {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: visible;
+}
+
+/* ---------- Day 列 ---------- */
+.north-travel-days {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 160px;
+    /* 左侧留出首列配图溢出的空间，避免第一天的图片被视口裁掉 */
+    padding: 0 14px 14px 138px;
+}
+.north-travel-day {
+    position: relative;
+    flex-shrink: 0;
+    min-width: 128px;
+}
+.north-travel-day-head {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    padding: 0 20px;
+    margin-left: -14px;
+    border-radius: 16px;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--travel-day-color);
+    background: color-mix(in srgb, var(--travel-day-color) 14%, transparent);
+    cursor: pointer;
+    transition: box-shadow 0.12s ease;
+}
+/* 点 Day 标签即编辑这一天（改名 / 删除），给一点"可点"的暗示 */
+.north-travel-day-head:hover {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--travel-day-color) 32%, transparent);
+}
+.north-travel-day-body {
+    position: relative;
+    padding: 12px 0 6px;
+}
+.north-travel-day-body::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 14px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--travel-day-color);
+}
+
+/* ---------- 打卡点 ---------- */
+.north-travel-stop {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 68px;
+    padding-left: 30px;
+    cursor: pointer;
+}
+.north-travel-stop:hover .north-travel-stop-name {
+    color: var(--travel-day-color);
+}
+.north-travel-stop::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 30px;
+    height: 0;
+    border-top: 1px dashed var(--travel-day-color);
+    opacity: 0.5;
+}
+.north-travel-stop::after {
+    content: "";
+    position: absolute;
+    left: -3px;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: var(--travel-day-color);
+}
+.north-travel-stop-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-left: 12px;
+}
+.north-travel-stop-name {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--b3-theme-on-background);
+}
+.north-travel-stop-duration {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* ---------- 打卡点配图（溢出到轴线左侧） ---------- */
+.north-travel-stop-media {
+    position: absolute;
+    right: calc(100% + 26px);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 92px;
+    height: 58px;
+    border-radius: 8px;
+    background: var(--b3-theme-surface);
+}
+.north-travel-stop-media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 8px;
+}
+.north-travel-stop-media::after {
+    content: "";
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    width: 26px;
+    height: 0;
+    border-top: 1px dashed var(--travel-day-color);
+    opacity: 0.5;
+}
+
+/* ---------- 空状态 ---------- */
+.north-travel-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 100%;
+    color: var(--b3-theme-on-surface-light);
+}
+.north-travel-empty-title {
+    font-size: 14px;
+    color: var(--b3-theme-on-background);
+}
+.north-travel-empty-desc {
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+/* ---------- 通用按钮 ---------- */
+.north-travel-btn {
+    height: 26px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--b3-theme-on-surface);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.north-travel-btn:hover {
+    background: var(--b3-list-hover);
+    color: var(--b3-theme-on-background);
+}
+.north-travel-btn--primary {
+    border-color: transparent;
+    background: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary, #fff);
+}
+.north-travel-btn--primary:hover {
+    background: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary, #fff);
+    opacity: 0.9;
+}
+.north-travel-btn--danger {
+    color: var(--b3-theme-error, #d23f31);
+}
+.north-travel-btn--danger:hover {
+    background: var(--b3-theme-error, #d23f31);
+    border-color: transparent;
+    color: #fff;
+}
+.north-travel-toolbar-divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 6px;
+    background: var(--b3-border-color);
+}
+
+/* ---------- 每天的「+ 打卡点」 ---------- */
+.north-travel-day-add {
+    margin: 10px 0 0 -14px;
+    height: 26px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px dashed var(--b3-border-color);
+    border-radius: 13px;
+    background: transparent;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.12s ease, border-color 0.12s ease;
+}
+.north-travel-day-add:hover {
+    color: var(--travel-day-color);
+    border-color: var(--travel-day-color);
+}
+
+/* ---------- 编辑弹层 ---------- */
+.north-travel-editor {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.north-travel-editor-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.32);
+}
+.north-travel-editor-panel {
+    position: relative;
+    width: 400px;
+    max-width: calc(100% - 32px);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 7px;
+    background: var(--b3-menu-background, var(--b3-theme-background));
+    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.24);
+    overflow: hidden;
+}
+.north-travel-editor-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--b3-border-color);
+}
+.north-travel-editor-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--b3-theme-on-background);
+}
+.north-travel-editor-tag {
+    padding: 2px 10px;
+    border-radius: 7px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--travel-editor-color);
+    background: color-mix(in srgb, var(--travel-editor-color) 14%, transparent);
+}
+.north-travel-editor-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+}
+.north-travel-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.north-travel-field-label {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+}
+.north-travel-field-note {
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--b3-theme-on-surface-light);
+}
+.north-travel-field-input {
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 6px;
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-background);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.12s ease;
+}
+.north-travel-field-input:focus {
+    border-color: var(--b3-theme-primary);
+}
+.north-travel-editor-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--b3-border-color);
+}
+.north-travel-editor-actions-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ---------- 图片上传 ---------- */
+.north-travel-uploader {
+    position: relative;
+    width: 100%;
+    height: 104px;
+    border: 1px dashed var(--b3-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.12s ease;
+}
+.north-travel-uploader:hover {
+    border-color: var(--b3-theme-primary);
+}
+.north-travel-uploader-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 100%;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+}
+.north-travel-uploader-plus {
+    font-size: 20px;
+    line-height: 1;
+    color: var(--b3-theme-on-surface-lighter, var(--b3-border-color));
+}
+.north-travel-uploader-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+}
+.north-travel-uploader-preview {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+.north-travel-uploader-preview img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.north-travel-uploader-remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+.north-travel-file {
+    display: none;
+}
+
+/* ---------- 行程选择器（工具栏标题） ---------- */
+.north-travel-trip-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 280px;
+    margin-left: -6px;
+    padding: 2px 4px 2px 6px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+.north-travel-trip-picker:hover {
+    background: var(--b3-list-hover);
+}
+.north-travel-trip-picker .north-travel-title {
+    min-width: 0;
+}
+.north-travel-picker-arrow {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--b3-theme-on-surface-light);
+}
+.north-travel-trip-count {
+    padding: 1px 8px;
+    border-radius: 9px;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: nowrap;
+    color: var(--b3-theme-on-surface-light);
+    background: var(--b3-theme-surface);
+}
+
+/* ---------- 行程管理弹窗（左分组 / 右行程） ---------- */
+.north-travel-trips-modal {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.north-travel-trips-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+}
+.north-travel-trips-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 800px;
+    height: min(540px, calc(100% - 64px));
+    max-width: calc(100% - 32px);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 7px;
+    background: var(--b3-menu-background, var(--b3-theme-background));
+    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.24);
+    overflow: hidden;
+}
+.north-travel-trips-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+    height: 46px;
+    padding: 0 10px 0 16px;
+    border-bottom: 1px solid var(--b3-border-color);
+}
+.north-travel-trips-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--b3-theme-on-background);
+}
+.north-travel-trips-close {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.north-travel-trips-close:hover {
+    background: var(--b3-list-hover);
+    color: var(--b3-theme-on-background);
+}
+
+/* ---------- 双栏主体 ---------- */
+.north-travel-trips-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+.north-travel-pane-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+    height: 40px;
+    padding: 0 12px 0 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* ---------- 左：分组 ---------- */
+.north-travel-groups-pane {
+    width: 200px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--b3-border-color);
+}
+.north-travel-groups-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 12px;
+}
+.north-travel-group-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 8px 0 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--b3-theme-on-background);
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+.north-travel-group-item:hover {
+    background: var(--b3-list-hover);
+}
+.north-travel-group-item.active {
+    background: var(--b3-theme-primary-lightest);
+    color: var(--b3-theme-primary);
+}
+.north-travel-group-item-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    outline: none;
+    border-radius: 4px;
+}
+.north-travel-group-item-name[contenteditable="true"] {
+    overflow: visible;
+    text-overflow: clip;
+    padding: 1px 5px;
+    margin: 0 -5px;
+    background: var(--b3-theme-background);
+    box-shadow: 0 0 0 2px var(--b3-theme-primary-light);
+}
+.north-travel-group-item-count {
+    flex-shrink: 0;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 5px;
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    font-variant-numeric: tabular-nums;
+}
+.north-travel-group-item.active .north-travel-group-item-count {
+    color: var(--b3-theme-primary);
+}
+.north-travel-pane-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+/* ---------- 右：行程 ---------- */
+.north-travel-trips-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+.north-travel-trips-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin: 0 14px 8px;
+}
+.north-travel-trips-search-icon {
+    position: absolute;
+    left: 9px;
+    width: 13px;
+    height: 13px;
+    color: var(--b3-theme-on-surface-light);
+    pointer-events: none;
+}
+.north-travel-trips-search {
+    width: 100%;
+    height: 30px;
+    padding: 0 10px 0 28px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 7px;
+    background: var(--b3-theme-background);
+    color: var(--b3-theme-on-background);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.12s ease;
+}
+.north-travel-trips-search:focus {
+    border-color: var(--b3-theme-primary);
+}
+.north-travel-trips-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 14px 14px;
+}
+.north-travel-trip-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 11px 12px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 8px;
+    background: var(--b3-theme-background);
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+.north-travel-trip-card:hover {
+    background: var(--b3-list-hover);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.north-travel-trip-card.active {
+    border-color: var(--b3-theme-primary-light);
+    background: var(--b3-theme-primary-lightest);
+}
+.north-travel-trip-card-info {
+    flex: 1;
+    min-width: 0;
+}
+.north-travel-trip-card-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--b3-theme-on-background);
+    word-break: break-word;
+}
+.north-travel-trip-card.active .north-travel-trip-card-title {
+    color: var(--b3-theme-primary);
+}
+.north-travel-trip-card-badge {
+    flex-shrink: 0;
+    padding: 0 6px;
+    border-radius: 5px;
+    background: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary, #fff);
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 15px;
+}
+.north-travel-trip-card-route {
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    word-break: break-word;
+}
+.north-travel-trip-card-meta {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--b3-theme-on-surface-light);
+    opacity: 0.8;
+}
+.north-travel-trip-card-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+.north-travel-trip-card:hover .north-travel-trip-card-actions,
+.north-travel-trip-card:focus-within .north-travel-trip-card-actions {
+    opacity: 1;
+}
+
+/* 卡片就地进入编辑态 */
+.north-travel-trip-card.is-editing {
+    flex-direction: column;
+    gap: 10px;
+    cursor: default;
+    border-color: var(--b3-theme-primary);
+    box-shadow: 0 0 0 3px var(--b3-theme-primary-lightest);
+}
+.north-travel-trip-card.is-editing:hover {
+    background: var(--b3-theme-background);
+    box-shadow: 0 0 0 3px var(--b3-theme-primary-lightest);
+}
+.north-travel-trip-card-form-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+.north-travel-spacer {
+    flex: 1;
+}
+.north-travel-field-row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+.north-travel-field-row .north-travel-field {
+    flex: 1;
+    min-width: 0;
+}
+
+/* ---------- 底部 ---------- */
+.north-travel-trips-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+    padding: 10px 16px;
+    border-top: 1px solid var(--b3-border-color);
+}
+.north-travel-trips-hint {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+}
+.north-travel-trips-empty {
+    padding: 40px 20px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* ---------- 小号按钮 / 迷你按钮 ---------- */
+.north-travel-btn--sm {
+    height: 24px;
+    padding: 0 10px;
+    font-size: 12px;
+}
+.north-travel-mini-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.north-travel-mini-btn:hover {
+    background: var(--b3-theme-surface);
+    color: var(--b3-theme-on-background);
+}
+.north-travel-mini-btn--danger:hover {
+    color: var(--b3-theme-error, #d23f31);
+}
+.north-travel-mini-icon {
+    display: block;
+    width: 13px;
+    height: 13px;
+}
+.north-travel-mini-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+.north-travel-mini-btn:disabled:hover {
+    background: transparent;
+    color: var(--b3-theme-on-surface-light);
+}
+
+/* ---------- 实心危险按钮 ---------- */
+.north-travel-btn--danger-solid {
+    border-color: transparent;
+    background: var(--b3-theme-error, #d23f31);
+    color: #fff;
+}
+.north-travel-btn--danger-solid:hover {
+    background: var(--b3-theme-error, #d23f31);
+    color: #fff;
+    opacity: 0.9;
+}
+.north-travel-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.north-travel-btn:disabled:hover {
+    background: transparent;
+    color: var(--b3-theme-on-surface);
+}
+
+/* ---------- 弹窗内确认层（替代思源 confirm，层级可控） ---------- */
+.north-travel-confirm {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.north-travel-confirm-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.28);
+}
+.north-travel-confirm-box {
+    position: relative;
+    width: 300px;
+    max-width: calc(100% - 32px);
+    padding: 16px 18px 14px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 7px;
+    background: var(--b3-menu-background, var(--b3-theme-background));
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.26);
+}
+.north-travel-confirm-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--b3-theme-on-background);
+}
+.north-travel-confirm-text {
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--b3-theme-on-surface-light);
+    word-break: break-word;
+}
+.north-travel-confirm-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+/* ---------- 分组快选胶囊（行程卡片编辑态内） ---------- */
+.north-travel-group-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+}
+.north-travel-group-chip {
+    height: 22px;
+    padding: 0 10px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 11px;
+    background: transparent;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.12s ease, border-color 0.12s ease;
+}
+.north-travel-group-chip:hover {
+    border-color: var(--b3-theme-primary);
+    color: var(--b3-theme-primary);
+}
+
+/* ---------- 弹窗出现动画（两个弹窗共用） ---------- */
+@keyframes north-travel-modal-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+@keyframes north-travel-mask-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+.north-travel-trips-panel,
+.north-travel-editor-panel {
+    animation: north-travel-modal-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.north-travel-trips-mask,
+.north-travel-editor-mask {
+    animation: north-travel-mask-in 0.2s ease;
+}
+/* 系统开启「减少动态效果」时不做位移与缩放，直接呈现 */
+@media (prefers-reduced-motion: reduce) {
+    .north-travel-trips-panel,
+    .north-travel-editor-panel,
+    .north-travel-trips-mask,
+    .north-travel-editor-mask {
+        animation: none;
+    }
+}
