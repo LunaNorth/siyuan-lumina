@@ -8124,6 +8124,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'momentsCoverToolUpload', title: '上传', desc: '移动端朋友圈封面工具栏：显示/隐藏「上传」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolLink', title: '链接', desc: '移动端朋友圈封面工具栏：显示/隐藏「链接」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolResource', title: '资源', desc: '移动端朋友圈封面工具栏：显示/隐藏「资源」按钮', default: true },
+                            { type: 'toggle', key: 'momentsCoverToolSync', title: '同步', desc: '移动端朋友圈封面工具栏：显示/隐藏「同步」按钮（一键把未同步的动态写入思源文档）', default: true },
                             { type: 'toggle', key: 'momentsCoverToolDrag', title: '拖动', desc: '移动端朋友圈封面工具栏：显示/隐藏「拖动」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolCalendar', title: '日历', desc: '移动端朋友圈封面工具栏：显示/隐藏「日历」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolMoodFilter', title: '心情', desc: '移动端朋友圈封面工具栏：显示/隐藏「心情」按钮', default: true },
@@ -12063,8 +12064,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._startLifeLogAutoPoll = (body) => {
                     if (this._lifelogPollTimer) { clearInterval(this._lifelogPollTimer); }
                     this._lifelogPollActive = true;
+                    /* 移动端降频：每轮都要跑一次 SQL 扫描，手机上 5s 一轮开销明显，改为 20s。
+                       PC 端保持 5s（多端同步后能较快看到新记录）。 */
+                    const _pollGap = plugin.isMobile ? 20000 : 5000;
                     this._lifelogPollTimer = setInterval(async () => {
-                        if (!this._lifelogPollActive) { clearInterval(this._lifelogPollTimer); return; }
+                        if (!this._lifelogPollActive) { clearInterval(this._lifelogPollTimer); this._lifelogPollTimer = null; return; }
+                        /* 视图已被切走 / 销毁 → 轮询没必要继续，直接停掉（切回来时会重新启动） */
+                        if (!document.contains(body) || !body.querySelector('#lifelog-timeline')) {
+                            clearInterval(this._lifelogPollTimer); this._lifelogPollTimer = null; return;
+                        }
+                        /* 页面在后台、或上一轮查询还没跑完 → 跳过本轮，避免移动端堆积请求卡顿 */
+                        if (document.hidden || this._lifelogPollBusy) return;
+                        this._lifelogPollBusy = true;
                         try {
                             /* 记录旧数据快照：条数 + 最后 5 条内容的指纹 */
                             const prev = this._lifelogRecords || [];
@@ -12082,7 +12093,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 this._renderLifeLogMobileStats(body);
                             }
                         } catch (e) { /* silent */ }
-                    }, 5000);
+                        finally { this._lifelogPollBusy = false; }
+                    }, _pollGap);
                 };
 
                 this._bindLifeLogSearch = (body) => {
@@ -13157,6 +13169,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const modalTime = body.querySelector('#lifelogInputModalTime');
                     const modalTextarea = body.querySelector('#lifelogInputModalTextarea');
                     if (!fab || !pickOverlay || !modal) return;
+                    if (!pickTypes || !pickClose || !modalType || !modalTime || !modalSubmit || !modalTextarea || !modalCancel) return;
                     if (fab._lifelogClickBound) return;
                     fab._lifelogClickBound = true;
 
@@ -13239,46 +13252,49 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                     /* 提交记录 */
                     const submit = async () => {
+                        if (!modalSubmit || !modalTextarea) return;
                         const content = modalTextarea.value.trim();
                         if (!content) return;
                         modalSubmit.disabled = true;
                         modalSubmit.textContent = '记录中…';
                         try {
                             const now = new Date();
-                            const hh = String(now.getHours()).padStart(2,'0');
-                            const mm = String(now.getMinutes()).padStart(2,'0');
+                            const p2 = (n) => String(n).padStart(2, '0');
+                            const hh = p2(now.getHours());
+                            const mm = p2(now.getMinutes());
                             const type = _selType || '记录';
                             const md = `${hh}:${mm} ${type}：${content}`;
-                            const notebookId = this._getSetting('lifelogNotebookId') || '';
-                            const body = notebookId
-                                ? { notebook: notebookId, data: md, dataType: 'markdown' }
-                                : { data: md, dataType: 'markdown' };
-                            const resp = await fetch('/api/block/appendDailyNoteBlock', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(body)
+                            /* 统一写入链路（解析日记笔记本 → 追加 → 补 custom-lifelog-* 属性）。
+                               注意：这里不要再声明名为 body 的变量——会遮蔽外层 DOM 变量 body，
+                               导致下方 body.querySelector 变成 undefined.querySelector 而中断刷新。 */
+                            const res = await plugin._appendLifeLogRecord(md, {
+                                date: `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`,
+                                time: `${hh}:${mm}`,
+                                type
                             });
-                            const json = await resp.json();
-                            if (json.code === 0) {
+                            if (res && res.ok) {
                                 closeInput();
                                 setTimeout(() => {
                                     this._loadLifeLogData(true).then(() => {
-                            this._renderLifeLogTimeline(body, body.querySelector('#lifelogSearchInput').value.trim());
-                            this._renderLifeLogTypesCloud(body);
-                            this._renderLifeLogHeatmap(body);
-                            this._renderLifeLogWeekStrip(body);
-                            this._updateLifeLogStats(body);
-                            this._renderLifeLogMobileStats(body);
-                                    });
-                                }, 600);
+                                        const bodyEl = body;
+                                        const inputEl = bodyEl.querySelector('#lifelogSearchInput');
+                                        this._renderLifeLogTimeline(bodyEl, inputEl ? inputEl.value.trim() : '');
+                                        this._renderLifeLogTypesCloud(bodyEl);
+                                        this._renderLifeLogHeatmap(bodyEl);
+                                        this._renderLifeLogWeekStrip(bodyEl);
+                                        this._updateLifeLogStats(bodyEl);
+                                        this._renderLifeLogMobileStats(bodyEl);
+                                    }).catch(() => {});
+                                }, 400);
                             } else {
-                                alert('写入日记失败，请重试');
+                                plugin._lunaToast((res && res.msg) || '写入日记失败，请重试');
                             }
                         } catch (e) {
-                            alert('提交失败: ' + e.message);
+                            plugin._lunaToast('提交失败：' + ((e && e.message) || e));
+                        } finally {
+                            modalSubmit.disabled = false;
+                            modalSubmit.textContent = '记录';
                         }
-                        modalSubmit.disabled = false;
-                        modalSubmit.textContent = '记录';
                     };
 
                     /* 事件 */
@@ -13857,6 +13873,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     </button>
                     <div class="mobile-header-title" id="luna-mobile-title"><span class="mobile-header-title-text">${plugin._esc(plugin._getSidebarViewName(ctx.activeViewId))}</span><div class="north-lifelog-subtabs" id="lifelogSubtabs"><button class="north-lifelog-subtab active" data-subview="records">记录</button><button class="north-lifelog-subtab" data-subview="stats">统计</button></div></div>
                     <div class="mobile-header-actions">
+                        <button class="mobile-header-sync" id="luna-mobile-sync" title="一键同步未同步记录">
+                            <svg class="icon"><use xlink:href="#iconCloud"></use></svg>
+                        </button>
                         <button class="mobile-header-datefilter" id="luna-mobile-datefilter" title="按日期筛选">
                             <svg class="icon"><use xlink:href="#iconCalendar"></use></svg>
                         </button>
@@ -14057,6 +14076,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 /* 悬浮球刚拖动完，抑制这次点击，避免误触发 */
                 if (mobileAddBtn._luminaJustDragged) { mobileAddBtn._luminaJustDragged = false; return; }
                 plugin._openMobileInputSheet(ctx);
+            });
+        }
+        /* 移动端「一键同步」：把「全部未同步的清风笔记」一次性写入思源笔记文档。
+           移动端没有设置视图（批量同步按钮原本只在设置面板里），用户只能逐条手动同步、容易漏，
+           所以在清风视图顶栏放一个常驻入口。写入目标与模板完全沿用「数据同步」设置。 */
+        const mobileSyncBtn = target.querySelector('#luna-mobile-sync');
+        if (mobileSyncBtn) {
+            mobileSyncBtn.addEventListener('click', () => {
+                plugin._runMobileBatchSync('breeze', mobileSyncBtn);
             });
         }
         /* 移动端：应用 + 按钮悬浮状态（含长按拖动定位，复刻轻语 applyMobileAddFloating） */
@@ -15167,6 +15195,28 @@ module.exports = class NorthLunaPlugin extends Plugin {
             plugin.data[RECORDS_STORAGE].breezeNotes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
             plugin.data[RECORDS_STORAGE].breezeNotes.unshift(note);
             plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]).catch(() => {});
+            /* 自动同步思源笔记文档：提交后 1s 防抖。
+               PC 主视图 / PC Dock 两处一直有这段钩子，移动端这条发布路径（_bindBreezeMobileInput）
+               历史遗漏，导致「自动同步」开关在手机上不生效 —— 补上与 PC 完全一致的逻辑。
+               移动端额外强制 noJump：后台静默写入，不跳转到日记文档打断当前输入。 */
+            if (plugin._getPluginSetting('autoSyncBreeze')) {
+                clearTimeout(plugin._mobileBreezeAutoSyncTimer);
+                plugin._mobileBreezeAutoSyncTimer = setTimeout(() => {
+                    plugin._syncToDailyNote({
+                        content: note.content,
+                        images: note.images,
+                        files: note.files,
+                        time: note.time,
+                        source: 'breeze'
+                    }, { noJump: true }).then((result) => {
+                        /* 自动同步成功也打「已同步」标记（同手动同步），批量同步据此跳过 */
+                        if (result && result.success) {
+                            note.docSyncedAt = Date.now();
+                            plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]).catch(() => {});
+                        }
+                    }).catch(() => {});
+                }, 1000);
+            }
             /* 重新渲染视图以显示新笔记 */
             ctx.renderMain();
             /* 清空输入区 */
@@ -19564,8 +19614,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this._startLifeLogAutoPoll = (body) => {
             if (this._lifelogPollTimer) { clearInterval(this._lifelogPollTimer); }
             this._lifelogPollActive = true;
+            /* 移动端降频：每轮都要跑一次 SQL 扫描，手机上 5s 一轮开销明显，改为 20s */
+            const _pollGap = this.isMobile ? 20000 : 5000;
             this._lifelogPollTimer = setInterval(async () => {
-                if (!this._lifelogPollActive) { clearInterval(this._lifelogPollTimer); return; }
+                if (!this._lifelogPollActive) { clearInterval(this._lifelogPollTimer); this._lifelogPollTimer = null; return; }
+                /* 视图已被切走 / 销毁 → 停止轮询（切回来时会重新启动） */
+                if (!document.contains(body) || !body.querySelector('#lifelog-timeline')) {
+                    clearInterval(this._lifelogPollTimer); this._lifelogPollTimer = null; return;
+                }
+                /* 页面在后台、或上一轮查询还没跑完 → 跳过本轮 */
+                if (document.hidden || this._lifelogPollBusy) return;
+                this._lifelogPollBusy = true;
                 try {
                     /* 记录旧数据快照：条数 + 最后 5 条内容的指纹 */
                     const prev = this._lifelogRecords || [];
@@ -19583,7 +19642,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this._renderLifeLogMobileStats(body);
                     }
                 } catch (e) { /* silent */ }
-            }, 5000);
+                finally { this._lifelogPollBusy = false; }
+            }, _pollGap);
         };
         
         this._bindLifeLogSearch = (body) => {
@@ -20856,6 +20916,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const modalTime = body.querySelector('#lifelogInputModalTime');
             const modalTextarea = body.querySelector('#lifelogInputModalTextarea');
             if (!fab || !pickOverlay || !modal) return;
+            if (!pickTypes || !pickClose || !modalType || !modalTime || !modalSubmit || !modalTextarea || !modalCancel) return;
             if (fab._lifelogClickBound) return;
             fab._lifelogClickBound = true;
         
@@ -20938,46 +20999,49 @@ module.exports = class NorthLunaPlugin extends Plugin {
         
             /* 提交记录 */
             const submit = async () => {
+                if (!modalSubmit || !modalTextarea) return;
                 const content = modalTextarea.value.trim();
                 if (!content) return;
                 modalSubmit.disabled = true;
                 modalSubmit.textContent = '记录中…';
                 try {
                     const now = new Date();
-                    const hh = String(now.getHours()).padStart(2,'0');
-                    const mm = String(now.getMinutes()).padStart(2,'0');
+                    const p2 = (n) => String(n).padStart(2, '0');
+                    const hh = p2(now.getHours());
+                    const mm = p2(now.getMinutes());
                     const type = _selType || '记录';
                     const md = `${hh}:${mm} ${type}：${content}`;
-                    const notebookId = this._getSetting('lifelogNotebookId') || '';
-                    const body = notebookId
-                        ? { notebook: notebookId, data: md, dataType: 'markdown' }
-                        : { data: md, dataType: 'markdown' };
-                    const resp = await fetch('/api/block/appendDailyNoteBlock', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
+                    /* 统一写入链路：笔记本解析 → 追加日记 → 补属性。
+                       不要再声明名为 body 的变量，否则会遮蔽外层 DOM 变量 body，
+                       让下面 body.querySelector 直接抛错（移动端表现为点了没反应）。 */
+                    const res = await this._appendLifeLogRecord(md, {
+                        date: `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`,
+                        time: `${hh}:${mm}`,
+                        type
                     });
-                    const json = await resp.json();
-                    if (json.code === 0) {
+                    if (res && res.ok) {
                         closeInput();
                         setTimeout(() => {
                             this._loadLifeLogData(true).then(() => {
-                                this._renderLifeLogTimeline(body, body.querySelector('#lifelogSearchInput').value.trim());
-                                this._renderLifeLogTypesCloud(body);
-                                this._renderLifeLogHeatmap(body);
-                                this._renderLifeLogWeekStrip(body);
-                                this._updateLifeLogStats(body);
-                                this._renderLifeLogMobileStats(body);
-                            });
-                        }, 600);
+                                const bodyEl = body;
+                                const inputEl = bodyEl.querySelector('#lifelogSearchInput');
+                                this._renderLifeLogTimeline(bodyEl, inputEl ? inputEl.value.trim() : '');
+                                this._renderLifeLogTypesCloud(bodyEl);
+                                this._renderLifeLogHeatmap(bodyEl);
+                                this._renderLifeLogWeekStrip(bodyEl);
+                                this._updateLifeLogStats(bodyEl);
+                                this._renderLifeLogMobileStats(bodyEl);
+                            }).catch(() => {});
+                        }, 400);
                     } else {
-                        alert('写入日记失败，请重试');
+                        this._lunaToast((res && res.msg) || '写入日记失败，请重试');
                     }
                 } catch (e) {
-                    alert('提交失败: ' + e.message);
+                    this._lunaToast('提交失败：' + ((e && e.message) || e));
+                } finally {
+                    modalSubmit.disabled = false;
+                    modalSubmit.textContent = '记录';
                 }
-                modalSubmit.disabled = false;
-                modalSubmit.textContent = '记录';
             };
         
             /* 事件 */
@@ -21146,6 +21210,153 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (typeof this._esc !== 'function') {
             this._esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
+    }
+
+    /* ============================================================
+     * LifeLog · 添加记录（PC 主视图 / 移动端共用写入链路）
+     *
+     * 背景：/api/block/appendDailyNoteBlock 的 notebook 是内核必填字段，
+     *   留空会直接返回 {"code":-1,"msg":"Field [notebook] is required"}，
+     *   旧实现「留空则使用思源默认日记笔记本」并不成立 → PC 端一提交就弹
+     *   「写入日记失败，请重试」（alert），移动端 alert 常被 WebView 拦掉，
+     *   表现为「点了记录没有任何反应」。
+     *
+     * 另外：LifeLog 视图是按 blocks 上的 custom-lifelog-date / -time / -type
+     *   三个属性检索记录的（SQL INNER JOIN attributes），只写正文不补属性，
+     *   会出现「写入成功但列表里看不到」，因此这里写完顺手补上这三个属性。
+     * ============================================================ */
+
+    /* 统一的设置读取：tab 实例 / plugin 实例两种上下文都能取到值 */
+    _lifeLogSetting(key) {
+        try {
+            if (typeof this._getPluginSetting === 'function') {
+                const v = this._getPluginSetting(key);
+                if (v !== undefined && v !== null && v !== '') return v;
+            }
+        } catch (e) { /* fall through */ }
+        try {
+            if (typeof this._getSetting === 'function') {
+                const v2 = this._getSetting(key);
+                if (v2 !== undefined && v2 !== null) return v2;
+            }
+        } catch (e) { /* fall through */ }
+        return (((this.data || {})[SETTINGS_STORAGE] || {}).settings || {})[key];
+    }
+
+    /* 解析可用的日记笔记本 ID。
+       优先级：LifeLog 设置 → 数据同步的日记笔记本 → 已配置日记保存路径的笔记本 → 第一个未关闭笔记本。
+       解析结果带会话级缓存（设置改动后会先重新读取设置项，不会被缓存挡住）。 */
+    async _resolveLifeLogNotebookId() {
+        const configured = String(this._lifeLogSetting('lifelogNotebookId') || '').trim();
+        if (configured) return configured;
+        const syncNb = String(this._lifeLogSetting('dailyNotebookId') || '').trim();
+        if (syncNb) return syncNb;
+        if (this._lifelogNotebookIdCache) return this._lifelogNotebookIdCache;
+
+        const tk = window.siyuan?.config?.api?.token || '';
+        const hh = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
+        let boxes = [];
+        try {
+            const resp = await fetch('/api/notebook/lsNotebooks', { method: 'POST', headers: hh, body: '{}' });
+            const json = await resp.json().catch(() => null);
+            boxes = (json && json.code === 0 && json.data && Array.isArray(json.data.notebooks))
+                ? json.data.notebooks.filter(b => b && b.id && !b.closed)
+                : [];
+        } catch (e) { boxes = []; }
+        /* 优先挑「已配置日记保存路径」的笔记本，写进去才会落在正常日记里 */
+        for (const box of boxes) {
+            try {
+                const cr = await fetch('/api/notebook/getNotebookConf', { method: 'POST', headers: hh, body: JSON.stringify({ notebook: box.id }) });
+                const cj = await cr.json().catch(() => null);
+                const p = (cj && cj.code === 0 && cj.data && cj.data.conf && cj.data.conf.dailyNoteSavePath) || '';
+                if (String(p).trim()) {
+                    this._lifelogNotebookIdCache = box.id;
+                    return box.id;
+                }
+            } catch (e) { /* 换下一个笔记本 */ }
+        }
+        if (boxes.length) {
+            this._lifelogNotebookIdCache = boxes[0].id;
+            return boxes[0].id;
+        }
+        return '';
+    }
+
+    /* LifeLog 提示：移动端 WebView 里 alert 常被拦掉（点了没反应），
+       统一改成不阻塞的内联提示；PC 端也顺带避免 alert 冻结界面。 */
+    _lunaToast(msg, isError = true) {
+        const text = String(msg == null ? '' : msg);
+        let el = document.getElementById('northLunaToast');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'northLunaToast';
+            el.className = 'north-lifelog-notify';
+            document.body.appendChild(el);
+        }
+        el.textContent = text;
+        el.classList.toggle('is-error', !!isError);
+        el.classList.add('show');
+        clearTimeout(this._lunaToastTimer);
+        this._lunaToastTimer = setTimeout(() => { try { el.classList.remove('show'); } catch (e) {} }, 2800);
+    }
+
+    /* 追加一条 LifeLog 记录到「今天」的日记。
+       返回 { ok, msg, blockId, docId, notebookId }，调用方据此决定提示内容。 */
+    async _appendLifeLogRecord(markdown, meta) {
+        const tk = window.siyuan?.config?.api?.token || '';
+        const hh = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
+        let notebookId = '';
+        try {
+            notebookId = await this._resolveLifeLogNotebookId();
+        } catch (e) { notebookId = ''; }
+        if (!notebookId) {
+            return { ok: false, msg: '未找到可写入的日记笔记本，请先在「轻语设置 → LifeLog」中选择日记笔记本' };
+        }
+        let json = null;
+        try {
+            const resp = await fetch('/api/block/appendDailyNoteBlock', {
+                method: 'POST',
+                headers: hh,
+                body: JSON.stringify({ notebook: notebookId, dataType: 'markdown', data: markdown })
+            });
+            json = await resp.json().catch(() => null);
+        } catch (e) {
+            return { ok: false, msg: '网络异常：' + ((e && e.message) || e) };
+        }
+        if (!json || json.code !== 0) {
+            return { ok: false, msg: '写入日记失败：' + ((json && json.msg) || '未知错误') };
+        }
+        /* 从返回的 doOperations 中解析新块 ID 与所属文档 ID */
+        let blockId = '', docId = '';
+        const ops = Array.isArray(json.data) ? json.data : (json.data ? [json.data] : []);
+        for (const item of ops) {
+            const doOps = Array.isArray(item && item.doOperations) ? item.doOperations : [];
+            for (const op of doOps) {
+                if (op && op.id && !blockId) blockId = op.id;
+                if (op && op.parentID && !docId) docId = op.parentID;
+            }
+            if (blockId && docId) break;
+        }
+        /* 补 custom-lifelog-* 属性：视图按这三个属性检索，不补则「写进去了但看不到」。
+           best-effort：失败只告警，不影响记录本身已经写进日记。 */
+        if (blockId && meta) {
+            const attrs = {};
+            if (meta.date) attrs['custom-lifelog-date'] = String(meta.date);
+            if (meta.time) attrs['custom-lifelog-time'] = String(meta.time);
+            if (meta.type) attrs['custom-lifelog-type'] = String(meta.type);
+            if (Object.keys(attrs).length) {
+                try {
+                    await fetch('/api/attr/setBlockAttrs', { method: 'POST', headers: hh, body: JSON.stringify({ id: blockId, attrs }) });
+                } catch (e) { console.warn('[LifeLog] 写入记录属性失败:', e && e.message); }
+            }
+        }
+        /* 思源 SQL 索引有延迟，写完立刻要查必须先 flush，否则刷新时记录还不存在 */
+        try { await fetch('/api/sqlite/flushTransaction', { method: 'POST', headers: hh, body: '{}' }); } catch (e) { /* 忽略 */ }
+        this._lifelogCache = null;
+        this._lifelogCacheTime = 0;
+        this._lifelogDockCache = null;
+        this._lifelogDockCacheTime = 0;
+        return { ok: true, msg: '已记录', blockId, docId, notebookId };
     }
 
     _renderLifeLogDockContent(root) {
@@ -21533,6 +21744,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const modalType = root.querySelector('#lifelogDockInputModalType');
         const modalTime = root.querySelector('#lifelogDockInputModalTime');
         const modalTextarea = root.querySelector('#lifelogDockInputModalTextarea');
+        /* 元素缺失时直接返回，避免后续 addEventListener 抛错导致整个「记录」按钮失灵 */
+        if (!pickOverlay || !pickTypes || !pickClose || !modal || !modalCancel || !modalSubmit || !modalTextarea) return;
 
         let _selType = '';
 
@@ -21625,38 +21838,36 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const closeAll = () => { modal.style.display = 'none'; pickOverlay.style.display = 'none'; modalTextarea.value = ''; _selType = ''; };
 
         const submit = async () => {
+            if (!modalSubmit || !modalTextarea) return;
             const content = modalTextarea.value.trim();
             if (!content) return;
             modalSubmit.disabled = true;
             modalSubmit.textContent = '记录中…';
             try {
                 const now = new Date();
-                const hh = String(now.getHours()).padStart(2,'0');
-                const mm = String(now.getMinutes()).padStart(2,'0');
+                const p2 = (n) => String(n).padStart(2, '0');
+                const hh = p2(now.getHours());
+                const mm = p2(now.getMinutes());
                 const type = _selType || '记录';
                 const md = `${hh}:${mm} ${type}：${content}`;
-                /* 从 plugin 级别的设置中读笔记本（_getPluginSetting 是 plugin 实例上的） */
-                const notebookId = this._getPluginSetting && this._getPluginSetting('lifelogNotebookId') || '';
-                const bodyPayload = notebookId
-                    ? { notebook: notebookId, data: md, dataType: 'markdown' }
-                    : { data: md, dataType: 'markdown' };
-                const resp = await fetch('/api/block/appendDailyNoteBlock', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(bodyPayload)
+                /* 与主视图共用同一套写入链路（笔记本解析 → 追加日记 → 补 custom-lifelog-* 属性） */
+                const res = await this._appendLifeLogRecord(md, {
+                    date: `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`,
+                    time: `${hh}:${mm}`,
+                    type
                 });
-                const json = await resp.json();
-                if (json.code === 0) {
+                if (res && res.ok) {
                     closeAll();
-                    setTimeout(() => this._refreshLifeLogDockContent(true), 600);
+                    setTimeout(() => { this._refreshLifeLogDockContent(true); }, 400);
                 } else {
-                    alert('写入日记失败，请重试');
+                    this._lunaToast((res && res.msg) || '写入日记失败，请重试');
                 }
             } catch (e) {
-                alert('提交失败: ' + e.message);
+                this._lunaToast('提交失败：' + ((e && e.message) || e));
+            } finally {
+                modalSubmit.disabled = false;
+                modalSubmit.textContent = '记录';
             }
-            modalSubmit.disabled = false;
-            modalSubmit.textContent = '记录';
         };
 
         /* 事件 */
@@ -22170,6 +22381,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             <button class="north-luna-moments-cover-tool" data-act="resource" type="button" title="从资源库选择">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconImage"></use></svg><span>资源</span>
                             </button>
+                            ${this.isMobile ? `<button class="north-luna-moments-cover-tool" id="momentsSyncTool" data-act="sync" type="button" title="一键同步未同步动态">
+                                <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconCloud"></use></svg><span>同步</span>
+                            </button>` : ''}
                             <button class="north-luna-moments-cover-tool" data-act="drag" type="button" title="拖动调整位置">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconMove"></use></svg><span>拖动</span>
                             </button>
@@ -22330,6 +22544,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             { act: 'upload', key: 'momentsCoverToolUpload', def: true },
             { act: 'link', key: 'momentsCoverToolLink', def: true },
             { act: 'resource', key: 'momentsCoverToolResource', def: true },
+            { act: 'sync', key: 'momentsCoverToolSync', def: true },
             { act: 'drag', key: 'momentsCoverToolDrag', def: true },
             { act: 'calendar', key: 'momentsCoverToolCalendar', def: true },
             { act: 'mood-filter', key: 'momentsCoverToolMoodFilter', def: true },
@@ -22705,8 +22920,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
            所以判定口径是「本插件任何一次成功同步」，而不只是批量同步。
        kind: 'breeze' | 'moments'
        onProgress: 可选，(done, total) => void，用于 UI 展示进度
+       options: 可选，{ force: true } 忽略「跳过已同步记录」设置，全部重写一遍
        返回 { total, synced, skipped, failed, target }；目标未配置时抛出 Error。 */
-    async _batchSyncToSiYuan(kind, onProgress) {
+    async _batchSyncToSiYuan(kind, onProgress, options) {
         const storage = this.data[SETTINGS_STORAGE] || {};
         const settings = storage.settings || {};
         const target = settings.dailyNoteTarget === 'doc' ? 'doc' : 'dailynote';
@@ -22717,7 +22933,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (target === 'doc' && !(settings.dailyNoteDocId || '').trim()) {
             throw new Error('请先在「数据同步」中选择指定文档');
         }
-        const skipSynced = settings.batchSyncSkipSynced !== false;
+        /* skipSynced：默认沿用「跳过已同步记录」设置；
+           opts.force = true 时忽略该设置，全部重写一遍（移动端「一键同步」在
+           发现无新记录可同步时会询问用户是否强制全量重写，避免用户怀疑漏了某条）。 */
+        const skipSynced = (options && options.force) ? false : settings.batchSyncSkipSynced !== false;
         // 收集待同步条目：ref 为原始对象引用，成功后直接在其上打同步标记
         const items = [];
         if (kind === 'breeze') {
@@ -22784,6 +23003,93 @@ module.exports = class NorthLunaPlugin extends Plugin {
             else await this.saveMoments();
         } catch (e) { console.warn('[清风] 批量同步标记落盘失败:', e && e.message); }
         return { total, synced, skipped, failed, target };
+    }
+
+    /* 移动端顶栏「一键同步」入口的实现。
+       kind: 'breeze'（清风/明月/表格/统计 等清风数据视图）| 'moments'（朋友圈）
+       目标与模板沿用「数据同步」设置；是否跳过已同步记录沿用「跳过已同步记录」设置。
+       结果用内联提示反馈（移动端 alert 不可靠），并在同步期间禁用按钮防重复点击。 */
+    async _runMobileBatchSync(kind, btn) {
+        const label = kind === 'moments' ? '朋友圈动态' : '清风笔记';
+        if (this._batchSyncing) { this._lunaToast('已有同步任务正在进行，请稍候'); return; }
+        const storage = this.data[SETTINGS_STORAGE] || {};
+        const settings = storage.settings || {};
+        const target = settings.dailyNoteTarget === 'doc' ? 'doc' : 'dailynote';
+        /* 目标未配置时先提示，不进空转（与设置面板里的批量同步同一套预检） */
+        if (target === 'dailynote' && !(settings.dailyNotebookId || '').trim()) {
+            this._lunaToast('请先在「轻语设置 → 数据同步」中选择日记笔记本');
+            return;
+        }
+        if (target === 'doc' && !(settings.dailyNoteDocId || '').trim()) {
+            this._lunaToast('请先在「轻语设置 → 数据同步」中选择指定文档');
+            return;
+        }
+        this._batchSyncing = true;
+        if (btn) { btn.disabled = true; btn.classList.add('is-syncing'); }
+        try {
+            this._lunaToast(`正在同步${label}…`, false);
+            let r = await this._batchSyncToSiYuan(kind);
+            if (!r || !r.total) { this._lunaToast(`暂无${label}可同步`, false); return; }
+            /* 命中「已同步过」的记录时，用户很容易以为按钮没生效（尤其此前逐条手动同步过一遍的）。
+               这时明确询问是否忽略「已同步」标记、全部重写一遍 —— 正好解决「怕漏掉某条」的顾虑。 */
+            if (!r.synced && r.skipped) {
+                const again = await this._lunaConfirm(
+                    '一键同步',
+                    `这 ${r.skipped} 条${label}都已经同步过了，没有需要新写入的记录。\n\n要忽略「已同步」标记，把这 ${r.skipped} 条全部重新写一遍吗？`,
+                    '全部重新同步'
+                );
+                if (!again) {
+                    this._lunaToast(`${label}都已是「已同步」状态（${r.skipped} 条），没有需要写入的新记录`, false);
+                    return;
+                }
+                this._lunaToast(`正在全部重新同步${label}…`, false);
+                r = await this._batchSyncToSiYuan(kind, null, { force: true });
+                if (!r || !r.total) { this._lunaToast(`暂无${label}可同步`, false); return; }
+            }
+            const parts = [`已同步 ${r.synced} 条`];
+            if (r.skipped) parts.push(`跳过已同步 ${r.skipped} 条`);
+            if (r.failed) parts.push(`失败 ${r.failed} 条`);
+            this._lunaToast(`${label}同步完成：` + parts.join('，'), !!r.failed);
+        } catch (e) {
+            this._lunaToast('同步失败：' + ((e && e.message) || e));
+            console.warn('[轻语] 移动端一键同步异常:', e);
+        } finally {
+            this._batchSyncing = false;
+            if (btn) { btn.disabled = false; btn.classList.remove('is-syncing'); }
+        }
+    }
+
+    /* 自建确认框（返回 Promise<boolean>）。
+       不用思源原生 confirm：它只有「确定」回调、拿不到取消事件，await 会挂住；
+       也不用 window.confirm：移动端 WebView 弹出原生对话框的可靠性不稳定。
+       样式与插件的弹层一致，取消 / 点遮罩 / 点确定都会 resolve。 */
+    _lunaConfirm(title, message, okText = '确定', cancelText = '取消') {
+        return new Promise((resolve) => {
+            try {
+                const mask = document.createElement('div');
+                mask.className = 'north-luna-confirm-mask';
+                mask.innerHTML = '<div class="north-luna-confirm">'
+                    + '<div class="north-luna-confirm-title"></div>'
+                    + '<div class="north-luna-confirm-msg"></div>'
+                    + '<div class="north-luna-confirm-actions">'
+                    + '<button type="button" class="north-luna-confirm-btn" data-act="cancel"></button>'
+                    + '<button type="button" class="north-luna-confirm-btn primary" data-act="ok"></button>'
+                    + '</div></div>';
+                /* 用 textContent 赋值，天然免疫 HTML 注入（消息里可能带用户内容） */
+                mask.querySelector('.north-luna-confirm-title').textContent = String(title == null ? '' : title);
+                mask.querySelector('.north-luna-confirm-msg').textContent = String(message == null ? '' : message);
+                mask.querySelector('[data-act="ok"]').textContent = String(okText);
+                mask.querySelector('[data-act="cancel"]').textContent = String(cancelText);
+                const close = (val) => { try { mask.remove(); } catch (e) {} resolve(val); };
+                mask.querySelector('[data-act="ok"]').addEventListener('click', () => close(true));
+                mask.querySelector('[data-act="cancel"]').addEventListener('click', () => close(false));
+                mask.addEventListener('click', (e) => { if (e.target === mask) close(false); });
+                document.body.appendChild(mask);
+            } catch (e) {
+                /* 建不出弹层时按「不重写」处理，避免误把全部记录重复写入 */
+                resolve(false);
+            }
+        });
     }
 
     /* 构造日记/文档同步用的 Markdown。
@@ -24947,6 +25253,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 else if (act === 'calendar') this._openCoverCalendar(container);
                 else if (act === 'mood-filter') this._openMoodFilterPanel(container, btn);
                 else if (act === 'category-filter') this._openCategoryFilterPanel(container, btn);
+                /* 一键同步（封面工具栏内的「同步」，仅移动端渲染）：
+                   把全部未同步的朋友圈动态写入思源笔记文档，目标/模板沿用「数据同步」设置 */
+                else if (act === 'sync') this._runMobileBatchSync('moments', btn);
                 else if (act === 'delete') {
                     if (confirm) confirm('删除', '确定要删除封面并恢复默认吗？', () => this._resetCover(container));
                 }

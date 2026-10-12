@@ -388,6 +388,8 @@
     transition: border-color 0.2s ease;
 }
 
+/* 朋友圈「一键同步」按钮已改为复用封面工具栏样式（.north-luna-moments-cover-tool），无需额外样式 */
+
 .north-luna-moments-camera-icon::before {
     content: '';
     position: absolute;
@@ -4287,6 +4289,41 @@
     .mobile-header-datefilter .icon {
         width: 18px;
         height: 18px;
+    }
+
+    /* ===== 一键同步按钮（移动端顶栏） =====
+       把「全部未同步的清风笔记」一次性写入思源笔记文档（目标/模板沿用「数据同步」设置）。
+       注意：移动端顶栏本身只在 清风(notes) 与 LifeLog 视图显示（见文件上方规则），
+       所以这个按钮实际只在清风视图出现；朋友圈的一键同步入口在朋友圈封面工具栏里（.north-luna-moments-cover-tool[data-act="sync"]）。 */
+    .mobile-header-sync {
+        width: 36px;
+        height: 36px;
+        border: none;
+        background: transparent;
+        color: var(--b3-theme-on-background);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        cursor: pointer;
+        flex: 0 0 auto;
+        -webkit-tap-highlight-color: transparent;
+        padding: 0;
+    }
+    .north-luna-container[data-active-view="notes"] .mobile-header-sync {
+        display: flex;
+    }
+    .mobile-header-sync:active {
+        background: var(--b3-list-hover);
+    }
+    .mobile-header-sync .icon {
+        width: 18px;
+        height: 18px;
+    }
+    .mobile-header-sync:disabled,
+    .mobile-header-sync.is-syncing {
+        opacity: 0.5;
+        pointer-events: none;
     }
 
     /* ===== 移动端独立搜索栏（默认隐藏，点击搜索按钮展开） ===== */
@@ -14604,5 +14641,115 @@ a.north-breeze-link[data-lumina-title-state="pending"] {
     .north-travel-trips-mask,
     .north-travel-editor-mask {
         animation: none;
+    }
+}
+
+/* ============================================================
+ * 通用内联提示 toast（记录结果 / 同步结果等）
+ * 替代 alert：移动端 WebView 里 alert 常被拦掉，且 alert 会冻结界面
+ * ============================================================ */
+.north-luna-toast {
+    position: fixed;
+    left: 50%;
+    top: 18%;
+    transform: translate(-50%, -8px);
+    max-width: min(84vw, 420px);
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.82);
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: center;
+    word-break: break-word;
+    z-index: 100002;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+}
+.north-luna-toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+.north-luna-toast.is-error {
+    background: rgba(200, 55, 55, 0.92);
+}
+
+/* ============================================================
+ * 自建确认框（替代原生 confirm，见 index.js _lunaConfirm）
+ * ============================================================ */
+.north-luna-confirm-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 100003;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.35);
+}
+.north-luna-confirm {
+    width: min(86vw, 330px);
+    padding: 18px 16px 10px;
+    border-radius: 12px;
+    background: var(--b3-theme-surface, #fff);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+.north-luna-confirm-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background, #202124);
+    margin-bottom: 8px;
+}
+.north-luna-confirm-msg {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--b3-theme-on-surface, #5f6368);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.north-luna-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 14px;
+}
+.north-luna-confirm-btn {
+    border: none;
+    background: transparent;
+    color: var(--b3-theme-on-surface, #5f6368);
+    font-size: 14px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.north-luna-confirm-btn.primary {
+    color: var(--b3-theme-primary, #3575f0);
+    font-weight: 600;
+}
+.north-luna-confirm-btn:active {
+    background: var(--b3-list-hover, #eceef1);
+}
+
+/* ============================================================
+ * 移动端性能：固定/粘性条上的毛玻璃（backdrop-filter）在
+ * WebView 里代价极高（每帧都要重算模糊），是移动端卡顿主因之一。
+ * 移动端改为不透明纯色背景，视觉几乎无差但滚动/切换明显更顺。
+ * ============================================================ */
+@media (max-width: 768px) {
+    .north-luna-mobile-tabbar {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: var(--b3-theme-background);
+    }
+    .north-luna-moments-nav.scrolled {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background-color: var(--b3-theme-background);
+    }
+    .north-luna-toast {
+        top: 12%;
     }
 }
