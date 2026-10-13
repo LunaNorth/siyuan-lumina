@@ -345,8 +345,10 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                         images: note.images,
                         files: note.files,
                         time: note.time,
-                        source: 'breeze'
-                    });
+                        source: 'breeze',
+                        comments: note.comments || [],
+                        commentNickname: plugin._getProfileNickname()
+                    }, { ref: note, prevBlockId: note.docBlockId });
                     if (typeof showMessage === 'function') showMessage(result.message);
                     /* 手动同步成功也打「已同步」标记，供批量同步的「跳过已同步记录」判断，
                        否则手动同步过的内容批量时会被再写一遍 */
@@ -1453,9 +1455,18 @@ function addBreezeNoteToMoments(id, storage, plugin) {
         created: created,
         createdAt: created,
         liked: false,
-        comments: [],
+        /* 评论随内容一起迁移：此前这里固定写 []，导致「有评论的说说添加到朋友圈后评论丢失」。
+           清风评论对象为 {id,text,time,nickname}，与朋友圈 {id,text,time} 兼容。 */
+        comments: Array.isArray(note.comments) ? note.comments.slice() : [],
         pinned: false,
     };
+
+    /* 继承「已同步」状态与日记块 id。
+       这条说说若已经在日记里（发布时的自动同步 / 手动插入 / 批量同步都会写），
+       转换后不能再写一遍，否则日记里会同时出现「清风 callout + 朋友圈 callout」两份。
+       带上 docBlockId 后，将来对这条动态「重新同步」也是原地更新那份 callout。 */
+    if (note.docSyncedAt) momentData.docSyncedAt = note.docSyncedAt;
+    if (note.docBlockId) momentData.docBlockId = note.docBlockId;
 
     plugin.data[MOMENTS_STORAGE] = plugin.data[MOMENTS_STORAGE] || { config: {}, items: [] };
     plugin.data[MOMENTS_STORAGE].items = plugin.data[MOMENTS_STORAGE].items || [];
@@ -1465,7 +1476,7 @@ function addBreezeNoteToMoments(id, storage, plugin) {
         /* 迁移：从清风记录里摘掉这条说说（保留图片/文件，资源已归朋友圈动态所有） */
         storage.breezeNotes = ((storage || {}).breezeNotes || []).filter((n) => n.id !== id);
         const done = () => {
-            showMessage('已添加到朋友圈');
+            showMessage('已添加到朋友圈，可在朋友圈点「修改」补充心情 / 天气 / 地址等信息');
             /* 「关闭这条说说」：若这条正被加载进输入框编辑，一并退出编辑态 */
             try {
                 [plugin._siyuTab, plugin._lunaDockCtx].forEach((t) => {
@@ -3841,6 +3852,7 @@ function breezeBindCommentEvents(plugin) {
                     const note = notes.find(n => n.id === nid);
                     if (!note) return;
                     note.comments = (note.comments || []).filter(c => String(c.id) !== String(mcid));
+                    if (plugin._markRecordDirty) plugin._markRecordDirty(note);
                     const ci = document.querySelector('.north-luna-moments-comment-item[data-cid="' + breezeEsc(mcid) + '"]');
                     if (ci) ci.remove();
                     if (plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
@@ -3873,6 +3885,7 @@ function breezeBindCommentEvents(plugin) {
             const cid = 'bc_' + Date.now();
             const nickname = (plugin._getProfileNickname && plugin._getProfileNickname()) || '清风';
             note.comments.push({ id: cid, text: text, time: time, nickname: nickname });
+            if (plugin._markRecordDirty) plugin._markRecordDirty(note);
             const item = document.createElement('div');
             item.className = 'north-luna-moments-comment-item';
             item.dataset.cid = cid;
@@ -3922,6 +3935,7 @@ function breezeBindCommentEvents(plugin) {
             if (!note) return;
             const c = (note.comments || []).find(x => String(x.id) === String(cid));
             if (c) c.text = text;
+            if (plugin._markRecordDirty) plugin._markRecordDirty(note);
             const textSpan = item.querySelector('.north-luna-moments-comment-text');
             if (textSpan) {
                 const nickName = (c && c.nickname) || '清风';
@@ -5938,6 +5952,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 target.images = images;
                                 target.files = files;
                                 if (title) target.title = title; else delete target.title;
+                                /* 内容变了 → 标记为待重新同步（下次同步原地更新日记里那一块） */
+                                plugin._markRecordDirty(target);
                                 plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]).catch(() => {});
                                 showMessage('已保存');
                             }
@@ -5965,8 +5981,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                         images: note.images,
                                         files: note.files,
                                         time: note.time,
-                                        source: 'breeze'
-                                    }).catch(() => {});
+                                        source: 'breeze',
+                                        comments: note.comments || [],
+                                        commentNickname: plugin._getProfileNickname()
+                                    }, { ref: note, prevBlockId: note.docBlockId }).catch(() => {});
                                 }, 1000);
                             }
                         }
@@ -15162,6 +15180,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     notes[idx].images = images;
                     notes[idx].files = files;
                     /* 保留置顶/归档状态 */
+                    /* 内容变了 → 标记为待重新同步（下次同步原地更新日记里那一块） */
+                    plugin._markRecordDirty(notes[idx]);
                     plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]).catch(() => {});
                 }
                 plugin._mobileEditingNoteId = null;
@@ -15207,8 +15227,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         images: note.images,
                         files: note.files,
                         time: note.time,
-                        source: 'breeze'
-                    }, { noJump: true }).then((result) => {
+                        source: 'breeze',
+                        comments: note.comments || [],
+                        commentNickname: plugin._getProfileNickname()
+                    }, { noJump: true, ref: note, prevBlockId: note.docBlockId }).then((result) => {
                         /* 自动同步成功也打「已同步」标记（同手动同步），批量同步据此跳过 */
                         if (result && result.success) {
                             note.docSyncedAt = Date.now();
@@ -18916,6 +18938,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     target.images = images;
                     target.files = files;
                     if (title) target.title = title; else delete target.title;
+                    /* 内容变了 → 标记为待重新同步（下次同步原地更新日记里那一块） */
+                    this._markRecordDirty(target);
                     this.saveData(RECORDS_STORAGE, this.data[RECORDS_STORAGE]).catch(() => {});
                     showMessage('已保存');
                 }
@@ -18943,8 +18967,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             images: note.images,
                             files: note.files,
                             time: note.time,
-                            source: 'breeze'
-                        }).then((result) => {
+                            source: 'breeze',
+                            comments: note.comments || [],
+                            commentNickname: plugin._getProfileNickname()
+                        }, { ref: note, prevBlockId: note.docBlockId }).then((result) => {
                             /* 自动同步成功也打「已同步」标记（同手动同步），批量同步据此跳过 */
                             if (result && result.success) {
                                 note.docSyncedAt = Date.now();
@@ -22888,6 +22914,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     }
 
+    /* 记录内容变了（编辑正文 / 增删评论）之后调用：让它在下次同步时被重新写进日记。
+       只在「已经同步过、且知道写在哪一块（docBlockId）」时才清掉已同步标记 ——
+       这样重同步走的是「原地更新那一块」，日记里不会多出一份；
+       没有 docBlockId 的历史数据保持原样，避免变成重复追加。 */
+    _markRecordDirty(rec) {
+        try {
+            if (rec && rec.docSyncedAt && rec.docBlockId) delete rec.docSyncedAt;
+        } catch (e) { /* noop */ }
+        return rec;
+    }
+
     /* 把一条“笔记/动态”同步到日记/指定文档的通用入口。
        data 结构：{ content, images[], files[{name,path}], time }
        - content: 纯文本正文
@@ -22904,7 +22941,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const localized = await this._localizePublicResourcesForNote(data, settings);
             const markdown = this._buildDailyNoteMarkdown(localized, settings);
             const result = await this._appendToDailyNoteTarget(markdown, data.time || '', settings, options);
-            return { success: true, message: result.message || '已同步 ✅' };
+            /* 记下这次写进日记的块 id：下次同步（编辑后重同步 / 一键同步强制重写）就原地更新它，
+               而不是再追加一份 —— 这是「一条记录 = 一个 callout」的关键。
+               options.ref 传的是原始记录对象（清风 note / 朋友圈 moment），直接挂在它身上持久化。 */
+            if (options && options.ref && result && (result.blockId || result.targetId)) {
+                try { options.ref.docBlockId = result.blockId || result.targetId; } catch (e) { /* noop */ }
+            }
+            return { success: true, message: result.message || '已同步 ✅', targetId: (result && (result.blockId || result.targetId)) || '' };
         } catch (e) {
             console.error('[清风] 同步失败:', e);
             return { success: false, message: e.message || '同步失败' };
@@ -22946,7 +22989,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 items.push({
                     ref: n,
                     date: (n.time || '').slice(0, 10),
-                    data: { content: n.content || '', images: n.images || [], files: n.files || [], time: n.time || '', source: 'breeze' }
+                    /* 评论跟着一起同步：此前清风侧的同步数据里根本没带 comments，
+                       导致「有评论的说说」写进日记后看不到评论。 */
+                    data: {
+                        content: n.content || '', images: n.images || [], files: n.files || [],
+                        time: n.time || '', source: 'breeze',
+                        comments: n.comments || [], commentNickname: this._getProfileNickname()
+                    }
                 });
             });
         } else {
@@ -22989,7 +23038,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
             try {
                 /* 带上 session：整批共用同一份文档结构镜像，避免「写完立刻查 SQL」查不到
                    刚插入的分组，导致同一天反复建标题、位置算错（思源 SQL 索引有延迟） */
-                const r = await this._syncToDailyNote(it.data, { noJump: true, session: docSession });
+                const r = await this._syncToDailyNote(it.data, {
+                    noJump: true, session: docSession,
+                    /* ref + prevBlockId：让「编辑后重同步 / 强制重写」原地更新原来那份 callout，
+                       而不是在日记里再堆一份。 */
+                    ref: it.ref, prevBlockId: it.ref.docBlockId
+                });
                 ok = !!(r && r.success);
             } catch (e) {
                 ok = false;
@@ -23160,7 +23214,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (url) resLines.push('[' + name + '](' + url + ')');
         });
         const rawResources = resLines.join('\n');
-        // 评论：仅朋友圈提供，清风无。格式：
+        // 评论：格式固定为「评论：」+ 无序列表（用户明确要求这种形式，不要改成纯文本逐行）
         //   评论：
         //   - 昵称：评论内容
         //   - 昵称：评论内容
@@ -23172,7 +23226,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             commentsArr.forEach(c => {
                 const txt = (c && c.text) ? c.text : '';
                 if (!txt) return;
-                lines.push('- ' + (commentNick ? commentNick + '：' : '') + txt);
+                /* 昵称优先用评论自身带的（清风评论存了 nickname），没有再用当前昵称 */
+                const who = (c && c.nickname) || commentNick;
+                lines.push('- ' + (who ? who + '：' : '') + txt);
             });
             commentsStr = lines.join('\n');
         }
@@ -23240,8 +23296,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (metaStr) body += '> ' + metaStr + '\n';
         body += quote(convertedContent) + (rawResources ? '\n> \n' + quote(rawResources) : '');
         if (commentsStr) body += '\n> \n' + quote(commentsStr);
-        // 朋友圈同步不带时间（标题只显示日期，如 2026-08-06）；清风保留 HH:MM(:SS)
-        const timeDisplay = (data.source === 'moments' || timePart === '00:00:00') ? '' : ' ' + timePart;
+        /* 标题时间：清风的 time 形如 "HH:MM"，朋友圈是 "HH:MM:SS" → 统一截到「时:分」。
+           此前朋友圈刻意不显示时间（标题只有日期），用户反馈一眼看不出是几点发的，现与清风保持一致；
+           时间信息缺失或恰为 00:00 时不显示，保持纯日期标题（沿用旧行为）。 */
+        const hhmm = (timePart || '').slice(0, 5);
+        const timeDisplay = (hhmm && hhmm !== '00:00') ? ' ' + hhmm : '';
         return '> [!' + tpl + '] ' + datePart + timeDisplay + '\n' + body + '\n';
     }
 
@@ -23255,6 +23314,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const effSettings = (options && options.noJump) ? Object.assign({}, settings, { syncJumpToDoc: false }) : settings;
         const token = window.siyuan?.config?.api?.token || '';
         const authHeaders = Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Token ' + token } : {});
+        /* 这条记录之前已经同步过（options.prevBlockId 指向那次写入的日记块）→ 原地更新那一块，
+           而不是再追加一份。这是「同一条记录在日记里只对应一个 callout」的关键：
+           「添加到朋友圈」把说说迁走后，「一键同步」的强制重写、编辑后重新同步，
+           都只会改写原来那份 callout，不会再冒出一个新的。
+           块被用户删掉 / 移走后 updateBlock 会失败 → 落回下面的正常追加。 */
+        const prevBlockId = options && options.prevBlockId;
+        if (prevBlockId && await this._updateDailyNoteBlock(prevBlockId, markdown)) {
+            return { targetId: prevBlockId, message: '已更新日记中的记录 ✅', updated: true };
+        }
         if (target === 'doc') {
             const docId = (settings.dailyNoteDocId || '').trim();
             if (!docId) throw new Error('请先在「数据同步」中选择指定文档');
@@ -23270,7 +23338,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (effSettings.syncJumpToDoc !== false && this.app && typeof openTab === 'function') {
                 try { openTab({ app: this.app, doc: { id: safeDocId, action: ['cb-get-hl'] } }); } catch (e) { console.warn('[清风] 打开指定文档失败:', e); }
             }
-            return { targetId: safeDocId, message: '已插入指定文档（按日期分组）' + (effSettings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
+            /* targetId 用「刚写进去的那个内容块」，不是文档 id ——
+               上层要靠它把块 id 记回记录，下次同步原地更新；
+               之前这里返回文档 id，会被误当成「这条记录写在哪一块」，
+               再同步时 updateBlock 就会打到整个文档块上（很危险）。 */
+            return { targetId: blockId, docId: safeDocId, message: '已插入指定文档（按日期分组）' + (effSettings.syncJumpToDoc !== false ? '，已打开文档' : '') + ' ✅' };
         }
         // 同步目标：每日日记（按动态的实际日期定位对应日期的日记，而非固定写入今天）
         const notebookId = settings.dailyNotebookId || '';
@@ -23280,6 +23352,36 @@ module.exports = class NorthLunaPlugin extends Plugin {
             return this._appendToDailyNoteByDate(notebookId, markdown, dateStr, effSettings);
         }
         return this._appendToTodayDailyNote(notebookId, markdown, effSettings);
+    }
+
+    /* 原地更新先前同步写入的日记块（dataType=markdown，整体替换该块的内容与子块）。
+       返回 true 表示更新成功；块不存在 / 更新失败返回 false，调用方回退到追加。
+       先查一次块是否存在：updateBlock 对已删除的块会报 "tree not found"，
+       查一下能少一次无效调用，也让「块被删了就重新追加」这条回退更明确。 */
+    async _updateDailyNoteBlock(blockId, markdown) {
+        const safeId = (typeof breezeValidSqlId === 'function') ? breezeValidSqlId(blockId) : String(blockId || '');
+        if (!safeId) return false;
+        const token = window.siyuan?.config?.api?.token || '';
+        const authHeaders = Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Token ' + token } : {});
+        try {
+            const chk = await fetch('/api/query/sql', {
+                method: 'POST', headers: authHeaders,
+                body: JSON.stringify({ stmt: `SELECT id FROM blocks WHERE id = '${safeId}' LIMIT 1` })
+            });
+            const cj = await chk.json().catch(() => null);
+            if (!cj || cj.code !== 0 || !Array.isArray(cj.data) || !cj.data.length) return false;
+            const resp = await fetch('/api/block/updateBlock', {
+                method: 'POST', headers: authHeaders,
+                body: JSON.stringify({ id: safeId, dataType: 'markdown', data: markdown })
+            });
+            const rj = await resp.json().catch(() => null);
+            if (rj && rj.code === 0) return true;
+            console.warn('[轻语] 更新日记块失败:', rj && rj.msg);
+            return false;
+        } catch (e) {
+            console.warn('[轻语] 更新日记块异常:', e && e.message);
+            return false;
+        }
     }
 
     /* 把「今日日记」追加逻辑独立出来（原 appendDailyNoteBlock 逻辑），
@@ -25185,6 +25287,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     momentData.comments = orig.comments || [];
                     momentData.pinned = orig.pinned || false;
                     this.data[MOMENTS_STORAGE].items[idx] = Object.assign({}, orig, momentData);
+                    /* 内容变了 → 标记为待重新同步（下次同步原地更新日记里那一块） */
+                    this._markRecordDirty(this.data[MOMENTS_STORAGE].items[idx]);
                 }
             } else {
                 momentData.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
@@ -25215,7 +25319,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             comments: momentData.comments || [],
                             commentNickname: this._getProfileNickname(),
                             source: 'moments'
-                        }).then((result) => {
+                        }, { ref: momentData, prevBlockId: momentData.docBlockId }).then((result) => {
                             /* 自动同步成功也打「已同步」标记，供批量同步的「跳过已同步记录」判断 */
                             if (result && result.success) {
                                 momentData.docSyncedAt = Date.now();
@@ -25451,6 +25555,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const nickname = this._getProfileNickname();
                 const text = input.value.trim();
                 m.comments.push({ id: cid, text: text, time: time });
+                this._markRecordDirty(m);
                 /* 插入新评论 DOM 到输入框上方（结构与 renderMomentItem 模板一致） */
                 const item = document.createElement('div');
                 item.className = 'north-luna-moments-comment-item';
@@ -25492,6 +25597,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const m = items.find(x => String(x.id) === String(mid));
                     if (!m) return;
                     m.comments = (m.comments || []).filter(c => c.id !== cid);
+                    this._markRecordDirty(m);
                     delComment.closest('.north-luna-moments-comment-item').remove();
                     this.saveMoments().catch(() => {});
                 };
@@ -25544,6 +25650,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const c = (m.comments || []).find(x => String(x.id) === String(cid));
                 if (!c) return;
                 c.text = newText;
+                this._markRecordDirty(m);
                 /* 更新显示文字 */
                 const display = item.querySelector('.north-luna-moments-comment-display');
                 const textSpan = display.querySelector('.north-luna-moments-comment-text');
@@ -25641,7 +25748,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             comments: m.comments || [],
                             commentNickname: this._getProfileNickname(),
                             source: 'moments'
-                        });
+                        }, { ref: m, prevBlockId: m.docBlockId });
                         if (typeof showMessage === 'function') showMessage(result.message);
                         if (result.success) {
                             /* 手动同步成功也打「已同步」标记，批量同步的「跳过已同步记录」据此判断 */
@@ -25808,6 +25915,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const m = items.find(x => String(x.id) === String(mid));
                     if (!m) return;
                     m.comments = (m.comments || []).filter(c => c.id !== cid);
+                    this._markRecordDirty(m);
                     if (cItem) cItem.remove();
                     this.saveMoments().catch(() => {});
                 };
