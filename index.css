@@ -12270,6 +12270,41 @@
 /* 左栏：时间 */
 .north-lifelog-timeline-left { min-width: 44px; max-width: 60px; flex-shrink: 0; padding-top: 9px; text-align: right; padding-right: 12px; }
 .north-lifelog-timeline-time { font-size: 14px; color: var(--b3-theme-on-surface); font-variant-numeric: tabular-nums; line-height: 1; }
+/* 点时间改时间（补录）：时间本身可点，给一点可点暗示，hover / 按住时高亮 */
+.north-lifelog-timeline-time[data-lifelog-time-edit] {
+    display: inline-block;
+    position: relative;
+    padding: 3px 5px;
+    margin: -3px -5px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+/* 扩大点按热区（触屏上时间文字本身太小），伪元素不占布局、不影响时间轴对齐 */
+.north-lifelog-timeline-time[data-lifelog-time-edit]::after {
+    content: '';
+    position: absolute;
+    inset: -9px -7px;
+}
+@media (hover: hover) {
+    .north-lifelog-timeline-time[data-lifelog-time-edit]:hover {
+        background: var(--b3-list-hover);
+        color: var(--b3-theme-primary);
+    }
+}
+/* 触屏无 hover：给时间一点「可点」暗示（虚线下划线），否则用户不知道能点 */
+@media (hover: none) {
+    .north-lifelog-timeline-time[data-lifelog-time-edit] {
+        border-bottom: 1px dashed color-mix(in srgb, var(--b3-theme-on-surface) 45%, transparent);
+    }
+}
+.north-lifelog-timeline-time[data-lifelog-time-edit]:active,
+.north-lifelog-timeline-time[data-lifelog-time-edit]:focus-visible {
+    background: var(--b3-list-hover);
+    color: var(--b3-theme-primary);
+    outline: none;
+}
 
 /* 中栏：时间轴（竖线 + 圆环节点） */
 .north-lifelog-timeline-axis { position: relative; width: 18px; flex-shrink: 0; display: flex; justify-content: center; padding-top: 12px; }

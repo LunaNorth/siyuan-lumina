@@ -292,12 +292,13 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                     (note.images || []).forEach(img => {
                         let url = img.path || img || '';
                         if (url.startsWith('/')) url = url.slice(1);
-                        if (url) resources += '\n![](' + url + ')';
+                        /* 视频/音频用 <video>/<audio>：思源里 ![](x.mp4) 会变成破图 */
+                        if (url) resources += '\n' + breezeResourceMarkdown(url);
                     });
                     (note.files || []).forEach(f => {
                         let url = f.path || '';
                         if (url.startsWith('/')) url = url.slice(1);
-                        if (url) resources += '\n[' + (f.name || '附件') + '](' + url + ')';
+                        if (url) resources += '\n' + breezeResourceMarkdown(url, { asFile: true, name: f.name || '附件' });
                     });
                     if (resources) text += '\n' + resources;
                     const finish = () => { try { showMessage('已复制到剪贴板'); } catch (_) {} };
@@ -1412,6 +1413,276 @@ function changeMomentsItemTime(mid, plugin) {
         const overlay = picker.querySelector('.north-luna-moments-datetime-overlay');
         if (overlay) overlay.addEventListener('click', () => popup.classList.remove('show'));
     })(picker, selectedDate);
+}
+
+/* 修改 LifeLog 记录时间（日期 + 时:分）。
+   LifeLog 的记录时间来自块属性 custom-lifelog-date / custom-lifelog-time，正文前缀 "HH:MM " 只是冗余展示，
+   两处一起改才不会出现「列表时间变了、日记正文还是旧时间」。
+   复用 index.css 的 .north-luna-moments-datetime-*（与清风 / 朋友圈「修改时间」同款日历 + 时/分滚轮）。
+   opts: { date, time, onDone } —— date/time 为列表里已查到的值（省一次查询），onDone 为写成功后的刷新回调。 */
+function changeLifeLogBlockTime(blockId, plugin, opts) {
+    if (!blockId || !plugin) return;
+    /* 记录 id 形如 lifelog_<块ID>（主视图）或 lifelog_dock_<块ID>（Dock），先还原成真实块 ID */
+    const bid = String(blockId).replace(/^lifelog_dock_/, '').replace(/^lifelog_/, '');
+    if (!breezeValidSqlId(bid)) return;
+
+    const p2 = (n) => String(n).padStart(2, '0');
+    const formatDateKey = (d) => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+    const oldDate = String((opts && opts.date) || '').trim();
+    const oldTime = String((opts && opts.time) || '').trim();
+    const notify = (msg, isError) => {
+        try {
+            if (typeof plugin._lunaToast === 'function') plugin._lunaToast(msg, isError !== false);
+            else showMessage(msg);
+        } catch (e) { /* 提示失败不影响主流程 */ }
+    };
+
+    /* 预填：优先用列表里已查到的 date/time，非法则回退当前时间 */
+    const parseDateTime = (dateStr, timeStr) => {
+        const dm = String(dateStr || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        const tm = String(timeStr || '').match(/^(\d{1,2}):(\d{2})/);
+        if (!dm) return new Date();
+        return new Date(+dm[1], +dm[2] - 1, +dm[3], tm ? +tm[1] : 0, tm ? +tm[2] : 0, 0);
+    };
+
+    const closePicker = () => {
+        const picker = document.querySelector('.north-luna-moments-datetime-picker');
+        if (picker) picker.remove();
+    };
+    closePicker(); /* 保证单实例 */
+
+    const currentDate = parseDateTime(oldDate, oldTime);
+    let viewYear = currentDate.getFullYear();
+    let viewMonth = currentDate.getMonth();
+    let selectedDate = new Date(currentDate.getTime());
+    let pickedHours = currentDate.getHours();
+    let pickedMinutes = currentDate.getMinutes();
+
+    const picker = document.createElement('div');
+    picker.className = 'north-luna-moments-datetime-picker';
+    picker.innerHTML = `
+        <div class="north-luna-moments-datetime-overlay"></div>
+        <div class="north-luna-moments-datetime-content">
+            <div class="north-luna-moments-datetime-top">
+                <span class="north-luna-moments-datetime-label">修改时间</span>
+                <button class="north-luna-moments-datetime-close" type="button" aria-label="关闭">×</button>
+            </div>
+            <div class="north-luna-moments-datetime-body"></div>
+            <div class="north-luna-moments-datetime-footer">
+                <div class="north-luna-moments-datetime-time">
+                    <svg class="icon" style="width:15px;height:15px;fill:currentColor;"><use xlink:href="#iconClock"></use></svg>
+                    <div class="north-luna-moments-datetime-time-wrapper">
+                        <div class="north-luna-moments-datetime-display">${p2(pickedHours)}:${p2(pickedMinutes)}</div>
+                        <div class="north-luna-moments-datetime-time-popup">
+                            <div class="north-luna-moments-datetime-time-col" data-col="hours">
+                                <div class="north-luna-moments-datetime-time-header">时</div>
+                                <div class="north-luna-moments-datetime-time-list" data-col="hours"></div>
+                            </div>
+                            <div class="north-luna-moments-datetime-time-col" data-col="minutes">
+                                <div class="north-luna-moments-datetime-time-header">分</div>
+                                <div class="north-luna-moments-datetime-time-list" data-col="minutes"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="north-luna-moments-datetime-actions">
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-cancel" type="button">取消</button>
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-confirm" type="button">确定</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(picker);
+    /* 挂在 body 上：阻止触摸事件冒泡到思源全局手势（侧滑返回 / 收键盘），不影响 click 派发 */
+    ['touchstart', 'touchmove', 'touchend'].forEach((evtName) => {
+        picker.addEventListener(evtName, (ev) => ev.stopPropagation());
+    });
+
+    const renderCalendar = () => {
+        const firstDay = new Date(viewYear, viewMonth, 1);
+        const lastDay = new Date(viewYear, viewMonth + 1, 0);
+        const leadingDays = firstDay.getDay(); /* 0=周日 */
+        const cells = [];
+        const today = new Date();
+        const todayKey = formatDateKey(today);
+        const selectedKey = formatDateKey(selectedDate);
+        /* 上月填充日 */
+        for (let i = leadingDays - 1; i >= 0; i--) {
+            const d = new Date(viewYear, viewMonth, -i);
+            cells.push(`<div class="north-luna-moments-datetime-cell other-month" data-date="${formatDateKey(d)}">${d.getDate()}</div>`);
+        }
+        /* 当月日期 */
+        for (let d = 1; d <= lastDay.getDate(); d++) {
+            const date = new Date(viewYear, viewMonth, d);
+            const dateKey = formatDateKey(date);
+            const selectedClass = dateKey === selectedKey ? ' selected' : '';
+            const todayClass = dateKey === todayKey ? ' today' : '';
+            cells.push(`<div class="north-luna-moments-datetime-cell${selectedClass}${todayClass}" data-date="${dateKey}">${d}</div>`);
+        }
+        /* 下月填充日，补满 6 行（42 格） */
+        const trailingDays = 42 - cells.length;
+        for (let i = 1; i <= trailingDays; i++) {
+            const d = new Date(viewYear, viewMonth + 1, i);
+            cells.push(`<div class="north-luna-moments-datetime-cell other-month" data-date="${formatDateKey(d)}">${d.getDate()}</div>`);
+        }
+        const headerHtml = `
+            <div class="north-luna-moments-datetime-header">
+                <button class="north-luna-moments-datetime-prev" type="button" title="上月">‹</button>
+                <span class="north-luna-moments-datetime-title">${viewYear}年${viewMonth + 1}月</span>
+                <button class="north-luna-moments-datetime-next" type="button" title="下月">›</button>
+            </div>
+        `;
+        const weekdaysHtml = `<div class="north-luna-moments-datetime-weekdays">${['日','一','二','三','四','五','六'].map(w => `<span>${w}</span>`).join('')}</div>`;
+        const daysHtml = `<div class="north-luna-moments-datetime-days">${cells.join('')}</div>`;
+        const bodyEl = picker.querySelector('.north-luna-moments-datetime-body');
+        if (bodyEl) bodyEl.innerHTML = headerHtml + weekdaysHtml + daysHtml;
+    };
+    renderCalendar();
+
+    /* 关闭 / 取消 */
+    picker.querySelector('.north-luna-moments-datetime-overlay').addEventListener('click', closePicker);
+    picker.querySelector('.north-luna-moments-datetime-close').addEventListener('click', closePicker);
+    picker.querySelector('.north-luna-moments-datetime-btn-cancel').addEventListener('click', closePicker);
+
+    /* 月份切换 + 选日期 */
+    picker.querySelector('.north-luna-moments-datetime-body').addEventListener('click', (e) => {
+        const prev = e.target.closest('.north-luna-moments-datetime-prev');
+        const next = e.target.closest('.north-luna-moments-datetime-next');
+        if (prev) {
+            viewMonth--;
+            if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+            renderCalendar();
+            return;
+        }
+        if (next) {
+            viewMonth++;
+            if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+            renderCalendar();
+            return;
+        }
+        const cell = e.target.closest('.north-luna-moments-datetime-cell[data-date]');
+        if (cell) {
+            const parts = cell.dataset.date.split('-');
+            selectedDate = new Date(+parts[0], +parts[1] - 1, +parts[2], pickedHours, pickedMinutes, 0);
+            renderCalendar();
+        }
+    });
+
+    /* 时 / 分 滚轮：DOM 只建一次，点击只切高亮。
+       早期实现是「每次点击都 rebuild 三列 innerHTML」，被点的 item 当场被销毁，
+       事件继续冒泡到「点击外部关闭」判断时 popup.contains(e.target) 已变成 false → 弹层被误关。 */
+    (function initCustomTimePicker() {
+        const display = picker.querySelector('.north-luna-moments-datetime-display');
+        const popup = picker.querySelector('.north-luna-moments-datetime-time-popup');
+        if (!display || !popup) return;
+        const ranges = { hours: 24, minutes: 60 };
+
+        const updateDisplay = () => {
+            display.textContent = `${p2(pickedHours)}:${p2(pickedMinutes)}`;
+        };
+        const scrollToSelected = () => {
+            popup.querySelectorAll('.north-luna-moments-datetime-time-list').forEach(list => {
+                const col = list.dataset.col;
+                const val = col === 'hours' ? pickedHours : pickedMinutes;
+                const active = list.querySelector(`[data-time-value="${val}"]`);
+                if (active && list.scrollTop !== active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2) {
+                    list.scrollTo({ top: active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2, behavior: 'auto' });
+                }
+            });
+        };
+        popup.querySelectorAll('.north-luna-moments-datetime-time-list').forEach(list => {
+            const col = list.dataset.col;
+            let html = '';
+            for (let i = 0; i < ranges[col]; i++) {
+                html += `<div class="north-luna-moments-datetime-time-item" data-time-value="${i}" data-col="${col}">${p2(i)}</div>`;
+            }
+            list.innerHTML = html;
+        });
+        const markSelected = () => {
+            popup.querySelectorAll('.north-luna-moments-datetime-time-item').forEach(el => {
+                const cur = el.dataset.col === 'hours' ? pickedHours : pickedMinutes;
+                el.classList.toggle('selected', parseInt(el.dataset.timeValue, 10) === cur);
+            });
+        };
+        updateDisplay();
+        markSelected();
+        setTimeout(scrollToSelected, 0);
+
+        display.addEventListener('click', (e) => {
+            e.stopPropagation();
+            popup.classList.toggle('show');
+            if (popup.classList.contains('show')) scrollToSelected();
+        });
+        popup.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const item = e.target.closest('.north-luna-moments-datetime-time-item[data-time-value]');
+            if (!item) return;
+            const val = parseInt(item.dataset.timeValue, 10);
+            if (item.dataset.col === 'hours') pickedHours = val;
+            else pickedMinutes = val;
+            selectedDate.setHours(pickedHours, pickedMinutes, 0, 0);
+            updateDisplay();
+            markSelected();
+        });
+        picker.addEventListener('click', (e) => {
+            if (!popup.contains(e.target) && !display.contains(e.target)) popup.classList.remove('show');
+        });
+        const overlay = picker.querySelector('.north-luna-moments-datetime-overlay');
+        if (overlay) overlay.addEventListener('click', () => popup.classList.remove('show'));
+    })();
+
+    /* 确定：写回块属性 + 正文前缀；日期变化时尽力搬进对应日期的日记文档 */
+    picker.querySelector('.north-luna-moments-datetime-btn-confirm').addEventListener('click', async (ev) => {
+        const btn = ev.currentTarget;
+        const newDate = formatDateKey(selectedDate);
+        const newTime = `${p2(pickedHours)}:${p2(pickedMinutes)}`;
+        if (newDate === oldDate && newTime === oldTime) { closePicker(); return; } /* 未变化不写 */
+        btn.disabled = true;
+        btn.textContent = '保存中…';
+        try {
+            const res = await plugin._applyLifeLogRecordTime(bid, newDate, newTime, { oldDate, oldTime });
+            if (res && res.ok) {
+                closePicker();
+                notify('时间已修改', false);
+                if (typeof (opts && opts.onDone) === 'function') { try { opts.onDone(); } catch (e) { /* noop */ } }
+            } else {
+                btn.disabled = false;
+                btn.textContent = '确定';
+                notify((res && res.msg) || '修改失败', true);
+            }
+        } catch (e) {
+            btn.disabled = false;
+            btn.textContent = '确定';
+            notify('修改失败：' + ((e && e.message) || e), true);
+        }
+    });
+}
+
+/* 给 LifeLog 时间轴绑定「点时间改时间」（事件委托，容器只绑一次）。
+   主视图 / 移动端 Dock 三处渲染共用同一份时间轴 DOM 结构，时间元素都带 data-lifelog-time-edit。
+   getRecords: () => 当前记录数组（缓存会被整体替换，所以传 getter 而不是数组本身）；
+   onDone: 写成功后的刷新回调（各处刷新范围不同）。 */
+function bindLifeLogTimeEdit(container, plugin, getRecords, onDone) {
+    if (!container || container._lifelogTimeEditBound) return;
+    container._lifelogTimeEditBound = true;
+    container.addEventListener('click', (e) => {
+        const timeEl = e.target.closest('[data-lifelog-time-edit]');
+        if (!timeEl) return;
+        const item = timeEl.closest('.north-lifelog-timeline-item');
+        if (!item) return;
+        const blockId = item.dataset.id;
+        if (!blockId) return;
+        /* 时间轴条目本身没有点击行为，这里独占处理，避免冒泡触发外层其它交互 */
+        e.preventDefault();
+        e.stopPropagation();
+        const list = (typeof getRecords === 'function' ? (getRecords() || []) : []);
+        const rec = list.find(r => r.id === blockId) || {};
+        changeLifeLogBlockTime(blockId, plugin, {
+            date: rec.date,
+            time: rec.time,
+            onDone: (typeof onDone === 'function') ? onDone : null
+        });
+    });
 }
 
 /* 添加到朋友圈（把一条清风笔记转成朋友圈动态）。
@@ -2739,6 +3010,35 @@ function breezeIsImageUrl(url) {
     if (urlLower.startsWith('data:image/')) return true;
     const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif', '.heic', '.heif', '.tiff', '.tif', '.ico'];
     return imageExts.some(ext => urlLower.endsWith(ext));
+}
+
+/* 判断 URL 是否为音频文件（与 breezeIsVideoUrl 同源，供资源 Markdown 构造分流用） */
+function breezeIsAudioUrl(url) {
+    if (!url) return false;
+    const audioExts = ['.mp3', '.wav', '.m4a', '.aac', '.flac', '.amr', '.ogg', '.oga', '.opus', '.weba'];
+    const urlLower = url.toLowerCase();
+    return audioExts.some(ext => urlLower.endsWith(ext)) || urlLower.startsWith('data:audio/');
+}
+
+/* 把一条资源路径转成「写入思源后能被正确识别」的 Markdown / HTML 片段。
+   ⚠️ 关键：思源没有原生的视频 markdown 语法，`![](xxx.mp4)` 会被 Lute 解析成
+   「图片块」（NodeImage）——于是视频变成一张破图，这就是「视频同步后不显示」的根因。
+   思源原生视频/音频块对应的是 <video>/<audio> HTML（Lute 会解析成 NodeVideo/NodeAudio），
+   所以这里按扩展名分流：视频/音频走 HTML 标签，其余（图片）仍用标准图片语法。
+   opts.asFile: 为 true 时对非媒体资源输出「[文件名](路径)」链接（用于 files 数组）。 */
+function breezeResourceMarkdown(path, opts) {
+    const url = String(path || '').replace(/^\//, '');
+    if (!url) return '';
+    if (breezeIsVideoUrl(url)) {
+        return '<video controls="controls" src="' + url + '"></video>';
+    }
+    if (breezeIsAudioUrl(url)) {
+        return '<audio controls="controls" src="' + url + '"></audio>';
+    }
+    if (opts && opts.asFile) {
+        return '[' + ((opts && opts.name) || '附件') + '](' + url + ')';
+    }
+    return '![](' + url + ')';
 }
 
 /* 一次性迁移：把旧笔记 content 里内嵌的资源拆到 images/files 字段（幂等）。
@@ -12072,6 +12372,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
                     /* 时间轴右键菜单 */
                     this._bindLifeLogTimelineContextMenu(body);
+                    /* 点时间修改时间（补录：记录时刻 ≠ 事情发生时刻） */
+                    bindLifeLogTimeEdit(body, plugin, () => this._lifelogRecords, () => {
+                        this._loadLifeLogData(true).then(() => {
+                            const inputEl = body.querySelector('#lifelogSearchInput');
+                            this._renderLifeLogTimeline(body, inputEl ? inputEl.value.trim() : '');
+                            this._renderLifeLogTypesCloud(body);
+                            this._renderLifeLogHeatmap(body);
+                            this._renderLifeLogWeekStrip(body);
+                            this._updateLifeLogStats(body);
+                            this._renderLifeLogMobileStats(body);
+                        }).catch(() => {});
+                    });
                     /* 悬浮添加按钮点击功能 */
                     this._bindLifeLogFabClick(body);
                     /* 自动轮询检测新记录 */
@@ -13032,7 +13344,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 : '';
                             html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
                                 <div class="north-lifelog-timeline-left">
-                                    <span class="north-lifelog-timeline-time">${item.time}</span>
+                                    <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
                                 </div>
                                 <div class="north-lifelog-timeline-axis">
                                     <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
@@ -13071,6 +13383,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconEdit"></use></svg>
                                 <span>编辑</span>
                             </button>
+                            <button class="north-lifelog-ctx-item" data-act="time">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconClock"></use></svg>
+                                <span>修改时间</span>
+                            </button>
                             <button class="north-lifelog-ctx-item" data-act="open">
                                 <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconLink"></use></svg>
                                 <span>打开文档</span>
@@ -13080,6 +13396,25 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         menu.style.top = e.clientY + 'px';
                         document.body.appendChild(menu);
                         menu.querySelector('[data-act="edit"]').onclick = (ev) => { ev.stopPropagation(); hideMenu(); this._editLifeLogBlock(blockId); };
+                        menu.querySelector('[data-act="time"]').onclick = (ev) => {
+                            ev.stopPropagation(); hideMenu();
+                            const rec = (this._lifelogRecords || []).find(r => r.id === blockId) || {};
+                            changeLifeLogBlockTime(blockId, plugin, {
+                                date: rec.date, time: rec.time,
+                                onDone: () => {
+                                    this._loadLifeLogData(true).then(() => {
+                                        const bodyEl = body;
+                                        const inputEl = bodyEl.querySelector('#lifelogSearchInput');
+                                        this._renderLifeLogTimeline(bodyEl, inputEl ? inputEl.value.trim() : '');
+                                        this._renderLifeLogTypesCloud(bodyEl);
+                                        this._renderLifeLogHeatmap(bodyEl);
+                                        this._renderLifeLogWeekStrip(bodyEl);
+                                        this._updateLifeLogStats(bodyEl);
+                                        this._renderLifeLogMobileStats(bodyEl);
+                                    }).catch(() => {});
+                                }
+                            });
+                        };
                         menu.querySelector('[data-act="open"]').onclick = (ev) => { ev.stopPropagation(); hideMenu(); this._openLifeLogBlock(blockId); };
                     });
                     /* 关闭逻辑 */
@@ -15660,6 +15995,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
         window.goBack = () => {
             const noNativeDialogs = !window.siyuan.dialogs || window.siyuan.dialogs.length === 0;
             if (noNativeDialogs) {
+                /* 0.0 修改时间选择器（LifeLog / 清风 / 朋友圈共用，挂 document.body） */
+                const datetimePicker = document.querySelector('.north-luna-moments-datetime-picker');
+                if (datetimePicker) {
+                    datetimePicker.remove();
+                    return;
+                }
                 /* 0. 图片/视频预览（z-index 最高，挂在 document.body 下） */
                 const imagePreview = document.querySelector('.north-luna-moments-image-preview-modal');
                 if (imagePreview) {
@@ -19630,6 +19971,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }
             /* 时间轴右键菜单 */
             this._bindLifeLogTimelineContextMenu(body);
+            /* 点时间修改时间（补录：记录时刻 ≠ 事情发生时刻） */
+            bindLifeLogTimeEdit(body, this, () => this._lifelogRecords, () => {
+                this._loadLifeLogData(true).then(() => {
+                    const inputEl = body.querySelector('#lifelogSearchInput');
+                    this._renderLifeLogTimeline(body, inputEl ? inputEl.value.trim() : '');
+                    this._renderLifeLogTypesCloud(body);
+                    this._renderLifeLogHeatmap(body);
+                    this._renderLifeLogWeekStrip(body);
+                    this._updateLifeLogStats(body);
+                    this._renderLifeLogMobileStats(body);
+                }).catch(() => {});
+            });
             /* 悬浮添加按钮点击功能 */
             this._bindLifeLogFabClick(body);
             /* 自动轮询检测新记录 */
@@ -20787,7 +21140,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         : '';
                     html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
                         <div class="north-lifelog-timeline-left">
-                            <span class="north-lifelog-timeline-time">${item.time}</span>
+                            <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
                         </div>
                         <div class="north-lifelog-timeline-axis">
                             <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
@@ -20826,6 +21179,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconEdit"></use></svg>
                         <span>编辑</span>
                     </button>
+                    <button class="north-lifelog-ctx-item" data-act="time">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconClock"></use></svg>
+                        <span>修改时间</span>
+                    </button>
                     <button class="north-lifelog-ctx-item" data-act="open">
                         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconLink"></use></svg>
                         <span>打开文档</span>
@@ -20835,6 +21192,25 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 menu.style.top = e.clientY + 'px';
                 document.body.appendChild(menu);
                 menu.querySelector('[data-act="edit"]').onclick = (ev) => { ev.stopPropagation(); hideMenu(); this._editLifeLogBlock(blockId); };
+                menu.querySelector('[data-act="time"]').onclick = (ev) => {
+                    ev.stopPropagation(); hideMenu();
+                    const rec = (this._lifelogRecords || []).find(r => r.id === blockId) || {};
+                    changeLifeLogBlockTime(blockId, this, {
+                        date: rec.date, time: rec.time,
+                        onDone: () => {
+                            this._loadLifeLogData(true).then(() => {
+                                const bodyEl = body;
+                                const inputEl = bodyEl.querySelector('#lifelogSearchInput');
+                                this._renderLifeLogTimeline(bodyEl, inputEl ? inputEl.value.trim() : '');
+                                this._renderLifeLogTypesCloud(bodyEl);
+                                this._renderLifeLogHeatmap(bodyEl);
+                                this._renderLifeLogWeekStrip(bodyEl);
+                                this._updateLifeLogStats(bodyEl);
+                                this._renderLifeLogMobileStats(bodyEl);
+                            }).catch(() => {});
+                        }
+                    });
+                };
                 menu.querySelector('[data-act="open"]').onclick = (ev) => { ev.stopPropagation(); hideMenu(); this._openLifeLogBlock(blockId); };
             });
             /* 关闭逻辑 */
@@ -21385,6 +21761,93 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return { ok: true, msg: '已记录', blockId, docId, notebookId };
     }
 
+    /* ============================================================
+     * LifeLog · 修改记录时间（补录场景：记录时刻 ≠ 事情发生时刻）
+     *
+     * 一条 LifeLog 记录的时间其实存在两处，必须一起改：
+     *   1) 块属性 custom-lifelog-date / custom-lifelog-time —— 视图检索与排序用的就是这两个；
+     *   2) 正文前缀 "HH:MM 类型：内容" —— 日记里人眼看到的时间。
+     * 只改属性会出现「列表时间变了、打开日记还是旧时间」，只改正文则列表纹丝不动。
+     *
+     * 日期变化时额外尝试把块搬进新日期的日记文档（补录最常见的就是跨天）：
+     *   定位/创建目标日期日记 → moveBlock 搬过去。任一步失败都只降级告警，
+     *   属性与正文已经改好，记录本身不会丢（最坏情况是仍留在原日记里）。
+     *
+     * 返回 { ok, msg, moved }，调用方据此提示。
+     * ============================================================ */
+    async _applyLifeLogRecordTime(blockId, newDate, newTime, opts) {
+        const bid = String(blockId || '').replace(/^lifelog_dock_/, '').replace(/^lifelog_/, '');
+        if (!breezeValidSqlId(bid)) return { ok: false, msg: '记录 ID 非法' };
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(newDate || '')) || !/^\d{1,2}:\d{2}$/.test(String(newTime || ''))) {
+            return { ok: false, msg: '时间格式非法' };
+        }
+        const p2 = (n) => String(n).padStart(2, '0');
+        const [hh, mm] = String(newTime).split(':');
+        const normTime = `${p2(parseInt(hh, 10))}:${p2(parseInt(mm, 10))}`;
+        const oldDate = String((opts && opts.oldDate) || '').trim();
+        const oldTime = String((opts && opts.oldTime) || '').trim();
+
+        const tk = window.siyuan?.config?.api?.token || '';
+        const hh2 = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
+        const post = async (url, body) => {
+            const resp = await fetch(url, { method: 'POST', headers: hh2, body: JSON.stringify(body) });
+            return resp.json().catch(() => null);
+        };
+
+        /* 1) 读原块正文（类型不动，只在重写时间前缀时原样保留） */
+        let content = '';
+        try {
+            const q = await post('/api/query/sql', { stmt: `SELECT content FROM blocks WHERE id = '${bid}' LIMIT 1` });
+            if (q && q.code === 0 && Array.isArray(q.data) && q.data.length) content = String(q.data[0].content || '');
+        } catch (e) { /* 查不到正文就只改属性 */ }
+
+        /* 2) 重写正文前缀 "HH:MM "（写入链路格式是 `${hh}:${mm} ${type}：${content}`）。
+           只在原正文确实带时间前缀时才动它：历史遗留 / 手工整理的记录若没前缀，
+           就不去改写正文（updateBlock 按 markdown 整体替换，可能丢掉行内格式），
+           此时只更新属性，插件视图仍然正确。 */
+        const newContent = /^\s*\d{1,2}:\d{2}(?::\d{2})?\s*/.test(String(content))
+            ? String(content).replace(/^\s*\d{1,2}:\d{2}(?::\d{2})?\s*/, `${normTime} `)
+            : content;
+
+        /* 3) 写属性 + 正文（属性是视图检索的唯一依据，先写它保证列表立刻正确） */
+        let attrOk = false;
+        try {
+            const ar = await post('/api/attr/setBlockAttrs', {
+                id: bid,
+                attrs: { 'custom-lifelog-date': String(newDate), 'custom-lifelog-time': normTime }
+            });
+            attrOk = !!(ar && ar.code === 0);
+        } catch (e) { attrOk = false; }
+        if (!attrOk) return { ok: false, msg: '写入记录属性失败' };
+
+        if (newContent && newContent !== content) {
+            try { await post('/api/block/updateBlock', { id: bid, dataType: 'markdown', data: newContent }); } catch (e) { /* 正文失败不阻断 */ }
+        }
+
+        /* 4) 跨天：尽量把块搬进目标日期的日记文档 */
+        let moved = false;
+        if (oldDate && newDate !== oldDate) {
+            try {
+                const notebookId = await this._resolveLifeLogNotebookId();
+                if (notebookId) {
+                    const docId = await this._resolveOrCreateDailyNoteDocId(notebookId, newDate);
+                    if (docId && docId !== bid) {
+                        const mr = await post('/api/block/moveBlock', { id: bid, parentID: docId });
+                        moved = !!(mr && mr.code === 0);
+                    }
+                }
+            } catch (e) { moved = false; }
+        }
+
+        /* 思源 SQL 索引有延迟，写完立刻要查必须先 flush */
+        try { await fetch('/api/sqlite/flushTransaction', { method: 'POST', headers: hh2, body: '{}' }); } catch (e) { /* 忽略 */ }
+        this._lifelogCache = null;
+        this._lifelogCacheTime = 0;
+        this._lifelogDockCache = null;
+        this._lifelogDockCacheTime = 0;
+        return { ok: true, msg: '时间已修改', moved, blockId: bid, date: newDate, time: normTime };
+    }
+
     _renderLifeLogDockContent(root) {
         root.classList.add('fn__flex-1', 'fn__flex-column', 'north-luna-lifelog-dock-root');
         /* 紧凑模式 */
@@ -21481,6 +21944,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
         });
         /* 绑定 Dock 悬浮添加按钮点击 */
         this._bindLifeLogDockFabClick(root);
+        /* 点时间修改时间（补录：记录时刻 ≠ 事情发生时刻）；Dock 列表每次刷新只换 innerHTML，容器事件委托绑一次即可 */
+        bindLifeLogTimeEdit(root, this, () => this._lifelogDockCache, () => {
+            /* 只重查重绘列表与周历条：不走 _refreshLifeLogDockContent（它会清掉当前日期筛选） */
+            this._queryLifeLogDockRecords().then(records => {
+                this._lifelogDockCache = records || [];
+                this._lifelogDockCacheTime = Date.now();
+                const listEl = root.querySelector('#north-lifelog-dock-list');
+                if (listEl) this._renderLifeLogDockList(listEl, this._lifelogDockCache);
+                this._renderLifeLogDockWeekStrip(root);
+            }).catch(() => {});
+        });
     }
 
     /* 加载 LifeLog 数据并刷新 Dock 时间轴列表 */
@@ -21736,7 +22210,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     : '';
                 html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
                     <div class="north-lifelog-timeline-left">
-                        <span class="north-lifelog-timeline-time">${item.time}</span>
+                        <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
                     </div>
                     <div class="north-lifelog-timeline-axis">
                         <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
@@ -23205,13 +23679,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
         (data.images || []).forEach(img => {
             let url = (typeof img === 'object' && img ? img.path : img) || '';
             if (url.startsWith('/')) url = url.slice(1);
-            if (url) resLines.push('![](' + url + ')');
+            /* 视频/音频在思源里不是图片，必须走 <video>/<audio>，否则会被当成破图 */
+            if (url) resLines.push(breezeResourceMarkdown(url));
         });
         (data.files || []).forEach(f => {
             let url = (typeof f === 'object' && f ? f.path : f) || '';
             let name = (typeof f === 'object' && f ? f.name : '附件') || '附件';
             if (url.startsWith('/')) url = url.slice(1);
-            if (url) resLines.push('[' + name + '](' + url + ')');
+            if (url) resLines.push(breezeResourceMarkdown(url, { asFile: true, name: name }));
         });
         const rawResources = resLines.join('\n');
         // 评论：格式固定为「评论：」+ 无序列表（用户明确要求这种形式，不要改成纯文本逐行）
@@ -23508,6 +23983,46 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }
         } catch (e) { docId = ''; }
         this._dailyNoteDocIdByDate[cacheKey] = docId;
+        return docId;
+    }
+
+    /* 按日期定位日记文档，不存在则创建（用于 LifeLog 补录跨天搬块）。
+       目标日期是「今天」时走内核 /api/filetree/createDailyNote（会套用日记模板并自动补
+       custom-dailynote-* 属性）；历史/未来日期只能按路径手动建 + 手动补属性。
+       任一步失败返回空串，由调用方降级处理。 */
+    async _resolveOrCreateDailyNoteDocId(notebookId, dateStr) {
+        if (!notebookId || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) return '';
+        const existing = await this._resolveDailyNoteDocId(notebookId, dateStr);
+        if (existing) return existing;
+        const token = window.siyuan?.config?.api?.token || '';
+        const authHeaders = Object.assign({ 'Content-Type': 'application/json' }, token ? { 'Authorization': 'Token ' + token } : {});
+        const today = this._formatLocalDateTime(Date.now()).slice(0, 10);
+        let docId = '';
+        try {
+            if (dateStr === today) {
+                const resp = await fetch('/api/filetree/createDailyNote', { method: 'POST', headers: authHeaders, body: JSON.stringify({ notebook: notebookId }) });
+                const json = await resp.json().catch(() => null);
+                const data = json && json.code === 0 ? json.data : null;
+                if (typeof data === 'string') docId = data;
+                else if (data && typeof data === 'object') docId = data.id || data.ID || data.docId || '';
+            } else {
+                /* 读日记路径模板 → 渲染目标日期 hpath → createDocWithMd 建文档 */
+                const confResp = await fetch('/api/notebook/getNotebookConf', { method: 'POST', headers: authHeaders, body: JSON.stringify({ notebook: notebookId }) });
+                const confJson = await confResp.json().catch(() => null);
+                const tpl = (confJson && confJson.code === 0 && confJson.data && confJson.data.conf && confJson.data.conf.dailyNoteSavePath) || '';
+                const hpath = tpl ? this._renderDailyNotePath(tpl, dateStr) : '';
+                if (hpath) {
+                    const createResp = await fetch('/api/filetree/createDocWithMd', { method: 'POST', headers: authHeaders, body: JSON.stringify({ notebook: notebookId, path: hpath, markdown: '' }) });
+                    const createJson = await createResp.json().catch(() => null);
+                    if (createJson && createJson.code === 0 && createJson.data) docId = createJson.data;
+                    if (docId) await this._markDailyNoteAttr(docId, dateStr);
+                }
+            }
+        } catch (e) { docId = ''; }
+        if (docId) {
+            if (!this._dailyNoteDocIdByDate) this._dailyNoteDocIdByDate = {};
+            this._dailyNoteDocIdByDate[notebookId + '|' + dateStr] = docId;
+        }
         return docId;
     }
 
