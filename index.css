@@ -12263,7 +12263,9 @@
 .north-lifelog-date-group:first-child { margin-top: 0; }
 .north-lifelog-date-group:first-child { margin-top: 0; }
 
-/* 单条时间轴项目：三栏 flex 布局 */
+/* 单条时间轴项目：三栏 flex 布局
+   注意：这里不能加 content-visibility: auto —— 它会带上 paint containment，
+   把竖线伪元素（bottom 为负、伸到条目外）和卡片 hover 阴影裁掉。 */
 .north-lifelog-timeline-item { display: flex; align-items: flex-start; gap: 0; padding: 0 0 20px 0; margin: 0; background: transparent; border: none; border-radius: 0; box-shadow: none; position: relative; overflow: visible; contain: layout style; }
 .north-lifelog-timeline-item:last-child { padding-bottom: 0; }
 
@@ -12306,12 +12308,14 @@
     outline: none;
 }
 
-/* 中栏：时间轴（竖线 + 圆环节点） */
-.north-lifelog-timeline-axis { position: relative; width: 18px; flex-shrink: 0; display: flex; justify-content: center; padding-top: 12px; }
-/* 时间轴线：从圆环中心开始向下 */
-.north-lifelog-timeline-axis::before { content: ''; position: absolute; top: 17px; left: 50%; transform: translateX(-50%); width: 1.5px; height: var(--axis-height, 80px); background: color-mix(in srgb, var(--b3-border-color) 35%, transparent); }
-.north-lifelog-timeline-item:first-child .north-lifelog-timeline-axis::before { top: 17px; }
-.north-lifelog-timeline-item:last-child .north-lifelog-timeline-axis::before { height: 17px !important; }
+/* 中栏：时间轴（竖线 + 圆环节点）
+   竖线高度改用 top/bottom 由 flex 拉伸自动得出（align-self: stretch），
+   不再靠 JS 逐条 getBoundingClientRect 测量写 --axis-height：
+   那样每条都要读一次布局，记录多时会触发 layout thrashing（滚动/切换卡顿）。 */
+.north-lifelog-timeline-axis { position: relative; width: 18px; flex-shrink: 0; display: flex; justify-content: center; padding-top: 12px; align-self: stretch; }
+/* 时间轴线：从圆环中心开始，一直到卡片底部 */
+.north-lifelog-timeline-axis::before { content: ''; position: absolute; top: 17px; bottom: -9px; left: 50%; transform: translateX(-50%); width: 1.5px; background: color-mix(in srgb, var(--b3-border-color) 35%, transparent); }
+.north-lifelog-timeline-item:last-child .north-lifelog-timeline-axis::before { bottom: auto; height: 17px !important; }
 
 /* 空心圆环节点 */
 .north-lifelog-timeline-marker { width: 10px; height: 10px; border-radius: 50%; background: var(--b3-theme-background); border: 2px solid var(--lifelog-timeline-color, var(--b3-theme-primary)); flex-shrink: 0; position: relative; z-index: 1; box-sizing: border-box; }
@@ -12656,8 +12660,7 @@
 .north-lifelog-compact .north-lifelog-timeline-axis { width: 14px; padding-top: 8px; }
 .north-lifelog-compact .north-lifelog-timeline-marker { width: 8px; height: 8px; }
 .north-lifelog-compact .north-lifelog-timeline-axis::before { top: 13px; }
-.north-lifelog-compact .north-lifelog-timeline-item:first-child .north-lifelog-timeline-axis::before { top: 13px; }
-.north-lifelog-compact .north-lifelog-timeline-item:last-child .north-lifelog-timeline-axis::before { height: 13px !important; }
+.north-lifelog-compact .north-lifelog-timeline-item:last-child .north-lifelog-timeline-axis::before { bottom: auto; height: 13px !important; }
 .north-lifelog-compact .north-lifelog-timeline-card { margin-left: 8px; padding: 8px 10px; border-radius: 8px; }
 .north-lifelog-compact .north-lifelog-timeline-type { font-size: var(--lifelog-type-font-size, 12px); margin-bottom: 2px; }
 .north-lifelog-compact .north-lifelog-timeline-content { line-height: 1.5; }
@@ -14787,4 +14790,34 @@ a.north-breeze-link[data-lumina-title-state="pending"] {
     .north-luna-toast {
         top: 12%;
     }
+    /* LifeLog / 清风 弹层遮罩：全屏 backdrop-filter 在 WebView 里每帧都要重算模糊，
+       弹窗打开与输入时表现为明显卡顿（输入一卡一卡）。移动端改为纯色遮罩，
+       透明度不变，视觉几乎无差但合成开销归零。 */
+    .north-lifelog-pick-bg,
+    .north-lifelog-input-modal-bg,
+    .north-lifelog-drawer-overlay,
+    .north-breeze-drawer-overlay,
+    .north-luna-drawer-overlay,
+    .north-breeze-modal-overlay,
+    .north-luna-quickopen-overlay,
+    .north-luna-builtin-icon-overlay,
+    .north-luna-nav-order-overlay {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+}
+
+/* 同上：以 .is-mobile 为准再兜一层（平板 / 横屏 / 移动端浏览器视口可能宽于 768px，
+   仅靠媒体查询会漏掉，这些遮罩依旧是每帧重算模糊）。 */
+.north-luna-container.is-mobile .north-lifelog-pick-bg,
+.north-luna-container.is-mobile .north-lifelog-input-modal-bg,
+.north-luna-container.is-mobile .north-lifelog-drawer-overlay,
+.north-luna-container.is-mobile .north-breeze-drawer-overlay,
+.north-luna-container.is-mobile .north-luna-drawer-overlay,
+.north-luna-container.is-mobile .north-breeze-modal-overlay,
+.north-luna-container.is-mobile .north-luna-quickopen-overlay,
+.north-luna-container.is-mobile .north-luna-builtin-icon-overlay,
+.north-luna-container.is-mobile .north-luna-nav-order-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }

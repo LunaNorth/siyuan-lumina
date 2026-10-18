@@ -193,8 +193,15 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
         plugin._breezeCommentBound = true;
     }
     // 找对应笔记（菜单项判断需要，比如置顶/归档文案）
-    const notes = ((storage || {}).breezeNotes) || [];
-    const note = notes.find((n) => n.id === id);
+    const findNote = (candidate) =>
+        (((candidate || {}).breezeNotes) || []).find((n) => n && String(n.id) === String(id));
+    let note = findNote(storage);
+    /* 移动端同步重载会替换 plugin.data 里的 storage 对象，而已经打开的菜单
+       仍可能持有旧引用。旧引用找不到时回退到当前内存数据，避免菜单直接失效。 */
+    if (!note && plugin && plugin.data && plugin.data[RECORDS_STORAGE]) {
+        storage = plugin.data[RECORDS_STORAGE];
+        note = findNote(storage);
+    }
     if (!note) return;
     const isPinned = !!note.pinned;
     const isArchived = !!note.archived;
@@ -363,30 +370,24 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                 // 删除笔记并清理对应资源文件（带确认提示）
                 if (note) {
                     const doDelete = () => {
-                        /* 清理图片（仍被朋友圈动态引用的资源保留，见 _isMediaUsedByMoments） */
-                        (note.images || []).forEach(img => {
-                            if (plugin && plugin.deletePluginImage && !plugin._isMediaUsedByMoments(img)) plugin.deletePluginImage(img);
-                        });
-                        // 清理文件
-                        (note.files || []).forEach(f => {
-                            if (plugin && plugin.deletePluginImage && f.path && !plugin._isMediaUsedByMoments(f.path)) plugin.deletePluginImage(f.path);
-                        });
-                        // 从数组中移除
-                        const notes = ((storage || {}).breezeNotes) || [];
-                        const idx = notes.indexOf(note);
-                        if (idx >= 0) notes.splice(idx, 1);
-                        if (plugin && plugin.saveData) {
-                            plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
+                        /* 统一按 id 从 plugin.data 删除：菜单里的 note/storage 可能是旧引用，
+                           不能再用 notes.indexOf(note)（移动端同步重载后最容易删不掉）。 */
+                        if (plugin && typeof plugin._deleteBreezeNotesByIds === 'function') {
+                            plugin._deleteBreezeNotesByIds(id);
+                        } else {
+                            const cur = (plugin && plugin.data && plugin.data[RECORDS_STORAGE]) || storage || {};
+                            cur.breezeNotes = (cur.breezeNotes || []).filter(n => n.id !== id);
+                            if (plugin && plugin.saveData) plugin.saveData(RECORDS_STORAGE, cur).catch(() => {});
                         }
-                        /* 局部刷新：只重渲染笔记列表 + 热力图 + 标签计数（与归档操作同款）。
-                           此前用 _siyuTab.render() 全量重建整个插件 UI（侧栏/输入框销毁重建 + opacity 0→1 淡入），
-                           删除时页面会明显闪烁一下；侧边栏越窄、笔记列表越宽，闪烁越明显 */
-                        if (plugin && plugin._refreshActiveBreezeView) {
-                            try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
-                        }
-                        // 同步刷新 Dock 侧边栏列表（若启用），保证侧边栏删除后立即消失
-                        if (plugin && plugin._breezeNotifyDockChanged) {
-                            try { plugin._breezeNotifyDockChanged(); } catch (e) { /* noop */ }
+                        /* 若这条正被加载进任一编辑框，删除后同步退出编辑态，避免保存时写回已删记录。 */
+                        try {
+                            [plugin && plugin._siyuTab, plugin && plugin._lunaDockCtx].forEach((ctx) => {
+                                if (ctx && ctx._editingNoteId === id && typeof ctx._cancelEdit === 'function') ctx._cancelEdit();
+                            });
+                        } catch (e) { /* noop */ }
+                        if (plugin && plugin._mobileEditingNoteId === id) {
+                            plugin._mobileEditingNoteId = null;
+                            plugin._mobileEditingNoteData = null;
                         }
                     };
                     if (confirm) {
@@ -1683,6 +1684,218 @@ function bindLifeLogTimeEdit(container, plugin, getRecords, onDone) {
             onDone: (typeof onDone === 'function') ? onDone : null
         });
     });
+}
+
+/* LifeLog 相邻两条记录之间的时长（秒）。
+   时间轴上的相邻两条可能跨天（如 23:50 → 次日 00:10），只比 HH:MM 会得到负值、
+   被兜底成 0 分；这里把日期一起算进去，跨天差值才是对的。
+   返回 null 表示不显示时长：时间 / 日期不合法、时长为 0（或负）、
+   或超过一天（中间整段没记录，不是一次跨天，不硬接出一个几十小时的时长）。 */
+function lifelogDurationSeconds(startRec, endRec) {
+    const toMin = (rec) => {
+        const m = String((rec && rec.time) || '').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (!m) return null;
+        const h = +m[1];
+        const mi = +m[2];
+        if (h > 23 || mi > 59) return null;
+        return h * 60 + mi;
+    };
+    const toDay = (rec) => {
+        const m = String((rec && rec.date) || '').trim().replace(/\//g, '-').match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if (!m) return null;
+        const t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+        return isNaN(t) ? null : Math.round(t / 86400000);
+    };
+    const aMin = toMin(startRec);
+    const bMin = toMin(endRec);
+    const aDay = toDay(startRec);
+    const bDay = toDay(endRec);
+    if (aMin === null || bMin === null || aDay === null || bDay === null) return null;
+    /* 日期差 × 1440 + 时分差：跨天时前半段自动补足，如 23:50 → 次日 00:10 = 20 分 */
+    const min = (bDay - aDay) * 1440 + (bMin - aMin);
+    if (min <= 0 || min >= 1440) return null;
+    return min * 60;
+}
+
+/* 秒 →「X时Y分」/「X分」（沿用时间轴原有格式，小时不进位成天） */
+function lifelogFormatDuration(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    return h > 0 ? `${h}时${m}分` : `${m}分`;
+}
+
+/* 将任意 CSS 颜色转 HSL 后压低亮度（LifeLog 类型色统一走这套口径）。
+   maxS 非空时同时压低饱和度（暗色模式用）。 */
+function lifelogClampLightness(color, maxL, maxS) {
+    let h, s, l;
+    const hslMatch = String(color).match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i);
+    if (hslMatch) {
+        h = parseInt(hslMatch[1]); s = parseInt(hslMatch[2]); l = parseInt(hslMatch[3]);
+    } else {
+        let r, g, b;
+        const hex = String(color).match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+        if (hex) {
+            r = parseInt(hex[1], 16) / 255;
+            g = parseInt(hex[2], 16) / 255;
+            b = parseInt(hex[3], 16) / 255;
+        } else {
+            const rgb = String(color).match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+            if (!rgb) return color;
+            r = parseInt(rgb[1]) / 255; g = parseInt(rgb[2]) / 255; b = parseInt(rgb[3]) / 255;
+        }
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        l = (max + min) / 2;
+        const d = max - min;
+        if (d === 0) { h = s = 0; }
+        else {
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+            else if (max === g) h = ((b - r) / d + 2) / 6;
+            else h = ((r - g) / d + 4) / 6;
+        }
+        h = Math.round(h * 360); s = Math.round(s * 100); l = Math.round(l * 100);
+    }
+    if (l > maxL) l = maxL;
+    if (maxS != null && s > maxS) s = maxS;
+    return `hsl(${h}, ${s}%, ${l}%)`;
+}
+
+/* LifeLog 类型「明亮色」解析缓存（进程级，PC / 移动端 / Dock 共用）。
+   颜色来自 LifeLog 插件 CSS 的 [custom-lifelog-type] 属性选择器，
+   只能靠临时元素 + getComputedStyle 取；而 getComputedStyle 会强制样式重算，
+   逐类型跑一遍在移动端相当贵（Dock 每次打开类型选择弹窗都要跑一整轮）。
+   这里按「类型 + 明暗模式」缓存结果，弹窗再打开就是纯查表。 */
+const LIFELOG_TYPE_COLOR_CACHE = new Map();
+function lifelogResolveTypeColorLight(type) {
+    if (!type) return '';
+    let mode = 'light';
+    try { mode = document.documentElement.getAttribute('data-theme-mode') || 'light'; } catch (e) { /* noop */ }
+    const key = type + '|' + mode;
+    if (LIFELOG_TYPE_COLOR_CACHE.has(key)) return LIFELOG_TYPE_COLOR_CACHE.get(key);
+    let color = '';
+    try {
+        const temp = document.createElement('div');
+        temp.setAttribute('data-type', 'NodeParagraph');
+        temp.setAttribute('custom-lifelog-type', type);
+        temp.style.display = 'none';
+        document.body.appendChild(temp);
+        color = getComputedStyle(temp).getPropertyValue('--en-lifelog-border-color').trim();
+        document.body.removeChild(temp);
+    } catch (e) { color = ''; }
+    if (color) {
+        color = lifelogClampLightness(color, mode === 'dark' ? 60 : 39, null);
+    } else {
+        let hash = 0;
+        for (let i = 0; i < type.length; i++) hash = type.charCodeAt(i) + ((hash << 5) - hash);
+        const hue = Math.abs(hash % 360);
+        color = `hsl(${hue}, ${mode === 'dark' ? 100 : 75}%, ${mode === 'dark' ? 60 : 42}%)`;
+    }
+    LIFELOG_TYPE_COLOR_CACHE.set(key, color);
+    return color;
+}
+
+/* LifeLog 轮询探测：只取「最近 N 条」原始行，用来判断要不要整表重查重绘。
+   原实现每轮都跑一次全量查询（记录多时上百毫秒）再比对指纹，移动端每隔
+   20 秒就有一次可感知的卡顿。这里改成只取最近 N 条（命中 a1 索引，约 0.1ms），
+   有变化才走全量加载。返回 null 表示探测失败（调用方按「无变化」处理，避免误刷新）。 */
+async function lifelogQueryRecentRows(limit = 5) {
+    try {
+        const sql = `SELECT b.id, b.content,
+                            a1.value AS lifelog_date,
+                            a2.value AS lifelog_time,
+                            a3.value AS lifelog_type
+                     FROM blocks b
+                     INNER JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
+                     INNER JOIN attributes a2 ON b.id = a2.block_id AND a2.name = 'custom-lifelog-time'
+                     INNER JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
+                     WHERE b.type = 'p'
+                     ORDER BY a1.value DESC, a2.value DESC, b.id
+                     LIMIT ${Math.max(1, Math.min(50, limit | 0))}`;
+        const resp = await fetch('/api/query/sql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stmt: sql })
+        });
+        const result = await resp.json();
+        if (result.code !== 0 || !Array.isArray(result.data)) return null;
+        return result.data;
+    } catch (e) {
+        return null;
+    }
+}
+
+/* 由记录数组算出指纹（探测行经 _parseLifeLogRow 解析后与本函数同口径）：
+   按日期时间倒序取「最新」的 N 条，用块 ID + 日期 + 时间 + 内容比对。 */
+function lifelogRecordsFingerprint(records, limit = 5) {
+    const list = (records || []).slice().sort((a, b) =>
+        String(b.date || '').localeCompare(String(a.date || '')) ||
+        String(b.time || '').localeCompare(String(a.time || '')) ||
+        /* 同日期同时间时按块 ID 升序，与探测 SQL 的 ORDER BY ... b.id 对齐 */
+        String(a.boundBlockId || '').localeCompare(String(b.boundBlockId || ''))
+    ).slice(0, Math.max(1, limit));
+    return list.map(r => {
+        const bid = String(r.boundBlockId || r.id || '').replace(/^lifelog_/, '');
+        return `${bid}|${r.date || ''}|${r.time || ''}|${String(r.content || '').trim()}`;
+    }).join('||');
+}
+
+/* 渐进式写入时间轴 HTML。
+   parts 是「一段一段的 HTML」的迭代器（调用方用生成器惰性产出，每 20 条一段）：
+   首帧同步写入让用户立刻看到内容，其余每帧在 frameMs 预算内尽量多写。
+   记录很多时（移动端几千条）一次性 innerHTML 会让主线程卡住好几秒，
+   表现为「切进 LifeLog 后长时间白屏」；用生成器还能把「拼 HTML 字符串」
+   这件事本身也分摊到各帧，避免首帧光拼接就耗上百毫秒。
+   container._lifelogRenderToken 用于打断上一轮未完成的追加（重渲染/切走视图）。 */
+function lifelogRenderProgressive(container, parts, opts) {
+    if (!container || !parts || typeof parts[Symbol.iterator] !== 'function') return;
+    const token = (container._lifelogRenderToken = (container._lifelogRenderToken || 0) + 1);
+    const now = (typeof performance !== 'undefined' && performance.now)
+        ? () => performance.now()
+        : () => Date.now();
+    const it = parts[Symbol.iterator]();
+    const firstParts = (opts && opts.firstParts) || 2;
+    const firstBudget = (opts && opts.firstBudget) || 20000;
+    const firstMs = (opts && opts.firstMs) || 30;
+    const frameMs = (opts && opts.frameMs) || 8;
+    const t0 = now();
+    let head = '';
+    let count = 0;
+    let r = it.next();
+    /* 三重上限：段数、体量、耗时。体量保证首帧是「一屏左右」而不是整天几百条，
+       耗时保证记录特别长时首帧也不会久等。至少放一段，否则首屏空白。 */
+    while (!r.done && count < firstParts && (count === 0 || head.length < firstBudget) && now() - t0 < firstMs) {
+        head += r.value;
+        count++;
+        r = it.next();
+    }
+    container.innerHTML = head;
+    if (r.done) return;
+    /* 每帧的批量按「上一次插入的实测耗时」自适应：插入代价取决于卡片数量、
+       卡片高度与设备性能，只能实测。初始给个小批量先试，量出来再放大/缩小，
+       这样弱设备不会一帧塞太多、强设备也不会切出几百帧。 */
+    const maxBatch = (opts && opts.maxBatchParts) || 40;
+    let batch = (opts && opts.batchParts) || 4;
+    const step = () => {
+        /* 被新一轮渲染取代 / 视图已移除：主动结束生成器，不再继续拼 HTML */
+        if (container._lifelogRenderToken !== token || !container.isConnected) {
+            if (typeof it.return === 'function') { try { it.return(); } catch (e) { /* noop */ } }
+            return;
+        }
+        const s0 = now();
+        let chunk = '';
+        let taken = 0;
+        while (!r.done && taken < batch && now() - s0 < frameMs) {
+            chunk += r.value;
+            r = it.next();
+            taken++;
+        }
+        const i0 = now();
+        if (chunk) container.insertAdjacentHTML('beforeend', chunk);
+        const cost = Math.max(now() - i0, 0.5);
+        batch = Math.max(1, Math.min(maxBatch, Math.round(taken * (frameMs / cost))));
+        if (!r.done) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
 }
 
 /* 添加到朋友圈（把一条清风笔记转成朋友圈动态）。
@@ -3388,7 +3601,21 @@ function breezeCopyTextFallback(text) {
 let breezeCodeHlObserver = null;
 function breezeInstallCodeHighlightObserver() {
     if (breezeCodeHlObserver || typeof MutationObserver === 'undefined' || typeof requestAnimationFrame === 'undefined') return;
-    breezeCodeHlObserver = new MutationObserver(() => {
+    breezeCodeHlObserver = new MutationObserver((records) => {
+        /* 先看新增节点里有没有 pre / code：LifeLog 时间轴、卡片列表等批量追加
+           都没有代码块，这一层过滤能把「每次 DOM 变更 → 全文档 querySelectorAll」
+           的开销省掉（移动端分帧追加时每帧都扫一遍全文档非常贵）。 */
+        let need = false;
+        for (let i = 0; i < records.length && !need; i++) {
+            const added = records[i].addedNodes;
+            for (let j = 0; j < added.length; j++) {
+                const n = added[j];
+                if (!n || n.nodeType !== 1) continue;
+                if (n.tagName === 'PRE' || n.tagName === 'CODE') { need = true; break; }
+                if (typeof n.querySelector === 'function' && n.querySelector('pre, code')) { need = true; break; }
+            }
+        }
+        if (!need) return;
         if (breezeCodeHlObserver._raf) return; /* 本帧已排队 */
         breezeCodeHlObserver._raf = requestAnimationFrame(() => {
             breezeCodeHlObserver._raf = null;
@@ -5049,17 +5276,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         } else if (action === 'delete') {
                             /* 删除（带确认提示） */
                             const doDelete = () => {
-                                const s = this.plugin.data[RECORDS_STORAGE] || {};
-                                if (!s.breezeNotes) return;
-                                // 清理该笔记关联的资源（图片/视频/文件；仍被朋友圈动态引用的保留）
-                                (note.images || []).forEach(img => { if (this.plugin.deletePluginImage && !this.plugin._isMediaUsedByMoments(img)) this.plugin.deletePluginImage(img); });
-                                (note.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path && !this.plugin._isMediaUsedByMoments(f.path)) this.plugin.deletePluginImage(f.path); });
-                                s.breezeNotes = s.breezeNotes.filter(n => n.id !== note.id);
-                                this.plugin.data[RECORDS_STORAGE] = s;
-                                this.plugin.saveData(RECORDS_STORAGE, s);
-                                const body = this.container.querySelector('.north-luna-main-body');
-                                if (body) { body.innerHTML = renderBreezeTable(this); this._bindBreezeTable(); }
-                                this.plugin._breezeNotifyDockChanged && this.plugin._breezeNotifyDockChanged();
+                                if (this._tableChecked) this._tableChecked.delete(note.id);
+                                if (this.plugin && typeof this.plugin._deleteBreezeNotesByIds === 'function') {
+                                    this.plugin._deleteBreezeNotesByIds(note.id);
+                                } else {
+                                    const s = this.plugin.data[RECORDS_STORAGE] || {};
+                                    s.breezeNotes = (s.breezeNotes || []).filter(n => n.id !== note.id);
+                                    this.plugin.data[RECORDS_STORAGE] = s;
+                                    this.plugin.saveData(RECORDS_STORAGE, s).catch(() => {});
+                                }
                             };
                             if (confirm) {
                                 confirm('删除笔记', '确定要删除这条清风笔记吗？\n此操作不可恢复。', doDelete);
@@ -5522,7 +5747,25 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const ba = list.querySelector('#table-batch-archive');
                     if (ba && !ba._b) { ba._b = true; ba.addEventListener('click', () => { this._tableChecked.forEach(id => this._toggleTableArchive(id)); rerender(); }); }
                     const bd = list.querySelector('#table-batch-delete');
-                    if (bd && !bd._b) { bd._b = true; bd.addEventListener('click', () => { const n = this._tableChecked.size; if (n === 0) return; const del = () => { this._tableChecked.forEach(id => this._deleteTableNote(id)); rerender(); }; if (confirm) confirm('批量删除', `确定要删除选中的 ${n} 条清风笔记吗？\n此操作不可恢复。`, del); else del(); }); }
+                    if (bd && !bd._b) {
+                        bd._b = true;
+                        bd.addEventListener('click', () => {
+                            const ids = Array.from(this._tableChecked || []);
+                            const n = ids.length;
+                            if (n === 0) return;
+                            const del = () => {
+                                this._tableChecked.clear();
+                                if (this.plugin && typeof this.plugin._deleteBreezeNotesByIds === 'function') {
+                                    this.plugin._deleteBreezeNotesByIds(ids);
+                                } else {
+                                    ids.forEach(id => this._deleteTableNote(id));
+                                }
+                                rerender();
+                            };
+                            if (confirm) confirm('批量删除', `确定要删除选中的 ${n} 条清风笔记吗？\n此操作不可恢复。`, del);
+                            else del();
+                        });
+                    }
 
                     /* 标签列：点击编辑标签（浮层内点选/输入，确定后写回正文 #标签） */
                     list.querySelectorAll('.north-breeze-table-tags-cell.north-breeze-table-tags-editable').forEach(cell => {
@@ -5582,18 +5825,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (this.plugin._breezeNotifyDockChanged) this.plugin._breezeNotifyDockChanged();
                 };
                 this._deleteTableNote = (id) => {
+                    if (this._tableChecked) this._tableChecked.delete(id);
+                    if (this.plugin && typeof this.plugin._deleteBreezeNotesByIds === 'function') {
+                        return this.plugin._deleteBreezeNotesByIds(id);
+                    }
                     const s = this.plugin.data[RECORDS_STORAGE] || {};
-                    const note = (s.breezeNotes || []).find(n => n.id === id);
-                    if (!note) return;
-                    // 清理该笔记关联的资源（图片/视频/文件；仍被朋友圈动态引用的保留）
-                    (note.images || []).forEach(img => { if (this.plugin.deletePluginImage && !this.plugin._isMediaUsedByMoments(img)) this.plugin.deletePluginImage(img); });
-                    (note.files || []).forEach(f => { if (this.plugin.deletePluginImage && f.path && !this.plugin._isMediaUsedByMoments(f.path)) this.plugin.deletePluginImage(f.path); });
                     s.breezeNotes = (s.breezeNotes || []).filter(n => n.id !== id);
                     this.plugin.data[RECORDS_STORAGE] = s;
-                    this.plugin.saveData(RECORDS_STORAGE, s);
-                    /* 删除会影响「全部笔记/统计」等其它清风视图的缓存内容，先失效 */
-                    if (this._viewDomCache) { delete this._viewDomCache.notes; delete this._viewDomCache.chart; }
-                    if (this.plugin._breezeNotifyDockChanged) this.plugin._breezeNotifyDockChanged();
+                    return this.plugin.saveData(RECORDS_STORAGE, s).catch(() => {});
                 };
 
                 this.renderMain = () => {
@@ -12323,9 +12562,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._lifelogCacheTime = 0;
                 this._lifelogTypeColorCache = new Map();
 
-                this._renderLifeLogView = async (body) => {
-                    /* 加载数据 */
-                    await this._loadLifeLogData();
+                /* 用当前 this._lifelogRecords 同步绘制整个 LifeLog 视图（不含数据加载）。
+                   拆出这一层是为了「先出内容、后台刷新」：有缓存时切进视图立刻可见，
+                   不再空等一次全量 SQL。 */
+                this._paintLifeLogView = (body, opts) => {
+                    if (!body || !document.contains(body)) return;
+                    /* 缓存版先画一版时跳过搜索恢复：等数据刷新后的那一版再恢复，
+                       避免同一次进入视图重复渲染时间轴。 */
+                    const restoreSearch = !(opts && opts.skipSearchRestore);
                     /* 应用自定义字体 */
                     const typeFs = Number(this._getSetting('lifelogTypeFontSize')) || 14;
                     const contentFs = Number(this._getSetting('lifelogContentFontSize')) || 14.5;
@@ -12342,34 +12586,42 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const sbW = Number(this._getSetting('lifelogSidebarWidth')) || 260;
                     const sbEl = body.querySelector('.north-lifelog-sidebar');
                     if (sbEl) sbEl.style.width = sbW + 'px';
-                    /* 搜索过滤 */
-                    this._bindLifeLogSearch(body);
-                    /* 菜单切换 */
-                    this._bindLifeLogMenu(body);
                     /* 热力图渲染与交互 */
                     this._renderLifeLogHeatmap(body);
                     /* 顶部周历条 */
                     this._renderLifeLogWeekStrip(body);
-                    this._bindLifeLogWeekStrip(body);
                     /* 统计 */
                     this._updateLifeLogStats(body);
                     /* 移动端统计子视图面板（PC 端面板隐藏，无影响） */
                     this._renderLifeLogMobileStats(body);
                     /* 全部类型标签云 */
                     this._renderLifeLogTypesCloud(body);
-                    this._bindLifeLogTypesCloud(body);
-                    /* 时间轴 */
-                    this._renderLifeLogTimeline(body);
-                    /* 移动端：恢复顶栏搜索状态（联动已有过滤 + 高亮，避免切走再切回时丢失） */
-                    if (plugin.lifelogMobileSearch) {
-                        const _llInput = body.querySelector('#lifelogSearchInput');
+                    /* 移动端：先恢复顶栏搜索关键词，再连同关键词一起画时间轴，
+                       避免「先画全量、再补一次过滤」导致的闪动与重复渲染 */
+                    let searchVal = '';
+                    const _llInput = body.querySelector('#lifelogSearchInput');
+                    if (restoreSearch && plugin.lifelogMobileSearch && _llInput) {
+                        _llInput.value = plugin.lifelogMobileSearch;
                         const _llClear = body.querySelector('#lifelogSearchClear');
-                        if (_llInput) {
-                            _llInput.value = plugin.lifelogMobileSearch;
-                            if (_llClear) _llClear.style.display = '';
-                            _llInput.dispatchEvent(new Event('input', { bubbles: true }));
-                        }
+                        if (_llClear) _llClear.style.display = '';
                     }
+                    /* 不恢复时也要沿用输入框里已有的关键词：数据刷新后的这一版
+                       若按空关键词渲染，会把用户当前生效的过滤清掉 */
+                    if (_llInput) searchVal = _llInput.value.trim();
+                    /* 时间轴 */
+                    this._renderLifeLogTimeline(body, searchVal);
+                };
+
+                /* 事件绑定只做一次（视图重建后元素是新的，各元素的标志位自然为 false） */
+                this._bindLifeLogViewOnce = (body) => {
+                    /* 搜索过滤 */
+                    this._bindLifeLogSearch(body);
+                    /* 菜单切换 */
+                    this._bindLifeLogMenu(body);
+                    /* 周历条点击 */
+                    this._bindLifeLogWeekStrip(body);
+                    /* 类型标签云点击 */
+                    this._bindLifeLogTypesCloud(body);
                     /* 时间轴右键菜单 */
                     this._bindLifeLogTimelineContextMenu(body);
                     /* 点时间修改时间（补录：记录时刻 ≠ 事情发生时刻） */
@@ -12390,6 +12642,24 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     this._startLifeLogAutoPoll(body);
                 };
 
+                this._renderLifeLogView = async (body) => {
+                    if (!body) return;
+                    /* 有缓存：先同步画一版（切进视图立即有内容），再后台重查刷新。
+                       无缓存（首次进视图 / 插件刚加载）：先显示加载态，等数据回来再画。 */
+                    const hasCache = !!(this._lifelogCache && this._lifelogCache.length);
+                    if (hasCache) {
+                        this._lifelogRecords = this._lifelogCache;
+                    } else {
+                        const tl = body.querySelector('#lifelog-timeline');
+                        if (tl) tl.innerHTML = '<div class="north-lifelog-timeline-empty">加载中…</div>';
+                    }
+                    this._bindLifeLogViewOnce(body);
+                    if (hasCache) this._paintLifeLogView(body);
+                    await this._loadLifeLogData();
+                    if (!document.contains(body)) return;
+                    this._paintLifeLogView(body, { skipSearchRestore: hasCache });
+                };
+
                 /* ===== LifeLog 自动轮询：检测新记录并自动刷新 ===== */
                 this._startLifeLogAutoPoll = (body) => {
                     if (this._lifelogPollTimer) { clearInterval(this._lifelogPollTimer); }
@@ -12407,14 +12677,16 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         if (document.hidden || this._lifelogPollBusy) return;
                         this._lifelogPollBusy = true;
                         try {
-                            /* 记录旧数据快照：条数 + 最后 5 条内容的指纹 */
-                            const prev = this._lifelogRecords || [];
-                            const prevCount = prev.length;
-                            const prevFp = prev.slice(-5).map(r => r.id + '|' + r.content).join('||');
+                            /* 轻量探测：只查最近 5 条（约 0.1ms）比对指纹，
+                               无变化直接返回，避免每轮都做全量查询（移动端周期性卡顿源）。 */
+                            const probeRows = await lifelogQueryRecentRows(5);
+                            if (probeRows === null) return;
+                            const probeFp = lifelogRecordsFingerprint(probeRows.map(r => this._parseLifeLogRow(r)), 5);
+                            const prevFp = lifelogRecordsFingerprint(this._lifelogRecords, 5);
+                            if (probeFp === prevFp) return;
                             await this._loadLifeLogData(true);
                             const now = this._lifelogRecords || [];
-                            const nowFp = now.slice(-5).map(r => r.id + '|' + r.content).join('||');
-                            if ((now.length !== prevCount || nowFp !== prevFp) && document.contains(body)) {
+                            if (lifelogRecordsFingerprint(now, 5) !== prevFp && document.contains(body)) {
                                 this._renderLifeLogTimeline(body, (body.querySelector('#lifelogSearchInput') || {}).value || '');
                                 this._renderLifeLogTypesCloud(body);
                                 this._renderLifeLogHeatmap(body);
@@ -12428,6 +12700,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 };
 
                 this._bindLifeLogSearch = (body) => {
+                    /* 同一视图可能被重绘多次（改设置后局部刷新），绑定只做一次，
+                       否则搜索 / 清空 / 日历按钮会叠加出多个监听 */
+                    if (!body || body._lifelogSearchBound) return;
+                    body._lifelogSearchBound = true;
                     const input = body.querySelector('#lifelogSearchInput');
                     const clear = body.querySelector('#lifelogSearchClear');
                     if (!input || !clear) return;
@@ -12435,12 +12711,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     let isComposing = false;
                     const applySearch = () => {
                         clear.style.display = input.value.trim() ? '' : 'none';
+                        if (!document.contains(body)) return;
                         this._renderLifeLogTimeline(body, input.value.trim());
                     };
+                    /* 每敲一个字都重渲染整条时间轴会明显卡顿（记录多时一帧几百毫秒），
+                       这里合并成一次延迟渲染：输入框本身仍是即时的，过滤稍后跟上。 */
+                    let searchTimer = null;
+                    const scheduleSearch = () => {
+                        if (searchTimer) clearTimeout(searchTimer);
+                        searchTimer = setTimeout(() => { searchTimer = null; applySearch(); }, 140);
+                    };
                     input.addEventListener('compositionstart', () => { isComposing = true; });
-                    input.addEventListener('compositionend', () => { isComposing = false; applySearch(); });
-                    input.addEventListener('input', () => { if (!isComposing) applySearch(); });
+                    input.addEventListener('compositionend', () => { isComposing = false; scheduleSearch(); });
+                    input.addEventListener('input', () => { if (!isComposing) scheduleSearch(); });
                     clear.addEventListener('click', () => {
+                        if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
                         input.value = '';
                         clear.style.display = 'none';
                         this._renderLifeLogTimeline(body, '');
@@ -12456,9 +12741,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const calOverlay = body.querySelector('#lifelogCalendarOverlay');
                     if (calOverlay) calOverlay.addEventListener('click', () => this._closeLifeLogCalendar(body));
                     /* ESC 关闭 */
-                    document.addEventListener('keydown', (e) => {
-                        if (e.key === 'Escape') this._closeLifeLogCalendar(body);
-                    });
+                    this._bindLifeLogEscClose(body);
                 };
 
                 /* ===== LifeLog 日历：以热力图方式展示整年月历 ===== */
@@ -12612,6 +12895,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (modal) modal.classList.remove('active');
                 };
 
+                /* ESC 关闭日历：全局只挂一个委托监听（原来每次进入视图都往 document
+                   上堆一个匿名 keydown，切进切出次数多了会累积成一批永不回收的监听）。 */
+                this._bindLifeLogEscClose = (body) => {
+                    if (!body) return;
+                    /* 只保留最新视图的引用：监听永远只挂一个，切视图时改指向即可 */
+                    this._lifelogEscBody = body;
+                    if (this._lifelogEscBound) return;
+                    this._lifelogEscBound = true;
+                    document.addEventListener('keydown', (e) => {
+                        if (e.key !== 'Escape') return;
+                        const cur = this._lifelogEscBody;
+                        if (cur && document.contains(cur)) this._closeLifeLogCalendar(cur);
+                    });
+                };
+
                 this._renderLifeLogCalendarBody = (body, year, month = null) => {
                     const calBody = body.querySelector('#lifelogCalBody');
                     const calCount = body.querySelector('#lifelogCalCount');
@@ -12763,6 +13061,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                 /* 子视图切换（全部笔记 / 每日回顾 / 本周记录） */
                 this._bindLifeLogMenu = (body) => {
+                    if (!body || body._lifelogMenuBound) return;
+                    body._lifelogMenuBound = true;
                     body.querySelectorAll('.north-lifelog-menu-item[data-lifelog-subview]').forEach(item => {
                         item.addEventListener('click', () => {
                             body.querySelectorAll('.north-lifelog-menu-item').forEach(i => i.classList.remove('active'));
@@ -12801,54 +13101,37 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                 this._queryLifeLogRecords = async () => {
                     const records = [];
-                    const pageSize = 2000;
                     const maxScan = 1000000;
-                    let scanned = 0;
-                    let lastDate = '';
-                    let lastTime = '';
-                    let lastId = '';
-                    const seenBlockIds = new Set();
                     try {
-                        while (scanned < maxScan) {
-                            const limit = Math.min(pageSize, maxScan - scanned);
-                            let whereCursor = '';
-                            if (lastId) {
-                                const escDate = lastDate.replace(/'/g, "''");
-                                const escTime = lastTime.replace(/'/g, "''");
-                                const escId = lastId.replace(/'/g, "''");
-                                whereCursor = `AND (a1.value < '${escDate}'
-                                               OR (a1.value = '${escDate}' AND a2.value < '${escTime}')
-                                               OR (a1.value = '${escDate}' AND a2.value = '${escTime}' AND b.id > '${escId}'))`;
-                            }
-                            const sql = `SELECT b.id, b.content,
-                                               a1.value AS lifelog_date,
-                                               a2.value AS lifelog_time,
-                                               a3.value AS lifelog_type
-                                        FROM blocks b
-                                        INNER JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
-                                        INNER JOIN attributes a2 ON b.id = a2.block_id AND a2.name = 'custom-lifelog-time'
-                                        INNER JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
-                                        WHERE b.type = 'p'
-                                        ${whereCursor}
-                                        ORDER BY a1.value DESC, a2.value DESC, b.id
-                                        LIMIT ${limit}`;
-                            const resp = await fetch('/api/query/sql', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ stmt: sql })
-                            });
-                            const result = await resp.json();
-                            if (result.code !== 0 || !Array.isArray(result.data) || !result.data.length) break;
-                            const rows = result.data;
-                            lastDate = rows[rows.length - 1].lifelog_date || '';
-                            lastTime = rows[rows.length - 1].lifelog_time || '';
-                            lastId = rows[rows.length - 1].id;
-                            for (const row of rows) {
+                        /* 一次性取全量（上限 100 万条）。
+                           原实现按 2000 条 keyset 翻页：每翻一页都要重新扫 a1 索引并
+                           建临时 B 树做 ORDER BY，记录越多页数越多、耗时线性增长
+                           （3 万条约 0.8s，且每页一个 HTTP 往返）。单次查询由 SQLite
+                           一次排序即可，同样的数据约 0.14s。 */
+                        const sql = `SELECT b.id, b.content,
+                                           a1.value AS lifelog_date,
+                                           a2.value AS lifelog_time,
+                                           a3.value AS lifelog_type
+                                    FROM blocks b
+                                    INNER JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
+                                    INNER JOIN attributes a2 ON b.id = a2.block_id AND a2.name = 'custom-lifelog-time'
+                                    INNER JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
+                                    WHERE b.type = 'p'
+                                    ORDER BY a1.value DESC, a2.value DESC, b.id
+                                    LIMIT ${maxScan}`;
+                        const resp = await fetch('/api/query/sql', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ stmt: sql })
+                        });
+                        const result = await resp.json();
+                        if (result.code === 0 && Array.isArray(result.data)) {
+                            const seenBlockIds = new Set();
+                            for (const row of result.data) {
                                 if (seenBlockIds.has(row.id)) continue;
                                 seenBlockIds.add(row.id);
                                 records.push(this._parseLifeLogRow(row));
                             }
-                            scanned += rows.length;
                         }
                     } catch (e) {
                         /* 查询失败，返回空 */
@@ -13260,10 +13543,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         weekStart.setHours(0, 0, 0, 0);
                         data = data.filter(d => new Date(d.date + 'T00:00:00').getTime() >= weekStart.getTime());
                     }
-                    /* 日期筛选（点击热力图某天） */
-                    if (this._lifelogDateFilter) {
-                        data = data.filter(d => d.date === this._lifelogDateFilter);
-                    }
                     /* 类型筛选（点击侧边栏类型标签云） */
                     if (this._lifelogTypeFilter) {
                         data = data.filter(d => d.type === this._lifelogTypeFilter);
@@ -13277,10 +13556,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (subview === 'review') {
                         if (data.length > 3) data = data.slice(0, 3);
                     }
-                    if (data.length === 0) {
-                        timeline.innerHTML = '<div class="north-lifelog-timeline-empty">暂无匹配记录</div>';
-                        return;
-                    }
                     /* 按 created 全局正序（早→晚），构建 prev / next 映射（跨天也保持衔接） */
                     data.sort((a, b) => (a.created || 0) - (b.created || 0));
                     const prevMap = new Map();
@@ -13291,6 +13566,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
                     /* 时间计算模式：'end'=结束模式（默认）用 prev；'start'=开始模式用 next */
                     const timeMode = this._getSetting('lifelogTimeMode') === 'start' ? 'start' : 'end';
+                    /* 日期筛选（点击热力图某天）：放在算完区间之后，
+                       否则当天首条（跨天衔接的那条）会因为前一天被筛掉而丢掉时长 */
+                    if (this._lifelogDateFilter) {
+                        data = data.filter(d => d.date === this._lifelogDateFilter);
+                    }
+                    if (data.length === 0) {
+                        /* 打断可能还在分帧追加的上一轮渲染，否则残留内容会盖住空态 */
+                        timeline._lifelogRenderToken = (timeline._lifelogRenderToken || 0) + 1;
+                        timeline.innerHTML = '<div class="north-lifelog-timeline-empty">暂无匹配记录</div>';
+                        return;
+                    }
                     /* 按日期分组，每组内按时间倒序 */
                     const groups = {};
                     data.forEach(d => {
@@ -13303,61 +13589,65 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
                     /* ===== 轻语同款时间轴 HTML ===== */
                     const esc = (s) => (plugin._esc ? plugin._esc(s) : String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])));
-                    let html = '';
-                    sortedDates.forEach(date => {
-                        const items = groups[date];
-                        const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
-                        const dt = new Date((date || '') + 'T00:00:00');
-                        const dayLabel = isNaN(dt.getTime()) ? '' : ' ' + weekdays[dt.getDay()];
-                        const displayDate = items[0] ? `${date}${dayLabel}` : date;
-                        /* 日期分组标题 */
-                        html += `<div class="north-lifelog-date-group">${displayDate}</div>`;
-                        items.forEach((item, idx) => {
-                            /* 时间计算模式：end=参照上一条结束（range=prev - item），start=参照下一条开始（range=item - next） */
-                            const refItem = timeMode === 'start' ? nextMap.get(item.id) : prevMap.get(item.id);
-                            const rangeStr = refItem
-                                ? (timeMode === 'start' ? `${item.time} - ${refItem.time}` : `${refItem.time} - ${item.time}`)
-                                : item.time;
-                            /* 持续时间（开启后 + 区间成立时显示） */
-                            let durationStr = '';
-                            if (refItem && this._getSetting('lifelogShowDuration')) {
-                                const parseTime = (t) => {
-                                    const m = String(t || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-                                    if (!m) return null;
-                                    return +m[1] * 3600 + +m[2] * 60 + (+m[3] || 0);
-                                };
-                                const a = parseTime(timeMode === 'start' ? item.time : refItem.time);
-                                const b = parseTime(timeMode === 'start' ? refItem.time : item.time);
-                                if (a !== null && b !== null) {
-                                    let sec = b - a;
-                                    if (sec < 0) sec = 0;
-                                    const h = Math.floor(sec / 3600);
-                                    const m = Math.floor((sec % 3600) / 60);
-                                    durationStr = h > 0 ? `${h}时${m}分` : `${m}分`;
+                    /* 用生成器惰性产出 HTML 段（每 20 条一段）：首段同步写入（立刻可见），
+                       其余分帧追加。连「拼字符串」也分摊到各帧 —— 几万条记录光拼接就要
+                       上百毫秒，同步拼完首屏照样卡；一次性 innerHTML 更是直接卡住主线程。 */
+                    const owner = this;
+                    const timelineParts = function* () {
+                        let html = '';
+                        let partItems = 0;
+                        for (const date of sortedDates) {
+                            const items = groups[date];
+                            const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
+                            const dt = new Date((date || '') + 'T00:00:00');
+                            const dayLabel = isNaN(dt.getTime()) ? '' : ' ' + weekdays[dt.getDay()];
+                            const displayDate = items[0] ? `${date}${dayLabel}` : date;
+                            /* 日期分组标题 */
+                            html += `<div class="north-lifelog-date-group">${displayDate}</div>`;
+                            for (const item of items) {
+                                /* 时间计算模式：end=参照上一条结束（range=prev - item），start=参照下一条开始（range=item - next） */
+                                const refItem = timeMode === 'start' ? nextMap.get(item.id) : prevMap.get(item.id);
+                                const rangeStr = refItem
+                                    ? (timeMode === 'start' ? `${item.time} - ${refItem.time}` : `${refItem.time} - ${item.time}`)
+                                    : item.time;
+                                /* 持续时间（开启后 + 区间成立时显示）
+                                   按「日期 + 时间」算，跨天（如 23:50 → 次日 00:10）也能得到正确时长 */
+                                let durationStr = '';
+                                if (refItem && owner._getSetting('lifelogShowDuration')) {
+                                    const sec = lifelogDurationSeconds(
+                                        timeMode === 'start' ? item : refItem,
+                                        timeMode === 'start' ? refItem : item
+                                    );
+                                    if (sec !== null) durationStr = lifelogFormatDuration(sec);
                                 }
+                                const rangeHtml = `${rangeStr}${durationStr ? `<span class="north-lifelog-timeline-duration">持续：${durationStr}</span>` : ''}`;
+                                const typeColor = item.type ? owner._getLifeLogTypeColorLight(item.type) : '';
+                                const typeStyle = typeColor ? ` style="color:${typeColor}"` : '';
+                                const typeDiv = item.type
+                                    ? `<div class="north-lifelog-timeline-type"${typeStyle}>${esc(item.type)}</div>`
+                                    : '';
+                                html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
+                                    <div class="north-lifelog-timeline-left">
+                                        <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
+                                    </div>
+                                    <div class="north-lifelog-timeline-axis">
+                                        <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
+                                    </div>
+                                    <div class="north-lifelog-timeline-card">
+                                        <div class="north-lifelog-timeline-range">${rangeHtml}</div>
+                                        ${typeDiv}
+                                        <div class="north-lifelog-timeline-content">${filter ? owner._highlightLifeLogText(esc(item.content), filter) : esc(item.content)}</div>
+                                    </div>
+                                </div>`;
+                                /* 单个日期可能很长（当天几百条），每 20 条切一刀，
+                                   保证首帧始终是「一屏左右」，不会被某一天拖慢首屏 */
+                                partItems++;
+                                if (partItems >= 20) { yield html; html = ''; partItems = 0; }
                             }
-                            const rangeHtml = `${rangeStr}${durationStr ? `<span class="north-lifelog-timeline-duration">持续：${durationStr}</span>` : ''}`;
-                            const typeColor = item.type ? this._getLifeLogTypeColorLight(item.type) : '';
-                            const typeStyle = typeColor ? ` style="color:${typeColor}"` : '';
-                            const typeDiv = item.type
-                                ? `<div class="north-lifelog-timeline-type"${typeStyle}>${esc(item.type)}</div>`
-                                : '';
-                            html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
-                                <div class="north-lifelog-timeline-left">
-                                    <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
-                                </div>
-                                <div class="north-lifelog-timeline-axis">
-                                    <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
-                                </div>
-                                <div class="north-lifelog-timeline-card">
-                                    <div class="north-lifelog-timeline-range">${rangeHtml}</div>
-                                    ${typeDiv}
-                                    <div class="north-lifelog-timeline-content">${filter ? this._highlightLifeLogText(esc(item.content), filter) : esc(item.content)}</div>
-                                </div>
-                            </div>`;
-                        });
-                    });
-                    timeline.innerHTML = html;
+                            if (html) { yield html; html = ''; partItems = 0; }
+                        }
+                    };
+                    lifelogRenderProgressive(timeline, timelineParts());
                     this._resizeTimelineAxis(timeline);
                 };
 
@@ -13366,8 +13656,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const timeline = body.querySelector('#lifelog-timeline');
                     if (!timeline || timeline._lifelogCtxBound) return;
                     timeline._lifelogCtxBound = true;
-                    let menu = null;
-                    const hideMenu = () => { if (menu) { menu.remove(); menu = null; } };
+                    /* 菜单实例挂在 plugin 上：全局只保留一个，避免多次渲染各留一份 */
+                    const hideMenu = () => {
+                        const m = plugin._lifelogCtxMenu;
+                        if (m) { try { m.remove(); } catch (e) {} plugin._lifelogCtxMenu = null; }
+                    };
                     timeline.addEventListener('contextmenu', (e) => {
                         const item = e.target.closest('.north-lifelog-timeline-item');
                         if (!item) return;
@@ -13376,7 +13669,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         e.preventDefault();
                         e.stopPropagation();
                         hideMenu();
-                        menu = document.createElement('div');
+                        const menu = document.createElement('div');
+                        plugin._lifelogCtxMenu = menu;
                         menu.className = 'north-lifelog-ctx-menu';
                         menu.innerHTML = `
                             <button class="north-lifelog-ctx-item" data-act="edit">
@@ -13417,14 +13711,23 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         };
                         menu.querySelector('[data-act="open"]').onclick = (ev) => { ev.stopPropagation(); hideMenu(); this._openLifeLogBlock(blockId); };
                     });
-                    /* 关闭逻辑 */
-                    setTimeout(() => {
-                        document.addEventListener('click', hideMenu, true);
-                        document.addEventListener('contextmenu', (e) => { if (!menu || !menu.contains(e.target)) hideMenu(); }, true);
-                        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideMenu(); });
-                        window.addEventListener('resize', hideMenu);
-                        window.addEventListener('scroll', hideMenu, true);
-                    }, 0);
+                    /* 关闭逻辑：全局只装一次（用 plugin 上的统一菜单引用，
+                       避免每次视图重建都往 document/window 堆 5 个监听且永不回收）。 */
+                    if (!plugin._lifelogCtxOutsideBound) {
+                        plugin._lifelogCtxOutsideBound = true;
+                        const closeIfOutside = (e) => {
+                            const m = plugin._lifelogCtxMenu;
+                            if (!m) return;
+                            if (e && e.target && m.contains(e.target)) return;
+                            try { m.remove(); } catch (err) {}
+                            plugin._lifelogCtxMenu = null;
+                        };
+                        document.addEventListener('click', closeIfOutside, true);
+                        document.addEventListener('contextmenu', closeIfOutside, true);
+                        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeIfOutside(null); });
+                        window.addEventListener('resize', () => closeIfOutside(null));
+                        window.addEventListener('scroll', () => closeIfOutside(null), true);
+                    }
                 };
 
                 /* 编辑 LifeLog 块：内联编辑弹窗（同轻语 editLifeLog） */
@@ -13668,22 +13971,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     });
                 };
 
-                /* 时间轴轴线高度根据卡片高度动态计算 */
-                this._resizeTimelineAxis = (timeline) => {
-                    requestAnimationFrame(() => {
-                        const items = timeline.querySelectorAll('.north-lifelog-timeline-item');
-                        items.forEach(item => {
-                            const card = item.querySelector('.north-lifelog-timeline-card');
-                            const axis = item.querySelector('.north-lifelog-timeline-axis');
-                            const marker = axis && axis.querySelector('.north-lifelog-timeline-marker');
-                            if (!card || !axis || !marker) return;
-                            const cardRect = card.getBoundingClientRect();
-                            const markerRect = marker.getBoundingClientRect();
-                            const h = cardRect.bottom - markerRect.top + 4;
-                            axis.style.setProperty('--axis-height', Math.round(h) + 'px');
-                        });
-                    });
-                };
+                /* 时间轴竖线高度已改由 CSS 自动撑满（.north-lifelog-timeline-axis 的
+                   top/bottom + align-self: stretch），不再需要逐条测量。
+                   保留同名空函数：外部若有旧调用不会报错。 */
+                this._resizeTimelineAxis = () => {};
                 this._getLifeLogTypeColor = (type) => {
                     if (!type) return '';
                     const mode = document.documentElement.getAttribute('data-theme-mode') || 'light';
@@ -13725,26 +14016,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (this._lifelogTypeColorCache.has(cacheKey)) {
                         return this._lifelogTypeColorCache.get(cacheKey);
                     }
-                    const temp = document.createElement('div');
-                    temp.setAttribute('data-type', 'NodeParagraph');
-                    temp.setAttribute('custom-lifelog-type', type);
-                    temp.style.display = 'none';
-                    document.body.appendChild(temp);
-                    const styles = getComputedStyle(temp);
-                    let color = styles.getPropertyValue('--en-lifelog-border-color').trim();
-                    document.body.removeChild(temp);
-                    if (!color) {
-                        let hash = 0;
-                        for (let i = 0; i < type.length; i++) {
-                            hash = type.charCodeAt(i) + ((hash << 5) - hash);
-                        }
-                        const hue = Math.abs(hash % 360);
-                        color = `hsl(${hue}, ${mode === 'dark' ? 100 : 75}%, ${mode === 'dark' ? 60 : 42}%)`;
-                    } else {
-                        /* 从 LifeLog 插件 CSS 读取到的颜色如果太亮，自动调深。
-                           明亮模式保持 39% 不变；暗色模式提亮到 50%。 */
-                        color = this._clampLifelogLightness(color, mode === 'dark' ? 60 : 39, null);
-                    }
+                    /* 走模块级缓存：Dock / 主视图 / 移动端共用，避免重复 getComputedStyle */
+                    const color = lifelogResolveTypeColorLight(type);
                     this._lifelogTypeColorCache.set(cacheKey, color);
                     return color;
                 };
@@ -14809,8 +15082,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const merged = Object.assign({}, cur, d);
                 /* 同 id 重复条目自愈（见 breezeDedupeNotesById）：避免归档态与列表显示错位 */
                 merged.breezeNotes = breezeDedupeNotesById(Array.isArray(d.breezeNotes) ? d.breezeNotes : (cur.breezeNotes || []));
+                /* 删除刚发生、但磁盘通知/后台重载仍读到旧文件时，不要把已删记录带回来。
+                   删除 id 只在本次删除后的一个短窗口内保留；保存成功后由 _deleteBreezeNotesByIds 清除。 */
+                if (this._breezeDeletedIds && this._breezeDeletedIds.size > 0) {
+                    merged.breezeNotes = merged.breezeNotes.filter(n => !n || !this._breezeDeletedIds.has(String(n.id)));
+                }
                 merged.tagMeta = Object.assign({}, cur.tagMeta || {}, d.tagMeta || {});
                 merged.breezeReviewHistory = Object.assign({}, cur.breezeReviewHistory || {}, d.breezeReviewHistory || {});
+                /* 回顾历史同样按已删除 id 过滤，避免旧磁盘数据把已删笔记的回顾状态合并回来。 */
+                if (this._breezeDeletedIds && this._breezeDeletedIds.size > 0) {
+                    this._breezeDeletedIds.forEach((deletedId) => {
+                        delete merged.breezeReviewHistory[deletedId];
+                    });
+                }
                 this.data[RECORDS_STORAGE] = merged;
             }
         } catch (e) { /* 读取失败不影响当前视图 */ }
@@ -14885,9 +15169,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
             delete ctx._viewDomCache.notes;
             delete ctx._viewDomCache.chart;
             delete ctx._viewDomCache.table;
+            delete ctx._viewDomCache.gallery;
         }
         const view = ctx.activeViewId;
-        const breezeViews = ["notes", "chart", "table"];
+        const breezeViews = ["notes", "chart", "table", "gallery"];
         if (breezeViews.indexOf(view) === -1) return;
         try {
             if (view === "notes" && typeof ctx._renderBreezeSubView === "function") {
@@ -14904,12 +15189,114 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 } else if (typeof ctx.renderMain === "function") {
                     ctx.renderMain();
                 }
+            } else if (view === "gallery" && typeof ctx._renderGalleryView === "function") {
+                const body = ctx.container && ctx.container.querySelector(".north-luna-main-body");
+                if (body) ctx._renderGalleryView(body);
+                else if (typeof ctx.renderMain === "function") ctx.renderMain();
             } else if (typeof ctx.renderMain === "function") {
                 ctx.renderMain();
             }
         } catch (e) {
             console.error('[轻饰笔记] _refreshActiveBreezeView 刷新失败:', e);
         }
+    }
+
+    /* ===== 删除清风笔记：按 id 操作当前内存数据 =====
+       菜单/表格可能持有旧的对象引用，甚至在菜单打开期间数据已经被同步重载；
+       因此不能再依赖 notes.indexOf(note) 或调用方传入的 storage。这里统一从
+       plugin.data 中按 id 删除，并立即刷新所有正在显示的清风上下文。
+
+       返回 Promise<删除的条数>。界面先按内存结果刷新，saveData 在后台继续持久化，
+       避免移动端等待写盘时出现「点了删除但列表不动」的假死感。 */
+    _deleteBreezeNotesByIds(ids, options = {}) {
+        const rawIds = Array.isArray(ids) ? ids : [ids];
+        const idSet = new Set();
+        rawIds.forEach((id) => {
+            if (id !== undefined && id !== null && id !== '') idSet.add(String(id));
+        });
+        if (idSet.size === 0) return Promise.resolve(0);
+
+        const storage = this.data[RECORDS_STORAGE] || {};
+        const notes = Array.isArray(storage.breezeNotes) ? storage.breezeNotes : [];
+        const targets = notes.filter((note) => note && idSet.has(String(note.id)));
+        if (targets.length === 0) return Promise.resolve(0);
+
+        /* 记录本次删除的 id。移动端保存和 onDataChanged 可能交错执行，
+           重读磁盘时用它过滤掉尚未落盘完成的旧记录，避免删掉的笔记被后台重载带回来。
+           保存后仍保留一个短窗口：onDataChanged 的 500ms 防抖可能在 saveData
+           完成之后才拿到删除前的旧文件内容。 */
+        if (!this._breezeDeletedIds) this._breezeDeletedIds = new Set();
+        if (!this._breezeDeletedIdTimers) this._breezeDeletedIdTimers = new Map();
+        targets.forEach((note) => {
+            if (!note || note.id === undefined || note.id === null) return;
+            const deletedId = String(note.id);
+            this._breezeDeletedIds.add(deletedId);
+            const oldTimer = this._breezeDeletedIdTimers.get(deletedId);
+            if (oldTimer) clearTimeout(oldTimer);
+            const timer = setTimeout(() => {
+                this._breezeDeletedIds.delete(deletedId);
+                this._breezeDeletedIdTimers.delete(deletedId);
+            }, 15000);
+            if (timer && typeof timer.unref === 'function') timer.unref();
+            this._breezeDeletedIdTimers.set(deletedId, timer);
+        });
+
+        /* 同 id 的历史重复条目一并移除，避免删除后列表仍渲染另一份副本。 */
+        storage.breezeNotes = notes.filter((note) => !(note && idSet.has(String(note.id))));
+        this.data[RECORDS_STORAGE] = storage;
+        if (storage.breezeReviewHistory && typeof storage.breezeReviewHistory === 'object') {
+            targets.forEach((note) => {
+                if (note && note.id !== undefined && note.id !== null) delete storage.breezeReviewHistory[note.id];
+            });
+        }
+
+        /* 先失效所有依赖清风笔记的视图缓存，再刷新当前可见的上下文。
+           移动端实际显示的是 _lunaDockCtx；只刷新 _siyuTab 会留下旧卡片。 */
+        const contexts = [];
+        [this._siyuTab, this._lunaDockCtx].forEach((ctx) => {
+            if (ctx && contexts.indexOf(ctx) === -1) contexts.push(ctx);
+        });
+        contexts.forEach((ctx) => {
+            if (ctx._viewDomCache) {
+                ['notes', 'chart', 'table', 'gallery'].forEach((key) => delete ctx._viewDomCache[key]);
+            }
+            try { this._refreshActiveBreezeView(ctx); } catch (e) { /* noop */ }
+        });
+        try { this._refreshBreezeDockList(); } catch (e) { /* noop */ }
+
+        /* 资源清理放到内存数组移除之后：_isMediaUsedByBreezeNotes 会检查剩余笔记，
+           这样同一条图片被其它笔记复用时不会被误删。 */
+        if (!options.skipResources) {
+            const seen = new Set();
+            const cleanupPath = (value) => {
+                const path = typeof value === 'string' ? value : (value && (value.path || value.url || value.src));
+                if (!path) return;
+                const key = this._normMediaPath(path);
+                if (!key || seen.has(key)) return;
+                seen.add(key);
+                try {
+                    if (this._isMediaUsedByMoments(path) || this._isMediaUsedByBreezeNotes(path)) return;
+                    if (this.deletePluginImage) {
+                        Promise.resolve(this.deletePluginImage(path)).catch(() => {});
+                    }
+                } catch (e) { /* noop */ }
+            };
+            targets.forEach((note) => {
+                (note.images || []).forEach(cleanupPath);
+                (note.files || []).forEach(cleanupPath);
+            });
+        }
+
+        let saving;
+        try {
+            saving = this.saveData ? this.saveData(RECORDS_STORAGE, storage) : Promise.resolve();
+        } catch (e) {
+            saving = Promise.reject(e);
+        }
+        return Promise.resolve(saving).then(() => targets.length).catch((e) => {
+            console.error('[轻饰笔记] 清风笔记删除后保存失败:', e);
+            return targets.length;
+        });
     }
 
     /* ===== 移动端：隐藏思源侧栏顶部 toolbar（清风与 LifeLog 视图时隐藏，切换离开即恢复） ===== */
@@ -14924,7 +15311,27 @@ module.exports = class NorthLunaPlugin extends Plugin {
             };
             hideToolbar();
             if (!this._toolbarObserver) {
-                this._toolbarObserver = new MutationObserver(hideToolbar);
+                /* 只在变更落在侧栏内、或新增/移除的正是侧栏 / toolbar 时才重扫：
+                   否则 LifeLog 时间轴分帧追加时，每帧的 DOM 变更都会触发一次
+                   querySelectorAll('#sidebar>.toolbar')（移动端尤其明显）。 */
+                this._toolbarObserver = new MutationObserver((records) => {
+                    let need = false;
+                    for (let i = 0; i < records.length && !need; i++) {
+                        const rec = records[i];
+                        const t = rec.target;
+                        if (t && typeof t.closest === 'function' && t.closest('#sidebar')) { need = true; break; }
+                        const lists = [rec.addedNodes, rec.removedNodes];
+                        for (let k = 0; k < lists.length && !need; k++) {
+                            const list = lists[k];
+                            for (let j = 0; j < list.length; j++) {
+                                const n = list[j];
+                                if (!n || n.nodeType !== 1) continue;
+                                if (n.id === 'sidebar' || (n.classList && n.classList.contains('toolbar'))) { need = true; break; }
+                            }
+                        }
+                    }
+                    if (need) hideToolbar();
+                });
                 this._toolbarObserver.observe(document.body, { childList: true, subtree: true });
             }
         } else {
@@ -19922,9 +20329,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this._lifelogCacheTime = 0;
         this._lifelogTypeColorCache = new Map();
         
-        this._renderLifeLogView = async (body) => {
-            /* 加载数据 */
-            await this._loadLifeLogData();
+        /* 用当前 this._lifelogRecords 同步绘制整个 LifeLog 视图（不含数据加载）。
+           拆出这一层是为了「先出内容、后台刷新」：有缓存时切进视图立刻可见，
+           不再空等一次全量 SQL。 */
+        this._paintLifeLogView = (body, opts) => {
+            if (!body || !document.contains(body)) return;
+            /* 缓存版先画一版时跳过搜索恢复：等数据刷新后的那一版再恢复，
+               避免同一次进入视图重复渲染时间轴。 */
+            const restoreSearch = !(opts && opts.skipSearchRestore);
             /* 应用自定义字体 */
             const typeFs = Number(this._getSetting('lifelogTypeFontSize')) || 14;
             const contentFs = Number(this._getSetting('lifelogContentFontSize')) || 14.5;
@@ -19941,34 +20353,42 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const sbW = Number(this._getSetting('lifelogSidebarWidth')) || 260;
             const sbEl = body.querySelector('.north-lifelog-sidebar');
             if (sbEl) sbEl.style.width = sbW + 'px';
-            /* 搜索过滤 */
-            this._bindLifeLogSearch(body);
-            /* 菜单切换 */
-            this._bindLifeLogMenu(body);
             /* 热力图渲染与交互 */
             this._renderLifeLogHeatmap(body);
             /* 顶部周历条 */
             this._renderLifeLogWeekStrip(body);
-            this._bindLifeLogWeekStrip(body);
             /* 统计 */
             this._updateLifeLogStats(body);
             /* 移动端统计子视图面板（PC 端面板隐藏，无影响） */
             this._renderLifeLogMobileStats(body);
             /* 全部类型标签云 */
             this._renderLifeLogTypesCloud(body);
-            this._bindLifeLogTypesCloud(body);
-            /* 时间轴 */
-            this._renderLifeLogTimeline(body);
-            /* 移动端：恢复顶栏搜索状态（联动已有过滤 + 高亮，避免切走再切回时丢失） */
-            if (this.lifelogMobileSearch) {
-                const _llInput = body.querySelector('#lifelogSearchInput');
+            /* 移动端：先恢复顶栏搜索关键词，再连同关键词一起画时间轴，
+               避免「先画全量、再补一次过滤」导致的闪动与重复渲染 */
+            let searchVal = '';
+            const _llInput = body.querySelector('#lifelogSearchInput');
+            if (restoreSearch && this.lifelogMobileSearch && _llInput) {
+                _llInput.value = this.lifelogMobileSearch;
                 const _llClear = body.querySelector('#lifelogSearchClear');
-                if (_llInput) {
-                    _llInput.value = this.lifelogMobileSearch;
-                    if (_llClear) _llClear.style.display = '';
-                    _llInput.dispatchEvent(new Event('input', { bubbles: true }));
-                }
+                if (_llClear) _llClear.style.display = '';
             }
+            /* 不恢复时也要沿用输入框里已有的关键词：数据刷新后的这一版
+               若按空关键词渲染，会把用户当前生效的过滤清掉 */
+            if (_llInput) searchVal = _llInput.value.trim();
+            /* 时间轴 */
+            this._renderLifeLogTimeline(body, searchVal);
+        };
+
+        /* 事件绑定只做一次（视图重建后元素是新的，各元素的标志位自然为 false） */
+        this._bindLifeLogViewOnce = (body) => {
+            /* 搜索过滤 */
+            this._bindLifeLogSearch(body);
+            /* 菜单切换 */
+            this._bindLifeLogMenu(body);
+            /* 周历条点击 */
+            this._bindLifeLogWeekStrip(body);
+            /* 类型标签云点击 */
+            this._bindLifeLogTypesCloud(body);
             /* 时间轴右键菜单 */
             this._bindLifeLogTimelineContextMenu(body);
             /* 点时间修改时间（补录：记录时刻 ≠ 事情发生时刻） */
@@ -19988,6 +20408,24 @@ module.exports = class NorthLunaPlugin extends Plugin {
             /* 自动轮询检测新记录 */
             this._startLifeLogAutoPoll(body);
         };
+
+        this._renderLifeLogView = async (body) => {
+            if (!body) return;
+            /* 有缓存：先同步画一版（切进视图立即有内容），再后台重查刷新。
+               无缓存（首次进视图 / 插件刚加载）：先显示加载态，等数据回来再画。 */
+            const hasCache = !!(this._lifelogCache && this._lifelogCache.length);
+            if (hasCache) {
+                this._lifelogRecords = this._lifelogCache;
+            } else {
+                const tl = body.querySelector('#lifelog-timeline');
+                if (tl) tl.innerHTML = '<div class="north-lifelog-timeline-empty">加载中…</div>';
+            }
+            this._bindLifeLogViewOnce(body);
+            if (hasCache) this._paintLifeLogView(body);
+            await this._loadLifeLogData();
+            if (!document.contains(body)) return;
+            this._paintLifeLogView(body, { skipSearchRestore: hasCache });
+        };
         
         /* ===== LifeLog 自动轮询：检测新记录并自动刷新 ===== */
         this._startLifeLogAutoPoll = (body) => {
@@ -20005,14 +20443,16 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (document.hidden || this._lifelogPollBusy) return;
                 this._lifelogPollBusy = true;
                 try {
-                    /* 记录旧数据快照：条数 + 最后 5 条内容的指纹 */
-                    const prev = this._lifelogRecords || [];
-                    const prevCount = prev.length;
-                    const prevFp = prev.slice(-5).map(r => r.id + '|' + r.content).join('||');
+                    /* 轻量探测：只查最近 5 条（约 0.1ms）比对指纹，
+                       无变化直接返回，避免每轮都做全量查询（移动端周期性卡顿源）。 */
+                    const probeRows = await lifelogQueryRecentRows(5);
+                    if (probeRows === null) return;
+                    const probeFp = lifelogRecordsFingerprint(probeRows.map(r => this._parseLifeLogRow(r)), 5);
+                    const prevFp = lifelogRecordsFingerprint(this._lifelogRecords, 5);
+                    if (probeFp === prevFp) return;
                     await this._loadLifeLogData(true);
                     const now = this._lifelogRecords || [];
-                    const nowFp = now.slice(-5).map(r => r.id + '|' + r.content).join('||');
-                    if ((now.length !== prevCount || nowFp !== prevFp) && document.contains(body)) {
+                    if (lifelogRecordsFingerprint(now, 5) !== prevFp && document.contains(body)) {
                         this._renderLifeLogTimeline(body, (body.querySelector('#lifelogSearchInput') || {}).value || '');
                         this._renderLifeLogTypesCloud(body);
                         this._renderLifeLogHeatmap(body);
@@ -20026,6 +20466,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         };
         
         this._bindLifeLogSearch = (body) => {
+            /* 同一视图可能被重绘多次（改设置后局部刷新），绑定只做一次，
+               否则搜索 / 清空 / 日历按钮会叠加出多个监听 */
+            if (!body || body._lifelogSearchBound) return;
+            body._lifelogSearchBound = true;
             const input = body.querySelector('#lifelogSearchInput');
             const clear = body.querySelector('#lifelogSearchClear');
             if (!input || !clear) return;
@@ -20033,12 +20477,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
             let isComposing = false;
             const applySearch = () => {
                 clear.style.display = input.value.trim() ? '' : 'none';
+                if (!document.contains(body)) return;
                 this._renderLifeLogTimeline(body, input.value.trim());
             };
+            /* 每敲一个字都重渲染整条时间轴会明显卡顿（记录多时一帧几百毫秒），
+               这里合并成一次延迟渲染：输入框本身仍是即时的，过滤稍后跟上。 */
+            let searchTimer = null;
+            const scheduleSearch = () => {
+                if (searchTimer) clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => { searchTimer = null; applySearch(); }, 140);
+            };
             input.addEventListener('compositionstart', () => { isComposing = true; });
-            input.addEventListener('compositionend', () => { isComposing = false; applySearch(); });
-            input.addEventListener('input', () => { if (!isComposing) applySearch(); });
+            input.addEventListener('compositionend', () => { isComposing = false; scheduleSearch(); });
+            input.addEventListener('input', () => { if (!isComposing) scheduleSearch(); });
             clear.addEventListener('click', () => {
+                if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
                 input.value = '';
                 clear.style.display = 'none';
                 this._renderLifeLogTimeline(body, '');
@@ -20054,9 +20507,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const calOverlay = body.querySelector('#lifelogCalendarOverlay');
             if (calOverlay) calOverlay.addEventListener('click', () => this._closeLifeLogCalendar(body));
             /* ESC 关闭 */
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') this._closeLifeLogCalendar(body);
-            });
+            this._bindLifeLogEscClose(body);
         };
         
         /* ===== LifeLog 日历：以热力图方式展示整年月历 ===== */
@@ -20208,6 +20659,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this._closeLifeLogCalendar = (body) => {
             const modal = body.querySelector('#lifelogCalendarModal');
             if (modal) modal.classList.remove('active');
+        };
+
+        /* ESC 关闭日历：全局只挂一个委托监听（原来每次进入视图都往 document
+           上堆一个匿名 keydown，切进切出次数多了会累积成一批永不回收的监听）。 */
+        this._bindLifeLogEscClose = (body) => {
+            if (!body) return;
+            /* 只保留最新视图的引用：监听永远只挂一个，切视图时改指向即可 */
+            this._lifelogEscBody = body;
+            if (this._lifelogEscBound) return;
+            this._lifelogEscBound = true;
+            document.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape') return;
+                const cur = this._lifelogEscBody;
+                if (cur && document.contains(cur)) this._closeLifeLogCalendar(cur);
+            });
         };
         
         this._renderLifeLogCalendarBody = (body, year, month = null) => {
@@ -20361,6 +20827,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         
         /* 子视图切换（全部笔记 / 每日回顾 / 本周记录） */
         this._bindLifeLogMenu = (body) => {
+            if (!body || body._lifelogMenuBound) return;
+            body._lifelogMenuBound = true;
             body.querySelectorAll('.north-lifelog-menu-item[data-lifelog-subview]').forEach(item => {
                 item.addEventListener('click', () => {
                     body.querySelectorAll('.north-lifelog-menu-item').forEach(i => i.classList.remove('active'));
@@ -20399,54 +20867,37 @@ module.exports = class NorthLunaPlugin extends Plugin {
         
         this._queryLifeLogRecords = async () => {
             const records = [];
-            const pageSize = 2000;
             const maxScan = 1000000;
-            let scanned = 0;
-            let lastDate = '';
-            let lastTime = '';
-            let lastId = '';
-            const seenBlockIds = new Set();
             try {
-                while (scanned < maxScan) {
-                    const limit = Math.min(pageSize, maxScan - scanned);
-                    let whereCursor = '';
-                    if (lastId) {
-                        const escDate = lastDate.replace(/'/g, "''");
-                        const escTime = lastTime.replace(/'/g, "''");
-                        const escId = lastId.replace(/'/g, "''");
-                        whereCursor = `AND (a1.value < '${escDate}'
-                                       OR (a1.value = '${escDate}' AND a2.value < '${escTime}')
-                                       OR (a1.value = '${escDate}' AND a2.value = '${escTime}' AND b.id > '${escId}'))`;
-                    }
-                    const sql = `SELECT b.id, b.content,
-                                       a1.value AS lifelog_date,
-                                       a2.value AS lifelog_time,
-                                       a3.value AS lifelog_type
-                                FROM blocks b
-                                INNER JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
-                                INNER JOIN attributes a2 ON b.id = a2.block_id AND a2.name = 'custom-lifelog-time'
-                                INNER JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
-                                WHERE b.type = 'p'
-                                ${whereCursor}
-                                ORDER BY a1.value DESC, a2.value DESC, b.id
-                                LIMIT ${limit}`;
-                    const resp = await fetch('/api/query/sql', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ stmt: sql })
-                    });
-                    const result = await resp.json();
-                    if (result.code !== 0 || !Array.isArray(result.data) || !result.data.length) break;
-                    const rows = result.data;
-                    lastDate = rows[rows.length - 1].lifelog_date || '';
-                    lastTime = rows[rows.length - 1].lifelog_time || '';
-                    lastId = rows[rows.length - 1].id;
-                    for (const row of rows) {
+                /* 一次性取全量（上限 100 万条）。
+                   原实现按 2000 条 keyset 翻页：每翻一页都要重新扫 a1 索引并
+                   建临时 B 树做 ORDER BY，记录越多页数越多、耗时线性增长
+                   （3 万条约 0.8s，且每页一个 HTTP 往返）。单次查询由 SQLite
+                   一次排序即可，同样的数据约 0.14s。 */
+                const sql = `SELECT b.id, b.content,
+                                   a1.value AS lifelog_date,
+                                   a2.value AS lifelog_time,
+                                   a3.value AS lifelog_type
+                            FROM blocks b
+                            INNER JOIN attributes a1 ON b.id = a1.block_id AND a1.name = 'custom-lifelog-date'
+                            INNER JOIN attributes a2 ON b.id = a2.block_id AND a2.name = 'custom-lifelog-time'
+                            INNER JOIN attributes a3 ON b.id = a3.block_id AND a3.name = 'custom-lifelog-type'
+                            WHERE b.type = 'p'
+                            ORDER BY a1.value DESC, a2.value DESC, b.id
+                            LIMIT ${maxScan}`;
+                const resp = await fetch('/api/query/sql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stmt: sql })
+                });
+                const result = await resp.json();
+                if (result.code === 0 && Array.isArray(result.data)) {
+                    const seenBlockIds = new Set();
+                    for (const row of result.data) {
                         if (seenBlockIds.has(row.id)) continue;
                         seenBlockIds.add(row.id);
                         records.push(this._parseLifeLogRow(row));
                     }
-                    scanned += rows.length;
                 }
             } catch (e) {
                 /* 查询失败，返回空 */
@@ -21056,6 +21507,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 weekStart.setHours(0, 0, 0, 0);
                 data = data.filter(d => new Date(d.date + 'T00:00:00').getTime() >= weekStart.getTime());
             }
+            /* 相邻关系在「日期 / 类型 / 搜索」筛选之前建立：
+               跨天衔接（23:50 → 次日 00:10）是记录本身的性质，
+               不因为筛选掉前一天就不算，否则筛选后时长又变回 0。 */
+            const chain = data.slice().sort((a, b) => (a.created || 0) - (b.created || 0));
+            const prevMap = new Map();
+            const nextMap = new Map();
+            for (let i = 0; i < chain.length; i++) {
+                prevMap.set(chain[i].id, i > 0 ? chain[i - 1] : null);
+                nextMap.set(chain[i].id, i < chain.length - 1 ? chain[i + 1] : null);
+            }
+            /* 时间计算模式：'end'=结束模式（默认）用 prev；'start'=开始模式用 next */
+            const timeMode = this._getSetting('lifelogTimeMode') === 'start' ? 'start' : 'end';
             /* 日期筛选（点击热力图某天） */
             if (this._lifelogDateFilter) {
                 data = data.filter(d => d.date === this._lifelogDateFilter);
@@ -21074,19 +21537,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (data.length > 3) data = data.slice(0, 3);
             }
             if (data.length === 0) {
+                /* 打断可能还在分帧追加的上一轮渲染，否则残留内容会盖住空态 */
+                timeline._lifelogRenderToken = (timeline._lifelogRenderToken || 0) + 1;
                 timeline.innerHTML = '<div class="north-lifelog-timeline-empty">暂无匹配记录</div>';
                 return;
             }
-            /* 按 created 全局正序（早→晚），构建 prev / next 映射（跨天也保持衔接） */
-            data.sort((a, b) => (a.created || 0) - (b.created || 0));
-            const prevMap = new Map();
-            const nextMap = new Map();
-            for (let i = 0; i < data.length; i++) {
-                prevMap.set(data[i].id, i > 0 ? data[i - 1] : null);
-                nextMap.set(data[i].id, i < data.length - 1 ? data[i + 1] : null);
-            }
-            /* 时间计算模式：'end'=结束模式（默认）用 prev；'start'=开始模式用 next */
-            const timeMode = this._getSetting('lifelogTimeMode') === 'start' ? 'start' : 'end';
             /* 按日期分组，每组内按时间倒序 */
             const groups = {};
             data.forEach(d => {
@@ -21099,61 +21554,65 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
             /* ===== 轻语同款时间轴 HTML ===== */
             const esc = (s) => (this._esc ? this._esc(s) : String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])));
-            let html = '';
-            sortedDates.forEach(date => {
-                const items = groups[date];
-                const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
-                const dt = new Date((date || '') + 'T00:00:00');
-                const dayLabel = isNaN(dt.getTime()) ? '' : ' ' + weekdays[dt.getDay()];
-                const displayDate = items[0] ? `${date}${dayLabel}` : date;
-                /* 日期分组标题 */
-                html += `<div class="north-lifelog-date-group">${displayDate}</div>`;
-                items.forEach((item, idx) => {
-                    /* 时间计算模式：end=参照上一条结束（range=prev - item），start=参照下一条开始（range=item - next） */
-                    const refItem = timeMode === 'start' ? nextMap.get(item.id) : prevMap.get(item.id);
-                    const rangeStr = refItem
-                        ? (timeMode === 'start' ? `${item.time} - ${refItem.time}` : `${refItem.time} - ${item.time}`)
-                        : item.time;
-                    /* 持续时间（开启后 + 区间成立时显示） */
-                    let durationStr = '';
-                    if (refItem && this._getSetting('lifelogShowDuration')) {
-                        const parseTime = (t) => {
-                            const m = String(t || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-                            if (!m) return null;
-                            return +m[1] * 3600 + +m[2] * 60 + (+m[3] || 0);
-                        };
-                        const a = parseTime(timeMode === 'start' ? item.time : refItem.time);
-                        const b = parseTime(timeMode === 'start' ? refItem.time : item.time);
-                        if (a !== null && b !== null) {
-                            let sec = b - a;
-                            if (sec < 0) sec = 0;
-                            const h = Math.floor(sec / 3600);
-                            const m = Math.floor((sec % 3600) / 60);
-                            durationStr = h > 0 ? `${h}时${m}分` : `${m}分`;
+            /* 用生成器惰性产出 HTML 段（每 20 条一段）：首段同步写入（立刻可见），
+               其余分帧追加。连「拼字符串」也分摊到各帧 —— 几万条记录光拼接就要
+               上百毫秒，同步拼完首屏照样卡；一次性 innerHTML 更是直接卡住主线程。 */
+            const owner = this;
+            const timelineParts = function* () {
+                let html = '';
+                let partItems = 0;
+                for (const date of sortedDates) {
+                    const items = groups[date];
+                    const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
+                    const dt = new Date((date || '') + 'T00:00:00');
+                    const dayLabel = isNaN(dt.getTime()) ? '' : ' ' + weekdays[dt.getDay()];
+                    const displayDate = items[0] ? `${date}${dayLabel}` : date;
+                    /* 日期分组标题 */
+                    html += `<div class="north-lifelog-date-group">${displayDate}</div>`;
+                    for (const item of items) {
+                        /* 时间计算模式：end=参照上一条结束（range=prev - item），start=参照下一条开始（range=item - next） */
+                        const refItem = timeMode === 'start' ? nextMap.get(item.id) : prevMap.get(item.id);
+                        const rangeStr = refItem
+                            ? (timeMode === 'start' ? `${item.time} - ${refItem.time}` : `${refItem.time} - ${item.time}`)
+                            : item.time;
+                        /* 持续时间（开启后 + 区间成立时显示）
+                           按「日期 + 时间」算，跨天（如 23:50 → 次日 00:10）也能得到正确时长 */
+                        let durationStr = '';
+                        if (refItem && owner._getSetting('lifelogShowDuration')) {
+                            const sec = lifelogDurationSeconds(
+                                timeMode === 'start' ? item : refItem,
+                                timeMode === 'start' ? refItem : item
+                            );
+                            if (sec !== null) durationStr = lifelogFormatDuration(sec);
                         }
+                        const rangeHtml = `${rangeStr}${durationStr ? `<span class="north-lifelog-timeline-duration">持续：${durationStr}</span>` : ''}`;
+                        const typeColor = item.type ? owner._getLifeLogTypeColorLight(item.type) : '';
+                        const typeStyle = typeColor ? ` style="color:${typeColor}"` : '';
+                        const typeDiv = item.type
+                            ? `<div class="north-lifelog-timeline-type"${typeStyle}>${esc(item.type)}</div>`
+                            : '';
+                        html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
+                            <div class="north-lifelog-timeline-left">
+                                <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
+                            </div>
+                            <div class="north-lifelog-timeline-axis">
+                                <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
+                            </div>
+                            <div class="north-lifelog-timeline-card">
+                                <div class="north-lifelog-timeline-range">${rangeHtml}</div>
+                                ${typeDiv}
+                                <div class="north-lifelog-timeline-content">${filter ? owner._highlightLifeLogText(esc(item.content), filter) : esc(item.content)}</div>
+                            </div>
+                        </div>`;
+                        /* 单个日期可能很长（当天几百条），每 20 条切一刀，
+                           保证首帧始终是「一屏左右」，不会被某一天拖慢首屏 */
+                        partItems++;
+                        if (partItems >= 20) { yield html; html = ''; partItems = 0; }
                     }
-                    const rangeHtml = `${rangeStr}${durationStr ? `<span class="north-lifelog-timeline-duration">持续：${durationStr}</span>` : ''}`;
-                    const typeColor = item.type ? this._getLifeLogTypeColorLight(item.type) : '';
-                    const typeStyle = typeColor ? ` style="color:${typeColor}"` : '';
-                    const typeDiv = item.type
-                        ? `<div class="north-lifelog-timeline-type"${typeStyle}>${esc(item.type)}</div>`
-                        : '';
-                    html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
-                        <div class="north-lifelog-timeline-left">
-                            <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
-                        </div>
-                        <div class="north-lifelog-timeline-axis">
-                            <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
-                        </div>
-                        <div class="north-lifelog-timeline-card">
-                            <div class="north-lifelog-timeline-range">${rangeHtml}</div>
-                            ${typeDiv}
-                            <div class="north-lifelog-timeline-content">${filter ? this._highlightLifeLogText(esc(item.content), filter) : esc(item.content)}</div>
-                        </div>
-                    </div>`;
-                });
-            });
-            timeline.innerHTML = html;
+                    if (html) { yield html; html = ''; partItems = 0; }
+                }
+            };
+            lifelogRenderProgressive(timeline, timelineParts());
             this._resizeTimelineAxis(timeline);
         };
         
@@ -21162,8 +21621,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const timeline = body.querySelector('#lifelog-timeline');
             if (!timeline || timeline._lifelogCtxBound) return;
             timeline._lifelogCtxBound = true;
-            let menu = null;
-            const hideMenu = () => { if (menu) { menu.remove(); menu = null; } };
+            /* 菜单实例挂在 plugin 上：全局只保留一个，避免多次渲染各留一份 */
+            const hideMenu = () => {
+                const m = this._lifelogCtxMenu;
+                if (m) { try { m.remove(); } catch (e) {} this._lifelogCtxMenu = null; }
+            };
             timeline.addEventListener('contextmenu', (e) => {
                 const item = e.target.closest('.north-lifelog-timeline-item');
                 if (!item) return;
@@ -21172,7 +21634,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 e.preventDefault();
                 e.stopPropagation();
                 hideMenu();
-                menu = document.createElement('div');
+                const menu = document.createElement('div');
+                this._lifelogCtxMenu = menu;
                 menu.className = 'north-lifelog-ctx-menu';
                 menu.innerHTML = `
                     <button class="north-lifelog-ctx-item" data-act="edit">
@@ -21213,14 +21676,23 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 };
                 menu.querySelector('[data-act="open"]').onclick = (ev) => { ev.stopPropagation(); hideMenu(); this._openLifeLogBlock(blockId); };
             });
-            /* 关闭逻辑 */
-            setTimeout(() => {
-                document.addEventListener('click', hideMenu, true);
-                document.addEventListener('contextmenu', (e) => { if (!menu || !menu.contains(e.target)) hideMenu(); }, true);
-                document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideMenu(); });
-                window.addEventListener('resize', hideMenu);
-                window.addEventListener('scroll', hideMenu, true);
-            }, 0);
+            /* 关闭逻辑：全局只装一次（原来每次视图重建都往 document/window 堆 5 个
+               监听且永不回收，切进切出次数多了会明显拖慢交互）。 */
+            if (!this._lifelogCtxOutsideBound) {
+                this._lifelogCtxOutsideBound = true;
+                const closeIfOutside = (e) => {
+                    const m = this._lifelogCtxMenu;
+                    if (!m) return;
+                    if (e && e.target && m.contains(e.target)) return;
+                    try { m.remove(); } catch (err) {}
+                    this._lifelogCtxMenu = null;
+                };
+                document.addEventListener('click', closeIfOutside, true);
+                document.addEventListener('contextmenu', closeIfOutside, true);
+                document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeIfOutside(null); });
+                window.addEventListener('resize', () => closeIfOutside(null));
+                window.addEventListener('scroll', () => closeIfOutside(null), true);
+            }
         };
         
         /* 编辑 LifeLog 块：内联编辑弹窗（同轻语 editLifeLog） */
@@ -21464,22 +21936,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
             });
         };
         
-        /* 时间轴轴线高度根据卡片高度动态计算 */
-        this._resizeTimelineAxis = (timeline) => {
-            requestAnimationFrame(() => {
-                const items = timeline.querySelectorAll('.north-lifelog-timeline-item');
-                items.forEach(item => {
-                    const card = item.querySelector('.north-lifelog-timeline-card');
-                    const axis = item.querySelector('.north-lifelog-timeline-axis');
-                    const marker = axis && axis.querySelector('.north-lifelog-timeline-marker');
-                    if (!card || !axis || !marker) return;
-                    const cardRect = card.getBoundingClientRect();
-                    const markerRect = marker.getBoundingClientRect();
-                    const h = cardRect.bottom - markerRect.top + 4;
-                    axis.style.setProperty('--axis-height', Math.round(h) + 'px');
-                });
-            });
-        };
+        /* 时间轴竖线高度已改由 CSS 自动撑满（.north-lifelog-timeline-axis 的
+           top/bottom + align-self: stretch），不再需要逐条测量。
+           保留同名空函数：外部若有旧调用不会报错。 */
+        this._resizeTimelineAxis = () => {};
         this._getLifeLogTypeColor = (type) => {
             if (!type) return '';
             const mode = document.documentElement.getAttribute('data-theme-mode') || 'light';
@@ -21521,27 +21981,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (this._lifelogTypeColorCache.has(cacheKey)) {
                 return this._lifelogTypeColorCache.get(cacheKey);
             }
-            const temp = document.createElement('div');
-            temp.setAttribute('data-type', 'NodeParagraph');
-            temp.setAttribute('custom-lifelog-type', type);
-            temp.style.display = 'none';
-            document.body.appendChild(temp);
-            const styles = getComputedStyle(temp);
-            let color = styles.getPropertyValue('--en-lifelog-border-color').trim();
-            document.body.removeChild(temp);
-            if (!color) {
-                let hash = 0;
-                for (let i = 0; i < type.length; i++) {
-                    hash = type.charCodeAt(i) + ((hash << 5) - hash);
-                }
-                const hue = Math.abs(hash % 360);
-                /* 暗色模式提亮到 50%，明亮模式保持 42% 不变 */
-                color = `hsl(${hue}, ${mode === 'dark' ? 100 : 75}%, ${mode === 'dark' ? 60 : 42}%)`;
-            } else {
-                /* 从 LifeLog 插件 CSS 读取到的颜色如果太亮，自动调深。
-                   明亮模式保持 39% 不变；暗色模式提亮到 50%。 */
-                color = this._clampLifelogLightness(color, mode === 'dark' ? 60 : 39, null);
-            }
+            /* 走模块级缓存：Dock / 主视图 / 移动端共用，避免重复 getComputedStyle */
+            const color = lifelogResolveTypeColorLight(type);
             this._lifelogTypeColorCache.set(cacheKey, color);
             return color;
         };
@@ -22104,8 +22545,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
     /* 渲染 Dock 时间轴列表（1:1 复刻主视图时间轴样式） */
     _renderLifeLogDockList(listEl, records) {
-        /* 日期筛选（周历条点击） */
-        let data = records || [];
+        /* 日期筛选（周历条点击）：先取全量记录算相邻关系，
+           否则当天首条（跨天衔接的那条）会因为前一天被筛掉而丢掉时长 */
+        const allRecords = records || [];
+        let data = allRecords;
         if (this._lifelogDockDateFilter) {
             data = data.filter(r => r.date === this._lifelogDockDateFilter);
         }
@@ -22114,61 +22557,23 @@ module.exports = class NorthLunaPlugin extends Plugin {
             return;
         }
         const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        /* 类型颜色：1:1 复刻 _getLifeLogTypeColorLight；暗色模式下饱和度 > maxS 降为 maxS */
-        const _clampLightness = (color, maxL, maxS) => {
-            let h, s, l;
-            const m = color.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i);
-            if (m) { h = +m[1]; s = +m[2]; l = +m[3]; }
-            else {
-                let r, g, b;
-                const hex = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
-                if (hex) { r = parseInt(hex[1],16)/255; g = parseInt(hex[2],16)/255; b = parseInt(hex[3],16)/255; }
-                else {
-                    const rgb = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-                    if (!rgb) return color;
-                    r = +rgb[1]/255; g = +rgb[2]/255; b = +rgb[3]/255;
-                }
-                const max = Math.max(r,g,b), min = Math.min(r,g,b);
-                l = (max + min) / 2 * 100;
-                const d = max - min;
-                if (d === 0) { h = s = 0; }
-                else {
-                    s = (l > 50 ? d / (2 - max - min) : d / (max + min)) * 100;
-                    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6 * 360;
-                    else if (max === g) h = ((b - r) / d + 2) / 6 * 360;
-                    else h = ((r - g) / d + 4) / 6 * 360;
-                }
-            }
-            if (l > maxL) l = maxL;
-            if (maxS != null && s > maxS) s = maxS;
-            return `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
-        };
-        const typeColorCache = new Map();
-        const getTypeColor = (type) => {
-            if (!type) return '';
-            const mode = document.documentElement.getAttribute('data-theme-mode') || 'light';
-            const ck = type + '|' + mode;
-            if (typeColorCache.has(ck)) return typeColorCache.get(ck);
-            /* 1:1 复刻 _getLifeLogTypeColorLight：CSS 变量 → clampLightness → hash。
-               暗色模式提亮到 50%，明亮模式保持 39%/42% 不变。 */
-            const temp = document.createElement('div');
-            temp.setAttribute('data-type', 'NodeParagraph');
-            temp.setAttribute('custom-lifelog-type', type);
-            temp.style.display = 'none';
-            document.body.appendChild(temp);
-            let color = getComputedStyle(temp).getPropertyValue('--en-lifelog-border-color').trim();
-            document.body.removeChild(temp);
-            if (color) {
-                color = _clampLightness(color, mode === 'dark' ? 60 : 39, null);
-            } else {
-                let hash = 0;
-                for (let i = 0; i < type.length; i++) hash = type.charCodeAt(i) + ((hash << 5) - hash);
-                const hue = Math.abs(hash % 360);
-                color = `hsl(${hue}, ${mode === 'dark' ? 100 : 75}%, ${mode === 'dark' ? 60 : 42}%)`;
-            }
-            typeColorCache.set(ck, color);
-            return color;
-        };
+        /* 类型颜色：复用模块级缓存（与主视图 / 标签云 / 类型选择弹窗同一口径），
+           避免每次重绘列表都对每个类型跑一遍 getComputedStyle。 */
+        const getTypeColor = (type) => lifelogResolveTypeColorLight(type);
+        /* 时间计算模式：与主视图一致，'end'=结束模式（默认），'start'=开始模式 */
+        const timeMode = (this._getPluginSetting && this._getPluginSetting('lifelogTimeMode') === 'start') ? 'start' : 'end';
+        /* 用**全量**记录按「日期 + 时间」正序建 prev / next 映射：
+           这样按天筛选时，凌晨那条仍能接到前一天 23:50 起的时长 */
+        const sorted = allRecords.slice().sort((a, b) =>
+            String(a.date || '').localeCompare(String(b.date || '')) ||
+            String(a.time || '').localeCompare(String(b.time || ''))
+        );
+        const prevMap = new Map();
+        const nextMap = new Map();
+        for (let i = 0; i < sorted.length; i++) {
+            prevMap.set(sorted[i].id, i > 0 ? sorted[i - 1] : null);
+            nextMap.set(sorted[i].id, i < sorted.length - 1 ? sorted[i + 1] : null);
+        }
         /* 按日期分组，同组按时间倒序 */
         const groups = {};
         data.forEach(r => {
@@ -22186,21 +22591,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const dayLabel = isNaN(dt.getTime()) ? '' : ' ' + weekdays[dt.getDay()];
             html += `<div class="north-lifelog-date-group">${date}${dayLabel}</div>`;
             items.forEach((item, idx) => {
-                const prevItem = idx > 0 ? items[idx - 1] : null;
-                const rangeStr = prevItem ? `${prevItem.time} - ${item.time}` : item.time;
-                /* 持续时间 */
+                /* 参照项与主视图同口径：end=上一条结束，start=下一条开始（都跨天衔接） */
+                const refItem = timeMode === 'start' ? nextMap.get(item.id) : prevMap.get(item.id);
+                const rangeStr = refItem
+                    ? (timeMode === 'start' ? `${item.time} - ${refItem.time}` : `${refItem.time} - ${item.time}`)
+                    : item.time;
+                /* 持续时间（按「日期 + 时间」算，跨天也能得到正确时长） */
                 let durationStr = '';
-                if (prevItem && this._getPluginSetting && this._getPluginSetting('lifelogShowDuration')) {
-                    const parseTime = (t) => {
-                        const m = String(t || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-                        return m ? +m[1] * 3600 + +m[2] * 60 + (+m[3] || 0) : null;
-                    };
-                    const a = parseTime(prevItem.time), b = parseTime(item.time);
-                    if (a !== null && b !== null) {
-                        let sec = b - a; if (sec < 0) sec = 0;
-                        const h = Math.floor(sec / 3600), mm = Math.floor((sec % 3600) / 60);
-                        durationStr = h > 0 ? `${h}时${mm}分` : `${mm}分`;
-                    }
+                if (refItem && this._getPluginSetting && this._getPluginSetting('lifelogShowDuration')) {
+                    const sec = lifelogDurationSeconds(
+                        timeMode === 'start' ? item : refItem,
+                        timeMode === 'start' ? refItem : item
+                    );
+                    if (sec !== null) durationStr = lifelogFormatDuration(sec);
                 }
                 const rangeHtml = `${rangeStr}${durationStr ? `<span class="north-lifelog-timeline-duration">持续：${durationStr}</span>` : ''}`;
                 const typeColor = getTypeColor(item.type);
@@ -22260,54 +22663,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const openPick = () => {
             const types = getTypes();
             if (types.length === 0) { _selType = '记录'; openInput(); return; }
-            const _pickMode = document.documentElement.getAttribute('data-theme-mode') || 'light';
             pickTypes.innerHTML = types.map(t => {
                 const esc = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                /* 1:1 复刻 _getLifeLogTypeColorLight：CSS 变量 → clampLightness → hash。
-                   暗色模式提亮到 50%，明亮模式保持 39%/42% 不变。 */
-                const mode = _pickMode;
-                const temp = document.createElement('div');
-                temp.setAttribute('data-type', 'NodeParagraph');
-                temp.setAttribute('custom-lifelog-type', t);
-                temp.style.display = 'none';
-                document.body.appendChild(temp);
-                let color = getComputedStyle(temp).getPropertyValue('--en-lifelog-border-color').trim();
-                document.body.removeChild(temp);
-                if (color) {
-                    /* 转为 HSL 并 clamp 亮度 ≤ 39 */
-                    let h, s, l;
-                    const m = color.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/i);
-                    if (m) { h = +m[1]; s = +m[2]; l = +m[3]; }
-                    else {
-                        let r, g, b;
-                        const hex = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
-                        if (hex) { r = parseInt(hex[1],16)/255; g = parseInt(hex[2],16)/255; b = parseInt(hex[3],16)/255; }
-                        else {
-                            const rgb = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-                            if (!rgb) { r = g = b = 0; l = 100; }
-                            else { r = +rgb[1]/255; g = +rgb[2]/255; b = +rgb[3]/255; }
-                        }
-                        if (r !== undefined) {
-                            const max = Math.max(r,g,b), min = Math.min(r,g,b);
-                            l = (max + min) / 2 * 100;
-                            const d = max - min;
-                            if (d === 0) { h = s = 0; }
-                            else {
-                                s = (l > 50 ? d / (2 - max - min) : d / (max + min)) * 100;
-                                if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6 * 360;
-                                else if (max === g) h = ((b - r) / d + 2) / 6 * 360;
-                                else h = ((r - g) / d + 4) / 6 * 360;
-                            }
-                        }
-                    }
-                    if (l > (mode === 'dark' ? 60 : 39)) l = (mode === 'dark' ? 60 : 39);
-                    color = `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
-                } else {
-                    let hash = 0;
-                    for (let i = 0; i < t.length; i++) hash = t.charCodeAt(i) + ((hash << 5) - hash);
-                    const hue = Math.abs(hash % 360);
-                    color = `hsl(${hue}, ${mode === 'dark' ? 100 : 75}%, ${mode === 'dark' ? 60 : 42}%)`;
-                }
+                /* 复用模块级缓存（与时间轴/标签云同一口径）：
+                   原实现每次打开弹窗都要对每个类型做 createElement + getComputedStyle，
+                   强制样式重算是移动端点「+」卡 1~2 秒的主因。 */
+                const color = lifelogResolveTypeColorLight(t);
                 return `<button class="north-lifelog-pick-type-chip" style="color:${color}">${esc}</button>`;
             }).join('');
             pickTypes.querySelectorAll('.north-lifelog-pick-type-chip').forEach(btn => {
