@@ -13915,6 +13915,99 @@ a.north-breeze-link[data-lumina-title-state="pending"] {
     opacity: 0.5;
 }
 
+/* ---------- 打卡点拖拽排序 ---------- */
+/* 手柄只在悬停时露出来，平时不打扰阅读；触屏没有 hover，靠长按进入拖拽 */
+.north-travel-stop-grip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    margin-left: auto;
+    width: 16px;
+    height: 20px;
+    border-radius: 4px;
+    color: var(--b3-theme-on-surface-light);
+    opacity: 0;
+    cursor: grab;
+    transition: opacity 0.12s ease;
+}
+.north-travel-stop:hover .north-travel-stop-grip {
+    opacity: 0.55;
+}
+.north-travel-stop-grip:hover {
+    opacity: 0.9;
+}
+
+/* 打卡点本体禁止选中 / 长按菜单，否则触屏拖拽会被文案选择抢走 */
+.north-travel-stop {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* 拖拽中：被按住的那条淡出成"影子"，指示线才是真正的落点 */
+.north-travel-stop.is-dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+/* 落位确认：重绘后给刚挪过来的那条闪一下底色，眼睛能跟得上 */
+.north-travel-stop.is-just-moved {
+    border-radius: 10px;
+    animation: north-travel-stop-land 0.6s ease;
+}
+@keyframes north-travel-stop-land {
+    0% {
+        background: color-mix(in srgb, var(--travel-day-color) 22%, transparent);
+    }
+    100% {
+        background: transparent;
+    }
+}
+.north-travel-day.is-drop-target .north-travel-day-head {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--travel-day-color) 48%, transparent);
+}
+.north-travel.is-stop-dragging,
+.north-travel.is-stop-dragging .north-travel-stop,
+.north-travel.is-stop-dragging .north-travel-stop-name {
+    cursor: grabbing;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.north-travel-drop-indicator {
+    position: absolute;
+    left: 2px;
+    right: 0;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--travel-day-color, #7c6bd6);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--travel-day-color, #7c6bd6) 45%, transparent);
+    transform: translateY(-1px);
+    pointer-events: none;
+    z-index: 3;
+}
+.north-travel-drop-indicator::before {
+    content: "";
+    position: absolute;
+    left: -3px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin-top: -3px;
+    border-radius: 50%;
+    background: var(--travel-day-color, #7c6bd6);
+}
+.north-travel-drag-hint {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-lighter, var(--b3-theme-on-surface-light));
+    opacity: 0.8;
+    white-space: nowrap;
+}
+@media (max-width: 720px) {
+    .north-travel-drag-hint {
+        display: none;
+    }
+}
+
 /* ---------- 空状态 ---------- */
 .north-travel-empty {
     display: flex;

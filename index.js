@@ -16628,12 +16628,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const src = (typeof _resolveMediaUrl === 'function') ? _resolveMediaUrl(it.image) : it.image;
                     mediaHtml = '<div class="north-travel-stop-media"><img src="' + esc(src) + '" alt="" loading="lazy"></div>';
                 }
-                return '<div class="north-travel-stop" data-stop-id="' + esc(it.id) + '" data-day-id="' + esc(day.id) + '" title="点击编辑">' +
+                return '<div class="north-travel-stop" data-stop-id="' + esc(it.id) + '" data-day-id="' + esc(day.id) + '" title="点击编辑，拖拽可调整顺序">' +
                     mediaHtml +
                     '<div class="north-travel-stop-info">' +
                     '<div class="north-travel-stop-name">' + esc(it.name || '打卡点') + '</div>' +
                     (it.duration ? '<div class="north-travel-stop-duration">' + esc(it.duration) + '</div>' : '') +
                     '</div>' +
+                    '<span class="north-travel-stop-grip" aria-hidden="true">'
+                    + '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>'
+                    + '</span>' +
                     '</div>';
             }).join('');
             return '<div class="north-travel-day" data-day-id="' + esc(day.id) + '" style="--travel-day-color:' + esc(color) + '">' +
@@ -16660,6 +16663,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         <svg class="north-travel-picker-arrow"><use xlink:href="#iconMore"></use></svg>
                     </button>
                     <span class="north-travel-meta">${days.length} 天 · ${stopCount} 个打卡点</span>
+                    ${stopCount > 1 ? '<span class="north-travel-drag-hint">按住打卡点可拖拽调整顺序</span>' : ''}
                     ${allTrips.length > 1 ? '<span class="north-travel-trip-count">共 ' + allTrips.length + ' 个行程</span>' : ''}
                 </div>
                 <div class="north-travel-toolbar-right">
@@ -16712,11 +16716,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!canvas) return;
         if (!canvas._travelBound) {
             canvas._travelBound = true;
-            /* 点击打卡点 → 编辑该打卡点 */
+            /* 点击打卡点 → 编辑该打卡点。
+               刚拖拽松手时浏览器还会补一次 click，这里按时间戳挡掉，避免"拖完顺手弹窗" */
             body.querySelectorAll('.north-travel-stop').forEach(el => {
                 if (el._travelStopBound) return;
                 el._travelStopBound = true;
                 el.addEventListener('click', () => {
+                    if (plugin._travelDragJustEnded()) return;
                     plugin._openTravelStopEditor(el.dataset.dayId, el.dataset.stopId);
                 });
             });
@@ -16727,6 +16733,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 img._travelPreviewBound = true;
                 img.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    if (plugin._travelDragJustEnded()) return;
                     const src = img.getAttribute('src');
                     if (!src || typeof plugin.showMomentsMediaPreview !== 'function') return;
                     /* 把整份行程的配图一起传进去，方便在大图里左右翻 */
@@ -16786,6 +16793,266 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (img.complete) return;
             img.addEventListener('load', () => plugin._drawTravelLinks(body), { once: true });
         });
+        /* 打卡点拖拽排序（每次重绘都要重新挂，因为画布内容会被整体替换） */
+        plugin._bindTravelStopDrag(body);
+    }
+
+    /* ---------- 打卡点拖拽排序 ----------
+       交互约定：
+       - 桌面端：按住打卡点移动超过 4px 进入拖拽；不移动则仍然是「点击编辑」
+       - 触屏端：长按 260ms 进入拖拽，期间滑动视为滚动画布，不抢手势
+       - 拖拽过程中不动 DOM，只把「插入位置」用一条指示线画出来，
+         松手才真正重排。这样指针下的内容不会跟着跳，跨天拖拽也不会因为
+         列宽变化而把目标列"抽走"
+       - 松手后写回 trip.days[*].items 的顺序并持久化 */
+    _travelDragJustEnded() {
+        return !!(this._travelDragEndTs && (Date.now() - this._travelDragEndTs) < 320);
+    }
+
+    _bindTravelStopDrag(body) {
+        const plugin = this;
+        const daysEl = body.querySelector('.north-travel-days');
+        if (!daysEl || daysEl._travelDragBound) return;
+        daysEl._travelDragBound = true;
+
+        const root = body.querySelector('.north-travel');
+        const viewport = body.querySelector('.north-travel-viewport');
+        let st = null;
+        let rafId = 0;
+
+        const removeListeners = () => {
+            window.removeEventListener('pointermove', onMove, true);
+            window.removeEventListener('pointerup', onUp, true);
+            window.removeEventListener('pointercancel', onCancel, true);
+            window.removeEventListener('touchmove', onTouchMove, true);
+            window.removeEventListener('keydown', onKeyDown, true);
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+                rafId = 0;
+            }
+        };
+
+        /* 拖拽态的所有视觉痕迹都收在这里，取消 / 结束走同一条清理路径 */
+        const clearVisuals = () => {
+            daysEl.querySelectorAll('.north-travel-drop-indicator').forEach(el => el.remove());
+            daysEl.querySelectorAll('.north-travel-day.is-drop-target').forEach(el => el.classList.remove('is-drop-target'));
+        };
+
+        const finish = (commit) => {
+            if (!st) return;
+            const s = st;
+            st = null;
+            if (s.timer) {
+                clearTimeout(s.timer);
+                s.timer = 0;
+            }
+            removeListeners();
+            clearVisuals();
+            s.el.classList.remove('is-dragging');
+            if (root) root.classList.remove('is-stop-dragging');
+            if (!s.active) return;
+            /* 拖拽结束后浏览器会补一次 click，用它挡掉"顺手打开编辑弹层" */
+            plugin._travelDragEndTs = Date.now();
+            if (commit && s.target) plugin._travelApplyStopDrop(s);
+        };
+
+        const activate = () => {
+            if (!st || st.active) return;
+            st.active = true;
+            st.el.classList.add('is-dragging');
+            if (root) root.classList.add('is-stop-dragging');
+            if (navigator.vibrate) {
+                try { navigator.vibrate(8); } catch (e) { /* 部分环境不支持 */ }
+            }
+            autoScroll();
+        };
+
+        /* 指针落在哪一列 / 哪两个打卡点之间 */
+        const locate = (x, y) => {
+            if (!st) return;
+            const dayEls = Array.prototype.slice.call(daysEl.querySelectorAll('.north-travel-day'));
+            if (!dayEls.length) return;
+
+            /* 选列：按"到这一列矩形的最近距离"算，列间 160px 的空隙也能量到；
+               竖直方向超出列范围时给 0.35 的权重，拖到顶部工具栏也不会跳到远端列 */
+            let best = null;
+            dayEls.forEach(dayEl => {
+                const r = dayEl.getBoundingClientRect();
+                let dx = 0;
+                if (x < r.left) dx = r.left - x;
+                else if (x > r.right) dx = x - r.right;
+                let dy = 0;
+                if (y < r.top) dy = (r.top - y) * 0.35;
+                else if (y > r.bottom) dy = (y - r.bottom) * 0.35;
+                const dist = dx + dy;
+                if (!best || dist < best.dist) best = { dist: dist, dayEl: dayEl, bodyEl: dayEl.querySelector('.north-travel-day-body') };
+            });
+            if (!best || !best.bodyEl) return;
+
+            const bodyEl = best.bodyEl;
+            const stops = Array.prototype.slice.call(bodyEl.querySelectorAll('.north-travel-stop'))
+                .filter(el => el !== st.el);
+            let index = stops.length;
+            for (let i = 0; i < stops.length; i++) {
+                const sr = stops[i].getBoundingClientRect();
+                if (y < sr.top + sr.height / 2) {
+                    index = i;
+                    break;
+                }
+            }
+            /* 指示线的纵向位置：目标打卡点的上沿，或末尾的下沿 */
+            let top;
+            if (!stops.length) top = 10;
+            else if (index >= stops.length) {
+                const last = stops[stops.length - 1];
+                top = last.offsetTop + last.offsetHeight - 3;
+            } else {
+                top = stops[index].offsetTop - 3;
+            }
+
+            const dayId = best.dayEl.dataset.dayId;
+            if (st.target && st.target.dayId === dayId && st.target.index === index) return;
+            st.target = { dayId: dayId, index: index };
+            clearVisuals();
+            const ind = document.createElement('div');
+            ind.className = 'north-travel-drop-indicator';
+            ind.style.top = top + 'px';
+            bodyEl.appendChild(ind);
+            best.dayEl.classList.add('is-drop-target');
+        };
+
+        /* 拖到视口边缘时自动滚动（画布很宽，跨天拖拽基本离不开它） */
+        const autoScroll = () => {
+            if (!st || !st.active) return;
+            if (viewport) {
+                const r = viewport.getBoundingClientRect();
+                const EDGE = 64;
+                let dx = 0;
+                let dy = 0;
+                if (st.x < r.left + EDGE) dx = -(r.left + EDGE - st.x) / 3;
+                else if (st.x > r.right - EDGE) dx = (st.x - (r.right - EDGE)) / 3;
+                if (st.y < r.top + EDGE) dy = -(r.top + EDGE - st.y) / 3;
+                else if (st.y > r.bottom - EDGE) dy = (st.y - (r.bottom - EDGE)) / 3;
+                if (dx || dy) {
+                    viewport.scrollLeft += Math.max(-24, Math.min(24, Math.round(dx)));
+                    viewport.scrollTop += Math.max(-24, Math.min(24, Math.round(dy)));
+                    locate(st.x, st.y);
+                }
+            }
+            rafId = requestAnimationFrame(autoScroll);
+        };
+
+        const onTouchMove = (ev) => {
+            /* 已经进入拖拽：挡掉画布滚动，剩下的交给 pointermove */
+            if (st && st.active && ev.cancelable) ev.preventDefault();
+        };
+
+        const onMove = (ev) => {
+            if (!st || ev.pointerId !== st.pointerId) return;
+            st.x = ev.clientX;
+            st.y = ev.clientY;
+
+            if (!st.active) {
+                const dx = st.x - st.startX;
+                const dy = st.y - st.startY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                /* 触屏：长按还没成就滑走了，说明用户是在滚画布，直接放手 */
+                if (st.timer) {
+                    if (dist > 8) finish(false);
+                    return;
+                }
+                if (dist <= 4) return;
+                activate();
+            }
+            if (ev.cancelable) ev.preventDefault();
+            locate(st.x, st.y);
+        };
+
+        const onUp = (ev) => {
+            if (!st) return;
+            if (ev && ev.pointerId != null && ev.pointerId !== st.pointerId) return;
+            finish(true);
+        };
+
+        const onCancel = () => finish(false);
+
+        const onKeyDown = (ev) => {
+            if (ev.key === 'Escape') finish(false);
+        };
+
+        const onDown = (ev) => {
+            if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+            const el = ev.target && ev.target.closest ? ev.target.closest('.north-travel-stop') : null;
+            if (!el || !daysEl.contains(el)) return;
+            if (st) finish(false);
+
+            st = {
+                el: el,
+                pointerId: ev.pointerId,
+                startX: ev.clientX,
+                startY: ev.clientY,
+                x: ev.clientX,
+                y: ev.clientY,
+                dayId: el.dataset.dayId,
+                stopId: el.dataset.stopId,
+                active: false,
+                target: null,
+                timer: 0
+            };
+
+            window.addEventListener('pointermove', onMove, true);
+            window.addEventListener('pointerup', onUp, true);
+            window.addEventListener('pointercancel', onCancel, true);
+            window.addEventListener('keydown', onKeyDown, true);
+            if (ev.pointerType !== 'mouse') {
+                window.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+                st.timer = setTimeout(() => {
+                    if (!st) return;
+                    st.timer = 0;
+                    activate();
+                }, 260);
+            }
+        };
+
+        daysEl.addEventListener('pointerdown', onDown);
+        /* 打卡点里带图片，浏览器默认会启动原生图片拖拽，会把我们的手势搅乱 */
+        daysEl.addEventListener('dragstart', (e) => {
+            if (e.target && e.target.closest && e.target.closest('.north-travel-stop')) e.preventDefault();
+        });
+        /* 触屏长按到 500ms 左右系统会弹上下文菜单，会把手势打断，拖拽中先挡掉 */
+        daysEl.addEventListener('contextmenu', (e) => {
+            if (st && st.active && e.target && e.target.closest && e.target.closest('.north-travel-stop')) e.preventDefault();
+        });
+    }
+
+    /* 松手落位：按指示线给出的「列 + 序号」直接改数据，再统一重绘 */
+    _travelApplyStopDrop(s) {
+        const trip = this._getActiveTrip();
+        if (!trip) return;
+        const days = Array.isArray(trip.days) ? trip.days : [];
+        const srcDay = days.find(d => d.id === s.dayId);
+        const dstDay = days.find(d => d.id === s.target.dayId);
+        if (!srcDay || !dstDay) return;
+        if (!Array.isArray(srcDay.items)) srcDay.items = [];
+        if (!Array.isArray(dstDay.items)) dstDay.items = [];
+        const from = srcDay.items.findIndex(it => it.id === s.stopId);
+        if (from === -1) return;
+        const at = Math.max(0, Math.min(s.target.index | 0, dstDay.items.length));
+        /* 原地不动：不写盘也不重绘，避免闪一下 */
+        if (srcDay === dstDay && at === from) return;
+
+        const moved = srcDay.items.splice(from, 1)[0];
+        /* 同一天时数组已经被摘掉一项，索引与视觉上的"剩余列表序号"一致 */
+        dstDay.items.splice(Math.min(at, dstDay.items.length), 0, moved);
+        this._saveTravelStore();
+        this._travelRerender();
+        /* 重绘后给刚落位的那条一个短促的底色提示，确认"真的挪过来了" */
+        const body = this._travelBody;
+        const landed = body && body.querySelector('.north-travel-stop[data-stop-id="' + s.stopId + '"]');
+        if (landed) {
+            landed.classList.add('is-just-moved');
+            setTimeout(() => landed.classList.remove('is-just-moved'), 640);
+        }
     }
 
     /* 绘制中心节点到各 Day 标题的虚线连接（测量实际位置后生成 SVG 曲线） */
