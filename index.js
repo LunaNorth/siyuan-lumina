@@ -15560,21 +15560,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 backBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    /* 编辑态下：返回 = 关闭抽屉（不保存修改，与底部"取消"行为一致） */
+                    /* 编辑态下：返回 = 关闭抽屉（不保存修改）；有未保存改动时先弹确认 */
                     if (self._mobileEditingNoteId) {
-                        /* 复用 cancelEdit 流程：清空 + 重置状态 + 关闭 */
-                        self._closeMobileInputSheet(ctx);
+                        self._mobileSheetCloseGuarded(inputArea, () => self._closeMobileInputSheet(ctx));
                     }
                 });
             }
         }
-        /* 遮罩点击关闭（轻语式：复用 inputArea 自身的半透明背景作为遮罩） */
+        /* 遮罩点击关闭（轻语式：复用 inputArea 自身的半透明背景作为遮罩）；
+           有未保存内容时先弹确认，避免输入中误触背景直接清空 */
         if (!inputArea._mobileInputMaskBound) {
             inputArea._mobileInputMaskBound = true;
             inputArea.addEventListener('click', (e) => {
                 if (!inputArea.classList.contains('mobile-sheet-visible')) return;
                 if (e.target === inputArea) {
-                    self._closeMobileInputSheet(ctx);
+                    self._mobileSheetCloseGuarded(inputArea, () => self._closeMobileInputSheet(ctx));
                 }
             });
         }
@@ -15666,6 +15666,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 if (typeof inputArea._pendingImagesSetter === 'function') {
                     inputArea._pendingImagesSetter(imgData);
                 }
+                /* 记录打开编辑时的内容快照：关闭守卫（_mobileSheetHasUnsavedDraft）用它判断
+                   是否有实际改动 —— 完全没改动就直接关，不弹确认打扰 */
+                inputArea._editLoadSnapshot = {
+                    text: String(noteForEdit.content || ''),
+                    title: String(noteForEdit.title || ''),
+                    res: imgData.map((x) => (x && x.path) || '').join('\n')
+                };
             } catch (err) {
                 console.error('[轻语] 加载编辑资源预览失败:', err);
             }
@@ -15706,9 +15713,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
             }, 380);
         } else {
-            /* 新建模式：清除编辑状态 */
+            /* 新建模式：清除编辑状态（连同内容快照） */
             this._mobileEditingNoteId = null;
             this._mobileEditingNoteData = null;
+            inputArea._editLoadSnapshot = null;
             const box = inputArea.querySelector('#breeze-input-box');
             const sendBtn = inputArea.querySelector('#breeze-send');
             if (box) box.classList.remove('editing');
@@ -15878,6 +15886,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             pendingImages = imgs;
             refreshPreviewBar();
         };
+
+        /* 外部可调用的 getter：读取当前待发送资源（关闭守卫判断未保存内容用） */
+        inputArea._pendingImagesGetter = () => pendingImages;
 
         /* 取消编辑（PC _cancelEdit 移动端对应） */
         const cancelEdit = () => {
@@ -16224,9 +16235,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }
         };
         applyMobileToolbarVisibility();
-        /* 取消编辑按钮 */
+        /* 取消编辑按钮：有未保存改动时先确认，避免误触直接清空 */
         const cancelBtn = inputArea.querySelector('#breeze-cancel');
-        if (cancelBtn) cancelBtn.addEventListener('click', cancelEdit);
+        if (cancelBtn) cancelBtn.addEventListener('click', () => {
+            plugin._mobileSheetCloseGuarded(inputArea, cancelEdit);
+        });
     }
 
     /* 屏蔽思源键盘工具栏（#keyboardToolbar）：textarea 获焦时强制隐藏，
@@ -16336,6 +16349,64 @@ module.exports = class NorthLunaPlugin extends Plugin {
         });
     }
 
+    /* ===== 移动端输入弹层「未保存内容」守卫 =====
+       用户反馈：正在输入时误触弹层背景（半透明遮罩），弹层直接关闭、内容被清空。
+       策略是「条件确认」而非一刀切：
+       - 内容为空：保持原行为，点背景立即关闭（保留快捷收起手势，避免空弹层也要多点一下）；
+       - 有未保存内容：先弹自建确认框（_lunaConfirm，移动端样式/层级已验证可靠），
+         点「放弃内容」才真正关闭，「继续编辑」回到输入框。
+       覆盖全部会静默丢弃内容的关闭路径：遮罩点击 / 顶部返回箭头 / 底部取消按钮 / 侧滑返回。 */
+    _mobileSheetHasUnsavedDraft(inputArea) {
+        if (!inputArea) return false;
+        const field = inputArea.querySelector('.north-breeze-input-field');
+        const titleInput = inputArea.querySelector('#breeze-title-input');
+        const text = String((field && field.value) || '');
+        const title = String((titleInput && titleInput.value) || '');
+        let resPaths = '';
+        if (typeof inputArea._pendingImagesGetter === 'function') {
+            resPaths = (inputArea._pendingImagesGetter() || []).map((p) => (p && p.path) || '').join('\n');
+        } else {
+            const previewBar = inputArea.querySelector('#breeze-image-preview-bar')
+                || inputArea.querySelector('#north-breeze-dock-preview-bar');
+            resPaths = previewBar
+                ? Array.from(previewBar.querySelectorAll('.north-breeze-preview-item, .north-breeze-file-preview-item')).map((el) => el.dataset.path || '').join('\n')
+                : '';
+        }
+        /* 编辑态：与打开弹层时的快照比对，没有实际改动就直接关，不弹确认打扰 */
+        const snap = inputArea._editLoadSnapshot;
+        if (snap) {
+            return text.trim() !== String(snap.text || '').trim()
+                || title.trim() !== String(snap.title || '').trim()
+                || resPaths !== String(snap.res || '');
+        }
+        /* 添加态：正文 / 标题 / 附件任一非空即视为有未保存内容 */
+        return !!(text.trim() || title.trim() || resPaths);
+    }
+
+    /* 关闭守卫：无未保存内容 → 直接执行 doClose；有 → 先弹确认，确认「放弃」才执行。
+       _discardConfirmOpen 防重入：确认框弹出期间，遮罩上的连点不会叠加出多个确认框。 */
+    async _mobileSheetCloseGuarded(inputArea, doClose) {
+        if (!inputArea || !inputArea.isConnected) { if (doClose) doClose(); return; }
+        if (!this._mobileSheetHasUnsavedDraft(inputArea)) { if (doClose) doClose(); return; }
+        if (inputArea._discardConfirmOpen) return;
+        inputArea._discardConfirmOpen = true;
+        try {
+            const ok = await this._lunaConfirm('放弃未保存的内容？', '正在输入的内容尚未保存，关闭后将无法恢复。', '放弃内容', '继续编辑');
+            if (ok) {
+                if (doClose) doClose();
+            } else if (inputArea.classList.contains('mobile-sheet-visible')) {
+                /* 继续编辑：把焦点还给输入框（点确认框按钮会让 textarea 失焦、键盘收起） */
+                const field = inputArea.querySelector('.north-breeze-input-field');
+                if (field && typeof field.focus === 'function') {
+                    this._suppressKeyboardToolbarOn(field);
+                    field.focus();
+                }
+            }
+        } finally {
+            inputArea._discardConfirmOpen = false;
+        }
+    }
+
     _closeMobileInputSheet(ctx) {
         const inputArea = ctx.container?.querySelector('.north-breeze-input-area');
         if (!inputArea) return;
@@ -16359,6 +16430,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
            任何一条关闭都要保证下次打开是干净的（无论是编辑还是添加）。 */
         this._mobileEditingNoteId = null;
         this._mobileEditingNoteData = null;
+        inputArea._editLoadSnapshot = null;
         /* 关闭时一并清除键盘锁定抑制标记，避免影响后续打开 */
         inputArea._suppressKbRefocus = false;
         const input = inputArea.querySelector('.north-breeze-input-field');
@@ -16441,7 +16513,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
                     const inputArea = ctx.container?.querySelector('.north-breeze-input-area.mobile-sheet-visible');
                     if (inputArea) {
-                        plugin._closeMobileInputSheet(ctx);
+                        /* 有未保存内容时先弹确认；无论放弃与否都吞掉本次返回手势，
+                           避免出现「确认放弃」的同时页面也被返回退出 */
+                        plugin._mobileSheetCloseGuarded(inputArea, () => plugin._closeMobileInputSheet(ctx));
                         return;
                     }
                     /* 3. 移动端搜索栏 */
