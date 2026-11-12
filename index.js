@@ -173,6 +173,51 @@ function breezeFileExtColor(ext) {
     };
     return colors[ext] || '#1abc9c';
 }
+
+/* 预览栏单项 HTML（PC 主视图 / PC Dock / 移动端弹层共用同一套结构）
+   历史问题：移动端用的是 <div class="north-breeze-preview-remove">×</div>，
+   而这个类在 index.css 里**没有任何样式**，它是普通 div，被塞在 56×56 且
+   overflow:hidden 的缩略图之后 → 直接裁掉，手机上永远看不到、也点不到，
+   表现就是「图片只能加不能删」。这里统一改用 PC 的 .breeze-preview-delete-btn。
+   esc：HTML 转义函数；resolveSrc：媒体路径标准化（assets/xxx → /assets/xxx）。 */
+function breezePreviewItemInnerHTML(img, esc, resolveSrc) {
+    const e = typeof esc === 'function' ? esc : breezeEsc;
+    const r = typeof resolveSrc === 'function' ? resolveSrc : (u) => u;
+    const isFile = img && img.type === '文件';
+    const isVideo = img && img.type === '视频';
+    const src = (img && (img.raw || img.path)) || '';
+    const del = '<button class="breeze-preview-delete-btn" type="button" title="删除" aria-label="删除">&times;</button>';
+    if (isFile) {
+        const extLabel = ((img.ext || '').toUpperCase()) || 'FILE';
+        return '<span class="breeze-file-ext-badge">' + e(extLabel) + '</span>' +
+            '<span class="breeze-file-name">' + e(img.name || '未知') + '</span>' + del;
+    }
+    if (isVideo) {
+        return '<video src="' + e(r(src)) + '" preload="metadata" muted playsinline></video>' +
+            '<span class="breeze-preview-video-icon"></span>' + del;
+    }
+    return '<img src="' + e(r(src)) + '" alt="预览" loading="lazy" decoding="async">' + del;
+}
+
+/* 统一绑定预览栏删除按钮：回调拿到被点击项在预览栏中的序号 idx。
+   pointerdown 里 preventDefault，避免点按钮时焦点从 textarea 转移、键盘被收起
+   （与工具栏 tagBtn 的处理一致；不会影响 click 触发）。 */
+function breezeBindPreviewRemove(previewBar, onRemove) {
+    if (!previewBar) return;
+    previewBar.querySelectorAll('.breeze-preview-delete-btn').forEach((btn) => {
+        btn.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const item = btn.closest('.north-breeze-preview-item');
+            if (!item) return;
+            const idx = parseInt(item.dataset.index, 10);
+            if (isNaN(idx)) return;
+            onRemove(idx);
+        });
+    });
+}
+
 /* 笔记卡片"更多"菜单：克隆轻语 showNoteMenu 结构，类名换成 north-breeze-*。
    对齐轻语：
    - position:fixed 挂在 document.body，z-index 99999
@@ -15634,33 +15679,57 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     imgData.push({ type: '文件', path: path, raw: path, name: name, ext: ext });
                 });
 
-                /* 直接渲染到预览栏 —— 兼容 breeze view 和 dock view 两种容器 */
+                /* 直接渲染到预览栏 —— 兼容 breeze view 和 dock view 两种容器
+                   （抽成局部函数：删除后若 setter 不可用，就地重渲染） */
                 const previewBar = inputArea.querySelector('#breeze-image-preview-bar')
                     || inputArea.querySelector('#north-breeze-dock-preview-bar');
-                if (previewBar) {
+                const renderEditPreview = () => {
+                    if (!previewBar) return;
                     previewBar.innerHTML = '';
-                    if (imgData.length > 0) {
-                        const frag = document.createDocumentFragment();
-                        imgData.forEach((img, idx) => {
-                            const item = document.createElement('div');
-                            item.className = 'north-breeze-preview-item';
-                            /* inline style 兜底，确保尺寸不受外部 CSS 干扰 */
-                            item.style.cssText = 'width:56px;height:56px;flex-shrink:0;display:inline-block;position:relative;';
-                            item.dataset.index = String(idx);
-                            item.dataset.path = img.path;
-                            const resolvedSrc = (typeof self._resolveImageUrl === 'function') ? self._resolveImageUrl(img.path) : img.path;
-                            item.innerHTML = '<img src="' + self._esc(resolvedSrc) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"><div class="north-breeze-preview-remove">×</div>';
-                            frag.appendChild(item);
-                        });
-                        previewBar.appendChild(frag);
-                        previewBar.classList.add('has-images');
-                        /* 强制 inline display：覆盖任何可能的 CSS 干扰 */
-                        previewBar.style.display = 'flex';
-                    } else {
+                    if (imgData.length === 0) {
                         previewBar.classList.remove('has-images');
                         previewBar.style.display = '';
+                        return;
                     }
-                }
+                    const frag = document.createDocumentFragment();
+                    imgData.forEach((img, idx) => {
+                        const item = document.createElement('div');
+                        item.className = 'north-breeze-preview-item'
+                            + (img.type === '文件' ? ' north-breeze-file-preview-item' : '')
+                            + (img.type === '视频' ? ' north-breeze-video-preview-item' : '');
+                        /* inline style 兜底，确保尺寸不受外部 CSS 干扰
+                           （文件卡片宽度自适应，不套 56×56） */
+                        if (img.type !== '文件') {
+                            item.style.cssText = 'width:56px;height:56px;flex-shrink:0;display:inline-block;position:relative;';
+                        }
+                        item.dataset.index = String(idx);
+                        item.dataset.path = img.path;
+                        if (img.type === '文件') item.dataset.ext = (img.ext || '').toLowerCase();
+                        /* 复用 PC 同一套标记：图片/视频缩略图 + .breeze-preview-delete-btn */
+                        item.innerHTML = breezePreviewItemInnerHTML(
+                            img,
+                            self._esc,
+                            (u) => ((typeof self._resolveImageUrl === 'function') ? self._resolveImageUrl(u) : u)
+                        );
+                        frag.appendChild(item);
+                    });
+                    previewBar.appendChild(frag);
+                    previewBar.classList.add('has-images');
+                    /* 强制 inline display：覆盖任何可能的 CSS 干扰 */
+                    previewBar.style.display = 'flex';
+                    breezeBindPreviewRemove(previewBar, (idx) => {
+                        if (idx < 0 || idx >= imgData.length) return;
+                        imgData.splice(idx, 1);
+                        /* setter 存在时交给它统一重渲染（与内部 pendingImages 同步），
+                           否则就地重渲染，保证任何情况下都能删 */
+                        if (typeof inputArea._pendingImagesSetter === 'function') {
+                            inputArea._pendingImagesSetter(imgData);
+                        } else {
+                            renderEditPreview();
+                        }
+                    });
+                };
+                renderEditPreview();
 
                 /* 同步给 setter 保持内部状态 */
                 if (typeof inputArea._pendingImagesSetter === 'function') {
@@ -15840,9 +15909,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (pendingImages.length === 0) {
                 previewBar.innerHTML = '';
                 previewBar.classList.remove('has-images');
+                previewBar.style.display = '';
                 return;
             }
             previewBar.classList.add('has-images');
+            /* 强制 inline display：覆盖任何可能的 CSS 干扰（编辑态全屏切换后会重算） */
+            previewBar.style.display = 'flex';
             const frag = document.createDocumentFragment();
             pendingImages.forEach((img, idx) => {
                 const item = document.createElement('div');
@@ -15854,29 +15926,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 item.className = cls;
                 item.dataset.index = String(idx);
                 item.dataset.path = img.path;
-                if (isFile) {
-                    const extLabel = (img.ext || '').toUpperCase() || 'FILE';
-                    item.dataset.ext = (img.ext || '').toLowerCase();
-                    item.innerHTML = '<div class="north-breeze-file-preview-name">' + plugin._esc(img.name || extLabel) + '</div><div class="north-breeze-file-preview-remove">×</div>';
-                } else {
-                    item.innerHTML = '<img src="' + plugin._esc(img.path) + '" alt=""><div class="north-breeze-preview-remove">×</div>';
-                }
+                if (isFile) item.dataset.ext = (img.ext || '').toLowerCase();
+                /* 结构对齐 PC：图片/视频缩略图（或文件徽章）+ 删除按钮；
+                   删除按钮在触屏下由 CSS 常显（PC 仍是 hover 才显） */
+                item.innerHTML = breezePreviewItemInnerHTML(img, plugin._esc, (u) => plugin._resolveImageUrl(u));
                 frag.appendChild(item);
             });
             previewBar.innerHTML = '';
             previewBar.appendChild(frag);
             /* 删除按钮 */
-            previewBar.querySelectorAll('.north-breeze-preview-remove, .north-breeze-file-preview-remove').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const item = btn.closest('.north-breeze-preview-item, .north-breeze-file-preview-item');
-                    if (!item) return;
-                    const idx = parseInt(item.dataset.index, 10);
-                    if (isNaN(idx) || idx < 0) return;
-                    pendingImages.splice(idx, 1);
-                    refreshPreviewBar();
-                    updateState();
-                });
+            breezeBindPreviewRemove(previewBar, (idx) => {
+                if (idx < 0 || idx >= pendingImages.length) return;
+                pendingImages.splice(idx, 1);
+                refreshPreviewBar();
+                updateState();
             });
             updateState();
         };

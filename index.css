@@ -8913,6 +8913,42 @@
 }
 .north-breeze-preview-item:hover .breeze-preview-delete-btn { opacity: 1; }
 .breeze-preview-delete-btn:hover { background: rgba(220, 38, 38, 0.85); }
+/* ===== 触屏设备（移动端）：删除按钮常显 =====
+   PC 上删除按钮是「hover 缩略图才浮出」（opacity: 0 → 1），触屏没有 hover，
+   × 永远不出现，用户只能删掉整条笔记 —— 这里改为常显，并把视觉尺寸放大到 20px、
+   用 ::after 把命中区再向外扩一圈（缩略图只有 56px，18px 的圆点手指很难点准）。 */
+@media (hover: none), (pointer: coarse) {
+    .north-breeze-preview-item .breeze-preview-delete-btn {
+        opacity: 1;
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+        font-size: 14px;
+        top: 2px;
+        right: 2px;
+        background: rgba(0, 0, 0, 0.55);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        -webkit-tap-highlight-color: transparent;
+        transition: background 0.15s, transform 0.15s;
+    }
+    .north-breeze-preview-item .breeze-preview-delete-btn::after {
+        content: '';
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        bottom: -8px;
+        left: -8px;
+    }
+    /* 部分安卓 WebView 点按不触发 :hover，用 :active 给明确的按下反馈 */
+    .north-breeze-preview-item .breeze-preview-delete-btn:active {
+        background: rgba(220, 38, 38, 0.9);
+        transform: scale(0.92);
+    }
+    /* 文件卡片：删除按钮常显后别压住文件名，右侧留出位置 */
+    .north-breeze-preview-item.north-breeze-file-preview-item {
+        padding-right: 26px;
+    }
+}
 /* 文件预览卡片 */
 .north-breeze-file-preview-item {
     width: auto;
