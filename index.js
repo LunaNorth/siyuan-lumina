@@ -14,6 +14,64 @@ const FLOMO_APP_VERSION = "2.0";
 const TAB_TYPE = "lumina-siyu-tab";
 const PLUGIN_NAME = "轻语";
 
+/* ============================================================
+ * i18n
+ * ------------------------------------------------------------
+ * 词条放在插件目录 i18n/<语言>.json（zh-CN.json / en.json），
+ * 由思源内核按当前界面语言读取后注入 this.i18n，onload 时转存到
+ * I18N_DICT。
+ * 翻译一律走 lunaT(key, 中文原文)：
+ *   - 命中词条 → 用译文；
+ *   - 未命中 / 语言包未加载 → 原样返回调用处写的中文，绝不出现 key 或空白；
+ *   - 支持 {name} 占位符（lunaT('key', '中文', { name: 'x' })）。
+ * 这样新增文案可以随时硬编码中文上线，之后再补词条，不会因缺翻译而崩。
+ * 键名用点分层级：plugin.* / view.* / nav.* / settings.* / toast.* / common.*
+ * ============================================================ */
+let I18N_DICT = {};
+function setI18nDict(dict) {
+    I18N_DICT = (dict && typeof dict === 'object') ? dict : {};
+}
+function lunaT(key, zhText, vars) {
+    /* 允许 lunaT('共 {n} 条', { n: 12 }) 的省略写法 */
+    if (vars === undefined && zhText && typeof zhText === 'object') { vars = zhText; zhText = undefined; }
+    let s = I18N_DICT[key];
+    if (typeof s !== 'string' || s === '') s = zhText;
+    if (s === undefined || s === null) s = key;
+    if (vars && typeof s === 'string') {
+        s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] === undefined || vars[k] === null ? m : String(vars[k])));
+    }
+    return s;
+}
+
+/* 日期类文案：月/日顺序与星期缩写不适合走词条表，按界面语言直接给两种写法 */
+let LUNA_EN = false;
+function lunaSetLang(lang) {
+    LUNA_EN = /^en/i.test(String(lang || ''));
+    /* 与下方 breezeGroupWeekdays 声明联动（声明为 let，此处按语言重写） */
+    if (typeof breezeGroupWeekdays !== 'undefined') {
+        breezeGroupWeekdays = LUNA_EN
+            ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+            : ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    }
+}
+function lunaYm(y, m) { return LUNA_EN ? y + '-' + String(m).padStart(2, '0') : y + '年' + m + '月'; }
+function lunaYear(y) { return LUNA_EN ? String(y) : y + '年'; }
+/* 月份短名：中文「1月」，英文「Jan」 */
+function lunaMonthShort(m) {
+    return LUNA_EN ? new Date(2000, m - 1, 1).toLocaleDateString('en-US', { month: 'short' }) : m + '月';
+}
+function lunaMonthDay(d) {
+    return LUNA_EN
+        ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : (d.getMonth() + 1) + '月' + d.getDate() + '日';
+}
+/* 日历表头单字母星期：sundayFirst=true 时从周日开始 */
+function lunaWeekLetters(sundayFirst) {
+    const arr = LUNA_EN ? ['S', 'M', 'T', 'W', 'T', 'F', 'S'] : ['日', '一', '二', '三', '四', '五', '六'];
+    const order = sundayFirst ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0];
+    return order.map(i => arr[i]);
+}
+
 // 自定义图标（通过 this.addIcons 注册为思源全局图标，用于标签页+顶栏）
 const PLUGIN_ICON = `<symbol id="iconLightWord" viewBox="0 0 1024 1024"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M33.248 887.349h225.296l591.398-591.398c28.828-28.828 46.659-68.657 46.659-112.646 0-87.983-71.325-159.306-159.306-159.306-43.992 0-83.819 17.833-112.646 46.659l-591.398 591.398v225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M568.318 126.981l225.296 225.296"/><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round" stroke-miterlimit="4" stroke-width="64" d="M878.102 662.060l-112.646 168.971h225.296l-112.646 168.971"/></symbol><symbol id="iconMobileDevice" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><line x1="11" y1="18" x2="13" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol><symbol id="iconBreezeComment" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><circle cx="8.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="11.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="11.5" r="1.1" fill="currentColor" stroke="none"/></symbol>`;
 
@@ -80,9 +138,8 @@ function buildBreezeHeatmap(notes) {
             if (count >= 3) level = 2;
             if (count >= 5) level = 3;
             if (count >= 7) level = 4;
-            const tip = count > 0
-                ? count + '条 ' + (cellDate.getMonth() + 1) + '月' + cellDate.getDate() + '日'
-                : (cellDate.getMonth() + 1) + '月' + cellDate.getDate() + '日';
+            const _md = lunaMonthDay(cellDate);
+            const tip = count > 0 ? lunaT('{n}条 {md}', { n: count, md: _md }) : _md;
             cells.push('<div class="north-breeze-heatmap-grid-cell level-' + level + '" data-date="' + ymd + '" data-lumina-tip="' + breezeEsc(tip) + '"></div>');
         }
     }
@@ -147,6 +204,7 @@ function breezeFormatTitleDate(timeStr) {
     const w = '星期' + weekdays[d.getDay()];
     const h = String(d.getHours()).padStart(2, '0');
     const min = String(d.getMinutes()).padStart(2, '0');
+    if (LUNA_EN) return lunaMonthDay(d) + ', ' + breezeGroupWeekdays[d.getDay()] + ' ' + h + ':' + min;
     return y + '年' + m + '月' + day + '日 ' + w + ' ' + h + ':' + min;
 }
 /* 列表卡片上的时间显示：统一成 "YYYY-MM-DD HH:mm"（精确到分，不显示秒）。
@@ -275,7 +333,7 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
         iconItem('append-daily-note', 'iconSparkles', '插入今日日记') +
         '<div class="north-breeze-menu-divider"></div>' +
         iconItem('add-to-moments', 'iconGlobe',  '添加到朋友圈') +
-        iconItem('archive',     'iconInbox',     isArchived ? '取消归档' : '归档') +
+        iconItem('archive',     'iconInbox',     isArchived ? lunaT('取消归档') : lunaT('归档')) +
         iconItemSmall('delete', 'iconTrashcan',  '删除', true);
     document.body.appendChild(menu);
     // 定位：fixed；底部空间不足则向上弹；左侧做视口边界保护
@@ -353,7 +411,7 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                         if (url) resources += '\n' + breezeResourceMarkdown(url, { asFile: true, name: f.name || '附件' });
                     });
                     if (resources) text += '\n' + resources;
-                    const finish = () => { try { showMessage('已复制到剪贴板'); } catch (_) {} };
+                    const finish = () => { try { showMessage(lunaT('已复制到剪贴板')); } catch (_) {} };
                     if (navigator.clipboard && navigator.clipboard.writeText) {
                         navigator.clipboard.writeText(text).then(finish).catch(() => {
                             const ta = document.createElement('textarea');
@@ -386,11 +444,11 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                     const settings = plugin.data[SETTINGS_STORAGE]?.settings || {};
                     const target = settings.dailyNoteTarget || 'dailynote';
                     if (target === 'dailynote' && !settings.dailyNotebookId) {
-                        if (typeof showMessage === 'function') showMessage('请先在「轻语设置 → 数据同步」中选择日记笔记本');
+                        if (typeof showMessage === 'function') showMessage(lunaT('请先在「轻语设置 → 数据同步」中选择日记笔记本'));
                         return;
                     }
                     if (target === 'doc' && !settings.dailyNoteDocId) {
-                        if (typeof showMessage === 'function') showMessage('请先在「轻语设置 → 数据同步」中选择指定文档');
+                        if (typeof showMessage === 'function') showMessage(lunaT('请先在「轻语设置 → 数据同步」中选择指定文档'));
                         return;
                     }
                     const result = await plugin._syncToDailyNote({
@@ -436,7 +494,7 @@ function showBreezeNoteMenu(id, triggerEl, storage, plugin, source) {
                         }
                     };
                     if (confirm) {
-                        confirm('删除笔记', '确定要删除这条清风笔记吗？\n此操作不可恢复。', doDelete);
+                        confirm(lunaT('删除笔记'), lunaT('确定要删除这条清风笔记吗？\n此操作不可恢复。'), doDelete);
                     } else {
                         doDelete();
                     }
@@ -693,7 +751,7 @@ function showBreezeShareModal(note, plugin) {
     overlay.className = 'breeze-share-overlay';
     overlay.innerHTML = '<div class="breeze-share-modal">' +
         '<div class="breeze-share-header">' +
-            '<span class="breeze-share-title">分享卡片</span>' +
+            '<span class="breeze-share-title">' + lunaT('分享卡片') + '</span>' +
             '<button class="breeze-share-close" title="关闭">×</button>' +
         '</div>' +
         '<div class="breeze-share-body">' +
@@ -701,8 +759,8 @@ function showBreezeShareModal(note, plugin) {
             '<div class="breeze-share-preview-area"><div class="breeze-share-preview-card" id="breeze-share-preview-card"></div></div>' +
         '</div>' +
         '<div class="breeze-share-footer">' +
-            '<button class="breeze-share-btn breeze-share-download">下载图片</button>' +
-            '<button class="breeze-share-btn breeze-share-copy">复制图片</button>' +
+            '<button class="breeze-share-btn breeze-share-download">' + lunaT('下载图片') + '</button>' +
+            '<button class="breeze-share-btn breeze-share-copy">' + lunaT('复制图片') + '</button>' +
         '</div>' +
     '</div>';
     document.body.appendChild(overlay);
@@ -748,7 +806,7 @@ function showBreezeShareModal(note, plugin) {
                 if (plugin.saveData) plugin.saveData(SETTINGS_STORAGE, plugin.data[SETTINGS_STORAGE]).catch(() => {});
             } catch (_) {}
         } catch (e) {
-            showMessage('导出失败: ' + (e.message || ''));
+            showMessage(lunaT('导出失败: ') + (e.message || ''));
         } finally {
             btn.disabled = false; btn.textContent = '下载图片';
         }
@@ -768,9 +826,9 @@ function showBreezeShareModal(note, plugin) {
             const dataUrl = await breezeExportElementToImage(previewCard);
             const blob = await (await fetch(dataUrl)).blob();
             await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            showMessage('已复制到剪贴板');
+            showMessage(lunaT('已复制到剪贴板'));
         } catch (_) {
-            showMessage('复制失败，请使用下载按钮');
+            showMessage(lunaT('复制失败，请使用下载按钮'));
         } finally {
             btn.disabled = false; btn.textContent = '复制图片';
         }
@@ -828,19 +886,19 @@ function changeBreezeNoteTime(id, storage, plugin, opts) {
                         <div class="north-luna-moments-datetime-display" data-hours="${String(selectedDate.getHours()).padStart(2, '0')}" data-minutes="${String(selectedDate.getMinutes()).padStart(2, '0')}" data-seconds="${String(selectedDate.getSeconds()).padStart(2, '0')}">${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}:${String(selectedDate.getSeconds()).padStart(2, '0')}</div>
                         <div class="north-luna-moments-datetime-time-popup">
                             <div class="north-luna-moments-datetime-time-col" data-col="hours">
-                                <div class="north-luna-moments-datetime-time-header">时</div>
+                                <div class="north-luna-moments-datetime-time-header">${lunaT('时')}</div>
                                 <div class="north-luna-moments-datetime-time-list" data-col="hours"></div>
                             </div>
                             <div class="north-luna-moments-datetime-time-col" data-col="minutes">
-                                <div class="north-luna-moments-datetime-time-header">分</div>
+                                <div class="north-luna-moments-datetime-time-header">${lunaT('分')}</div>
                                 <div class="north-luna-moments-datetime-time-list" data-col="minutes"></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="north-luna-moments-datetime-actions">
-                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-cancel" type="button">取消</button>
-                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-confirm" type="button">确定</button>
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-cancel" type="button">${lunaT('取消')}</button>
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-confirm" type="button">${lunaT('确定')}</button>
                 </div>
             </div>
         </div>
@@ -881,9 +939,9 @@ function changeBreezeNoteTime(id, storage, plugin, opts) {
 
         const headerHtml = `
             <div class="north-luna-moments-datetime-header">
-                <button class="north-luna-moments-datetime-prev" type="button" title="上月">‹</button>
-                <span class="north-luna-moments-datetime-title">${viewYear}年${viewMonth + 1}月</span>
-                <button class="north-luna-moments-datetime-next" type="button" title="下月">›</button>
+                <button class="north-luna-moments-datetime-prev" type="button" title="${lunaT('上月')}">‹</button>
+                <span class="north-luna-moments-datetime-title">${lunaYm(viewYear, viewMonth + 1)}</span>
+                <button class="north-luna-moments-datetime-next" type="button" title="${lunaT('下月')}">›</button>
             </div>
         `;
         const weekdaysHtml = `<div class="north-luna-moments-datetime-weekdays">${['日','一','二','三','四','五','六'].map(w => `<span>${w}</span>`).join('')}</div>`;
@@ -944,7 +1002,7 @@ function changeBreezeNoteTime(id, storage, plugin, opts) {
                 if (plugin && plugin._refreshActiveBreezeView) {
                     try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
                 }
-                showMessage('已清除更新时间');
+                showMessage(lunaT('已清除更新时间'));
                 closePicker();
             });
         }
@@ -968,7 +1026,7 @@ function changeBreezeNoteTime(id, storage, plugin, opts) {
         if (plugin && plugin._refreshActiveBreezeView) {
             try { plugin._refreshActiveBreezeView(plugin._siyuTab); } catch (e) { /* noop */ }
         }
-        showMessage('时间已修改');
+        showMessage(lunaT('时间已修改'));
         closePicker();
     });
 
@@ -1091,23 +1149,23 @@ function changeBreezeNoteTags(id, storage, plugin, opts) {
         selected.forEach((t) => { if (!list.includes(t)) list.push(t); });
         const chipsEl = editor.querySelector('.north-breeze-tags-editor-chips');
         chipsEl.innerHTML = list.map((t) =>
-            `<span class="north-breeze-tags-editor-chip${selected.has(t) ? ' on' : ''}" data-tag="${breezeEscapeHtml(t)}" title="${selected.has(t) ? '点击移除' : '点击添加'}">${breezeEscapeHtml(t)}</span>`
-        ).join('') || '<div class="north-breeze-tags-editor-empty">暂无标签，在下方输入添加</div>';
+            `<span class="north-breeze-tags-editor-chip${selected.has(t) ? ' on' : ''}" data-tag="${breezeEscapeHtml(t)}" title="${selected.has(t) ? lunaT('点击移除') : lunaT('点击添加')}">${breezeEscapeHtml(t)}</span>`
+        ).join('') || '<div class="north-breeze-tags-editor-empty">' + lunaT('暂无标签，在下方输入添加') + '</div>';
         chipsEl.scrollTop = 0;
     };
     editor.innerHTML = `
         <div class="north-breeze-tags-editor-title">
-            <span>编辑标签</span>
+            <span>${lunaT('编辑标签')}</span>
             <button type="button" class="north-breeze-tags-editor-close" title="关闭">×</button>
         </div>
         <div class="north-breeze-tags-editor-chips"></div>
         <div class="north-breeze-tags-editor-add">
-            <input type="text" class="north-breeze-tags-editor-input" placeholder="输入新标签（可用 / 表示多级），回车添加">
-            <button type="button" class="north-breeze-tags-editor-add-btn">添加</button>
+            <input type="text" class="north-breeze-tags-editor-input" placeholder="${lunaT('输入新标签（可用 / 表示多级），回车添加')}">
+            <button type="button" class="north-breeze-tags-editor-add-btn">${lunaT('添加')}</button>
         </div>
         <div class="north-breeze-tags-editor-actions">
-            <button type="button" class="north-breeze-tags-editor-btn north-breeze-tags-editor-cancel">取消</button>
-            <button type="button" class="north-breeze-tags-editor-btn north-breeze-tags-editor-ok">确定</button>
+            <button type="button" class="north-breeze-tags-editor-btn north-breeze-tags-editor-cancel">${lunaT('取消')}</button>
+            <button type="button" class="north-breeze-tags-editor-btn north-breeze-tags-editor-ok">${lunaT('确定')}</button>
         </div>`;
     document.body.appendChild(editor);
     renderChips();
@@ -1145,7 +1203,7 @@ function changeBreezeNoteTags(id, storage, plugin, opts) {
         if (!t) return;
         /* 字符集与 breezeExtractTags 保持一致，避免写入后无法被识别为标签 */
         if (!BREEZE_TAG_VALID_RE.test(t)) {
-            if (typeof showMessage === 'function') showMessage('标签仅支持文字、数字、下划线、连字符与 / 分隔');
+            if (typeof showMessage === 'function') showMessage(lunaT('标签仅支持文字、数字、下划线、连字符与 / 分隔'));
             return;
         }
         if (selected.has(t)) { input.value = ''; return; }
@@ -1162,7 +1220,7 @@ function changeBreezeNoteTags(id, storage, plugin, opts) {
             const t = chip.dataset.tag;
             if (selected.has(t)) selected.delete(t); else selected.add(t);
             chip.classList.toggle('on', selected.has(t));
-            chip.title = selected.has(t) ? '点击移除' : '点击添加';
+            chip.title = selected.has(t) ? lunaT('点击移除') : lunaT('点击添加');
             return;
         }
         if (e.target.closest('.north-breeze-tags-editor-close') || e.target.closest('.north-breeze-tags-editor-cancel')) { close(); return; }
@@ -1232,7 +1290,7 @@ function changeMomentsItemTime(mid, plugin) {
         <div class="north-luna-moments-datetime-overlay"></div>
         <div class="north-luna-moments-datetime-content">
             <div class="north-luna-moments-datetime-top">
-                <span class="north-luna-moments-datetime-label">修改时间</span>
+                <span class="north-luna-moments-datetime-label">${lunaT('修改时间')}</span>
                 <button class="north-luna-moments-datetime-close" type="button" aria-label="关闭">×</button>
             </div>
             <div class="north-luna-moments-datetime-body"></div>
@@ -1243,19 +1301,19 @@ function changeMomentsItemTime(mid, plugin) {
                         <div class="north-luna-moments-datetime-display" data-hours="${String(selectedDate.getHours()).padStart(2, '0')}" data-minutes="${String(selectedDate.getMinutes()).padStart(2, '0')}" data-seconds="${String(selectedDate.getSeconds()).padStart(2, '0')}">${String(selectedDate.getHours()).padStart(2, '0')}:${String(selectedDate.getMinutes()).padStart(2, '0')}:${String(selectedDate.getSeconds()).padStart(2, '0')}</div>
                         <div class="north-luna-moments-datetime-time-popup">
                             <div class="north-luna-moments-datetime-time-col" data-col="hours">
-                                <div class="north-luna-moments-datetime-time-header">时</div>
+                                <div class="north-luna-moments-datetime-time-header">${lunaT('时')}</div>
                                 <div class="north-luna-moments-datetime-time-list" data-col="hours"></div>
                             </div>
                             <div class="north-luna-moments-datetime-time-col" data-col="minutes">
-                                <div class="north-luna-moments-datetime-time-header">分</div>
+                                <div class="north-luna-moments-datetime-time-header">${lunaT('分')}</div>
                                 <div class="north-luna-moments-datetime-time-list" data-col="minutes"></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="north-luna-moments-datetime-actions">
-                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-cancel" type="button">取消</button>
-                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-confirm" type="button">确定</button>
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-cancel" type="button">${lunaT('取消')}</button>
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-confirm" type="button">${lunaT('确定')}</button>
                 </div>
             </div>
         </div>
@@ -1296,9 +1354,9 @@ function changeMomentsItemTime(mid, plugin) {
 
         const headerHtml = `
             <div class="north-luna-moments-datetime-header">
-                <button class="north-luna-moments-datetime-prev" type="button" title="上月">‹</button>
-                <span class="north-luna-moments-datetime-title">${viewYear}年${viewMonth + 1}月</span>
-                <button class="north-luna-moments-datetime-next" type="button" title="下月">›</button>
+                <button class="north-luna-moments-datetime-prev" type="button" title="${lunaT('上月')}">‹</button>
+                <span class="north-luna-moments-datetime-title">${lunaYm(viewYear, viewMonth + 1)}</span>
+                <button class="north-luna-moments-datetime-next" type="button" title="${lunaT('下月')}">›</button>
             </div>
         `;
         const weekdaysHtml = `<div class="north-luna-moments-datetime-weekdays">${['日','一','二','三','四','五','六'].map(w => `<span>${w}</span>`).join('')}</div>`;
@@ -1356,12 +1414,12 @@ function changeMomentsItemTime(mid, plugin) {
         moment.createdAt = newTime; // 兼容旧引用
         if (plugin.saveMoments) {
             plugin.saveMoments().then(() => {
-                showMessage('时间已修改');
+                showMessage(lunaT('时间已修改'));
                 // 刷新朋友圈列表
                 if (plugin._siyuTab && typeof plugin._siyuTab.render === 'function') {
                     plugin._siyuTab.render();
                 }
-            }).catch(() => showMessage('修改失败'));
+            }).catch(() => showMessage(lunaT('修改失败')));
         }
         closePicker();
     });
@@ -1510,7 +1568,7 @@ function changeLifeLogBlockTime(blockId, plugin, opts) {
         <div class="north-luna-moments-datetime-overlay"></div>
         <div class="north-luna-moments-datetime-content">
             <div class="north-luna-moments-datetime-top">
-                <span class="north-luna-moments-datetime-label">修改时间</span>
+                <span class="north-luna-moments-datetime-label">${lunaT('修改时间')}</span>
                 <button class="north-luna-moments-datetime-close" type="button" aria-label="关闭">×</button>
             </div>
             <div class="north-luna-moments-datetime-body"></div>
@@ -1521,19 +1579,19 @@ function changeLifeLogBlockTime(blockId, plugin, opts) {
                         <div class="north-luna-moments-datetime-display">${p2(pickedHours)}:${p2(pickedMinutes)}</div>
                         <div class="north-luna-moments-datetime-time-popup">
                             <div class="north-luna-moments-datetime-time-col" data-col="hours">
-                                <div class="north-luna-moments-datetime-time-header">时</div>
+                                <div class="north-luna-moments-datetime-time-header">${lunaT('时')}</div>
                                 <div class="north-luna-moments-datetime-time-list" data-col="hours"></div>
                             </div>
                             <div class="north-luna-moments-datetime-time-col" data-col="minutes">
-                                <div class="north-luna-moments-datetime-time-header">分</div>
+                                <div class="north-luna-moments-datetime-time-header">${lunaT('分')}</div>
                                 <div class="north-luna-moments-datetime-time-list" data-col="minutes"></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="north-luna-moments-datetime-actions">
-                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-cancel" type="button">取消</button>
-                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-confirm" type="button">确定</button>
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-cancel" type="button">${lunaT('取消')}</button>
+                    <button class="north-luna-moments-datetime-btn north-luna-moments-datetime-btn-confirm" type="button">${lunaT('确定')}</button>
                 </div>
             </div>
         </div>
@@ -1573,9 +1631,9 @@ function changeLifeLogBlockTime(blockId, plugin, opts) {
         }
         const headerHtml = `
             <div class="north-luna-moments-datetime-header">
-                <button class="north-luna-moments-datetime-prev" type="button" title="上月">‹</button>
-                <span class="north-luna-moments-datetime-title">${viewYear}年${viewMonth + 1}月</span>
-                <button class="north-luna-moments-datetime-next" type="button" title="下月">›</button>
+                <button class="north-luna-moments-datetime-prev" type="button" title="${lunaT('上月')}">‹</button>
+                <span class="north-luna-moments-datetime-title">${lunaYm(viewYear, viewMonth + 1)}</span>
+                <button class="north-luna-moments-datetime-next" type="button" title="${lunaT('下月')}">›</button>
             </div>
         `;
         const weekdaysHtml = `<div class="north-luna-moments-datetime-weekdays">${['日','一','二','三','四','五','六'].map(w => `<span>${w}</span>`).join('')}</div>`;
@@ -2005,7 +2063,7 @@ function addBreezeNoteToMoments(id, storage, plugin) {
         /* 迁移：从清风记录里摘掉这条说说（保留图片/文件，资源已归朋友圈动态所有） */
         storage.breezeNotes = ((storage || {}).breezeNotes || []).filter((n) => n.id !== id);
         const done = () => {
-            showMessage('已添加到朋友圈，可在朋友圈点「修改」补充心情 / 天气 / 地址等信息');
+            showMessage(lunaT('已添加到朋友圈，可在朋友圈点「修改」补充心情 / 天气 / 地址等信息'));
             /* 「关闭这条说说」：若这条正被加载进输入框编辑，一并退出编辑态 */
             try {
                 [plugin._siyuTab, plugin._lunaDockCtx].forEach((t) => {
@@ -2028,7 +2086,7 @@ function addBreezeNoteToMoments(id, storage, plugin) {
         }
     };
     if (plugin.saveMoments) {
-        plugin.saveMoments().then(finish).catch(() => showMessage('添加到朋友圈失败'));
+        plugin.saveMoments().then(finish).catch(() => showMessage(lunaT('添加到朋友圈失败')));
     } else {
         finish();
     }
@@ -2577,7 +2635,7 @@ function breezeGenLargeHeatmap(notes, year) {
                 if (count >= 3) level = 3;
                 if (count >= 5) level = 4;
                 const dateStr = breezeFormatDateKey(date);
-                const tooltip = `${dateStr}: ${count}条记录`;
+                const tooltip = lunaT('{d}: {n} 条记录', { d: dateStr, n: count });
                 columnCells += `<div class="north-shuoshuo-contribution-cell level-${level}" data-date="${dateStr}" title="${tooltip}"></div>`;
             } else {
                 columnCells += `<div class="north-shuoshuo-contribution-cell level-empty"></div>`;
@@ -2643,8 +2701,8 @@ function breezeGenMonthlyDistribution(notes, year) {
     return `
         <div class="north-shuoshuo-distribution-section">
             <div class="north-shuoshuo-distribution-header">
-                <span>月度分布</span>
-                <span class="north-shuoshuo-distribution-subtitle">${year} 年共 ${totalYear} 条</span>
+                <span>${lunaT('月度分布')}</span>
+                <span class="north-shuoshuo-distribution-subtitle">${lunaT('{y} 年共 {n} 条', { y: year, n: totalYear })}</span>
             </div>
             <div class="north-shuoshuo-monthly-distribution">${barsHtml}</div>
         </div>`;
@@ -2666,7 +2724,7 @@ function breezeGenRhythmChart(notes, year) {
     if (total === 0) {
         return `<div class="north-shuoshuo-rhythm-section">
             <div class="north-shuoshuo-distribution-header">
-                <span>落笔时刻</span>
+                <span>${lunaT('落笔时刻')}</span>
                 <span class="north-shuoshuo-distribution-subtitle">${year} 年暂无记录</span>
             </div>
             <div style="text-align:center;color:var(--b3-theme-on-surface-light);padding:20px 0;">这一年还没有记录，落笔之后就能看到你的时刻分布了</div>
@@ -2722,14 +2780,14 @@ function breezeGenRhythmChart(notes, year) {
     return `
         <div class="north-shuoshuo-rhythm-section">
             <div class="north-shuoshuo-distribution-header">
-                <span>落笔时刻</span>
-                <span class="north-shuoshuo-distribution-subtitle">${year} 年共 ${total} 条</span>
+                <span>${lunaT('落笔时刻')}</span>
+                <span class="north-shuoshuo-distribution-subtitle">${lunaT('{y} 年共 {n} 条', { y: year, n: total })}</span>
             </div>
-            <div class="north-shuoshuo-rhythm-headline">哪些小时是你的落笔高峰？</div>
+            <div class="north-shuoshuo-rhythm-headline">${lunaT('哪些小时是你的落笔高峰？')}</div>
             <div class="north-shuoshuo-rhythm-peak-row">
-                <div class="north-shuoshuo-rhythm-peak-item"><div class="north-shuoshuo-rhythm-peak-value">${peakLabel}</div><div class="north-shuoshuo-rhythm-peak-label">落笔高峰</div></div>
-                <div class="north-shuoshuo-rhythm-peak-item"><div class="north-shuoshuo-rhythm-peak-value">${maxCount} 条</div><div class="north-shuoshuo-rhythm-peak-label">单时峰值</div></div>
-                <div class="north-shuoshuo-rhythm-peak-item"><div class="north-shuoshuo-rhythm-peak-value">${pct}%</div><div class="north-shuoshuo-rhythm-peak-label">占全年笔记</div></div>
+                <div class="north-shuoshuo-rhythm-peak-item"><div class="north-shuoshuo-rhythm-peak-value">${peakLabel}</div><div class="north-shuoshuo-rhythm-peak-label">${lunaT('落笔高峰')}</div></div>
+                <div class="north-shuoshuo-rhythm-peak-item"><div class="north-shuoshuo-rhythm-peak-value">${lunaT('{n} 条', { n: maxCount })}</div><div class="north-shuoshuo-rhythm-peak-label">${lunaT('单时峰值')}</div></div>
+                <div class="north-shuoshuo-rhythm-peak-item"><div class="north-shuoshuo-rhythm-peak-value">${pct}%</div><div class="north-shuoshuo-rhythm-peak-label">${lunaT('占全年笔记')}</div></div>
             </div>
             <svg class="north-shuoshuo-rhythm-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="一天 24 小时落笔时刻分布折线图">
                 ${gridHtml}
@@ -2786,8 +2844,8 @@ function breezeGenDailyDistribution(notes, year) {
     return `
         <div class="north-shuoshuo-distribution-section">
             <div class="north-shuoshuo-distribution-header">
-                <span>每日记录 — ${monthName}</span>
-                <span class="north-shuoshuo-distribution-subtitle">${monthName} 共 ${totalMonth} 条</span>
+                <span>${lunaT('每日记录')} — ${monthName}</span>
+                <span class="north-shuoshuo-distribution-subtitle">${lunaT('{m} 共 {n} 条', { m: monthName, n: totalMonth })}</span>
             </div>
             <div class="north-shuoshuo-daily-distribution-wrapper">
                 <div class="north-shuoshuo-daily-distribution">${barsHtml}</div>
@@ -2806,10 +2864,10 @@ function breezeGenTopTags(notes, tagMeta) {
 
     let html = `
         <div class="north-shuoshuo-distribution-section">
-            <div class="north-shuoshuo-distribution-header">最常用标签 Top 10</div>
+            <div class="north-shuoshuo-distribution-header">${lunaT('最常用标签 Top 10')}</div>
             <div class="north-shuoshuo-word-distribution">`;
     if (sortedTags.length === 0) {
-        html += `<div style="text-align:center;color:var(--b3-theme-on-surface-light);padding:20px 0;">暂无标签数据</div>`;
+        html += `<div style="text-align:center;color:var(--b3-theme-on-surface-light);padding:20px 0;">${lunaT('暂无标签数据')}</div>`;
     } else {
         sortedTags.forEach(([tag, count]) => {
             const percentage = maxCount > 0 ? (count / maxCount * 100) : 0;
@@ -2819,7 +2877,7 @@ function breezeGenTopTags(notes, tagMeta) {
                     <div class="north-shuoshuo-word-bar-bg">
                         <div class="north-shuoshuo-word-bar-fill" style="width: ${percentage}%"></div>
                     </div>
-                    <span class="north-shuoshuo-word-count">${count} 条</span>
+                    <span class="north-shuoshuo-word-count">${lunaT('{n} 条', { n: count })}</span>
                 </div>`;
         });
     }
@@ -2878,23 +2936,23 @@ function breezeGenStatsTagDetailTable(notes, year) {
         const pct = grandTotal > 0 ? (count / grandTotal * 100).toFixed(1) : '0.0';
         return `<div class="stats-tag-detail-val-sub">
                     <span class="lifelog-stats-detail-val-pct">${pct}%</span>
-                    <span class="lifelog-stats-detail-val-count">${count}条</span>
+                    <span class="lifelog-stats-detail-val-count">${lunaT('{n}条', { n: count })}</span>
                 </div>`;
     };
 
     let html = `
         <div class="north-shuoshuo-stats-detail-section">
             <div class="north-shuoshuo-distribution-header">
-                <span>统计明细</span>
-                <span class="north-shuoshuo-distribution-subtitle">${year} 年共 ${grandTotal} 条</span>
+                <span>${lunaT('统计明细')}</span>
+                <span class="north-shuoshuo-distribution-subtitle">${lunaT('{y} 年共 {n} 条', { y: year, n: grandTotal })}</span>
             </div>
             <div class="lifelog-stats-detail-table-wrapper">
                 <table class="lifelog-stats-detail-table">
                     <thead>
                         <tr>
-                            <th class="lifelog-stats-detail-th-type">标签</th>
-                            <th class="lifelog-stats-detail-th-total">总计</th>
-                            ${allMonths.map((m) => `<th class="lifelog-stats-detail-th-month">${m + 1}月</th>`).join('')}
+                            <th class="lifelog-stats-detail-th-type">${lunaT('标签')}</th>
+                            <th class="lifelog-stats-detail-th-total">${lunaT('总计')}</th>
+                            ${allMonths.map((m) => `<th class="lifelog-stats-detail-th-month">${lunaMonthShort(m + 1)}</th>`).join('')}
                         </tr>
                     </thead>
                     <tbody>
@@ -2915,10 +2973,10 @@ function breezeGenStatsTagDetailTable(notes, year) {
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td class="lifelog-stats-detail-cell-type lifelog-stats-detail-cell-total-row">总计</td>
+                            <td class="lifelog-stats-detail-cell-type lifelog-stats-detail-cell-total-row">${lunaT('总计')}</td>
                             <td class="lifelog-stats-detail-cell-total lifelog-stats-detail-cell-total-row">
                                 <div class="stats-tag-detail-val-sub">
-                                    <span class="lifelog-stats-detail-val-count">${grandTotal}条</span>
+                                    <span class="lifelog-stats-detail-val-count">${lunaT('{n}条', { n: grandTotal })}</span>
                                 </div>
                             </td>
                             ${allMonths.map((monthIdx) => {
@@ -2927,7 +2985,7 @@ function breezeGenStatsTagDetailTable(notes, year) {
                                 return monthTotal > 0
                                     ? `<td class="lifelog-stats-detail-cell-day lifelog-stats-detail-cell-total-row">
                                         <div class="stats-tag-detail-val-sub">
-                                            <span class="lifelog-stats-detail-val-count">${monthTotal}条</span>
+                                            <span class="lifelog-stats-detail-val-count">${lunaT('{n}条', { n: monthTotal })}</span>
                                         </div>
                                     </td>`
                                     : `<td class="lifelog-stats-detail-cell-day lifelog-stats-detail-cell-total-row">-</td>`;
@@ -2949,8 +3007,8 @@ function breezeGenTagCloud(notes) {
     const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
     if (sortedTags.length === 0) {
         return `<div class="north-shuoshuo-distribution-section">
-            <div class="north-shuoshuo-distribution-header">标签云</div>
-            <div style="text-align:center;color:var(--b3-theme-on-surface-light);padding:20px 0;">暂无标签数据</div>
+            <div class="north-shuoshuo-distribution-header">${lunaT('标签云')}</div>
+            <div style="text-align:center;color:var(--b3-theme-on-surface-light);padding:20px 0;">${lunaT('暂无标签数据')}</div>
         </div>`;
     }
     const tagsHtml = sortedTags.map(([tag, count]) => {
@@ -2960,7 +3018,7 @@ function breezeGenTagCloud(notes) {
 
     return `
         <div class="north-shuoshuo-distribution-section">
-            <div class="north-shuoshuo-distribution-header">标签云</div>
+            <div class="north-shuoshuo-distribution-header">${lunaT('标签云')}</div>
             <div class="north-shuoshuo-tag-cloud">${tagsHtml}</div>
         </div>`;
 }
@@ -3047,8 +3105,8 @@ function renderBreezeTable(tab) {
         const archived = !!note.archived;
         const tagsHtml = tags.map(t => `<span class="north-breeze-table-tag-pill" data-tag="${breezeEscapeHtml(t)}" style="${breezeTableTagStyle(tab, t)}">${breezeEscapeHtml(t)}</span>`).join('');
         const archiveHtml = archived
-            ? '<span class="north-breeze-table-archive-badge archived north-breeze-table-archive-toggle" data-id="' + breezeEscapeHtml(note.id) + '" title="点击取消归档">已归档</span>'
-            : '<span class="north-breeze-table-archive-badge north-breeze-table-archive-toggle" data-id="' + breezeEscapeHtml(note.id) + '" title="点击设为归档">未归档</span>';
+            ? '<span class="north-breeze-table-archive-badge archived north-breeze-table-archive-toggle" data-id="' + breezeEscapeHtml(note.id) + '" title="' + lunaT('点击取消归档') + '">' + lunaT('已归档') + '</span>'
+            : '<span class="north-breeze-table-archive-badge north-breeze-table-archive-toggle" data-id="' + breezeEscapeHtml(note.id) + '" title="' + lunaT('点击设为归档') + '">' + lunaT('未归档') + '</span>';
 
         rows += `<tr class="north-breeze-table-row${checked ? ' selected' : ''}" data-id="${breezeEscapeHtml(note.id)}">
             <td class="north-breeze-table-cell north-breeze-table-checkbox-cell">
@@ -3057,13 +3115,13 @@ function renderBreezeTable(tab) {
             <td class="north-breeze-table-cell north-breeze-table-content-cell" title="${breezeEscapeHtml(content)}">
                 <span class="north-breeze-table-content-text">${breezeEscapeHtml(displayContent)}</span>
             </td>
-            <td class="north-breeze-table-cell north-breeze-table-tags-cell north-breeze-table-tags-editable" title="点击编辑标签">${tagsHtml || '<span class="north-breeze-table-tags-empty">＋ 标签</span>'}</td>
+            <td class="north-breeze-table-cell north-breeze-table-tags-cell north-breeze-table-tags-editable" title="${lunaT('点击编辑标签')}">${tagsHtml || '<span class="north-breeze-table-tags-empty">＋ 标签</span>'}</td>
             <td class="north-breeze-table-cell north-breeze-table-type-cell">${archiveHtml}</td>
-            <td class="north-breeze-table-cell north-breeze-table-time-cell"><span class="north-breeze-table-time-edit${fmtTime(time) ? '' : ' empty'}" data-id="${breezeEscapeHtml(note.id)}" data-field="created" title="点击修改创建时间">${breezeEscapeHtml(fmtTime(time)) || '点击设置'}</span></td>
-            <td class="north-breeze-table-cell north-breeze-table-time-cell"><span class="north-breeze-table-time-edit${fmtTime(updated) ? '' : ' empty'}" data-id="${breezeEscapeHtml(note.id)}" data-field="updated" title="点击修改更新时间">${breezeEscapeHtml(fmtTime(updated)) || '点击设置'}</span></td>
+            <td class="north-breeze-table-cell north-breeze-table-time-cell"><span class="north-breeze-table-time-edit${fmtTime(time) ? '' : ' empty'}" data-id="${breezeEscapeHtml(note.id)}" data-field="created" title="${lunaT('点击修改创建时间')}">${breezeEscapeHtml(fmtTime(time)) || '点击设置'}</span></td>
+            <td class="north-breeze-table-cell north-breeze-table-time-cell"><span class="north-breeze-table-time-edit${fmtTime(updated) ? '' : ' empty'}" data-id="${breezeEscapeHtml(note.id)}" data-field="updated" title="${lunaT('点击修改更新时间')}">${breezeEscapeHtml(fmtTime(updated)) || '点击设置'}</span></td>
             <td class="north-breeze-table-cell north-breeze-table-actions-cell">
                 <div class="north-breeze-table-row-actions">
-                    <button class="north-breeze-table-action-btn archive${archived ? ' unarchive' : ''}" data-id="${breezeEscapeHtml(note.id)}" title="${archived ? '取消归档' : '归档'}">
+                    <button class="north-breeze-table-action-btn archive${archived ? ' unarchive' : ''}" data-id="${breezeEscapeHtml(note.id)}" title="${archived ? lunaT('取消归档') : lunaT('归档')}">
                         <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconUpload"></use></svg>
                     </button>
                     <button class="north-breeze-table-action-btn delete" data-id="${breezeEscapeHtml(note.id)}" title="删除">
@@ -3081,20 +3139,20 @@ function renderBreezeTable(tab) {
             <div class="north-breeze-table-top-left">
                 <div class="north-breeze-table-search-box">
                     <svg class="north-breeze-table-search-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                    <input type="text" class="north-breeze-table-search-input" id="table-search-input" placeholder="搜索笔记…" value="${breezeEscapeHtml(searchText)}">
+                    <input type="text" class="north-breeze-table-search-input" id="table-search-input" placeholder="${lunaT('搜索笔记…')}" value="${breezeEscapeHtml(searchText)}">
                     ${searchText ? '<button class="north-breeze-table-search-clear" id="table-search-clear">×</button>' : ''}
                 </div>
             </div>
             <div class="north-breeze-table-top-center">
                 <div class="north-breeze-table-filter-group">
-                    <span class="north-breeze-table-filter-label">日期</span>
+                    <span class="north-breeze-table-filter-label">${lunaT('日期')}</span>
                     <input type="date" class="north-breeze-table-filter-input" id="table-filter-date" value="${filterDate}">
                     ${filterDate ? '<button class="north-breeze-table-filter-clear" data-target="table-filter-date">清除</button>' : ''}
                 </div>
                 <div class="north-breeze-table-filter-group">
-                    <span class="north-breeze-table-filter-label">标签</span>
+                    <span class="north-breeze-table-filter-label">${lunaT('标签')}</span>
                     ${(() => {
-                        const items = [{ value: '', label: '全部' }, ...allTags.map(t => ({ value: t, label: t }))];
+                        const items = [{ value: '', label: lunaT('全部') }, ...allTags.map(t => ({ value: t, label: t }))];
                         const current = items.find(o => o.value === filterTag) || items[0];
                         return `<div class="north-luna-settings-cddl" id="table-filter-tag" data-type="table-cddl" data-key="tableFilterTag">
                             <button type="button" class="north-luna-settings-cddl-trigger"><span class="north-luna-settings-cddl-value">${breezeEscapeHtml(current.label)}</span><svg class="north-luna-settings-cddl-arrow" width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -3104,9 +3162,9 @@ function renderBreezeTable(tab) {
                     ${filterTag ? '<button class="north-breeze-table-filter-clear" data-target="table-filter-tag">清除</button>' : ''}
                 </div>
                 <div class="north-breeze-table-filter-group">
-                    <span class="north-breeze-table-filter-label">归档</span>
+                    <span class="north-breeze-table-filter-label">${lunaT('归档')}</span>
                     ${(() => {
-                        const items = [{ value: '', label: '全部' }, { value: 'archived', label: '已归档' }, { value: 'not-archived', label: '未归档' }];
+                        const items = [{ value: '', label: lunaT('全部') }, { value: 'archived', label: lunaT('已归档') }, { value: 'not-archived', label: lunaT('未归档') }];
                         const current = items.find(o => o.value === filterArchived) || items[0];
                         return `<div class="north-luna-settings-cddl" id="table-filter-archived" data-type="table-cddl" data-key="tableFilterArchived">
                             <button type="button" class="north-luna-settings-cddl-trigger"><span class="north-luna-settings-cddl-value">${breezeEscapeHtml(current.label)}</span><svg class="north-luna-settings-cddl-arrow" width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -3119,7 +3177,7 @@ function renderBreezeTable(tab) {
             <div class="north-breeze-table-top-right">
                 <div class="north-breeze-table-select-all-wrapper">
                     <input type="checkbox" class="north-breeze-table-header-checkbox" id="table-select-all"${sorted.length > 0 && sorted.every(n => tab._tableChecked.has(n.id)) ? ' checked' : ''}>
-                    <span class="north-breeze-table-toolbar-label">全选</span>
+                    <span class="north-breeze-table-toolbar-label">${lunaT('全选')}</span>
                 </div>
                 ${selectedCount > 0 ? `<span class="north-breeze-table-selected-count">已选 ${selectedCount} 项</span>
                 <button class="north-breeze-table-batch-btn north-breeze-table-batch-archive" id="table-batch-archive">
@@ -3137,18 +3195,18 @@ function renderBreezeTable(tab) {
                 <thead class="north-breeze-table-head">
                     <tr>
                         <th class="north-breeze-table-header-cell north-breeze-table-checkbox-cell"></th>
-                        <th class="north-breeze-table-header-cell north-breeze-table-content-cell">内容</th>
-                        <th class="north-breeze-table-header-cell north-breeze-table-tags-cell">标签</th>
-                        <th class="north-breeze-table-header-cell north-breeze-table-type-cell">归档</th>
-                        <th class="north-breeze-table-header-cell north-breeze-table-time-cell sortable" data-sort="created">创建时间 ${sortArrow('created')}</th>
-                        <th class="north-breeze-table-header-cell north-breeze-table-time-cell sortable" data-sort="updated">更新时间 ${sortArrow('updated')}</th>
-                        <th class="north-breeze-table-header-cell north-breeze-table-actions-header">操作</th>
+                        <th class="north-breeze-table-header-cell north-breeze-table-content-cell">${lunaT('内容')}</th>
+                        <th class="north-breeze-table-header-cell north-breeze-table-tags-cell">${lunaT('标签')}</th>
+                        <th class="north-breeze-table-header-cell north-breeze-table-type-cell">${lunaT('归档')}</th>
+                        <th class="north-breeze-table-header-cell north-breeze-table-time-cell sortable" data-sort="created">${lunaT('创建时间')} ${sortArrow('created')}</th>
+                        <th class="north-breeze-table-header-cell north-breeze-table-time-cell sortable" data-sort="updated">${lunaT('更新时间')} ${sortArrow('updated')}</th>
+                        <th class="north-breeze-table-header-cell north-breeze-table-actions-header">${lunaT('操作')}</th>
                     </tr>
                 </thead>
-                <tbody class="north-breeze-table-body">${rows || `<tr><td colspan="7" class="north-breeze-table-empty">暂无记录</td></tr>`}</tbody>
+                <tbody class="north-breeze-table-body">${rows || `<tr><td colspan="7" class="north-breeze-table-empty">${lunaT('暂无记录')}</td></tr>`}</tbody>
             </table>
         </div>
-        <div class="north-breeze-table-footer">共 <span class="count">${filtered.length}</span> 条笔记${filtered.length !== notes.length ? `（筛选前 ${notes.length} 条）` : ''}</div>
+        <div class="north-breeze-table-footer">${lunaT('共')} <span class="count">${filtered.length}</span> ${lunaT('条笔记')}${filtered.length !== notes.length ? lunaT('（筛选前 {n} 条）', { n: notes.length }) : ''}</div>
     </div>`;
 }
 
@@ -3173,27 +3231,27 @@ function renderBreezeStats(tab) {
         <div class="north-shuoshuo-stats-page">
             <div class="north-shuoshuo-stats-container">
                 <div class="north-shuoshuo-stats-header">
-                    <h1>记录统计</h1>
+                    <h1>${lunaT('记录统计')}</h1>
                     <div class="north-shuoshuo-year-selector">
                         <select id="breeze-stats-year-select">
-                            ${years.map((y) => `<option value="${y}" ${y === year ? 'selected' : ''}>${y}年</option>`).join('')}
+                            ${years.map((y) => `<option value="${y}" ${y === year ? 'selected' : ''}>${lunaYear(y)}</option>`).join('')}
                         </select>
                         <span class="north-shuoshuo-select-arrow">▼</span>
                     </div>
                 </div>
 
                 <div class="north-shuoshuo-stats-grid">
-                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.totalNotes}</div><div class="north-shuoshuo-stat-label">记录</div></div>
-                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.totalTags}</div><div class="north-shuoshuo-stat-label">标签</div></div>
-                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.totalWords.toLocaleString()}</div><div class="north-shuoshuo-stat-label">字数</div></div>
-                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.maxNotesPerDay}</div><div class="north-shuoshuo-stat-label">单日最多数</div></div>
-                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.maxWordsPerDay.toLocaleString()}</div><div class="north-shuoshuo-stat-label">单日最多字数</div></div>
-                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.activeDays}</div><div class="north-shuoshuo-stat-label">坚持记录天数</div></div>
+                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.totalNotes}</div><div class="north-shuoshuo-stat-label">${lunaT('记录')}</div></div>
+                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.totalTags}</div><div class="north-shuoshuo-stat-label">${lunaT('标签')}</div></div>
+                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.totalWords.toLocaleString()}</div><div class="north-shuoshuo-stat-label">${lunaT('字数')}</div></div>
+                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.maxNotesPerDay}</div><div class="north-shuoshuo-stat-label">${lunaT('单日最多数')}</div></div>
+                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.maxWordsPerDay.toLocaleString()}</div><div class="north-shuoshuo-stat-label">${lunaT('单日最多字数')}</div></div>
+                    <div class="north-shuoshuo-stat-card"><div class="north-shuoshuo-stat-number">${stats.activeDays}</div><div class="north-shuoshuo-stat-label">${lunaT('坚持记录天数')}</div></div>
                 </div>
 
                 <div class="north-shuoshuo-contribution-section">
                     <div class="north-shuoshuo-contribution-body">
-                        <div class="north-shuoshuo-contribution-weekdays"><span></span><span>周一</span><span></span><span>周三</span><span></span><span>周五</span><span></span></div>
+                        <div class="north-shuoshuo-contribution-weekdays"><span></span><span>${lunaT('周一')}</span><span></span><span>${lunaT('周三')}</span><span></span><span>${lunaT('周五')}</span><span></span></div>
                         <div class="north-shuoshuo-contribution-main">
                             <div class="north-shuoshuo-contribution-columns">${heatmap.columns}</div>
                             <div class="north-shuoshuo-contribution-months">${heatmap.months}</div>
@@ -4194,7 +4252,7 @@ function breezeRenderTagTree(tree, level, tagMeta) {
             `<div class="north-breeze-tag-item-content">` +
             toggle + icon +
             `<span class="north-breeze-tag-name">${breezeEsc(name)}</span>` +
-            `<span class="north-breeze-tag-menu-btn" data-tag="${breezeEsc(data.fullPath)}" title="标签操作"><svg class="north-breeze-tag-menu-icon"><use xlink:href="#iconMore"></use></svg></span>` +
+            `<span class="north-breeze-tag-menu-btn" data-tag="${breezeEsc(data.fullPath)}" title="${lunaT('标签操作')}"><svg class="north-breeze-tag-menu-icon"><use xlink:href="#iconMore"></use></svg></span>` +
             `<span class="north-breeze-tag-count">${data.count}</span>` +
             `</div>` + childHtml + `</div>`;
     }).join('');
@@ -4202,7 +4260,7 @@ function breezeRenderTagTree(tree, level, tagMeta) {
 /* 提取笔记的 YYYY-MM-DD 日期 key（按 time 字段前缀切分） */
 const breezeDateKey = (n) => (n && n.time ? String(n.time).slice(0, 10) : '');
 /* 格式化日期分组标题：今天 / 昨天 / X月X日 + 周X（对齐轻语 getDateGroupTitle） */
-const breezeGroupWeekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+let breezeGroupWeekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const breezeFormatDateGroupTitle = (dateKey) => {
     if (!dateKey) return '';
     const parts = dateKey.split('-').map(Number);
@@ -4215,9 +4273,9 @@ const breezeFormatDateGroupTitle = (dateKey) => {
     const yest = new Date(now); yest.setDate(yest.getDate() - 1);
     const yesterdayKey = yest.getFullYear() + '-' + p2(yest.getMonth() + 1) + '-' + p2(yest.getDate());
     const weekday = breezeGroupWeekdays[date.getDay()];
-    if (dateKey === todayKey) return '今天 ' + weekday;
-    if (dateKey === yesterdayKey) return '昨天 ' + weekday;
-    return m + '月' + d + '日 ' + weekday;
+    if (dateKey === todayKey) return lunaT('今天') + ' ' + weekday;
+    if (dateKey === yesterdayKey) return lunaT('昨天') + ' ' + weekday;
+    return LUNA_EN ? lunaMonthDay(date) + ', ' + weekday : m + '月' + d + '日 ' + weekday;
 };
 /* 清风视图：卡片布局（三栏瀑布流，参考轻语 renderMasonryNotes）
    - 按「最短列优先」贪心分配，使各列高度更均衡（瀑布流效果更自然）
@@ -4251,9 +4309,9 @@ function breezeShowTagPicker(anchor, textarea, plugin) {
     const picker = document.createElement('div');
     picker.className = 'north-breeze-tag-picker';
     if (all.length === 0) {
-        picker.innerHTML = '<div class="north-breeze-tag-picker-empty">还没有标签，在正文里写 #标签 试试</div>';
+        picker.innerHTML = '<div class="north-breeze-tag-picker-empty">' + lunaT('还没有标签，在正文里写 #标签 试试') + '</div>';
     } else {
-        picker.innerHTML = '<div class="north-breeze-tag-picker-tip">选择标签</div>' +
+        picker.innerHTML = '<div class="north-breeze-tag-picker-tip">' + lunaT('选择标签') + '</div>' +
             all.map((t) => '<span class="north-breeze-tag-picker-item" data-tag="' + breezeEsc(t) + '">#' + breezeEsc(t) + '</span>').join('');
     }
     document.body.appendChild(picker);
@@ -4311,7 +4369,7 @@ function buildBreezeMasonry(notes, q, dateBottomEnabled, viewStyle, footerLabel,
     notes = notes || [];
     notes = breezeSortNotes(notes);
     if (notes.length === 0) {
-        return '<div class="north-breeze-empty">还没有记录，写下第一条吧～</div>';
+        return '<div class="north-breeze-empty">' + lunaT('还没有记录，写下第一条吧～') + '</div>';
     }
     const colCount = (typeof window !== 'undefined' && window.innerWidth <= 768) ? 2 : 3;
     const columns = Array.from({ length: colCount }, () => []);
@@ -4352,7 +4410,7 @@ function breezeRenderCommentPanel(it) {
         return '<div class="north-luna-moments-comment-item" data-cid="' + cid + '">' +
             '<div class="north-luna-moments-comment-display">' +
                 '<span class="north-luna-moments-comment-text">' +
-                    '<strong class="north-breeze-comment-nick" data-cid="' + cid + '" title="点击修改或删除">' + nick + '：</strong>' + text +
+                    '<strong class="north-breeze-comment-nick" data-cid="' + cid + '" title="' + lunaT('点击修改或删除') + '">' + nick + '：</strong>' + text +
                 '</span>' +
                 '<span class="north-luna-moments-comment-actions">' +
                     '<span class="north-luna-moments-comment-time">' + time + '</span>' +
@@ -4361,8 +4419,8 @@ function breezeRenderCommentPanel(it) {
             '<div class="north-luna-moments-comment-edit-row" style="display:none">' +
                 '<textarea class="north-luna-moments-comment-edit-input" maxlength="200">' + text + '</textarea>' +
                 '<div class="north-luna-moments-comment-edit-actions">' +
-                    '<button class="north-luna-moments-comment-edit-save" data-cid="' + cid + '" type="button">保存</button>' +
-                    '<button class="north-luna-moments-comment-edit-cancel" data-cid="' + cid + '" type="button">取消</button>' +
+                    '<button class="north-luna-moments-comment-edit-save" data-cid="' + cid + '" type="button">' + lunaT('保存') + '</button>' +
+                    '<button class="north-luna-moments-comment-edit-cancel" data-cid="' + cid + '" type="button">' + lunaT('取消') + '</button>' +
                 '</div>' +
             '</div>' +
         '</div>';
@@ -4371,8 +4429,8 @@ function breezeRenderCommentPanel(it) {
     return '<div class="north-luna-moments-comment-panel" data-nid="' + nid + '">' +
         itemsHtml +
         '<div class="north-luna-moments-comment-input-row" style="display:none">' +
-            '<input type="text" class="north-luna-moments-comment-input" placeholder="写评论..." maxlength="200">' +
-            '<button class="north-luna-moments-comment-send" data-nid="' + nid + '" type="button">发送</button>' +
+            '<input type="text" class="north-luna-moments-comment-input" placeholder="' + lunaT('写评论...') + '" maxlength="200">' +
+            '<button class="north-luna-moments-comment-send" data-nid="' + nid + '" type="button">' + lunaT('发送') + '</button>' +
         '</div>' +
     '</div>';
 }
@@ -4388,7 +4446,7 @@ function breezeBindCommentEvents(plugin) {
         const menu = document.createElement('div');
         menu.className = 'north-breeze-comment-menu';
         menu.innerHTML =
-            '<div class="north-breeze-comment-menu-item" data-act="edit" data-cid="' + breezeEsc(cid) + '">修改</div>' +
+            '<div class="north-breeze-comment-menu-item" data-act="edit" data-cid="' + breezeEsc(cid) + '">' + lunaT('修改') + '</div>' +
             '<div class="north-breeze-comment-menu-item" data-act="delete" data-cid="' + breezeEsc(cid) + '">删除</div>';
         document.body.appendChild(menu);
         const rect = nickEl.getBoundingClientRect();
@@ -4429,7 +4487,7 @@ function breezeBindCommentEvents(plugin) {
                     if (ci) ci.remove();
                     if (plugin.saveData) plugin.saveData(RECORDS_STORAGE, storage).catch(() => {});
                 };
-                if (typeof confirm === 'function') confirm('删除评论', '确定要删除这条评论吗？', doDelete);
+                if (typeof confirm === 'function') confirm(lunaT('删除评论'), lunaT('确定要删除这条评论吗？'), doDelete);
                 else doDelete();
             }
         });
@@ -4463,7 +4521,7 @@ function breezeBindCommentEvents(plugin) {
             item.dataset.cid = cid;
             item.innerHTML = '<div class="north-luna-moments-comment-display">' +
                 '<span class="north-luna-moments-comment-text">' +
-                    '<strong class="north-breeze-comment-nick" data-cid="' + breezeEsc(cid) + '" title="点击修改或删除">' + breezeEsc(nickname) + '：</strong>' + breezeEsc(text) +
+                    '<strong class="north-breeze-comment-nick" data-cid="' + breezeEsc(cid) + '" title="' + lunaT('点击修改或删除') + '">' + breezeEsc(nickname) + '：</strong>' + breezeEsc(text) +
                 '</span>' +
                 '<span class="north-luna-moments-comment-actions">' +
                     '<span class="north-luna-moments-comment-time">' + breezeEsc(time) + '</span>' +
@@ -4472,8 +4530,8 @@ function breezeBindCommentEvents(plugin) {
             '<div class="north-luna-moments-comment-edit-row" style="display:none">' +
                 '<textarea class="north-luna-moments-comment-edit-input" maxlength="200">' + breezeEsc(text) + '</textarea>' +
                 '<div class="north-luna-moments-comment-edit-actions">' +
-                    '<button class="north-luna-moments-comment-edit-save" data-cid="' + breezeEsc(cid) + '" type="button">保存</button>' +
-                    '<button class="north-luna-moments-comment-edit-cancel" data-cid="' + breezeEsc(cid) + '" type="button">取消</button>' +
+                    '<button class="north-luna-moments-comment-edit-save" data-cid="' + breezeEsc(cid) + '" type="button">' + lunaT('保存') + '</button>' +
+                    '<button class="north-luna-moments-comment-edit-cancel" data-cid="' + breezeEsc(cid) + '" type="button">' + lunaT('取消') + '</button>' +
                 '</div>' +
             '</div>';
             if (inputRow) panel.insertBefore(item, inputRow);
@@ -4511,7 +4569,7 @@ function breezeBindCommentEvents(plugin) {
             const textSpan = item.querySelector('.north-luna-moments-comment-text');
             if (textSpan) {
                 const nickName = (c && c.nickname) || '清风';
-                textSpan.innerHTML = '<strong class="north-breeze-comment-nick" data-cid="' + breezeEsc(cid) + '" title="点击修改或删除">' + breezeEsc(nickName) + '：</strong>' + breezeEsc(text);
+                textSpan.innerHTML = '<strong class="north-breeze-comment-nick" data-cid="' + breezeEsc(cid) + '" title="' + lunaT('点击修改或删除') + '">' + breezeEsc(nickName) + '：</strong>' + breezeEsc(text);
             }
             const display = item.querySelector('.north-luna-moments-comment-display');
             const editRow = item.querySelector('.north-luna-moments-comment-edit-row');
@@ -4596,22 +4654,22 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
             return '<div class="north-breeze-note-card has-title footer-style" data-id="' + breezeEsc(it.id) + '">' +
                 '<div class="north-breeze-note-header">' +
             '<span class="north-breeze-note-title-in-header">' + breezeEsc(it.title) + '</span>' +
-            (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>置顶</span>' : '') +
-            (it.archived ? '<span class="north-breeze-note-archived-badge">已归档</span>' : '') +
-            (it.archived ? '<span class="north-breeze-note-archived-badge">已归档</span>' : '') +
+            (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>' + lunaT('置顶') + '</span>' : '') +
+            (it.archived ? '<span class="north-breeze-note-archived-badge">' + lunaT('已归档') + '</span>' : '') +
+            (it.archived ? '<span class="north-breeze-note-archived-badge">' + lunaT('已归档') + '</span>' : '') +
             '<div class="north-breeze-note-actions">' +
             '<span class="north-breeze-note-menu" data-id="' + breezeEsc(it.id) + '">' + moreSvg + '</span>' +
             '</div></div>' +
             '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
-            '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
+            '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">' + lunaT('全文') + '</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
             footerHtml +
             cp +
             '</div>';
         }
         return '<div class="north-breeze-note-card footer-style" data-id="' + breezeEsc(it.id) + '">' +
-            (it.pinned && showPinnedBadge ? '<div style="text-align:right;margin-bottom:4px;"><span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>置顶</span></div>' : '') +
+            (it.pinned && showPinnedBadge ? '<div style="text-align:right;margin-bottom:4px;"><span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>' + lunaT('置顶') + '</span></div>' : '') +
             '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
-            '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
+            '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">' + lunaT('全文') + '</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
             footerHtml +
             cp +
             '</div>';
@@ -4621,13 +4679,13 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
         return '<div class="north-breeze-note-card has-title" data-id="' + breezeEsc(it.id) + '">' +
             '<div class="north-breeze-note-header">' +
             '<span class="north-breeze-note-title-in-header">' + breezeEsc(it.title) + '</span>' +
-            (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>置顶</span>' : '') +
-            (it.archived ? '<span class="north-breeze-note-archived-badge">已归档</span>' : '') +
+            (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>' + lunaT('置顶') + '</span>' : '') +
+            (it.archived ? '<span class="north-breeze-note-archived-badge">' + lunaT('已归档') + '</span>' : '') +
             '<div class="north-breeze-note-actions">' +
             '<span class="north-breeze-note-menu" data-id="' + breezeEsc(it.id) + '">' + moreSvg + '</span>' +
             '</div></div>' +
             '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
-            '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
+            '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">' + lunaT('全文') + '</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
                 '<div class="north-breeze-note-footer"><span class="north-breeze-note-date-bottom">' + breezeFormatTitleDate(it.time) + '</span></div>' +
                 cp +
                 '</div>';
@@ -4636,12 +4694,12 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
     return '<div class="north-breeze-note-card" data-id="' + breezeEsc(it.id) + '">' +
         '<div class="north-breeze-note-header">' +
         '<span class="north-breeze-note-date">' + (dateBottomEnabled ? breezeFormatTitleDate(it.time) : breezeEsc(breezeFormatCardTime(it.time))) + '</span>' +
-        (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>置顶</span>' : '') +
+        (it.pinned && showPinnedBadge ? '<span class="north-breeze-note-pinned"><svg class="icon" style="width:12px;height:12px;"><use xlink:href="#iconPin"></use></svg>' + lunaT('置顶') + '</span>' : '') +
         '<div class="north-breeze-note-actions">' +
         '<span class="north-breeze-note-menu" data-id="' + breezeEsc(it.id) + '">' + moreSvg + '</span>' +
         '</div></div>' +
         '<div class="north-breeze-note-content">' + breezeRenderContent(breezeGetNoteParts(it), q, notesAll) + '</div>' +
-        '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">全文</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
+        '<div class="north-breeze-note-expand" data-id="' + breezeEsc(it.id) + '"><span class="breeze-expand-text">' + lunaT('全文') + '</span><svg class="breeze-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="breeze-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>' +
         cp +
         '</div>';
 };
@@ -4651,7 +4709,7 @@ const breezeRenderNoteCard = (it, showPinnedBadge, q, notesAll, dateBottomEnable
 function buildBreezeNotes(notes, q, dateBottomEnabled, viewStyle, footerLabel, footerSignature) {
     notes = notes || [];
     if (notes.length === 0) {
-        return '<div class="north-breeze-empty">还没有记录，写下第一条吧～</div>';
+        return '<div class="north-breeze-empty">' + lunaT('还没有记录，写下第一条吧～') + '</div>';
     }
     /* 分两段渲染：先把置顶笔记收拢到一个独立的"置顶"分组（与按日期分组并列），
        再按原 dateKey 倒序渲染非置顶笔记。组内用 breezeSortNotes 维持 pinned 同组内仍按 time 倒序。 */
@@ -4660,7 +4718,7 @@ function buildBreezeNotes(notes, q, dateBottomEnabled, viewStyle, footerLabel, f
     const sections = [];
     if (pinned.length > 0) {
         sections.push(
-            '<div class="north-breeze-date-group">置顶</div>' +
+            '<div class="north-breeze-date-group">' + lunaT('置顶') + '</div>' +
             breezeSortNotes(pinned).map(n => breezeRenderNoteCard(n, false, q, notes, dateBottomEnabled, viewStyle, footerLabel, footerSignature)).join('')
         );
     }
@@ -4700,10 +4758,10 @@ const SIDEBAR_VIEWS = [
                     <!-- 搜索栏 + 按日期筛选 -->
                     <div class="north-breeze-search">
                         <div class="north-breeze-search-wrapper">
-                            <input type="text" id="breezeSearchInput" class="north-breeze-search-input" placeholder="搜索说说...">
-                            <button type="button" class="north-breeze-search-clear" id="breezeSearchClear" style="display:none;" title="清空搜索">✕</button>
+                            <input type="text" id="breezeSearchInput" class="north-breeze-search-input" placeholder="${lunaT('搜索说说...')}">
+                            <button type="button" class="north-breeze-search-clear" id="breezeSearchClear" style="display:none;" title="${lunaT('清空搜索')}">✕</button>
                         </div>
-                        <button type="button" class="north-breeze-datefilter-btn" id="breezeDateFilterBtn" title="按日期筛选">
+                        <button type="button" class="north-breeze-datefilter-btn" id="breezeDateFilterBtn" title="${lunaT('按日期筛选')}">
                             <svg viewBox="0 0 1024 1024" fill="currentColor"><path d="M898.5 876.51H133.09V196.93H898.5z m-685.41-80H818.5V276.93H213.09z"/><path d="M305.67 143h80v187h-80zM636.44 143h80v187h-80zM295.06 657.98h78.61v80h-78.61zM295.06 532.98h78.61v80h-78.61zM479.06 532.98h78.61v80h-78.61zM661.06 532.98h78.61v80h-78.61zM173.69 393h675.76v80H173.69zM479.12 657.98h78.61v80h-78.61zM661.4 657.98h78.61v80H661.4z"/></svg>
                         </button>
                     </div>
@@ -4712,15 +4770,15 @@ const SIDEBAR_VIEWS = [
                     <div class="north-breeze-stats">
                         <div class="north-breeze-stat">
                             <div class="north-breeze-stat-num">0</div>
-                            <div class="north-breeze-stat-label">笔记</div>
+                            <div class="north-breeze-stat-label">${lunaT('笔记')}</div>
                         </div>
                         <div class="north-breeze-stat">
                             <div class="north-breeze-stat-num">0</div>
-                            <div class="north-breeze-stat-label">标签</div>
+                            <div class="north-breeze-stat-label">${lunaT('标签')}</div>
                         </div>
                         <div class="north-breeze-stat">
                             <div class="north-breeze-stat-num">0</div>
-                            <div class="north-breeze-stat-label">天</div>
+                            <div class="north-breeze-stat-label">${lunaT('天')}</div>
                         </div>
                     </div>
 
@@ -4738,11 +4796,11 @@ const SIDEBAR_VIEWS = [
                             <span class="north-breeze-menu-icon">
                                 <svg class="north-breeze-menu-icon-svg"><use xlink:href="#iconLayoutGrid"></use></svg>
                             </span>
-                            <span class="north-breeze-menu-text">全部笔记</span>
+                            <span class="north-breeze-menu-text">${lunaT('全部笔记')}</span>
                             ${(() => {
                                 const _qfe = plugin && plugin._getPluginSetting ? plugin._getPluginSetting('breezeQuickFilterEnabled') : false;
                                 if (!_qfe) return '';
-                                return `<span class="north-breeze-menu-arrow" data-breeze-toggle="quick-filter" title="展开快速筛选">
+                                return `<span class="north-breeze-menu-arrow" data-breeze-toggle="quick-filter" title="${lunaT('展开快速筛选')}">
                                 <svg class="north-breeze-menu-arrow-icon" viewBox="0 0 24 24"><use xlink:href="#iconRight"></use></svg>
                             </span>`;
                             })()}
@@ -4756,43 +4814,43 @@ const SIDEBAR_VIEWS = [
                                 <span class="north-breeze-quick-filter-icon">
                                     <svg viewBox="0 0 24 24"><use xlink:href="#iconTag"></use></svg>
                                 </span>
-                                <span>无标签</span>
+                                <span>${lunaT('无标签')}</span>
                             </div>
                             <div class="north-breeze-quick-filter-item" data-breeze-quick="has-comment">
                                 <span class="north-breeze-quick-filter-icon">
                                     <svg viewBox="0 0 24 24"><use xlink:href="#iconMark"></use></svg>
                                 </span>
-                                <span>有评论</span>
+                                <span>${lunaT('有评论')}</span>
                             </div>
                             <div class="north-breeze-quick-filter-item" data-breeze-quick="has-image">
                                 <span class="north-breeze-quick-filter-icon">
                                     <svg viewBox="0 0 24 24"><use xlink:href="#iconImage"></use></svg>
                                 </span>
-                                <span>有图片</span>
+                                <span>${lunaT('有图片')}</span>
                             </div>
                             <div class="north-breeze-quick-filter-item" data-breeze-quick="no-image">
                                 <span class="north-breeze-quick-filter-icon">
                                     <svg viewBox="0 0 24 24"><use xlink:href="#iconImage"></use></svg>
                                 </span>
-                                <span>无图片</span>
+                                <span>${lunaT('无图片')}</span>
                             </div>
                             <div class="north-breeze-quick-filter-item" data-breeze-quick="has-link">
                                 <span class="north-breeze-quick-filter-icon">
                                     <svg viewBox="0 0 24 24"><use xlink:href="#iconLink"></use></svg>
                                 </span>
-                                <span>有链接</span>
+                                <span>${lunaT('有链接')}</span>
                             </div>
                             <div class="north-breeze-quick-filter-item" data-breeze-quick="has-task">
                                 <span class="north-breeze-quick-filter-icon">
                                     <svg viewBox="0 0 24 24"><use xlink:href="#iconCheck"></use></svg>
                                 </span>
-                                <span>有任务</span>
+                                <span>${lunaT('有任务')}</span>
                             </div>
                             <div class="north-breeze-quick-filter-item" data-breeze-quick="archived">
                                 <span class="north-breeze-quick-filter-icon">
                                     <svg viewBox="0 0 24 24"><use xlink:href="#iconInbox"></use></svg>
                                 </span>
-                                <span>已归档</span>
+                                <span>${lunaT('已归档')}</span>
                             </div>
                         </div>`;
                         })()}
@@ -4800,21 +4858,21 @@ const SIDEBAR_VIEWS = [
                             <span class="north-breeze-menu-icon">
                                 <svg class="north-breeze-menu-icon-svg"><use xlink:href="#iconEye"></use></svg>
                             </span>
-                            <span class="north-breeze-menu-text">每日回顾</span>
+                            <span class="north-breeze-menu-text">${lunaT('每日回顾')}</span>
                         </div>
                         <div class="north-breeze-menu-item" data-breeze-subview="week">
                             <span class="north-breeze-menu-icon">
                                 <svg class="north-breeze-menu-icon-svg"><use xlink:href="#iconSpreadOdd"></use></svg>
                             </span>
-                            <span class="north-breeze-menu-text">本周记录</span>
+                            <span class="north-breeze-menu-text">${lunaT('本周记录')}</span>
                         </div>
                     </div>
 
                     <!-- 全部标签（动态渲染：每条笔记提取 #标签 后构建层级树；支持多级 父/子） -->
                     <div class="north-breeze-tags">
-                        <div class="north-breeze-section-title">全部标签</div>
+                        <div class="north-breeze-section-title">${lunaT('全部标签')}</div>
                         <div class="north-breeze-tags-list" id="breeze-tags-list">
-                            <div class="north-breeze-tag-empty">暂无标签</div>
+                            <div class="north-breeze-tag-empty">${lunaT('暂无标签')}</div>
                         </div>
                     </div>
                 </div>
@@ -4829,59 +4887,59 @@ const SIDEBAR_VIEWS = [
                                 <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><use xlink:href="#iconLeft"></use></svg>
                             </button>
                             <div class="north-breeze-edit-title-block">
-                                <span class="north-breeze-edit-title">编辑</span>
+                                <span class="north-breeze-edit-title">${lunaT('编辑')}</span>
                             </div>
                         </div>
                         <div class="north-breeze-input-box" id="breeze-input-box">
                             <div class="north-breeze-input-wrapper">
-                                <input class="north-breeze-title-input" id="breeze-title-input" placeholder="笔记标题（可选）" style="display:none">
-                                <textarea class="north-breeze-input-field" id="breeze-input" placeholder="现在的想法是..." rows="3" enterkeyhint="enter"></textarea>
+                                <input class="north-breeze-title-input" id="breeze-title-input" placeholder="${lunaT('笔记标题（可选）')}" style="display:none">
+                                <textarea class="north-breeze-input-field" id="breeze-input" placeholder="${lunaT('现在的想法是...')}" rows="3" enterkeyhint="enter"></textarea>
                                 <div class="north-breeze-image-preview-bar" id="breeze-image-preview-bar"></div>
                             </div>
                             <div class="north-breeze-input-toolbar">
                                 <div class="north-breeze-toolbar-left">
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-tag" title="标签">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-tag" title="${lunaT('标签')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconTag"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-image" title="上传资源">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-image" title="${lunaT('上传资源')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconImage"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-task" title="任务列表">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-task" title="${lunaT('任务列表')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconCheck"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-ul" title="无序列表">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-ul" title="${lunaT('无序列表')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconList"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-ol" title="有序列表">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-ol" title="${lunaT('有序列表')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconOrderedList"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-sidebar" title="收起侧边栏">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-sidebar" title="${lunaT('收起侧边栏')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconPanelRight"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-title" title="设置标题">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-title" title="${lunaT('设置标题')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconHeadings"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-color" title="字体颜色">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-color" title="${lunaT('字体颜色')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconFont"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-bold" title="粗体">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-bold" title="${lunaT('粗体')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconBold"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-strike" title="删除线">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-strike" title="${lunaT('删除线')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconStrike"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-mark" title="高亮">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-mark" title="${lunaT('高亮')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconMark"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-code" title="行级代码">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-code" title="${lunaT('行级代码')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconInlineCode"></use></svg>
                                     </span>
-                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-flomo" title="Flomo 同步">
+                                    <span class="north-breeze-toolbar-icon" id="breeze-toolbar-flomo" title="${lunaT('Flomo 同步')}">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconRiffCard"></use></svg>
                                     </span>
                                 </div>
                                 <div class="north-breeze-input-actions">
-                                    <button class="north-breeze-cancel-btn" id="breeze-cancel" style="display:none" title="取消编辑">取消</button>
+                                    <button class="north-breeze-cancel-btn" id="breeze-cancel" style="display:none" title="${lunaT('取消编辑')}">${lunaT('取消')}</button>
                                     <button class="north-breeze-send-btn" id="breeze-send">
                                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                                     </button>
@@ -4900,7 +4958,7 @@ const SIDEBAR_VIEWS = [
                 <div class="north-luna-moments-calendar-content">
                     <div class="north-luna-moments-calendar-header">
                         <div class="north-luna-moments-calendar-title">
-                            <span>清风日历</span>
+                            <span>${lunaT('清风日历')}</span>
                             <select class="north-luna-moments-calendar-year" id="breezeCalYear"></select>
                             <span class="north-luna-moments-calendar-count" id="breezeCalCount"></span>
                         </div>
@@ -4913,7 +4971,7 @@ const SIDEBAR_VIEWS = [
     ` },
     { id: "gallery", icon: "iconImage", title: "明月" },
     { id: "table", icon: "iconTable", title: "表格" },
-    { id: "chart", icon: "iconGraph", title: "统计", render: () => `<div class="north-luna-view"><div class="north-luna-view__header"><h2>统计</h2></div><div class="north-luna-view__body"><p>这里显示统计图表。</p></div></div>` },
+    { id: "chart", icon: "iconGraph", title: "统计", render: () => `<div class="north-luna-view"><div class="north-luna-view__header"><h2>${lunaT('统计')}</h2></div><div class="north-luna-view__body"><p>${lunaT('这里显示统计图表。')}</p></div></div>` },
     { id: "globe", icon: "iconGlobe", title: "朋友圈", isMoments: true, render: null },
     { id: "lifelog", icon: "iconSpreadEven", title: "LifeLog", render: (plugin) => `
         <div class="north-lifelog-container">
@@ -4939,10 +4997,10 @@ const SIDEBAR_VIEWS = [
                     <!-- 搜索栏 + 按日期筛选（移动端由 CSS 隐藏，改用顶栏搜索/日期筛选） -->
                     <div class="north-lifelog-search">
                         <div class="north-lifelog-search-wrapper">
-                            <input type="text" id="lifelogSearchInput" class="north-lifelog-search-input" placeholder="搜索记录...">
-                            <button type="button" class="north-lifelog-search-clear" id="lifelogSearchClear" style="display:none;" title="清空搜索">✕</button>
+                            <input type="text" id="lifelogSearchInput" class="north-lifelog-search-input" placeholder="${lunaT('搜索记录...')}">
+                            <button type="button" class="north-lifelog-search-clear" id="lifelogSearchClear" style="display:none;" title="${lunaT('清空搜索')}">✕</button>
                         </div>
-                        <button type="button" class="north-lifelog-datefilter-btn" id="lifelogDateFilterBtn" title="按日期筛选">
+                        <button type="button" class="north-lifelog-datefilter-btn" id="lifelogDateFilterBtn" title="${lunaT('按日期筛选')}">
                             <svg viewBox="0 0 1024 1024" fill="currentColor"><path d="M898.5 876.51H133.09V196.93H898.5z m-685.41-80H818.5V276.93H213.09z"/><path d="M305.67 143h80v187h-80zM636.44 143h80v187h-80zM295.06 657.98h78.61v80h-78.61zM295.06 532.98h78.61v80h-78.61zM479.06 532.98h78.61v80h-78.61zM661.06 532.98h78.61v80h-78.61zM173.69 393h675.76v80H173.69zM479.12 657.98h78.61v80h-78.61zM661.4 657.98h78.61v80H661.4z"/></svg>
                         </button>
                     </div>
@@ -4951,15 +5009,15 @@ const SIDEBAR_VIEWS = [
                     <div class="north-lifelog-stats">
                         <div class="north-lifelog-stat">
                             <div class="north-lifelog-stat-num" id="lifelogStatNotes">0</div>
-                            <div class="north-lifelog-stat-label">记录</div>
+                            <div class="north-lifelog-stat-label">${lunaT('记录')}</div>
                         </div>
                         <div class="north-lifelog-stat">
                             <div class="north-lifelog-stat-num" id="lifelogStatTypes">0</div>
-                            <div class="north-lifelog-stat-label">类型</div>
+                            <div class="north-lifelog-stat-label">${lunaT('类型')}</div>
                         </div>
                         <div class="north-lifelog-stat">
                             <div class="north-lifelog-stat-num" id="lifelogStatDays">0</div>
-                            <div class="north-lifelog-stat-label">天</div>
+                            <div class="north-lifelog-stat-label">${lunaT('天')}</div>
                         </div>
                     </div>
 
@@ -4996,13 +5054,13 @@ const SIDEBAR_VIEWS = [
                             <span class="north-lifelog-menu-icon">
                                 <svg class="north-lifelog-menu-icon-svg"><use xlink:href="#iconLayoutGrid"></use></svg>
                             </span>
-                            <span class="north-lifelog-menu-text">全部笔记</span>
+                            <span class="north-lifelog-menu-text">${lunaT('全部笔记')}</span>
                         </div>
                     </div>
 
                     <!-- 全部类型（标签云） -->
                     <div class="north-lifelog-types-section">
-                        <div class="north-lifelog-section-title">全部类型</div>
+                        <div class="north-lifelog-section-title">${lunaT('全部类型')}</div>
                         <div class="north-lifelog-types-cloud" id="lifelogTypesCloud"></div>
                     </div>
                 </div>
@@ -5012,7 +5070,7 @@ const SIDEBAR_VIEWS = [
                     <!-- 顶部周历条（1:1 复刻轻语 lifelog-calendar-week-strip） -->
                     <div class="north-lifelog-calendar-week-strip" id="lifelogWeekStrip"></div>
                     <div class="north-lifelog-timeline" id="lifelog-timeline">
-                        <div class="north-lifelog-timeline-empty">暂无 LifeLog 记录</div>
+                        <div class="north-lifelog-timeline-empty">${lunaT('暂无 LifeLog 记录')}</div>
                     </div>
                     <!-- 移动端统计子视图（记录/统计 切换；复用 Dock 栏统计，PC 端由 CSS 隐藏，不影响桌面布局） -->
                     <div class="north-lifelog-mobile-stats north-lifelog-dock-stats" id="lifelogMobileStats"></div>
@@ -5048,16 +5106,16 @@ const SIDEBAR_VIEWS = [
                 </div>
             </div>
             <!-- 悬浮添加按钮 -->
-            <button class="north-lifelog-fab" id="lifelogFab" title="添加记录">
+            <button class="north-lifelog-fab" id="lifelogFab" title="${lunaT('添加记录')}">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><use xlink:href="#iconAdd"></use></svg>
             </button>
             <!-- 类型选择面板 -->
             <div class="north-lifelog-pick-overlay" id="lifelogPickOverlay" style="display:none">
                 <div class="north-lifelog-pick-bg"></div>
                 <div class="north-lifelog-pick-panel" id="lifelogPickPanel">
-                    <div class="north-lifelog-pick-title">选择类型</div>
+                    <div class="north-lifelog-pick-title">${lunaT('选择类型')}</div>
                     <div class="north-lifelog-pick-types" id="lifelogPickTypes"></div>
-                    <button class="north-lifelog-pick-close" id="lifelogPickClose">取消</button>
+                    <button class="north-lifelog-pick-close" id="lifelogPickClose">${lunaT('取消')}</button>
                 </div>
             </div>
             <!-- 输入弹窗 -->
@@ -5068,11 +5126,11 @@ const SIDEBAR_VIEWS = [
                         <span class="north-lifelog-input-modal-type" id="lifelogInputModalType"></span>
                         <span class="north-lifelog-input-modal-time" id="lifelogInputModalTime"></span>
                     </div>
-                    <textarea class="north-lifelog-input-modal-textarea" id="lifelogInputModalTextarea" placeholder="输入内容..." rows="3"></textarea>
+                    <textarea class="north-lifelog-input-modal-textarea" id="lifelogInputModalTextarea" placeholder="${lunaT('输入内容...')}" rows="3"></textarea>
                     <div class="north-lifelog-input-modal-actions">
-                        <button class="north-lifelog-input-modal-back" id="lifelogInputModalBack">返回</button>
-                        <button class="north-lifelog-input-modal-cancel" id="lifelogInputModalCancel">取消</button>
-                        <button class="north-lifelog-input-modal-submit" id="lifelogInputModalSubmit">记录</button>
+                        <button class="north-lifelog-input-modal-back" id="lifelogInputModalBack">${lunaT('返回')}</button>
+                        <button class="north-lifelog-input-modal-cancel" id="lifelogInputModalCancel">${lunaT('取消')}</button>
+                        <button class="north-lifelog-input-modal-submit" id="lifelogInputModalSubmit">${lunaT('记录')}</button>
                     </div>
                 </div>
             </div>
@@ -5143,6 +5201,16 @@ module.exports = class NorthLunaPlugin extends Plugin {
     onload() {
         const frontEnd = getFrontend();
         this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
+        /* i18n：转存内核按当前界面语言选好的词条（缺失时为 {}，lunaT 会回退中文原文） */
+        setI18nDict(this.i18n);
+        /* 日期文案跟随思源界面语言（zh_CN / en_US） */
+        const _lang = (window.siyuan && window.siyuan.config && window.siyuan.config.appearance && window.siyuan.config.appearance.lang) || '';
+        lunaSetLang(_lang);
+        /* 非中文界面却没拿到词条：多半是当前思源版本按另一种文件名（en_US.json / zh_CN.json）找语言包，
+           给一条能直接照做的提示，避免出现「英文界面全中文」却查不出原因 */
+        if (!/^zh/i.test(String(_lang)) && !Object.keys(I18N_DICT).length) {
+            console.warn('[Lumina] 未加载到 i18n 语言包：把 i18n/en.json 复制为 i18n/en_US.json 后重启思源即可');
+        }
 
         // 注意：此处仅设置内存中的占位默认值
         if (!this.data[RECORDS_STORAGE]) this.data[RECORDS_STORAGE] = { breezeNotes: [], tagMeta: {}, breezeReviewHistory: {} };
@@ -5302,7 +5370,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (old) old.remove();
                     const menu = document.createElement('div');
                     menu.className = 'north-breeze-table-action-popover';
-                    menu.innerHTML = `<div class="north-breeze-table-action-item" data-action="edit">编辑</div>
+                    menu.innerHTML = `<div class="north-breeze-table-action-item" data-action="edit">${lunaT('编辑')}</div>
                         <div class="north-breeze-table-action-item" data-action="delete">删除</div>`;
                     /* 定位 */
                     const rect = triggerEl.getBoundingClientRect();
@@ -5332,7 +5400,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 }
                             };
                             if (confirm) {
-                                confirm('删除笔记', '确定要删除这条清风笔记吗？\n此操作不可恢复。', doDelete);
+                                confirm(lunaT('删除笔记'), lunaT('确定要删除这条清风笔记吗？\n此操作不可恢复。'), doDelete);
                             } else {
                                 doDelete();
                             }
@@ -5352,7 +5420,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const pop = document.createElement('div');
                     pop.className = 'north-breeze-tag-popover';
                     const tagStyle = breezeTableTagStyle(this, tag);
-                    pop.innerHTML = `<div class="north-breeze-tag-popover-title">选择标签</div>
+                    pop.innerHTML = `<div class="north-breeze-tag-popover-title">${lunaT('选择标签')}</div>
                     <div class="north-breeze-tag-popover-body">
                         <span class="north-breeze-table-tag" style="${tagStyle}">${breezeEscapeHtml(tag)}</span>
                     </div>`;
@@ -5393,13 +5461,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     modal.className = 'north-breeze-tag-color-modal';
                     modal.innerHTML = `<div class="north-breeze-tag-color-modal-inner">
                         <div class="north-breeze-tag-color-modal-header">
-                            <span class="north-breeze-tag-color-modal-title">选择颜色</span>
+                            <span class="north-breeze-tag-color-modal-title">${lunaT('选择颜色')}</span>
                             <span class="north-breeze-tag-color-modal-close">×</span>
                         </div>
                         <div class="north-breeze-tag-color-modal-grid">${swatches}</div>
                         <div class="north-breeze-tag-color-modal-footer">
-                            <button class="north-breeze-tag-color-clear">清除颜色</button>
-                            <button class="north-breeze-tag-color-cancel">取消</button>
+                            <button class="north-breeze-tag-color-clear">${lunaT('清除颜色')}</button>
+                            <button class="north-breeze-tag-color-cancel">${lunaT('取消')}</button>
                         </div>
                     </div>`;
                     /* 定位（弹在 tag 下方，宽度 280） */
@@ -5774,7 +5842,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                     /* 行单条按钮 */
                     list.querySelectorAll('.north-breeze-table-action-btn.archive, .north-breeze-table-action-btn.unarchive').forEach(b => { if (!b._b) { b._b = true; b.addEventListener('click', (e) => { e.stopPropagation(); this._toggleTableArchive(b.dataset.id); rerender(); }); } });
-                    list.querySelectorAll('.north-breeze-table-action-btn.delete').forEach(b => { if (!b._b) { b._b = true; b.addEventListener('click', (e) => { e.stopPropagation(); const id = b.dataset.id; const del = () => { this._deleteTableNote(id); rerender(); }; if (confirm) confirm('删除笔记', '确定要删除这条清风笔记吗？\n此操作不可恢复。', del); else del(); }); } });
+                    list.querySelectorAll('.north-breeze-table-action-btn.delete').forEach(b => { if (!b._b) { b._b = true; b.addEventListener('click', (e) => { e.stopPropagation(); const id = b.dataset.id; const del = () => { this._deleteTableNote(id); rerender(); }; if (confirm) confirm(lunaT('删除笔记'), lunaT('确定要删除这条清风笔记吗？\n此操作不可恢复。'), del); else del(); }); } });
 
                     /* 点击内容列查看笔记详情（复用批注详情弹窗样式） */
                     list.querySelectorAll('.north-breeze-table-content-cell').forEach(cell => {
@@ -5807,7 +5875,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 }
                                 rerender();
                             };
-                            if (confirm) confirm('批量删除', `确定要删除选中的 ${n} 条清风笔记吗？\n此操作不可恢复。`, del);
+                            if (confirm) confirm(lunaT('批量删除'), `确定要删除选中的 ${n} 条清风笔记吗？\n此操作不可恢复。`, del);
                             else del();
                         });
                     }
@@ -6305,7 +6373,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const startDate = new Date(yearStart);
                         startDate.setDate(yearStart.getDate() - yearStart.getDay());
                         calendarBody.innerHTML = `<div class="north-luna-moments-calendar-grid">${this._breezeBuildPhotoCalendar(targetYear, startDate, dayCounts, dayFirstImg)}</div>`;
-                        if (calendarCount) calendarCount.textContent = `${totalCount} 条记录`;
+                        if (calendarCount) calendarCount.textContent = lunaT('{n} 条记录', { n: totalCount });
                         /* 同步热力图自定义颜色：日历"有记录"底色与贡献图同色系 */
                         breezeApplyHeatVars(calendarBody, this._getSetting('breezeHeatmapColor'));
                         // 异步加载所有 storage 图片
@@ -6327,7 +6395,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 <div class="north-luna-moments-calendar-columns">${heatmap.columns}</div>
                                 <div class="north-luna-moments-calendar-months">${heatmap.months}</div>
                             </div>`;
-                        if (calendarCount) calendarCount.textContent = `${heatmap.total} 条记录`;
+                        if (calendarCount) calendarCount.textContent = lunaT('{n} 条记录', { n: heatmap.total });
                     }
                 };
                 this._openBreezeCalendar = () => {
@@ -6358,7 +6426,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         notes.forEach(n => { const t = new Date(String(n.time).replace(/-/g, '/')); if (!isNaN(t)) years.add(t.getFullYear()); });
                         years.add(new Date().getFullYear());
                         const sortedYears = Array.from(years).sort((a, b) => b - a);
-                        calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
+                        calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${lunaYear(y)}</option>`).join('');
                         calendarYear.value = new Date().getFullYear();
                     }
                     this._renderBreezeCalendarBody(parseInt(calendarYear ? calendarYear.value : new Date().getFullYear(), 10));
@@ -6539,7 +6607,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 /* 内容变了 → 标记为待重新同步（下次同步原地更新日记里那一块） */
                                 plugin._markRecordDirty(target);
                                 plugin.saveData(RECORDS_STORAGE, plugin.data[RECORDS_STORAGE]).catch(() => {});
-                                showMessage('已保存');
+                                showMessage(lunaT('已保存'));
                             }
                             /* 退出编辑模式 */
                             this._editingNoteId = null;
@@ -6743,11 +6811,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             '<span class="north-breeze-color-swatch north-breeze-color-bg" data-type="bg" data-n="' + n + '" style="background: var(--b3-font-background' + n + ')"></span>'
                         ).join('');
                         return '<div class="north-breeze-color-section">' +
-                            '<div class="north-breeze-color-section-label">字体颜色</div>' +
+                            '<div class="north-breeze-color-section-label">' + lunaT('字体颜色') + '</div>' +
                             '<div class="north-breeze-color-grid">' + fontItems + '</div>' +
                         '</div>' +
                         '<div class="north-breeze-color-section">' +
-                            '<div class="north-breeze-color-section-label">背景颜色</div>' +
+                            '<div class="north-breeze-color-section-label">' + lunaT('背景颜色') + '</div>' +
                             '<div class="north-breeze-color-grid">' + bgItems + '</div>' +
                         '</div>';
                     };
@@ -7037,7 +7105,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     fileInput.onchange = async () => {
                         const files = Array.from(fileInput.files || []);
                         if (!files.length) return;
-                        showMessage('上传资源中…');
+                        showMessage(lunaT('上传资源中…'));
                         for (const f of files) {
                             const path = await plugin._uploadResource(f, { assetsDirPath: 'assets/' });
                             if (!path) continue;
@@ -7069,7 +7137,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         }
                         if (!files.length) return; // 纯文字粘贴：交给浏览器默认处理，不拦截
                         ev.preventDefault();
-                        showMessage('上传资源中…');
+                        showMessage(lunaT('上传资源中…'));
                         const ts = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
                         for (const f of files) {
                             const isImg = (f.type && f.type.startsWith('image/')) || plugin._fileKindFromName(f.name) === 'image';
@@ -7426,7 +7494,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         });
                     });
                     if (Object.keys(tagCounts).length === 0) {
-                        list.innerHTML = '<div class="north-breeze-tag-empty">暂无标签</div>';
+                        list.innerHTML = '<div class="north-breeze-tag-empty">' + lunaT('暂无标签') + '</div>';
                         return;
                     }
                     list.innerHTML = breezeRenderTagTree(breezeBuildTagTree(tagCounts), 0, (plugin.data[RECORDS_STORAGE] || {}).tagMeta || {});
@@ -7825,7 +7893,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         visible.push(totalPages);
                     }
                     let html = '<div class="north-breeze-pager">';
-                    html += '<button class="north-breeze-pager-btn' + (page > 1 ? '' : ' disabled') + '" data-page="' + (page - 1) + '" data-dir="prev"' + (page > 1 ? '' : ' disabled') + ' title="上一页">‹</button>';
+                    html += '<button class="north-breeze-pager-btn' + (page > 1 ? '' : ' disabled') + '" data-page="' + (page - 1) + '" data-dir="prev"' + (page > 1 ? '' : ' disabled') + ' title="' + lunaT('上一页') + '">‹</button>';
                     visible.forEach(p => {
                         if (p === '…') {
                             html += '<span class="north-breeze-pager-ellipsis">…</span>';
@@ -7833,7 +7901,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             html += '<button class="north-breeze-pager-btn' + (p === page ? ' active' : '') + '" data-page="' + p + '">' + p + '</button>';
                         }
                     });
-                    html += '<button class="north-breeze-pager-btn' + (page < totalPages ? '' : ' disabled') + '" data-page="' + (page + 1) + '" data-dir="next"' + (page < totalPages ? '' : ' disabled') + ' title="下一页">›</button>';
+                    html += '<button class="north-breeze-pager-btn' + (page < totalPages ? '' : ' disabled') + '" data-page="' + (page + 1) + '" data-dir="next"' + (page < totalPages ? '' : ' disabled') + ' title="' + lunaT('下一页') + '">›</button>';
                     html += '</div>';
                     return html;
                 };
@@ -7980,7 +8048,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const weighted = this._getSetting('breezeReviewWeighted') === true;
                     const total = (plugin.data[RECORDS_STORAGE].breezeNotes || []).length;
                     if (total === 0) {
-                        listEl.innerHTML = '<div class="north-breeze-review-empty"><div class="north-breeze-review-empty-icon">🕰️</div><div class="north-breeze-review-empty-title">还没有笔记</div><div class="north-breeze-review-empty-hint">在上方输入框写下第一条想法吧</div></div>';
+                        listEl.innerHTML = '<div class="north-breeze-review-empty"><div class="north-breeze-review-empty-icon">🕰️</div><div class="north-breeze-review-empty-title">' + lunaT('还没有笔记') + '</div><div class="north-breeze-review-empty-hint">' + lunaT('在上方输入框写下第一条想法吧') + '</div></div>';
                         return;
                     }
                     const welcomeVerb = weighted
@@ -7989,8 +8057,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     listEl.innerHTML = `
                         <div class="north-breeze-review-welcome">
                             <div class="north-breeze-review-welcome-icon">🕰️</div>
-                            <div class="north-breeze-review-welcome-title">往期的回顾</div>
-                            <div class="north-breeze-review-welcome-hint">要不要看看${welcomeVerb} ${N} 条笔记？</div>
+                            <div class="north-breeze-review-welcome-title">${lunaT('往期的回顾')}</div>
+                            <div class="north-breeze-review-welcome-hint">${lunaT(weighted ? '要不要看看按权重抽取（越久没翻过的越优先）的 {n} 条笔记？' : '要不要看看随机的 {n} 条笔记？', { n: N })}</div>
                             <button class="north-breeze-review-start-btn" id="breeze-review-start">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h3v3h-3zM8 3h3v3H8zM5 8h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8zM12 12v4"/></svg>
                                 ${weighted ? '加权' : '随机'} ${N} 条
@@ -8053,7 +8121,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const N = Number(this._getSetting('breezeReviewDailyCount')) || 8;
                     const weighted = this._getSetting('breezeReviewWeighted') === true;
                     if (all.length === 0) {
-                        listEl.innerHTML = '<div class="north-breeze-review-empty"><div class="north-breeze-review-empty-icon">🕰️</div><div class="north-breeze-review-empty-title">还没有笔记</div><div class="north-breeze-review-empty-hint">在上方输入框写下第一条想法吧</div></div>';
+                        listEl.innerHTML = '<div class="north-breeze-review-empty"><div class="north-breeze-review-empty-icon">🕰️</div><div class="north-breeze-review-empty-title">' + lunaT('还没有笔记') + '</div><div class="north-breeze-review-empty-hint">' + lunaT('在上方输入框写下第一条想法吧') + '</div></div>';
                         return;
                     }
                     const picked = this._getBreezeReviewNotes();
@@ -8072,7 +8140,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         <div class="north-breeze-review-header-bar">
                             <div class="north-breeze-review-header-left">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M16 3h3v3h-3zM8 3h3v3H8zM5 8h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8zM12 12v4"/></svg>
-                                <span>${weighted ? '加权' : '随机'} ${picked.length} 条 · 共 ${all.length} 条</span>
+                                <span>${lunaT('{mode} {n} 条 · 共 {m} 条', { mode: weighted ? lunaT('加权') : lunaT('随机'), n: picked.length, m: all.length })}</span>
                             </div>
                             <div class="north-breeze-review-header-center">
                                 <span class="north-breeze-review-signature">${plugin._esc(reviewSignature)}</span>
@@ -8105,7 +8173,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._buildBreezeReviewNotes = (notes) => {
                     notes = notes || [];
                     if (notes.length === 0) {
-                        return '<div class="north-breeze-empty">没有可显示的笔记～</div>';
+                        return '<div class="north-breeze-empty">' + lunaT('没有可显示的笔记～') + '</div>';
                     }
                     return buildBreezeNotes(notes, this.breezeSearchFilter, !!this._getSetting('breezeTitleDateBottom'), this._getSetting('breezeViewStyle') || 'tile', plugin._getProfileNickname(), this._getSetting('breezeFooterShowSignature') ? plugin._getProfileSignature() : '');
                 };
@@ -8129,7 +8197,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const headerHtml = '<div class="north-breeze-week-header-bar">' +
                         '<div class="north-breeze-week-header-left">' +
                             '<svg class="north-breeze-week-header-icon"><use xlink:href="#iconCalendar"></use></svg>' +
-                            '<span>本周 · 共 ' + wk.length + ' 条</span>' +
+                            '<span>' + lunaT('本周 · 共 {n} 条', { n: wk.length }) + '</span>' +
                         '</div>' +
                         '<div class="north-breeze-week-header-center">' +
                             '<span class="north-breeze-week-signature">' + plugin._esc(signature) + '</span>' +
@@ -8137,7 +8205,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         '<div class="north-breeze-week-header-right"></div>' +
                     '</div>';
                     if (wk.length === 0) {
-                        listEl.innerHTML = headerHtml + '<div class="north-breeze-empty">本周还没有记录～</div>';
+                        listEl.innerHTML = headerHtml + '<div class="north-breeze-empty">' + lunaT('本周还没有记录～') + '</div>';
                         return;
                     }
                     listEl.innerHTML = headerHtml + this._buildBreezeReviewNotes(wk);
@@ -8235,10 +8303,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                     // 媒体类型选项
                     const typeOptions = [
-                        { value: 'all', label: '全部 · ' + totalCount },
-                        { value: 'image', label: '图片 · ' + imgCount },
-                        { value: 'video', label: '视频 · ' + videoCount },
-                        { value: 'file', label: '文件 · ' + fileCount }
+                        { value: 'all', label: lunaT('全部 · {n}', { n: totalCount }) },
+                        { value: 'image', label: lunaT('图片 · {n}', { n: imgCount }) },
+                        { value: 'video', label: lunaT('视频 · {n}', { n: videoCount }) },
+                        { value: 'file', label: lunaT('文件 · {n}', { n: fileCount }) }
                     ];
                     const currentTypeOpt = typeOptions.find(o => o.value === this._galleryMediaType) || typeOptions[0];
                     const typeOptionsHtml = typeOptions.map(o =>
@@ -8249,7 +8317,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     let tagsHtml = '';
                     if (allTags.length > 0) {
                         tagsHtml = '<div class="north-luna-gallery-tags">' +
-                            `<span class="north-luna-gallery-tag-chip${!this._gallerySelectedTag ? ' active' : ''}" data-tag="">全部</span>` +
+                            `<span class="north-luna-gallery-tag-chip${!this._gallerySelectedTag ? ' active' : ''}" data-tag="">${lunaT('全部')}</span>` +
                             allTags.map(([t, c]) =>
                                 `<span class="north-luna-gallery-tag-chip${this._gallerySelectedTag === t ? ' active' : ''}" data-tag="${plugin._esc(t)}">${plugin._esc(t)}</span>`
                             ).join('') +
@@ -8260,7 +8328,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (totalCount === 0) {
                         body.innerHTML = `<div class="north-luna-gallery-empty">
                             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                            <p>暂无内容</p>
+                            <p>${lunaT('暂无内容')}</p>
                             <p class="north-luna-gallery-empty-sub">在清风笔记或朋友圈中添加图片/视频后就会出现在这里</p>
                         </div>`;
                         return;
@@ -8274,7 +8342,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 <div class="north-luna-gallery-header-title">${plugin._esc(galleryTitle)}</div>
                                 <div class="north-luna-gallery-header-meta">
                                     ${dateRange ? `<span class="north-luna-gallery-header-date">${dateRange}</span><span class="north-luna-gallery-header-dot">·</span>` : ''}
-                                    <span class="north-luna-gallery-header-count">${totalCount} 个内容</span>
+                                    <span class="north-luna-gallery-header-count">${lunaT('{n} 个内容', { n: totalCount })}</span>
                                 </div>
                                 <div class="north-luna-gallery-type-select">
                                     <button class="north-luna-gallery-type-trigger">
@@ -8287,7 +8355,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             ${tagsHtml}
                         </div>
                         <div class="north-luna-gallery-empty" style="padding-top:60px;">
-                            <p>筛选结果为空</p>
+                            <p>${lunaT('筛选结果为空')}</p>
                         </div>`;
                         this._bindGalleryEvents(body);
                         return;
@@ -8336,7 +8404,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             <div class="north-luna-gallery-header-title">${plugin._esc(galleryTitle)}</div>
                             <div class="north-luna-gallery-header-meta">
                                 ${dateRange ? `<span class="north-luna-gallery-header-date">${dateRange}</span><span class="north-luna-gallery-header-dot">·</span>` : ''}
-                                <span class="north-luna-gallery-header-count">${totalCount} 个内容</span>
+                                <span class="north-luna-gallery-header-count">${lunaT('{n} 个内容', { n: totalCount })}</span>
                             </div>
                             <div class="north-luna-gallery-type-select">
                                 <button class="north-luna-gallery-type-trigger">
@@ -8866,8 +8934,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._getSidebarViewName = (viewId) => {
                     const custom = plugin.data[SETTINGS_STORAGE]?.navNames?.[viewId];
                     if (custom && custom.trim()) return custom.trim();
-                    const v = SIDEBAR_VIEWS.find(s => s.id === viewId);
-                    return v ? v.title : viewId;
+                    return plugin._viewTitle(viewId);
                 };
 
                 this._isNavViewHidden = (viewId) => {
@@ -8886,7 +8953,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const renderGrid = (filter) => {
                         const kw = (filter || '').trim().toLowerCase();
                         const list = BUILTIN_ICON_LIST.filter(n => n.toLowerCase().includes(kw));
-                        if (!list.length) return '<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:12px;">无匹配图标</div>';
+                        if (!list.length) return '<div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:12px;">' + lunaT('无匹配图标') + '</div>';
                         return list.map(raw => {
                             const name = raw.startsWith('icon') ? raw : 'icon' + raw;
                             const sel = currentIcon === 'icon:' + name ? ' selected' : '';
@@ -8902,13 +8969,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         +   '<div class="north-luna-builtin-icon-search-row">'
                         +     '<div class="north-luna-builtin-icon-search-wrap">'
                         +       '<span class="north-luna-builtin-icon-search-icon"><svg class="icon"><use xlink:href="#iconSearch"></use></svg></span>'
-                        +       '<input type="text" class="north-luna-builtin-icon-search-input" placeholder="搜索图标名">'
+                        +       '<input type="text" class="north-luna-builtin-icon-search-input" placeholder="' + lunaT('搜索图标名') + '">'
                         +     '</div>'
                         +   '</div>'
                         +   '<div class="north-luna-builtin-icon-body">' + renderGrid('') + '</div>'
                         +   '<div class="north-luna-builtin-icon-actions">'
-                        +     '<button class="north-luna-builtin-icon-reset">清除</button>'
-                        +     '<button class="north-luna-builtin-icon-close">关闭</button>'
+                        +     '<button class="north-luna-builtin-icon-reset">' + lunaT('清除') + '</button>'
+                        +     '<button class="north-luna-builtin-icon-close">' + lunaT('关闭') + '</button>'
                         +   '</div>'
                         + '</div>';
                     document.body.appendChild(modal);
@@ -8956,8 +9023,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     box.innerHTML = `<div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--b3-theme-on-background);">${title}</div>
                         <input type="text" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--b3-border-color);border-radius:6px;font-size:13px;background:var(--b3-theme-surface);color:var(--b3-theme-on-background);" value="${(defaultValue||'').replace(/"/g,'&quot;')}">
                         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
-                            <button class="north-luna-settings-btn" data-action="cancel" style="padding:6px 16px;">取消</button>
-                            <button class="north-luna-settings-btn" data-action="ok" style="padding:6px 16px;background:var(--b3-theme-primary);color:#fff;border:none;">确定</button>
+                            <button class="north-luna-settings-btn" data-action="cancel" style="padding:6px 16px;">${lunaT('取消')}</button>
+                            <button class="north-luna-settings-btn" data-action="ok" style="padding:6px 16px;background:var(--b3-theme-primary);color:#fff;border:none;">${lunaT('确定')}</button>
                         </div>`;
                     overlay.appendChild(bg); overlay.appendChild(box);
                     const inp = box.querySelector('input');
@@ -8996,9 +9063,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 ${hidden ? '<span style="font-size:11px;color:var(--b3-theme-on-surface-light);">（已隐藏）</span>' : ''}
                             </div>
                             <div class="north-luna-settings-item-ctrl" style="display:flex;gap:6px;">
-                                <button class="north-luna-settings-btn" data-action="change" style="padding:5px 11px;font-size:12px;">更换图标</button>
-                                <button class="north-luna-settings-btn" data-action="builtin" style="padding:5px 11px;font-size:12px;">内置图标</button>
-                                <button class="north-luna-settings-btn" data-action="rename" style="padding:5px 11px;font-size:12px;">更换昵称</button>
+                                <button class="north-luna-settings-btn" data-action="change" style="padding:5px 11px;font-size:12px;">${lunaT('更换图标')}</button>
+                                <button class="north-luna-settings-btn" data-action="builtin" style="padding:5px 11px;font-size:12px;">${lunaT('内置图标')}</button>
+                                <button class="north-luna-settings-btn" data-action="rename" style="padding:5px 11px;font-size:12px;">${lunaT('更换昵称')}</button>
                                 <button class="north-luna-settings-btn" data-action="toggle-visibility"${cannotHide ? ' disabled' : ''} style="padding:5px 11px;font-size:12px;${cannotHide ? 'opacity:.4;cursor:not-allowed;' : ''}">${hidden ? '显示' : '隐藏'}</button>
                             </div>
                         </div>`;
@@ -9135,9 +9202,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             +     (hidden ? '<span style="font-size:11px;color:var(--b3-theme-on-surface-light);">（已隐藏）</span>' : '')
                             +   '</div>'
                             +   '<div class="north-luna-settings-item-ctrl" style="display:flex;gap:6px;">'
-                            +     '<button class="north-luna-settings-btn" data-action="change" style="padding:5px 11px;font-size:12px;">更换图标</button>'
-                            +     '<button class="north-luna-settings-btn" data-action="builtin" style="padding:5px 11px;font-size:12px;">内置图标</button>'
-                            +     '<button class="north-luna-settings-btn" data-action="rename" style="padding:5px 11px;font-size:12px;">更换昵称</button>'
+                            +     '<button class="north-luna-settings-btn" data-action="change" style="padding:5px 11px;font-size:12px;">' + lunaT('更换图标') + '</button>'
+                            +     '<button class="north-luna-settings-btn" data-action="builtin" style="padding:5px 11px;font-size:12px;">' + lunaT('内置图标') + '</button>'
+                            +     '<button class="north-luna-settings-btn" data-action="rename" style="padding:5px 11px;font-size:12px;">' + lunaT('更换昵称') + '</button>'
                             +     '<button class="north-luna-settings-btn" data-action="toggle-visibility" style="padding:5px 11px;font-size:12px;">' + (hidden ? '显示' : '隐藏') + '</button>'
                             +   '</div>'
                             + '</div>';
@@ -9375,12 +9442,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     modal.innerHTML = `
                         <div class="north-luna-nav-order-overlay"></div>
                         <div class="north-luna-nav-order-content">
-                            <div class="north-luna-nav-order-title">自定义视图排序</div>
+                            <div class="north-luna-nav-order-title">${lunaT('自定义视图排序')}</div>
                             <div class="north-luna-nav-order-hint">拖动条目或使用上下按钮调整左侧栏视图顺序（设置视图固定在底部，不参与排序）</div>
                             <div class="north-luna-nav-order-list"></div>
                             <div class="north-luna-nav-order-actions">
-                                <button class="north-luna-settings-btn north-luna-nav-order-reset">恢复默认</button>
-                                <button class="north-luna-settings-btn north-luna-nav-order-close" style="background:var(--b3-theme-primary);color:#fff;border:none;">完成</button>
+                                <button class="north-luna-settings-btn north-luna-nav-order-reset">${lunaT('恢复默认')}</button>
+                                <button class="north-luna-settings-btn north-luna-nav-order-close" style="background:var(--b3-theme-primary);color:#fff;border:none;">${lunaT('完成')}</button>
                             </div>
                         </div>
                     `;
@@ -9411,10 +9478,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     <span class="north-luna-nav-order-icon">${iconHtml}</span>
                                     <span class="north-luna-nav-order-name">${esc(name)}${isHidden ? ' <em class="north-luna-nav-order-hidden">（已隐藏）</em>' : ''}</span>
                                     <span class="north-luna-nav-order-btns">
-                                        <button class="north-luna-nav-order-move" data-move="up" title="上移"${i === 0 ? ' disabled' : ''}>
+                                        <button class="north-luna-nav-order-move" data-move="up" title="${lunaT('上移')}"${i === 0 ? ' disabled' : ''}>
                                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                                         </button>
-                                        <button class="north-luna-nav-order-move" data-move="down" title="下移"${i === views.length - 1 ? ' disabled' : ''}>
+                                        <button class="north-luna-nav-order-move" data-move="down" title="${lunaT('下移')}"${i === views.length - 1 ? ' disabled' : ''}>
                                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                         </button>
                                     </span>
@@ -9485,12 +9552,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     modal.innerHTML = `
                         <div class="north-luna-nav-order-overlay"></div>
                         <div class="north-luna-nav-order-content">
-                            <div class="north-luna-nav-order-title">自定义视图排序</div>
+                            <div class="north-luna-nav-order-title">${lunaT('自定义视图排序')}</div>
                             <div class="north-luna-nav-order-hint">拖动条目或使用上下按钮调整移动端底部标签栏视图顺序</div>
                             <div class="north-luna-nav-order-list"></div>
                             <div class="north-luna-nav-order-actions">
-                                <button class="north-luna-settings-btn north-luna-nav-order-reset">恢复默认</button>
-                                <button class="north-luna-settings-btn north-luna-nav-order-close" style="background:var(--b3-theme-primary);color:#fff;border:none;">完成</button>
+                                <button class="north-luna-settings-btn north-luna-nav-order-reset">${lunaT('恢复默认')}</button>
+                                <button class="north-luna-settings-btn north-luna-nav-order-close" style="background:var(--b3-theme-primary);color:#fff;border:none;">${lunaT('完成')}</button>
                             </div>
                         </div>
                     `;
@@ -9521,10 +9588,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     <span class="north-luna-nav-order-icon">${iconHtml}</span>
                                     <span class="north-luna-nav-order-name">${esc(name)}${isHidden ? ' <em class="north-luna-nav-order-hidden">（已隐藏）</em>' : ''}</span>
                                     <span class="north-luna-nav-order-btns">
-                                        <button class="north-luna-nav-order-move" data-move="up" title="上移"${i === 0 ? ' disabled' : ''}>
+                                        <button class="north-luna-nav-order-move" data-move="up" title="${lunaT('上移')}"${i === 0 ? ' disabled' : ''}>
                                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                                         </button>
-                                        <button class="north-luna-nav-order-move" data-move="down" title="下移"${i === views.length - 1 ? ' disabled' : ''}>
+                                        <button class="north-luna-nav-order-move" data-move="down" title="${lunaT('下移')}"${i === views.length - 1 ? ' disabled' : ''}>
                                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                         </button>
                                     </span>
@@ -9609,11 +9676,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     mask.className = 'north-luna-doc-picker-mask';
                     mask.id = 'northLunaDocPicker';
                     mask.innerHTML = `<div class="north-luna-doc-picker-panel">
-                        <div class="north-luna-doc-picker-head">选择文档<button class="north-luna-doc-picker-close" type="button" title="关闭">×</button></div>
+                        <div class="north-luna-doc-picker-head">${lunaT('选择文档')}<button class="north-luna-doc-picker-close" type="button" title="关闭">×</button></div>
                         <div class="north-luna-doc-picker-body north-luna-doc-picker-single">
                             <div class="north-luna-doc-picker-tree-list"></div>
                         </div>
-                        <div class="north-luna-doc-picker-resizer" title="拖动调整大小"></div>
+                        <div class="north-luna-doc-picker-resizer" title="${lunaT('拖动调整大小')}"></div>
                     </div>`;
                     document.body.appendChild(mask);
                     const close = () => {
@@ -9709,7 +9776,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     };
 
                     const loadChildren = async (notebookId, path, container) => {
-                        container.innerHTML = '<div class="north-luna-doc-tree-loading">加载中…</div>';
+                        container.innerHTML = '<div class="north-luna-doc-tree-loading">' + lunaT('加载中…') + '</div>';
                         try {
                             const resp = await fetch('/api/filetree/listDocsByPath', { method: 'POST', headers: h, body: JSON.stringify({ notebook: notebookId, path }) });
                             const json = await resp.json().catch(() => null);
@@ -9764,7 +9831,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 nameEl.addEventListener('click', () => { if (typeof onPick === 'function') onPick(row.dataset.id, row.dataset.name, row.dataset.icon); close(); });
                             });
                         } catch (e) {
-                            container.innerHTML = '<div class="north-luna-doc-tree-empty">加载失败</div>';
+                            container.innerHTML = '<div class="north-luna-doc-tree-empty">' + lunaT('加载失败') + '</div>';
                         }
                     };
 
@@ -9773,7 +9840,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const resp = await fetch('/api/notebook/lsNotebooks', { method: 'POST', headers: h, body: '{}' });
                             const json = await resp.json().catch(() => null);
                             const notebooks = (json && json.data && json.data.notebooks) || [];
-                            if (!notebooks.length) { treeList.innerHTML = '<div class="north-luna-doc-tree-empty">无可用笔记本</div>'; return; }
+                            if (!notebooks.length) { treeList.innerHTML = '<div class="north-luna-doc-tree-empty">' + lunaT('无可用笔记本') + '</div>'; return; }
                             /* 笔记本图标：lsNotebooks 在部分版本不返回 icon，回退到 getNotebookConf（data.conf.icon 来自 conf.json，是权威来源） */
                             await Promise.all(notebooks.map(async (n) => {
                                 if (n.icon) return;
@@ -9815,7 +9882,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const first = treeList.querySelector('.north-luna-doc-tree-notebook');
                             if (first) first.querySelector('.north-luna-doc-tree-toggle').click();
                         } catch (e) {
-                            treeList.innerHTML = '<div class="north-luna-doc-tree-empty">加载失败</div>';
+                            treeList.innerHTML = '<div class="north-luna-doc-tree-empty">' + lunaT('加载失败') + '</div>';
                         }
                     })();
                 };
@@ -9849,48 +9916,48 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             </div>
                             <div class="north-luna-template-editor-body">
                                 <div class="north-luna-template-editor-field">
-                                    <label class="north-luna-template-editor-label">模板预设</label>
+                                    <label class="north-luna-template-editor-label">${lunaT('模板预设')}</label>
                                     <div class="north-luna-settings-cddl north-luna-template-editor-preset" data-key="templatePreset" data-type="select">
                                         <button type="button" class="north-luna-settings-cddl-trigger">
-                                            <span class="north-luna-settings-cddl-value">请选择</span>
+                                            <span class="north-luna-settings-cddl-value">${lunaT('请选择')}</span>
                                             <svg class="north-luna-settings-cddl-arrow" width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                         </button>
                                         <div class="north-luna-settings-cddl-popup">${optionsHtml}</div>
                                     </div>
                                 </div>
                                 <div class="north-luna-template-editor-field">
-                                    <label class="north-luna-template-editor-label">日期时间片段 <span class="north-luna-template-editor-hint">点选插入到光标处</span></label>
+                                    <label class="north-luna-template-editor-label">${lunaT('日期时间片段')} <span class="north-luna-template-editor-hint">${lunaT('点选插入到光标处')}</span></label>
                                     <div class="north-luna-template-editor-dt">
                                         <div class="north-luna-template-editor-dt-row">
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{date}}">日期</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{time}}">时间</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{datetime}}">完整</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{date}}">${lunaT('日期')}</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{time}}">${lunaT('时间')}</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{datetime}}">${lunaT('完整')}</button>
                                         </div>
                                         <div class="north-luna-template-editor-dt-row">
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{year}}">年</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{month}}">月</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{day}}">日</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{hour}}">时</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{minute}}">分</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{second}}">秒</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{year}}">${lunaT('年')}</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{month}}">${lunaT('月')}</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{day}}">${lunaT('日')}</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{hour}}">${lunaT('时')}</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{minute}}">${lunaT('分')}</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{second}}">${lunaT('秒')}</button>
                                         </div>
                                         <div class="north-luna-template-editor-dt-row">
                                             <button type="button" class="north-luna-template-editor-chip north-luna-template-editor-sep" data-ins="-">-</button>
                                             <button type="button" class="north-luna-template-editor-chip north-luna-template-editor-sep" data-ins="/">/</button>
-                                            <button type="button" class="north-luna-template-editor-chip north-luna-template-editor-sep" data-ins=" ">空格</button>
+                                            <button type="button" class="north-luna-template-editor-chip north-luna-template-editor-sep" data-ins=" ">${lunaT('空格')}</button>
                                             <button type="button" class="north-luna-template-editor-chip north-luna-template-editor-sep" data-ins=":">:</button>
                                         </div>
                                         <div class="north-luna-template-editor-dt-row" style="margin-top:6px;">
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{tags}}">标签</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{content}}">正文</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{tags}}">${lunaT('标签')}</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{content}}">${lunaT('正文')}</button>
                                             <button type="button" class="north-luna-template-editor-chip" data-ins="{{resources}}">资源</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{comments}}">评论</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{comments}}">${lunaT('评论')}</button>
                                             <button type="button" class="north-luna-template-editor-chip" data-ins="{{mood}}">心情</button>
                                             <button type="button" class="north-luna-template-editor-chip" data-ins="{{weather}}">天气</button>
                                             <button type="button" class="north-luna-template-editor-chip" data-ins="{{category}}">分类</button>
-                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{location}}">地点</button>
+                                            <button type="button" class="north-luna-template-editor-chip" data-ins="{{location}}">${lunaT('地点')}</button>
                                         </div>
-                                        <div class="north-luna-template-editor-dt-preview" title="当前时间预览"></div>
+                                        <div class="north-luna-template-editor-dt-preview" title="${lunaT('当前时间预览')}"></div>
                                     </div>
                                 </div>
                                 <div class="north-luna-template-editor-field">
@@ -9899,8 +9966,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 </div>
                             </div>
                             <div class="north-luna-template-editor-foot">
-                                <button type="button" class="north-luna-template-editor-btn north-luna-template-editor-cancel">取消</button>
-                                <button type="button" class="north-luna-template-editor-btn north-luna-template-editor-confirm">确定</button>
+                                <button type="button" class="north-luna-template-editor-btn north-luna-template-editor-cancel">${lunaT('取消')}</button>
+                                <button type="button" class="north-luna-template-editor-btn north-luna-template-editor-confirm">${lunaT('确定')}</button>
                             </div>
                         </div>
                     `;
@@ -10067,14 +10134,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const cats = Object.keys(this._settingsSchema);
                     if (!cats.includes(this.activeSettingsCategory)) this.activeSettingsCategory = cats[0];
                     const filter = (this._settingsFilter || "").toLowerCase().trim();
+                    /* 搜索按「原文 + 译文」双份匹配：中文界面输中文、英文界面输英文都能命中，
+                       不会因为某条词条已翻译就搜不到原来的中文 */
+                    const _searchText = (it) => (it.title || "") + " " + (it.desc || "") + " " + lunaT(it.title || "") + " " + lunaT(it.desc || "");
                     const matchCat = (cId) => {
                         if (!filter) return true;
                         const c = this._settingsSchema[cId];
-                        if (c.label.toLowerCase().includes(filter)) return true;
+                        if ((c.label + " " + lunaT(c.label)).toLowerCase().includes(filter)) return true;
                         const allItems = [];
                         if (c.items) allItems.push(...c.items);
                         if (c.groups) c.groups.forEach(g => { if (g.items) allItems.push(...g.items); });
-                        return allItems.some(it => (it.title || "").toLowerCase().includes(filter) || (it.desc || "").toLowerCase().includes(filter));
+                        return allItems.some(it => _searchText(it).toLowerCase().includes(filter));
                     };
                     /* 搜索时自动切换到第一个匹配分类；清空搜索时恢复之前选中的分类
                        注意：若上一次重渲染是用户手动点击分类按钮触发的（即 _userPickedCategory），
@@ -10107,10 +10177,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const catSidebar = cats.filter(matchCat).map(cId => {
                         const c = this._settingsSchema[cId];
                         const active = cId === this.activeSettingsCategory;
-                        return `<button class="north-luna-settings-cat-item${active ? " active" : ""}" data-cat="${cId}"><svg class="north-luna-settings-cat-icon"><use xlink:href="#${c.icon}"></use></svg><span>${c.label}</span></button>`;
+                        return `<button class="north-luna-settings-cat-item${active ? " active" : ""}" data-cat="${cId}"><svg class="north-luna-settings-cat-icon"><use xlink:href="#${c.icon}"></use></svg><span>${plugin._esc(lunaT(c.label))}</span></button>`;
                     }).join("");
                     const cat = this._settingsSchema[this.activeSettingsCategory];
-                    const itemMatches = (it) => !filter || (it.title || "").toLowerCase().includes(filter) || (it.desc || "").toLowerCase().includes(filter);
+                    const itemMatches = (it) => !filter || _searchText(it).toLowerCase().includes(filter);
                     /* 单项渲染隔离：任一设置项渲染抛错时仅降级该项自身（保留标题），
                        不再让整次渲染中断 —— 此前一项抛错会使 body.innerHTML 不更新，
                        表现为点击左侧分类「完全没有反应」，且只能刷新思源才能恢复 */
@@ -10154,10 +10224,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const opts = typeof it.options === 'function' ? it.options(plugin) : (it.options || []);
                             const currentOpt = opts.find(o => String(o.value) === String(val)) || opts[0];
                             const currentLabel = currentOpt ? currentOpt.label : '';
-                            const optionsHtml = opts.map(o => `<div class="north-luna-settings-cddl-item${String(o.value) === String(val) ? ' active' : ''}" data-value="${plugin._esc(o.value)}">${plugin._esc(o.label)}</div>`).join('');
+                            const optionsHtml = opts.map(o => `<div class="north-luna-settings-cddl-item${String(o.value) === String(val) ? ' active' : ''}" data-value="${plugin._esc(o.value)}">${plugin._esc(lunaT(o.label))}</div>`).join('');
                             ctrl = `<div class="north-luna-settings-cddl" data-key="${it.key}" data-type="select">
                                 <button type="button" class="north-luna-settings-cddl-trigger">
-                                    <span class="north-luna-settings-cddl-value">${plugin._esc(currentLabel)}</span>
+                                    <span class="north-luna-settings-cddl-value">${plugin._esc(lunaT(currentLabel))}</span>
                                     <svg class="north-luna-settings-cddl-arrow" width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                 </button>
                                 <div class="north-luna-settings-cddl-popup">${optionsHtml}</div>
@@ -10171,15 +10241,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     <span class="north-luna-settings-cddl-value">${plugin._esc(currentLabel)}</span>
                                     <svg class="north-luna-settings-cddl-arrow" width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                 </button>
-                                <div class="north-luna-settings-cddl-popup"><div class="north-luna-settings-cddl-item" style="pointer-events:none;opacity:.6">点击加载笔记本…</div></div>
+                                <div class="north-luna-settings-cddl-popup"><div class="north-luna-settings-cddl-item" style="pointer-events:none;opacity:.6">${lunaT('点击加载笔记本…')}</div></div>
                             </div>`;
                         } else if (it.type === "doc") {
                             const docId = val || '';
                             const docName = ((plugin.data[SETTINGS_STORAGE] || {}).settings || {})[it.nameKey] || '';
                             ctrl = `<div class="north-luna-settings-doc-pick">
-                                <input type="text" class="north-luna-settings-input north-luna-settings-doc-input" data-key="${plugin._esc(it.key)}" data-type="input" value="${plugin._esc(docId)}" placeholder="文档块ID">
-                                <button type="button" class="north-luna-doc-pick-btn" data-action="pickDoc">选择文档</button>
-                                <button type="button" class="north-luna-doc-pick-btn" data-action="clearDoc">清除</button>
+                                <input type="text" class="north-luna-settings-input north-luna-settings-doc-input" data-key="${plugin._esc(it.key)}" data-type="input" value="${plugin._esc(docId)}" placeholder="${lunaT('文档块ID')}">
+                                <button type="button" class="north-luna-doc-pick-btn" data-action="pickDoc">${lunaT('选择文档')}</button>
+                                <button type="button" class="north-luna-doc-pick-btn" data-action="clearDoc">${lunaT('清除')}</button>
                             </div>`;
                         } else if (it.type === "color") {
                             const v = val || '';
@@ -10193,7 +10263,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             let summary = '全部数据';
                             if (mode === 'recent') {
                                 const days = parseInt(this._getSetting('exportRecentDays')) || 7;
-                                summary = `最近 ${days} 天`;
+                                summary = lunaT('最近 {n} 天', { n: days });
                             } else if (mode === 'single') {
                                 const d = this._getSetting('exportSingleDate') || '';
                                 summary = d || '全部数据';
@@ -10205,12 +10275,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 else if (to) summary = `至 ${to}`;
                                 else summary = '全部数据';
                             }
-                            ctrl = `<button class="north-luna-settings-btn" data-action="exportTimerange">导出时间范围：${plugin._esc(summary)}</button>`;
+                            ctrl = `<button class="north-luna-settings-btn" data-action="exportTimerange">${lunaT('导出时间范围：')}${plugin._esc(summary)}</button>`;
                         } else if (it.type === "button") {
                             const danger = it.danger ? " north-luna-settings-btn-danger" : "";
                             ctrl = `<button class="north-luna-settings-btn${danger}" data-action="${it.action}">${it.buttonText || "执行"}</button>`;
                         } else if (it.type === "template") {
-                            ctrl = `<button type="button" class="north-luna-settings-btn north-luna-template-edit-btn" data-key="${it.key}" data-template-title="${plugin._esc(it.title || '编辑模板')}">编辑模板</button>`;
+                            ctrl = `<button type="button" class="north-luna-settings-btn north-luna-template-edit-btn" data-key="${it.key}" data-template-title="${plugin._esc(it.title || '编辑模板')}">${lunaT('编辑模板')}</button>`;
                         } else if (it.type === "display") {
                             let v = it.value;
                             if (it.dynamic === "momentsCount") v = String((plugin.momentsData.items || []).length);
@@ -10219,11 +10289,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             // 使用现有 settings-item 样式，不用任何自定义 CSS
                             return `<div class="north-luna-settings-item" style="padding-bottom:10px;">
                                 <div class="north-luna-settings-item-text">
-                                    <div class="north-luna-settings-item-title">左侧栏图标</div>
+                                    <div class="north-luna-settings-item-title">${lunaT('左侧栏图标')}</div>
                                     <div class="north-luna-settings-item-desc">自定义左侧导航栏各视图的图标、昵称与顺序（可直接拖动下方条目，或点击「自定义视图排序」）</div>
                                 </div>
                                 <div class="north-luna-settings-item-ctrl">
-                                    <button class="north-luna-settings-btn north-luna-sidebar-order-btn">自定义视图排序</button>
+                                    <button class="north-luna-settings-btn north-luna-sidebar-order-btn">${lunaT('自定义视图排序')}</button>
                                 </div>
                             </div>
                             <div id="sidebar-icons-custom-list"></div>`;
@@ -10231,11 +10301,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             // 移动端专属：仅展示 4 个视图，独立数据，不影响 PC 侧栏
                             return `<div class="north-luna-settings-item" style="padding-bottom:10px;">
                                 <div class="north-luna-settings-item-text">
-                                    <div class="north-luna-settings-item-title">底部标签栏图标</div>
+                                    <div class="north-luna-settings-item-title">${lunaT('底部标签栏图标')}</div>
                                     <div class="north-luna-settings-item-desc">自定义移动端底部标签栏（清风 / 统计 / LifeLog / 朋友圈）各视图的图标、昵称与显示状态。可直接拖动下方条目调整顺序，或点击「自定义视图排序」。此设置仅作用于移动端，不影响 PC 端侧栏。</div>
                                 </div>
                                 <div class="north-luna-settings-item-ctrl">
-                                    <button class="north-luna-settings-btn north-luna-mobile-sidebar-order-btn">自定义视图排序</button>
+                                    <button class="north-luna-settings-btn north-luna-mobile-sidebar-order-btn">${lunaT('自定义视图排序')}</button>
                                 </div>
                             </div>
                             <div id="mobile-sidebar-icons-custom-list"></div>`;
@@ -10262,8 +10332,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const _docNameHtml = _docName ? `<span class="north-luna-settings-doc-name">${renderDocIconHtml(_docIcon, 'iconFile')} ${plugin._esc(_docName)}</span>` : '';
                         return `<div class="north-luna-settings-item"${_hiddenByTarget ? ' style="display:none"' : ''}>
                             <div class="north-luna-settings-item-text">
-                                <div class="north-luna-settings-item-title">${plugin._esc(it.title)}${_docNameHtml}</div>
-                                ${it.desc ? `<div class="north-luna-settings-item-desc">${plugin._esc(it.desc).replace(/\n/g, '<br>')}</div>` : ""}
+                                <div class="north-luna-settings-item-title">${plugin._esc(lunaT(it.title))}${_docNameHtml}</div>
+                                ${it.desc ? `<div class="north-luna-settings-item-desc">${plugin._esc(lunaT(it.desc)).replace(/\n/g, '<br>')}</div>` : ""}
                             </div>
                             <div class="north-luna-settings-item-ctrl">${ctrl}</div>
                         </div>`;
@@ -10281,7 +10351,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const groupsHtml = groups.map(g => {
                         const gHtml = renderItems(g.items);
                         if (!gHtml) return ''; // 该分组无匹配项时整体隐藏
-                        const gTitleHtml = g.title ? `<div class="north-luna-settings-section-title">${plugin._esc(g.title)}</div>` : '';
+                        const gTitleHtml = g.title ? `<div class="north-luna-settings-section-title">${plugin._esc(lunaT(g.title))}</div>` : '';
                         const extraCardClass = (g.title === '输入框工具栏设置' || g.title === '侧边栏输入工具栏设置') ? ' north-luna-settings-toolbar-card' : g.title === '移动端朋友圈设置' ? ' north-luna-settings-moments-mobile-card' : '';
                         return `${gTitleHtml}<div class="north-luna-settings-group-card${extraCardClass}">
                             <div class="north-luna-settings-group-body">${gHtml}</div>
@@ -10291,9 +10361,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         `<aside class="north-luna-settings-sidebar">
                             <div class="north-luna-settings-sidebar-header">
                                 <svg class="north-luna-settings-sidebar-header-icon"><use xlink:href="#iconSettings"></use></svg>
-                                <span>设置</span>
+                                <span>${plugin._esc(lunaT('设置'))}</span>
                             </div>
-                            <input type="text" class="north-luna-settings-sidebar-search" id="northLunaSettingsSearch" placeholder="搜索">
+                            <input type="text" class="north-luna-settings-sidebar-search" id="northLunaSettingsSearch" placeholder="${plugin._esc(lunaT('搜索'))}">
                             ${catSidebar}
                         </aside>
                         <div class="north-luna-settings-main">
@@ -10680,7 +10750,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 const current = cddl.dataset.value || '';
                                 const itemsHtml = (notebooks.length ? notebooks.map(n =>
                                     `<div class="north-luna-settings-cddl-item${String(n.id) === String(current) ? ' active' : ''}" data-value="${plugin._esc(n.id)}" data-name="${plugin._esc(n.name)}">${plugin._esc(n.name)}</div>`
-                                ).join('') : '<div class="north-luna-settings-cddl-item" style="pointer-events:none;opacity:.6">无可用笔记本</div>');
+                                ).join('') : '<div class="north-luna-settings-cddl-item" style="pointer-events:none;opacity:.6">' + lunaT('无可用笔记本') + '</div>');
                                 popup.innerHTML = itemsHtml;
                                 bindCddlItems(cddl);
                                 cddl.dataset.loaded = '1';
@@ -10693,7 +10763,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     cddl.classList.toggle('drop-up', spaceBelow < popupH);
                                 }
                             } catch (err) {
-                                popup.innerHTML = '<div class="north-luna-settings-cddl-item" style="pointer-events:none;opacity:.6">加载失败，请重试</div>';
+                                popup.innerHTML = '<div class="north-luna-settings-cddl-item" style="pointer-events:none;opacity:.6">' + lunaT('加载失败，请重试') + '</div>';
                                 cddl.dataset.loaded = '1';
                             }
                         };
@@ -10823,21 +10893,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         <div class="north-luna-profile-modal-overlay" data-close="profile"></div>
                         <div class="north-luna-profile-modal-content">
                             <div class="north-luna-profile-modal-header">
-                                <span class="north-luna-profile-modal-title">编辑资料</span>
+                                <span class="north-luna-profile-modal-title">${lunaT('编辑资料')}</span>
                                 <div class="north-luna-profile-modal-close" data-close="profile">×</div>
                             </div>
                             <div class="north-luna-profile-modal-body">
                                 <label class="north-luna-profile-field">
                                     <span class="north-luna-profile-label">昵称</span>
-                                    <input type="text" class="north-luna-profile-input" id="northLunaProfileNick" maxlength="20" value="${plugin._esc(curNick || '')}" placeholder="请输入昵称">
+                                    <input type="text" class="north-luna-profile-input" id="northLunaProfileNick" maxlength="20" value="${plugin._esc(curNick || '')}" placeholder="${lunaT('请输入昵称')}">
                                 </label>
                                 <label class="north-luna-profile-field">
                                     <span class="north-luna-profile-label">个性签名</span>
-                                    <input type="text" class="north-luna-profile-input" id="northLunaProfileSig" maxlength="40" value="${plugin._esc(curSig || '')}" placeholder="说点什么吧…">
+                                    <input type="text" class="north-luna-profile-input" id="northLunaProfileSig" maxlength="40" value="${plugin._esc(curSig || '')}" placeholder="${lunaT('说点什么吧…')}">
                                 </label>
                                 <div class="north-luna-profile-modal-actions">
-                                    <button class="north-luna-settings-btn" data-close="profile">取消</button>
-                                    <button class="north-luna-settings-btn north-luna-settings-btn-primary" id="northLunaProfileSave">保存</button>
+                                    <button class="north-luna-settings-btn" data-close="profile">${lunaT('取消')}</button>
+                                    <button class="north-luna-settings-btn north-luna-settings-btn-primary" id="northLunaProfileSave">${lunaT('保存')}</button>
                                 </div>
                             </div>
                         </div>
@@ -10858,7 +10928,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const body = this.container && this.container.querySelector(".north-luna-main-body");
                         if (body && this.activeViewId === "settings") this._renderSettingsView(body);
                         modal.classList.remove("active");
-                        showMessage("已保存");
+                        showMessage(lunaT('已保存'));
                     });
                     // ESC 关闭
                     const onEsc = (e) => { if (e.key === "Escape") { modal.classList.remove("active"); document.removeEventListener("keydown", onEsc); } };
@@ -10877,7 +10947,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         a.download = `siyuan-lumina-moments-${new Date().toISOString().slice(0, 10)}.json`;
                         a.click();
                         setTimeout(() => URL.revokeObjectURL(url), 5000);
-                        showMessage("已导出");
+                        showMessage(lunaT('已导出'));
                     } else if (action === "importMoments") {
                         const inp = document.createElement("input");
                         inp.type = "file"; inp.accept = ".json,application/json";
@@ -10887,18 +10957,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             r.onload = () => {
                                 try {
                                     const obj = JSON.parse(r.result);
-                                    if (!obj || !Array.isArray(obj.items)) { showMessage("文件格式错误"); return; }
+                                    if (!obj || !Array.isArray(obj.items)) { showMessage(lunaT('文件格式错误')); return; }
                                     const doImport = () => {
                                         plugin.momentsData.items = obj.items;
                                         plugin.momentsData.config = obj.config || plugin.momentsData.config;
                                         plugin.saveMoments();
-                                        showMessage("导入成功");
+                                        showMessage(lunaT('导入成功'));
                                         this._viewDomCache = {};
                                         this.renderMain();
                                     };
-                                    if (typeof confirm === "function") confirm("导入动态", "将覆盖当前所有动态（" + obj.items.length + " 条），确定吗？", doImport);
+                                    if (typeof confirm === "function") confirm(lunaT('导入动态'), lunaT('将覆盖当前所有动态（') + obj.items.length + lunaT(' 条），确定吗？'), doImport);
                                     else doImport();
-                                } catch (e) { showMessage("解析失败：" + e.message); }
+                                } catch (e) { showMessage(lunaT('解析失败：') + e.message); }
                             };
                             r.readAsText(f);
                         };
@@ -10912,14 +10982,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             // 删除旧头像资源
                             const oldAvatar = this._getSetting("avatar");
                             if (oldAvatar) plugin.deletePluginImage(oldAvatar);
-                            showMessage("头像上传中…");
+                            showMessage(lunaT('头像上传中…'));
                             const path = await plugin._uploadResource(f, { assetsDirPath: 'assets/' });
                             if (path) {
                                 this._setSetting("avatar", path);
                                 this._applyAvatar(path);
                                 const body = this.container && this.container.querySelector(".north-luna-main-body");
                                 if (body) this._renderSettingsView(body);
-                                showMessage("头像已更新");
+                                showMessage(lunaT('头像已更新'));
                             }
                         };
                         inp.click();
@@ -10930,7 +11000,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this._applyAvatar(null);
                         const body = this.container && this.container.querySelector(".north-luna-main-body");
                         if (body) this._renderSettingsView(body);
-                        showMessage("已重置为默认头像");
+                        showMessage(lunaT('已重置为默认头像'));
                     } else if (action === "editProfile") {
                         this._openProfileEditModal();
                     } else if (action === "clearMoments") {
@@ -10941,11 +11011,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             });
                             plugin.momentsData.items = [];
                             plugin.saveMoments();
-                            showMessage("已清空");
+                            showMessage(lunaT('已清空'));
                             this._viewDomCache = {};
                             this.renderMain();
                         };
-                        if (typeof confirm === "function") confirm("清空动态", "确定清空所有朋友圈动态吗？此操作不可恢复！", doClear);
+                        if (typeof confirm === "function") confirm(lunaT('清空动态'), lunaT('确定清空所有朋友圈动态吗？此操作不可恢复！'), doClear);
                         else doClear();
                     } else if (action === "importLumina") {
                         this._importLuminaData();
@@ -10961,7 +11031,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const title = isBreeze ? '清风笔记' : '朋友圈动态';
                         const fnBase = isBreeze ? 'siyuan-lumina-breeze' : 'siyuan-lumina-moments';
                         const date = new Date().toISOString().slice(0, 10);
-                        showMessage('正在准备导出...');
+                        showMessage(lunaT('正在准备导出...'));
                         // 辅助：将图片 URL 转为 base64（用 fetch 而非 Image，避免加载卡死）
                         const imgToBase64 = async (imgUrl) => {
                             if (!imgUrl) return null;
@@ -11031,7 +11101,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const items = []; // { time, text, tags, mood, weather, location, images, imgDataUrls }
                             if (isBreeze) {
                                 const allNotes = plugin.data[RECORDS_STORAGE].breezeNotes || [];
-                                if (!allNotes.length) { showMessage('暂无清风笔记数据'); return; }
+                                if (!allNotes.length) { showMessage(lunaT('暂无清风笔记数据')); return; }
                                 let notes = filterByExportTimeRange(allNotes, n => parseBreezeTime(n.time));
                                 // 标签范围筛选（无标签 / 具体标签 / 全部数据；兼容旧值 'tag' = 任意有标签）
                                 const breezeScope = this._getSetting('exportBreezeScope') || 'all';
@@ -11041,7 +11111,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     const sel = breezeScope.slice(4);
                                     notes = notes.filter(n => breezeExtractTags(n.content || '').some(t => t === sel || t.indexOf(sel + '/') === 0));
                                 }
-                                if (!notes.length) { showMessage('所选范围内无清风笔记数据'); return; }
+                                if (!notes.length) { showMessage(lunaT('所选范围内无清风笔记数据')); return; }
                                 notes.forEach(note => {
                                     if (!note.content && !note.time) return;
                                     items.push({
@@ -11052,7 +11122,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 });
                             } else {
                                 const allMoments = plugin.momentsData.items || [];
-                                if (!allMoments.length) { showMessage('暂无朋友圈数据'); return; }
+                                if (!allMoments.length) { showMessage(lunaT('暂无朋友圈数据')); return; }
                                 let moments = filterByExportTimeRange(allMoments, m => m.created ? new Date(m.created) : null);
                                 // 分类范围筛选（无分类 / 具体分类 / 全部数据；兼容旧值 'category' = 任意有分类）
                                 const momentsScope = this._getSetting('exportMomentsScope') || 'all';
@@ -11062,7 +11132,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     const sel = momentsScope.slice(4);
                                     moments = moments.filter(m => m.category === sel);
                                 }
-                                if (!moments.length) { showMessage('所选范围内无朋友圈数据'); return; }
+                                if (!moments.length) { showMessage(lunaT('所选范围内无朋友圈数据')); return; }
                                 const exportNickname = plugin._getProfileNickname();
                                 moments.forEach(m => {
                                     if (!m.text && !m.created) return;
@@ -11076,7 +11146,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     });
                                 });
                             }
-                            if (!items.length) { showMessage('无有效数据可导出'); return; }
+                            if (!items.length) { showMessage(lunaT('无有效数据可导出')); return; }
                             // 加载所有图片（先收集所有 URL，去重后并行加载）
                             const allUrls = new Set();
                             items.forEach(it => it.images.forEach(u => { if (u) allUrls.add(u); }));
@@ -11129,7 +11199,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 if (it.comments && it.comments.length > 0) {
                                     const nick = it.commentNickname || '';
                                     md += '\n评论：\n';
-                                    htmlContent += '<div class="comments"><strong>评论：</strong><ul>';
+                                    htmlContent += '<div class="comments"><strong>' + lunaT('评论：') + '</strong><ul>';
                                     it.comments.forEach(c => {
                                         if (!c || !c.text) return;
                                         const line = (nick ? nick + '：' : '') + c.text;
@@ -11216,35 +11286,35 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 showMessage(`已导出为 Word (${items.length} 条)`);
                             }
                         })().catch((e) => {
-                            showMessage('导出失败：' + (e && e.message ? e.message : '未知错误'));
+                            showMessage(lunaT('导出失败：') + (e && e.message ? e.message : lunaT('未知错误')));
                             console.error('[轻语] 导出异常:', e);
                         });
                     } else if (action === "batchSyncBreeze" || action === "batchSyncMoments") {
                         /* 批量同步：把全部清风笔记 / 朋友圈动态逐条写入思源笔记文档。
                            按钮上实时显示进度并禁用，避免重复点击。 */
                         const kind = action === "batchSyncBreeze" ? 'breeze' : 'moments';
-                        const label = kind === 'breeze' ? '清风笔记' : '朋友圈动态';
-                        if (this._batchSyncing) { showMessage('已有批量同步正在进行，请稍候'); return; }
+                        const label = kind === 'breeze' ? lunaT('清风笔记') : lunaT('朋友圈动态');
+                        if (this._batchSyncing) { showMessage(lunaT('已有批量同步正在进行，请稍候')); return; }
                         this._batchSyncing = true;
                         const oldText = btn ? btn.textContent : '';
-                        if (btn) { btn.disabled = true; btn.textContent = '同步中…'; }
-                        showMessage(`正在批量同步${label}…`);
+                        if (btn) { btn.disabled = true; btn.textContent = lunaT('同步中…'); }
+                        showMessage(lunaT('正在批量同步{label}…', { label }));
                         (async () => {
                             try {
                                 const r = await plugin._batchSyncToSiYuan(kind, (done, total) => {
-                                    if (btn) btn.textContent = `同步中 ${done}/${total}`;
+                                    if (btn) btn.textContent = lunaT('同步中 {done}/{total}', { done, total });
                                 });
-                                if (!r.total) { showMessage(`暂无${label}可同步`); return; }
-                                const parts = [`已同步 ${r.synced} 条`];
-                                if (r.skipped) parts.push(`跳过已同步 ${r.skipped} 条`);
-                                if (r.failed) parts.push(`失败 ${r.failed} 条`);
-                                showMessage(`${label}批量同步完成：` + parts.join('，'));
+                                if (!r.total) { showMessage(lunaT('暂无{label}可同步', { label })); return; }
+                                const parts = [lunaT('已同步 {n} 条', { n: r.synced })];
+                                if (r.skipped) parts.push(lunaT('跳过已同步 {n} 条', { n: r.skipped }));
+                                if (r.failed) parts.push(lunaT('失败 {n} 条', { n: r.failed }));
+                                showMessage(lunaT('{label}批量同步完成：', { label }) + parts.join(LUNA_EN ? ', ' : '，'));
                             } catch (e) {
-                                showMessage('批量同步失败：' + (e && e.message ? e.message : '未知错误'));
+                                showMessage(lunaT('批量同步失败：') + (e && e.message ? e.message : lunaT('未知错误')));
                                 console.error('[轻语] 批量同步异常:', e);
                             } finally {
                                 this._batchSyncing = false;
-                                if (btn) { btn.disabled = false; btn.textContent = oldText || '开始同步'; }
+                                if (btn) { btn.disabled = false; btn.textContent = oldText || lunaT('开始同步'); }
                             }
                         })();
                     }
@@ -11259,12 +11329,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         '<div class="north-luna-passcode-mask"></div>' +
                         '<div class="north-luna-passcode-dialog">' +
                             '<div class="north-luna-passcode-title">' + (curPwd ? '修改锁屏密码' : '设置锁屏密码') + '</div>' +
-                            (curPwd ? '<div class="north-luna-passcode-field"><input type="password" class="north-luna-passcode-input" id="passcodeOld" placeholder="请输入旧密码" maxlength="20"></div>' : '') +
-                            '<div class="north-luna-passcode-field"><input type="password" class="north-luna-passcode-input" id="passcodeNew" placeholder="请输入新密码" maxlength="20"></div>' +
-                            '<div class="north-luna-passcode-field"><input type="password" class="north-luna-passcode-input" id="passcodeConfirm" placeholder="确认新密码" maxlength="20"></div>' +
+                            (curPwd ? '<div class="north-luna-passcode-field"><input type="password" class="north-luna-passcode-input" id="passcodeOld" placeholder="' + lunaT('请输入旧密码') + '" maxlength="20"></div>' : '') +
+                            '<div class="north-luna-passcode-field"><input type="password" class="north-luna-passcode-input" id="passcodeNew" placeholder="' + lunaT('请输入新密码') + '" maxlength="20"></div>' +
+                            '<div class="north-luna-passcode-field"><input type="password" class="north-luna-passcode-input" id="passcodeConfirm" placeholder="' + lunaT('确认新密码') + '" maxlength="20"></div>' +
                             '<div class="north-luna-passcode-actions">' +
-                                '<button class="north-luna-passcode-cancel">取消</button>' +
-                                '<button class="north-luna-passcode-ok">确认</button>' +
+                                '<button class="north-luna-passcode-cancel">' + lunaT('取消') + '</button>' +
+                                '<button class="north-luna-passcode-ok">' + lunaT('确认') + '</button>' +
                             '</div>' +
                         '</div>';
                     document.body.appendChild(modal);
@@ -11279,29 +11349,29 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     modal.querySelector('.north-luna-passcode-cancel').addEventListener('click', close);
                     modal.querySelector('.north-luna-passcode-ok').addEventListener('click', () => {
                         if (curPwd && oldInput && oldInput.value !== curPwd) {
-                            if (typeof showMessage === 'function') showMessage('旧密码错误');
+                            if (typeof showMessage === 'function') showMessage(lunaT('旧密码错误'));
                             return;
                         }
                         const np = newInput.value.trim();
                         if (!np) {
-                            if (typeof showMessage === 'function') showMessage('新密码不能为空');
+                            if (typeof showMessage === 'function') showMessage(lunaT('新密码不能为空'));
                             return;
                         }
                         if (np !== confirmInput.value) {
-                            if (typeof showMessage === 'function') showMessage('两次输入的新密码不一致');
+                            if (typeof showMessage === 'function') showMessage(lunaT('两次输入的新密码不一致'));
                             return;
                         }
                         const storage = plugin.data[SETTINGS_STORAGE] || {};
                         storage.settings = storage.settings || {};
                         storage.settings.momentsLockPasscode = np;
                         plugin.saveData(SETTINGS_STORAGE, storage).then(() => {
-                            if (typeof showMessage === 'function') showMessage('密码已修改');
+                            if (typeof showMessage === 'function') showMessage(lunaT('密码已修改'));
                             close();
                             /* 刷新设置视图 */
                             this._viewDomCache = {};
                             this.renderMain();
                         }).catch(() => {
-                            if (typeof showMessage === 'function') showMessage('保存失败');
+                            if (typeof showMessage === 'function') showMessage(lunaT('保存失败'));
                         });
                     });
                 };
@@ -11363,20 +11433,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             '<button class="north-luna-datepicker-nav" data-action="next" type="button">›</button>' +
                         '</div>' +
                         '<div class="north-luna-datepicker-quickchips">' +
-                            '<button class="north-luna-datepicker-chip" data-quick="today" type="button">今日</button>' +
-                            '<button class="north-luna-datepicker-chip" data-quick="weekstart" type="button">本周开始</button>' +
-                            '<button class="north-luna-datepicker-chip" data-quick="weekend" type="button">本周末</button>' +
-                            '<button class="north-luna-datepicker-chip" data-quick="monthstart" type="button">本月第一天</button>' +
+                            '<button class="north-luna-datepicker-chip" data-quick="today" type="button">' + lunaT('今日') + '</button>' +
+                            '<button class="north-luna-datepicker-chip" data-quick="weekstart" type="button">' + lunaT('本周开始') + '</button>' +
+                            '<button class="north-luna-datepicker-chip" data-quick="weekend" type="button">' + lunaT('本周末') + '</button>' +
+                            '<button class="north-luna-datepicker-chip" data-quick="monthstart" type="button">' + lunaT('本月第一天') + '</button>' +
                         '</div>' +
                         '<div class="north-luna-datepicker-toolbar">' +
-                            '<button class="north-luna-datepicker-clear" data-action="clear" type="button">清除</button>' +
+                            '<button class="north-luna-datepicker-clear" data-action="clear" type="button">' + lunaT('清除') + '</button>' +
                         '</div>' +
                         '<div class="north-luna-datepicker-weekdays">' +
-                            '<span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>' +
+                            lunaWeekLetters(true).map(d => '<span>' + d + '</span>').join('') +
                         '</div>' +
                         '<div class="north-luna-datepicker-grid"></div>' +
                         '<div class="north-luna-datepicker-actions">' +
-                            '<button class="north-luna-datepicker-btn" data-action="todayjump" type="button">今天</button>' +
+                            '<button class="north-luna-datepicker-btn" data-action="todayjump" type="button">' + lunaT('今天') + '</button>' +
                         '</div>';
                     document.body.appendChild(popup);
 
@@ -11500,31 +11570,31 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     '<span>最近 N 天</span></label>' +
                                 `<label class="north-luna-export-tr-mode-item${mode === 'single' ? ' active' : ''}">` +
                                     '<input type="radio" name="exportTrMode" value="single"' + (mode === 'single' ? ' checked' : '') + '>' +
-                                    '<span>指定日期</span></label>' +
+                                    '<span>' + lunaT('指定日期') + '</span></label>' +
                                 `<label class="north-luna-export-tr-mode-item${mode === 'range' ? ' active' : ''}">` +
                                     '<input type="radio" name="exportTrMode" value="range"' + (mode === 'range' ? ' checked' : '') + '>' +
-                                    '<span>日期范围</span></label>' +
+                                    '<span>' + lunaT('日期范围') + '</span></label>' +
                             '</div>' +
                             '<div class="north-luna-export-tr-fields">' +
                                 '<div class="north-luna-export-tr-field" data-show="recent"' + (mode === 'recent' ? '' : ' style="display:none"') + '>' +
-                                    '<span class="north-luna-export-tr-field-label">最近</span>' +
+                                    '<span class="north-luna-export-tr-field-label">' + lunaT('最近') + '</span>' +
                                     '<input type="number" class="north-luna-export-tr-input" id="exportTrDays" value="' + recentDays + '" min="1" max="3650">' +
-                                    '<span class="north-luna-export-tr-field-label">天内的数据</span>' +
+                                    '<span class="north-luna-export-tr-field-label">' + lunaT('天内的数据') + '</span>' +
                                 '</div>' +
                                 '<div class="north-luna-export-tr-field" data-show="single"' + (mode === 'single' ? '' : ' style="display:none"') + '>' +
-                                    '<span class="north-luna-export-tr-field-label">日期</span>' +
+                                    '<span class="north-luna-export-tr-field-label">' + lunaT('日期') + '</span>' +
                                     '<button type="button" class="north-luna-date-trigger" id="exportTrDate" data-value="' + plugin._esc(singleDate) + '" data-max="' + today + '">' +
                                         '<svg class="icon north-luna-date-trigger-icon"><use xlink:href="#iconCalendar"></use></svg>' +
                                         '<span class="north-luna-date-trigger-text">' + (singleDate ? plugin._esc(singleDate) : '选择日期') + '</span>' +
                                     '</button>' +
                                 '</div>' +
                                 '<div class="north-luna-export-tr-field" data-show="range"' + (mode === 'range' ? '' : ' style="display:none"') + '>' +
-                                    '<span class="north-luna-export-tr-field-label">从</span>' +
+                                    '<span class="north-luna-export-tr-field-label">' + lunaT('从') + '</span>' +
                                     '<button type="button" class="north-luna-date-trigger" id="exportTrFrom" data-value="' + plugin._esc(dateFrom) + '" data-max="' + today + '">' +
                                         '<svg class="icon north-luna-date-trigger-icon"><use xlink:href="#iconCalendar"></use></svg>' +
                                         '<span class="north-luna-date-trigger-text">' + (dateFrom ? plugin._esc(dateFrom) : '选择日期') + '</span>' +
                                     '</button>' +
-                                    '<span class="north-luna-export-tr-field-label">到</span>' +
+                                    '<span class="north-luna-export-tr-field-label">' + lunaT('到') + '</span>' +
                                     '<button type="button" class="north-luna-date-trigger" id="exportTrTo" data-value="' + plugin._esc(dateTo) + '" data-max="' + today + '">' +
                                         '<svg class="icon north-luna-date-trigger-icon"><use xlink:href="#iconCalendar"></use></svg>' +
                                         '<span class="north-luna-date-trigger-text">' + (dateTo ? plugin._esc(dateTo) : '选择日期') + '</span>' +
@@ -11532,8 +11602,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 '</div>' +
                             '</div>' +
                             '<div class="north-luna-export-tr-actions">' +
-                                '<button class="north-luna-export-tr-cancel">取消</button>' +
-                                '<button class="north-luna-export-tr-ok">确认</button>' +
+                                '<button class="north-luna-export-tr-cancel">' + lunaT('取消') + '</button>' +
+                                '<button class="north-luna-export-tr-ok">' + lunaT('确认') + '</button>' +
                             '</div>' +
                         '</div>';
                     document.body.appendChild(modal);
@@ -11597,7 +11667,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             let summary = '全部数据';
                             if (m === 'recent') {
                                 const days = parseInt(this._getSetting('exportRecentDays')) || 7;
-                                summary = `最近 ${days} 天`;
+                                summary = lunaT('最近 {n} 天', { n: days });
                             } else if (m === 'single') {
                                 const d = this._getSetting('exportSingleDate') || '';
                                 summary = d || '全部数据';
@@ -11639,7 +11709,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         +             '<span class="qo-chip">toolbarFile</span>'
                         +             '<span class="qo-chip">sidebar-plugin-tab</span>'
                         +             '<span class="qo-chip">text:轻语</span>'
-                        +           '</div><button class="qo-copyall" type="button" title="复制全部三项">复制全部</button></div>'
+                        +           '</div><button class="qo-copyall" type="button" title="' + lunaT('复制全部三项') + '">' + lunaT('复制全部') + '</button></div>'
                         +         '</div>'
                         +       '</div>'
                         +     '</div>'
@@ -11648,7 +11718,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     document.body.appendChild(modal);
 
                     const copyText = (txt) => {
-                        const ok = () => { if (typeof showMessage === 'function') showMessage('已复制：' + txt); };
+                        const ok = () => { if (typeof showMessage === 'function') showMessage(lunaT('已复制：') + txt); };
                         if (navigator.clipboard && navigator.clipboard.writeText) {
                             navigator.clipboard.writeText(txt).then(ok).catch(() => fallbackCopy(txt, ok));
                         } else {
@@ -11716,8 +11786,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 <svg class="north-luna-settings-cddl-arrow" width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                             </button>
                             <div class="north-luna-settings-cddl-popup">
-                                <div class="north-luna-settings-cddl-item${t==='breeze'?' active':''}" data-value="breeze">清风笔记</div>
-                                <div class="north-luna-settings-cddl-item${t==='data'?' active':''}" data-value="data">数据同步设置</div>
+                                <div class="north-luna-settings-cddl-item${t==='breeze'?' active':''}" data-value="breeze">${lunaT('清风笔记')}</div>
+                                <div class="north-luna-settings-cddl-item${t==='data'?' active':''}" data-value="data">${lunaT('数据同步设置')}</div>
                             </div>
                         </div>
                     </div></div>`;
@@ -11738,17 +11808,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     mask.innerHTML = `<div class="north-luna-template-editor-panel" id="flomo-dlg-panel">
                         <button class="north-luna-flomo-dlg-close" id="flomo-dlg-close" title="关闭">×</button>
                         <div class="north-luna-template-editor-head" id="flomo-dlg-head" style="border-bottom:none;">
-                            <span style="visibility:hidden;">登录</span>
+                            <span style="visibility:hidden;">${lunaT('登录')}</span>
                         </div>
                         <div style="padding:0 28px 28px;">
                             <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:8px;padding-bottom:24px;">
                                 <img class="north-luna-flomo-dlg-avatar" src="${plugin._esc(avatarSrc)}" alt="avatar" onerror="this.src='${plugin._esc(DEFAULT_AVATAR)}'">
                                 <div class="north-luna-flomo-dlg-nickname">${plugin._esc(nickname)}</div>
                             </div>
-                            <input type="text" id="flomo-dlg-email" class="north-luna-settings-input" placeholder="邮箱或手机号" style="width:100%;box-sizing:border-box;margin-bottom:12px;">
-                            <input type="password" id="flomo-dlg-password" class="north-luna-settings-input" placeholder="请输入密码" style="width:100%;box-sizing:border-box;margin-bottom:8px;">
-                            <button class="north-luna-flomo-dlg-btn" id="flomo-dlg-login">登录</button>
-                            <div class="north-luna-flomo-dlg-tip">登录 Flomo 解锁同步功能</div>
+                            <input type="text" id="flomo-dlg-email" class="north-luna-settings-input" placeholder="${lunaT('邮箱或手机号')}" style="width:100%;box-sizing:border-box;margin-bottom:12px;">
+                            <input type="password" id="flomo-dlg-password" class="north-luna-settings-input" placeholder="${lunaT('请输入密码')}" style="width:100%;box-sizing:border-box;margin-bottom:8px;">
+                            <button class="north-luna-flomo-dlg-btn" id="flomo-dlg-login">${lunaT('登录')}</button>
+                            <div class="north-luna-flomo-dlg-tip">${lunaT('登录 Flomo 解锁同步功能')}</div>
                         </div>
                     </div>`;
                     document.body.appendChild(mask);
@@ -11785,7 +11855,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     loginBtn.onclick = async () => {
                         const u = mask.querySelector('#flomo-dlg-email')?.value?.trim();
                         const p = mask.querySelector('#flomo-dlg-password')?.value?.trim();
-                        if (!u || !p) { showMessage('请输入邮箱和密码'); return; }
+                        if (!u || !p) { showMessage(lunaT('请输入邮箱和密码')); return; }
                         loginBtn.textContent = '登录中...'; loginBtn.disabled = true;
                         const r = await this._flomoLogin(u, p);
                         loginBtn.textContent = '登录'; loginBtn.disabled = false;
@@ -11994,8 +12064,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 };
 
                 this._flomoSync = async (isFullSync) => {
-                    if (!this.flomoConfig.accessToken) { showMessage('请先登录 Flomo'); return; }
-                    if (this._flomoSyncing) { showMessage('已有同步正在进行，请稍候'); return; }
+                    if (!this.flomoConfig.accessToken) { showMessage(lunaT('请先登录 Flomo')); return; }
+                    if (this._flomoSyncing) { showMessage(lunaT('已有同步正在进行，请稍候')); return; }
                     this._flomoSyncing = true;
                     showMessage(isFullSync ? '正在进行全量同步，请耐心等待...' : '正在增量同步 Flomo 笔记...');
                     const allMemos = [];
@@ -12008,7 +12078,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     let cursorTime = Math.floor(new Date(lastSync).getTime() / 1000).toString();
                     try {
                         while (true) {
-                            if (++pageGuard > 500) { showMessage('已拉取页数过多，已停止以防卡死'); break; }
+                            if (++pageGuard > 500) { showMessage(lunaT('已拉取页数过多，已停止以防卡死')); break; }
                             const ts = Math.floor(Date.now() / 1000).toString();
                             const params = { api_key: FLOMO_API_KEY, app_version: FLOMO_APP_VERSION, latest_slug: latestSlug, latest_updated_at: cursorTime, limit: '200', timestamp: ts, tz: '8:0', webp: '1' };
                             params.sign = this._flomoSign(params);
@@ -12042,12 +12112,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 showMessage(msg);
                             }
                         }
-                    } catch (e) { showMessage('同步失败: ' + e.message); }
+                    } catch (e) { showMessage(lunaT('同步失败: ') + e.message); }
                     finally { this._flomoSyncing = false; }
                 };
 
                 this._saveFlomoMemos = async (memos, isFullSync) => {
-                    if (!memos.length) { showMessage('没有新笔记需要同步'); return; }
+                    if (!memos.length) { showMessage(lunaT('没有新笔记需要同步')); return; }
                     const t = this.flomoConfig.syncTarget || 'breeze';
                     const slugSet = new Set(isFullSync ? [] : (this.flomoConfig.flomoSyncedSlugs || []));
                     let added = 0;
@@ -12228,7 +12298,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     try {
                         const resp = await fetch('/api/notebook/lsNotebooks', { method: 'POST' });
                         const data = await resp.json();
-                        selectEl.innerHTML = '<option value="">默认笔记本</option>';
+                        selectEl.innerHTML = '<option value="">' + lunaT('默认笔记本') + '</option>';
                         if (data.code === 0 && data.data) {
                             data.data.notebooks.forEach(nb => {
                                 selectEl.innerHTML += `<option value="${nb.id}">${nb.name}</option>`;
@@ -12276,9 +12346,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     <div class="north-luna-import-desc">检测到您之前使用过<strong>轻语</strong>插件。我们已将轻语的核心能力整合进当前版本，并支持一键把旧数据迁入（说说 → 清风、朋友圈动态 → 朋友圈，已存在的同 ID 内容会自动跳过）。</div>
                                     <div class="north-luna-import-note">为方便您决策，下面列出轻语原有功能在当前版本中的对应情况，请您特别留意标注为「确认移除」的几项——<strong>实时多端同步、图书 / 微信读书、写拉松、Memos 自托管、速记独立窗口、莫兰迪主题、标签屏蔽</strong> 在当前版本中已确认移除；回收站（防误删）计划后续优化。若您仍依赖这些已移除的能力，建议先备份旧数据再决定是否导入。</div>
                                     <div class="north-luna-import-compare">
-                                        <div class="north-luna-import-compare-title">轻语功能 → 本插件对应情况</div>
+                                        <div class="north-luna-import-compare-title">${lunaT('轻语功能 → 本插件对应情况')}</div>
                                         <table class="north-luna-import-table">
-                                            <thead><tr><th>轻语功能</th><th>当前情况</th><th>结论</th></tr></thead>
+                                            <thead><tr><th>${lunaT('轻语功能')}</th><th>${lunaT('当前情况')}</th><th>${lunaT('结论')}</th></tr></thead>
                                             <tbody>${compareHtml}</tbody>
                                         </table>
                                     </div>
@@ -12286,8 +12356,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 </div>
                             </div>
                             <div class="north-luna-template-editor-foot">
-                                <button type="button" class="north-luna-template-editor-btn north-luna-import-cancel">取消</button>
-                                <button type="button" class="north-luna-template-editor-btn north-luna-template-editor-confirm north-luna-import-start">导入</button>
+                                <button type="button" class="north-luna-template-editor-btn north-luna-import-cancel">${lunaT('取消')}</button>
+                                <button type="button" class="north-luna-template-editor-btn north-luna-template-editor-confirm north-luna-import-start">${lunaT('导入')}</button>
                             </div>
                         </div>
                     `;
@@ -12356,7 +12426,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     <div class="north-luna-import-progress-label">朋友圈动态 <span id="momentsProgressText">0 / 0</span></div>
                                     <div class="north-luna-import-progress-bar"><div class="north-luna-import-progress-fill" id="momentsProgressFill" style="width:0%"></div></div>
                                 </div>
-                                <div class="north-luna-import-status" id="luminaImportStatus">准备导入...</div>
+                                <div class="north-luna-import-status" id="luminaImportStatus">${lunaT('准备导入...')}</div>
                             </div>
                         `;
                         startBtn.disabled = true;
@@ -12443,7 +12513,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         return text;
                     };
 
-                    showMessage("正在读取轻语数据…");
+                    showMessage(lunaT('正在读取轻语数据…'));
 
                     // 1. 轻语说说（shuoshuo-data）
                     let shuoshuos = [];
@@ -12466,7 +12536,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     };
 
                     if (shuoshuos.length === 0 && luminaMoments.length === 0) {
-                        showMessage("未找到轻语数据，请确认已安装轻语插件并有数据（可打开控制台查看详细日志）");
+                        showMessage(lunaT('未找到轻语数据，请确认已安装轻语插件并有数据（可打开控制台查看详细日志）'));
                         return;
                     }
 
@@ -12696,7 +12766,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this._lifelogRecords = this._lifelogCache;
                     } else {
                         const tl = body.querySelector('#lifelog-timeline');
-                        if (tl) tl.innerHTML = '<div class="north-lifelog-timeline-empty">加载中…</div>';
+                        if (tl) tl.innerHTML = '<div class="north-lifelog-timeline-empty">' + lunaT('加载中…') + '</div>';
                     }
                     this._bindLifeLogViewOnce(body);
                     if (hasCache) this._paintLifeLogView(body);
@@ -12860,7 +12930,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         records.forEach(r => { if (r.created) years.add(new Date(r.created).getFullYear()); });
                         years.add(new Date().getFullYear());
                         const sortedYears = Array.from(years).sort((a, b) => b - a);
-                        calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
+                        calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${lunaYear(y)}</option>`).join('');
                         calendarYear.value = new Date().getFullYear();
                         if (!calendarYear._lifelogCalYearBound) {
                             calendarYear._lifelogCalYearBound = true;
@@ -12970,7 +13040,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const d = new Date(r.created);
                             return !isNaN(d) && d.getFullYear() === targetYear;
                         }).length;
-                        if (calCount) calCount.textContent = '总共 ' + total + ' 条记录';
+                        if (calCount) calCount.textContent = lunaT('总共 {n} 条记录', { n: total });
                         /* 统计每月记录数 */
                         const monthCounts = new Array(12).fill(0);
                         records.forEach(r => {
@@ -13034,7 +13104,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         dayCounts[key] = (dayCounts[key] || 0) + 1;
                         total++;
                     });
-                    if (calCount) calCount.textContent = '总共 ' + total + ' 条记录';
+                    if (calCount) calCount.textContent = lunaT('总共 {n} 条记录', { n: total });
                     /* 生成周列 */
                     let columnsHtml = '';
                     for (let week = 0; week < weeks; week++) {
@@ -13276,9 +13346,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             if (count >= 3) level = 2;
                             if (count >= 5) level = 3;
                             if (count >= 7) level = 4;
-                            const tip = count > 0
-                                ? count + '条 ' + (cellDate.getMonth() + 1) + '月' + cellDate.getDate() + '日'
-                                : (cellDate.getMonth() + 1) + '月' + cellDate.getDate() + '日';
+                            const _md2 = lunaMonthDay(cellDate);
+                            const tip = count > 0 ? lunaT('{n}条 {md}', { n: count, md: _md2 }) : _md2;
                             const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
                             html += '<div class="north-lifelog-heatmap-grid-cell level-' + level + '" data-date="' + ymd + '" data-lifelog-tip="' + esc(tip) + '"></div>';
                         }
@@ -13540,7 +13609,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     });
                     const types = Object.keys(typeCount);
                     if (types.length === 0) {
-                        cloud.innerHTML = '<div class="north-lifelog-types-empty">暂无类型</div>';
+                        cloud.innerHTML = '<div class="north-lifelog-types-empty">' + lunaT('暂无类型') + '</div>';
                         return;
                     }
                     /* 按字母顺序排序，与轻语一致 */
@@ -13619,7 +13688,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (data.length === 0) {
                         /* 打断可能还在分帧追加的上一轮渲染，否则残留内容会盖住空态 */
                         timeline._lifelogRenderToken = (timeline._lifelogRenderToken || 0) + 1;
-                        timeline.innerHTML = '<div class="north-lifelog-timeline-empty">暂无匹配记录</div>';
+                        timeline.innerHTML = '<div class="north-lifelog-timeline-empty">' + lunaT('暂无匹配记录') + '</div>';
                         return;
                     }
                     /* 按日期分组，每组内按时间倒序 */
@@ -13673,7 +13742,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     : '';
                                 html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
                                     <div class="north-lifelog-timeline-left">
-                                        <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
+                                        <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="${lunaT('点击修改时间')}">${item.time}</span>
                                     </div>
                                     <div class="north-lifelog-timeline-axis">
                                         <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
@@ -13720,15 +13789,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         menu.innerHTML = `
                             <button class="north-lifelog-ctx-item" data-act="edit">
                                 <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconEdit"></use></svg>
-                                <span>编辑</span>
+                                <span>${lunaT('编辑')}</span>
                             </button>
                             <button class="north-lifelog-ctx-item" data-act="time">
                                 <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconClock"></use></svg>
-                                <span>修改时间</span>
+                                <span>${lunaT('修改时间')}</span>
                             </button>
                             <button class="north-lifelog-ctx-item" data-act="open">
                                 <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconLink"></use></svg>
-                                <span>打开文档</span>
+                                <span>${lunaT('打开文档')}</span>
                             </button>
                         `;
                         menu.style.left = e.clientX + 'px';
@@ -13802,11 +13871,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
                     const dialog = document.createElement('div');
                     dialog.style.cssText = 'background:var(--b3-theme-background);padding:24px;border-radius:12px;width:520px;max-width:90%;max-height:80vh;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,0.15);color:var(--b3-theme-on-background)';
-                    dialog.innerHTML = `<div style="font-size:16px;font-weight:600;margin-bottom:16px">编辑 LifeLog</div>
+                    dialog.innerHTML = `<div style="font-size:16px;font-weight:600;margin-bottom:16px">${lunaT('编辑 LifeLog')}</div>
                         <textarea id="lifelog-edit-content" style="width:100%;min-height:120px;padding:12px;border:1px solid var(--b3-border-color);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box;margin-bottom:16px;background:var(--b3-theme-background);color:var(--b3-theme-on-background)">${esc(originalContent)}</textarea>
                         <div style="display:flex;justify-content:flex-end;gap:12px">
-                            <button id="lifelog-edit-cancel" style="padding:8px 16px;border:1px solid var(--b3-border-color);background:var(--b3-theme-background);border-radius:6px;cursor:pointer;font-size:14px;color:var(--b3-theme-on-background)">取消</button>
-                            <button id="lifelog-edit-save" style="padding:8px 16px;border:none;background:var(--b3-theme-primary);color:#fff;border-radius:6px;cursor:pointer;font-size:14px">保存</button>
+                            <button id="lifelog-edit-cancel" style="padding:8px 16px;border:1px solid var(--b3-border-color);background:var(--b3-theme-background);border-radius:6px;cursor:pointer;font-size:14px;color:var(--b3-theme-on-background)">${lunaT('取消')}</button>
+                            <button id="lifelog-edit-save" style="padding:8px 16px;border:none;background:var(--b3-theme-primary);color:#fff;border-radius:6px;cursor:pointer;font-size:14px">${lunaT('保存')}</button>
                         </div>`;
                     overlay.appendChild(dialog);
                     document.body.appendChild(overlay);
@@ -13991,7 +14060,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 plugin._lunaToast((res && res.msg) || '写入日记失败，请重试');
                             }
                         } catch (e) {
-                            plugin._lunaToast('提交失败：' + ((e && e.message) || e));
+                            plugin._lunaToast(lunaT('提交失败：') + ((e && e.message) || e));
                         } finally {
                             modalSubmit.disabled = false;
                             modalSubmit.textContent = '记录';
@@ -14263,7 +14332,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
     onLayoutReady() {
         /* 移动端不注册顶栏按钮（底栏 Dock 已覆盖入口，且避免与轻语 iconLightWord 冲突） */
         if (!this.isMobile) {
-            this.addTopBar({ icon: "iconLightWord", title: PLUGIN_NAME, position: "right", callback: () => this.openTab() });
+            this.addTopBar({ icon: "iconLightWord", title: lunaT('plugin.name', PLUGIN_NAME), position: "right", callback: () => this.openTab() });
         }
 
         // 启动时自动打开轻语（通过持久化配置 autoOpen 控制，默认关闭）
@@ -14419,11 +14488,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return SIDEBAR_DEFAULT_ICONS[viewId] || '';
     }
 
+    /* 视图内置名（i18n）：键 view.<id>，缺词条时回退 SIDEBAR_VIEWS 里的中文 */
+    _viewTitle(viewId) {
+        const v = SIDEBAR_VIEWS.find(s => s.id === viewId);
+        if (!v) return viewId;
+        return lunaT('view.' + viewId, v.title);
+    }
+
     _getSidebarViewName(viewId) {
         const custom = (this.data[SETTINGS_STORAGE] || {}).navNames?.[viewId];
         if (custom && custom.trim()) return custom.trim();
-        const v = SIDEBAR_VIEWS.find(s => s.id === viewId);
-        return v ? v.title : viewId;
+        return this._viewTitle(viewId);
     }
 
     _isNavViewHidden(viewId) {
@@ -14468,8 +14543,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
     _getMobileSidebarViewName(viewId) {
         const custom = (this.data[SETTINGS_STORAGE] || {}).mobileNavNames?.[viewId];
         if (custom && custom.trim()) return custom.trim();
-        const v = SIDEBAR_VIEWS.find(s => s.id === viewId);
-        return v ? v.title : viewId;
+        return this._viewTitle(viewId);
     }
 
     _getMobileSortableViews() {
@@ -14528,7 +14602,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         target.innerHTML = `
             <div class="north-luna-container${plugin.isMobile ? ' is-mobile' : ''}" data-active-view="${ctx.activeViewId}">
                 <div class="north-luna-sidebar">
-                    <div class="north-luna-avatar" title="点击更换头像">
+                    <div class="north-luna-avatar" title="${lunaT('点击更换头像')}">
                         ${(() => { const avatarVal = ctx._getSetting ? ctx._getSetting("avatar") : plugin._getPluginSetting("avatar"); let displaySrc = avatarVal || DEFAULT_AVATAR; if (displaySrc.startsWith('assets/')) displaySrc = '/' + displaySrc; return '<img class="north-luna-avatar-img" src="' + plugin._esc(displaySrc) + '" alt="头像">'; })()}
                     </div>
                     <div class="north-luna-nav-icons">
@@ -14539,21 +14613,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     </div>
                 </div>
                 <div class="north-luna-mobile-header">
-                    <button class="mobile-header-menu" id="luna-mobile-menu" title="菜单">
+                    <button class="mobile-header-menu" id="luna-mobile-menu" title="${lunaT('菜单')}">
                         <svg class="icon" style="width:20px;height:20px;"><use xlink:href="#iconMenu"></use></svg>
                     </button>
-                    <div class="mobile-header-title" id="luna-mobile-title"><span class="mobile-header-title-text">${plugin._esc(plugin._getSidebarViewName(ctx.activeViewId))}</span><div class="north-lifelog-subtabs" id="lifelogSubtabs"><button class="north-lifelog-subtab active" data-subview="records">记录</button><button class="north-lifelog-subtab" data-subview="stats">统计</button></div></div>
+                    <div class="mobile-header-title" id="luna-mobile-title"><span class="mobile-header-title-text">${plugin._esc(plugin._getSidebarViewName(ctx.activeViewId))}</span><div class="north-lifelog-subtabs" id="lifelogSubtabs"><button class="north-lifelog-subtab active" data-subview="records">${lunaT('记录')}</button><button class="north-lifelog-subtab" data-subview="stats">${lunaT('统计')}</button></div></div>
                     <div class="mobile-header-actions">
-                        <button class="mobile-header-sync" id="luna-mobile-sync" title="一键同步未同步记录">
+                        <button class="mobile-header-sync" id="luna-mobile-sync" title="${lunaT('一键同步未同步记录')}">
                             <svg class="icon"><use xlink:href="#iconCloud"></use></svg>
                         </button>
-                        <button class="mobile-header-datefilter" id="luna-mobile-datefilter" title="按日期筛选">
+                        <button class="mobile-header-datefilter" id="luna-mobile-datefilter" title="${lunaT('按日期筛选')}">
                             <svg class="icon"><use xlink:href="#iconCalendar"></use></svg>
                         </button>
                         <button class="mobile-header-search" id="luna-mobile-search" title="搜索">
                             <svg class="icon"><use xlink:href="#iconSearch"></use></svg>
                         </button>
-                        <button class="mobile-header-add" id="luna-mobile-add" title="写笔记">
+                        <button class="mobile-header-add" id="luna-mobile-add" title="${lunaT('写笔记')}">
                             <svg class="icon"><use xlink:href="#iconAdd"></use></svg>
                         </button>
                     </div>
@@ -14561,16 +14635,16 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 <div class="north-luna-mobile-search-bar" id="luna-mobile-search-bar">
                     <div class="mobile-search-input-wrapper">
                         <svg class="icon mobile-search-icon"><use xlink:href="#iconSearch"></use></svg>
-                        <input type="text" class="mobile-search-input" id="luna-mobile-search-input" placeholder="搜索笔记...">
-                        <button type="button" class="mobile-search-filter-btn" id="luna-mobile-search-filter" title="筛选">
+                        <input type="text" class="mobile-search-input" id="luna-mobile-search-input" placeholder="${lunaT('搜索笔记...')}">
+                        <button type="button" class="mobile-search-filter-btn" id="luna-mobile-search-filter" title="${lunaT('筛选')}">
                             <svg class="icon"><use xlink:href="#iconAlignCenter"></use></svg>
                         </button>
                     </div>
-                    <button class="mobile-search-close" id="luna-mobile-search-close">取消</button>
+                    <button class="mobile-search-close" id="luna-mobile-search-close">${lunaT('取消')}</button>
                     <div class="mobile-search-filter-row" id="luna-mobile-search-filter-row">
-                        <button type="button" class="mobile-search-filter-chip" data-filter="date"><span class="chip-label">日期</span><svg class="icon"><use xlink:href="#iconDown"></use></svg></button>
-                        <button type="button" class="mobile-search-filter-chip" data-filter="tag"><span class="chip-label">标签</span><svg class="icon"><use xlink:href="#iconDown"></use></svg></button>
-                        <button type="button" class="mobile-search-filter-chip" data-filter="more"><span class="chip-label">检索</span><svg class="icon"><use xlink:href="#iconDown"></use></svg></button>
+                        <button type="button" class="mobile-search-filter-chip" data-filter="date"><span class="chip-label">${lunaT('日期')}</span><svg class="icon"><use xlink:href="#iconDown"></use></svg></button>
+                        <button type="button" class="mobile-search-filter-chip" data-filter="tag"><span class="chip-label">${lunaT('标签')}</span><svg class="icon"><use xlink:href="#iconDown"></use></svg></button>
+                        <button type="button" class="mobile-search-filter-chip" data-filter="more"><span class="chip-label">${lunaT('检索')}</span><svg class="icon"><use xlink:href="#iconDown"></use></svg></button>
                     </div>
                 </div>
                 <div class="north-luna-main-area">
@@ -14961,7 +15035,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     notes.forEach(n => { const t = new Date(String(n.time).replace(/-/g, '/')); if (!isNaN(t)) years.add(t.getFullYear()); });
                     years.add(new Date().getFullYear());
                     const sortedYears = Array.from(years).sort((a, b) => b - a);
-                    calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
+                    calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${lunaYear(y)}</option>`).join('');
                     calendarYear.value = String(new Date().getFullYear());
                     if (!calendarYear._mobileYearBound) {
                         calendarYear._mobileYearBound = true;
@@ -14997,12 +15071,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
             });
         }
         ctx.renderMain();
-        /* 初始渲染后也应用 toolbar 可见性（首次加载不经过 _switchView） */
-        if (window.requestIdleCallback) {
-            requestIdleCallback(() => this._applyMobileToolbarVisibility(ctx.activeViewId));
-        } else {
-            setTimeout(() => this._applyMobileToolbarVisibility(ctx.activeViewId), 0);
-        }
+        /* 移动端：渲染完成后兜底恢复思源 Dock 入口条（首次加载不经过 _switchView） */
+        this._restoreMobileToolbar();
     }
 
     /* ===== 视图切换（Plugin 级别） ===== */
@@ -15068,12 +15138,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this.data[SETTINGS_STORAGE] = this.data[SETTINGS_STORAGE] || {};
         this.data[SETTINGS_STORAGE].activeView = viewId;
         this.saveData(SETTINGS_STORAGE, this.data[SETTINGS_STORAGE]).catch(() => {});
-        /* 移动端：切换视图后按需隐藏/恢复思源侧栏顶部 toolbar（与轻语同逻辑） */
-        if (window.requestIdleCallback) {
-            requestIdleCallback(() => this._applyMobileToolbarVisibility(viewId));
-        } else {
-            setTimeout(() => this._applyMobileToolbarVisibility(viewId), 0);
-        }
+        /* 移动端：切换视图后兜底恢复思源 Dock 入口条（永不隐藏，避免入口消失） */
+        this._restoreMobileToolbar();
         /* 移动端：切换视图后按当前视图重新应用 + 按钮悬浮状态（复刻轻语） */
         if (this.isMobile) this.applyMobileAddFloating(ctx, viewId);
     }
@@ -15344,50 +15410,23 @@ module.exports = class NorthLunaPlugin extends Plugin {
         });
     }
 
-    /* ===== 移动端：隐藏思源侧栏顶部 toolbar（清风与 LifeLog 视图时隐藏，切换离开即恢复） ===== */
-    _applyMobileToolbarVisibility(viewId) {
-        if (!this.isMobile) return;
-        const shouldHide = viewId === 'notes' || viewId === 'lifelog' || viewId === 'globe';
-        if (shouldHide) {
-            const hideToolbar = () => {
-                document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
-                    el.style.setProperty('display', 'none', 'important');
-                });
-            };
-            hideToolbar();
-            if (!this._toolbarObserver) {
-                /* 只在变更落在侧栏内、或新增/移除的正是侧栏 / toolbar 时才重扫：
-                   否则 LifeLog 时间轴分帧追加时，每帧的 DOM 变更都会触发一次
-                   querySelectorAll('#sidebar>.toolbar')（移动端尤其明显）。 */
-                this._toolbarObserver = new MutationObserver((records) => {
-                    let need = false;
-                    for (let i = 0; i < records.length && !need; i++) {
-                        const rec = records[i];
-                        const t = rec.target;
-                        if (t && typeof t.closest === 'function' && t.closest('#sidebar')) { need = true; break; }
-                        const lists = [rec.addedNodes, rec.removedNodes];
-                        for (let k = 0; k < lists.length && !need; k++) {
-                            const list = lists[k];
-                            for (let j = 0; j < list.length; j++) {
-                                const n = list[j];
-                                if (!n || n.nodeType !== 1) continue;
-                                if (n.id === 'sidebar' || (n.classList && n.classList.contains('toolbar'))) { need = true; break; }
-                            }
-                        }
-                    }
-                    if (need) hideToolbar();
-                });
-                this._toolbarObserver.observe(document.body, { childList: true, subtree: true });
-            }
-        } else {
-            if (this._toolbarObserver) {
-                this._toolbarObserver.disconnect();
-                this._toolbarObserver = null;
-            }
-            document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
-                el.style.removeProperty('display');
-            });
+    /* ===== 移动端：恢复思源 Dock 入口条（#sidebar>.toolbar），永不隐藏 =====
+       历史缺陷（≤ v2.5.x）：清风 / LifeLog / 朋友圈视图下把整条 toolbar 内联
+       display:none !important 藏掉，并用 MutationObserver 持续压制。
+       但移动端这条 toolbar 就是「切换 Dock 的入口条」——内置入口（文档树 / 大纲 /
+       反链 / 书签…）与所有插件入口都挂在同一条上。藏掉它等于把离开当前视图的
+       唯一入口一起抹掉：点一次本插件入口后就再也进不去（重启思源才恢复）。
+       现改为「只恢复、不隐藏」：清掉旧版本可能残留在元素上的内联 display，
+       并断开旧的 observer。 */
+    _restoreMobileToolbar() {
+        if (this._toolbarObserver) {
+            this._toolbarObserver.disconnect();
+            this._toolbarObserver = null;
         }
+        if (!this.isMobile) return;
+        document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
+            if (el.style.display === 'none') el.style.removeProperty('display');
+        });
     }
 
     /* 移动端抽屉侧边栏（Plugin 级别，依赖 ctx.container 内的 .north-luna-sidebar） */
@@ -16160,7 +16199,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         fileInput.onchange = async () => {
             const files = Array.from(fileInput.files || []);
             if (!files.length) return;
-            showMessage('上传资源中…');
+            showMessage(lunaT('上传资源中…'));
             for (const f of files) {
                 const path = await plugin._uploadResource(f, { assetsDirPath: 'assets/' });
                 if (!path) continue;
@@ -16208,7 +16247,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }
             if (!files.length) return;
             ev.preventDefault();
-            showMessage('上传资源中…');
+            showMessage(lunaT('上传资源中…'));
             const ts = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
             for (const f of files) {
                 const path = await plugin._uploadResource(f, { assetsDirPath: 'assets/' });
@@ -16454,7 +16493,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (inputArea._discardConfirmOpen) return;
         inputArea._discardConfirmOpen = true;
         try {
-            const ok = await this._lunaConfirm('放弃未保存的内容？', '正在输入的内容尚未保存，关闭后将无法恢复。', '放弃内容', '继续编辑');
+            const ok = await this._lunaConfirm(lunaT('放弃未保存的内容？'), lunaT('正在输入的内容尚未保存，关闭后将无法恢复。'), lunaT('放弃内容'), lunaT('继续编辑'));
             if (ok) {
                 if (doClose) doClose();
             } else if (inputArea.classList.contains('mobile-sheet-visible')) {
@@ -16743,9 +16782,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             body.innerHTML = `
             <div class="north-travel">
                 <div class="north-travel-empty">
-                    <div class="north-travel-empty-title">还没有行程</div>
-                    <div class="north-travel-empty-desc">新建一份行程，开始规划你的路线</div>
-                    <button class="north-travel-btn north-travel-btn--primary" data-travel-action="new-trip" type="button">新建行程</button>
+                    <div class="north-travel-empty-title">${lunaT('还没有行程')}</div>
+                    <div class="north-travel-empty-desc">${lunaT('新建一份行程，开始规划你的路线')}</div>
+                    <button class="north-travel-btn north-travel-btn--primary" data-travel-action="new-trip" type="button">${lunaT('新建行程')}</button>
                 </div>
             </div>`;
             plugin._travelRoot = body.querySelector('.north-travel');
@@ -16765,7 +16804,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const src = (typeof _resolveMediaUrl === 'function') ? _resolveMediaUrl(it.image) : it.image;
                     mediaHtml = '<div class="north-travel-stop-media"><img src="' + esc(src) + '" alt="" loading="lazy"></div>';
                 }
-                return '<div class="north-travel-stop" data-stop-id="' + esc(it.id) + '" data-day-id="' + esc(day.id) + '" title="点击编辑，拖拽可调整顺序">' +
+                return '<div class="north-travel-stop" data-stop-id="' + esc(it.id) + '" data-day-id="' + esc(day.id) + '" title="' + lunaT('点击编辑，拖拽可调整顺序') + '">' +
                     mediaHtml +
                     '<div class="north-travel-stop-info">' +
                     '<div class="north-travel-stop-name">' + esc(it.name || '打卡点') + '</div>' +
@@ -16777,7 +16816,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     '</div>';
             }).join('');
             return '<div class="north-travel-day" data-day-id="' + esc(day.id) + '" style="--travel-day-color:' + esc(color) + '">' +
-                '<div class="north-travel-day-head" data-travel-action="edit-day" data-day-id="' + esc(day.id) + '" title="点击编辑这一天">' + esc(day.label || ('Day ' + (di + 1))) + '</div>' +
+                '<div class="north-travel-day-head" data-travel-action="edit-day" data-day-id="' + esc(day.id) + '" title="' + lunaT('点击编辑这一天') + '">' + esc(day.label || ('Day ' + (di + 1))) + '</div>' +
                 '<div class="north-travel-day-body">' + itemsHtml + '</div>' +
                 '<button class="north-travel-day-add" data-day-id="' + esc(day.id) + '" type="button">+ 打卡点</button>' +
                 '</div>';
@@ -16795,7 +16834,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         <div class="north-travel">
             <div class="north-travel-toolbar">
                 <div class="north-travel-toolbar-left">
-                    <button class="north-travel-trip-picker" data-travel-action="pick-trip" type="button" title="管理行程">
+                    <button class="north-travel-trip-picker" data-travel-action="pick-trip" type="button" title="${lunaT('管理行程')}">
                         <span class="north-travel-title">${esc(trip.title || '未命名行程')}</span>
                         <svg class="north-travel-picker-arrow"><use xlink:href="#iconMore"></use></svg>
                     </button>
@@ -16805,19 +16844,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 </div>
                 <div class="north-travel-toolbar-right">
                     <button class="north-travel-btn" data-travel-action="edit-trip" type="button">管理行程</button>
-                    <button class="north-travel-btn" data-travel-action="add-day" type="button">添加一天</button>
+                    <button class="north-travel-btn" data-travel-action="add-day" type="button">${lunaT('添加一天')}</button>
                     <span class="north-travel-toolbar-divider"></span>
-                    <button class="north-travel-zoom-btn" data-travel-zoom="out" title="缩小" type="button">-</button>
+                    <button class="north-travel-zoom-btn" data-travel-zoom="out" title="${lunaT('缩小')}" type="button">-</button>
                     <span class="north-travel-zoom-value" data-travel-zoom-value>${Math.round(plugin.travelScale * 100)}%</span>
-                    <button class="north-travel-zoom-btn" data-travel-zoom="in" title="放大" type="button">+</button>
-                    <button class="north-travel-zoom-btn" data-travel-zoom="reset" title="重置缩放" type="button">重置</button>
+                    <button class="north-travel-zoom-btn" data-travel-zoom="in" title="${lunaT('放大')}" type="button">+</button>
+                    <button class="north-travel-zoom-btn" data-travel-zoom="reset" title="${lunaT('重置缩放')}" type="button">${lunaT('重置')}</button>
                 </div>
             </div>
             <div class="north-travel-viewport">
                 <div class="north-travel-canvas">
                     <div class="north-travel-top">
                         <div class="north-travel-endpoint north-travel-endpoint--start">${esc(trip.startPoint || '')}</div>
-                        <div class="north-travel-center" data-travel-action="pick-center-color" title="点击设置配色"${centerStyle}>${esc(trip.title || '行程')}</div>
+                        <div class="north-travel-center" data-travel-action="pick-center-color" title="${lunaT('点击设置配色')}"${centerStyle}>${esc(trip.title || '行程')}</div>
                         <div class="north-travel-endpoint north-travel-endpoint--end">${esc(trip.endPoint || '')}</div>
                     </div>
                     <div class="north-travel-days">${daysHtml}</div>
@@ -17265,8 +17304,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
         let fontItems = '';
         let bgItems = '';
         for (let n = 1; n <= COUNT; n++) {
-            fontItems += '<span class="north-travel-color-font" data-text-n="' + n + '" style="color: var(--b3-font-color' + n + ')" title="字体颜色 ' + n + '">A</span>';
-            bgItems += '<span class="north-travel-color-swatch" data-bg-n="' + n + '" style="background: var(--b3-font-background' + n + ')" title="背景颜色 ' + n + '"></span>';
+            fontItems += '<span class="north-travel-color-font" data-text-n="' + n + '" style="color: var(--b3-font-color' + n + ')" title="' + lunaT('字体颜色 ') + n + '">A</span>';
+            bgItems += '<span class="north-travel-color-swatch" data-bg-n="' + n + '" style="background: var(--b3-font-background' + n + ')" title="' + lunaT('背景颜色 ') + n + '"></span>';
         }
 
         /* 色彩梯度取自当前选中的基色；没选过就先用 6 号色打底 */
@@ -17280,18 +17319,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
         pop.className = 'north-travel-color-pop';
         pop.innerHTML =
             '<div class="north-travel-color-section">'
-            + '<div class="north-travel-color-label">字体颜色</div>'
+            + '<div class="north-travel-color-label">' + lunaT('字体颜色') + '</div>'
             + '<div class="north-travel-color-grid">' + fontItems + '</div>'
             + '</div>'
             + '<div class="north-travel-color-section">'
-            + '<div class="north-travel-color-label">背景颜色</div>'
+            + '<div class="north-travel-color-label">' + lunaT('背景颜色') + '</div>'
             + '<div class="north-travel-color-grid">'
-            + '<span class="north-travel-color-swatch north-travel-color-none" data-bg-n="" title="默认背景"></span>'
+            + '<span class="north-travel-color-swatch north-travel-color-none" data-bg-n="" title="' + lunaT('默认背景') + '"></span>'
             + bgItems
             + '</div>'
             + '</div>'
             + '<div class="north-travel-color-section">'
-            + '<div class="north-travel-color-label">色彩梯度</div>'
+            + '<div class="north-travel-color-label">' + lunaT('色彩梯度') + '</div>'
             + '<div class="north-travel-color-grid">' + rampItems + '</div>'
             + '</div>';
         anchor.appendChild(pop);
@@ -17463,36 +17502,36 @@ module.exports = class NorthLunaPlugin extends Plugin {
             <div class="north-travel-trips-mask" data-trips-action="close"></div>
             <div class="north-travel-trips-panel">
                 <div class="north-travel-trips-head">
-                    <span class="north-travel-trips-title">我的行程</span>
+                    <span class="north-travel-trips-title">${lunaT('我的行程')}</span>
                     <button class="north-travel-trips-close" data-trips-action="close" type="button" title="关闭">×</button>
                 </div>
                 <div class="north-travel-trips-body">
                     <aside class="north-travel-groups-pane">
                         <div class="north-travel-pane-head">
-                            <span>分组</span>
+                            <span>${lunaT('分组')}</span>
                             <span class="north-travel-pane-head-actions">
-                                <button class="north-travel-mini-btn" data-group-action="rename" type="button" title="重命名当前分组"><svg class="north-travel-mini-icon"><use xlink:href="#iconMark"></use></svg></button>
-                                <button class="north-travel-mini-btn north-travel-mini-btn--danger" data-group-action="delete" type="button" title="删除当前分组"><svg class="north-travel-mini-icon"><use xlink:href="#iconClose"></use></svg></button>
-                                <button class="north-travel-mini-btn" data-group-action="add" type="button" title="新建分组"><svg class="north-travel-mini-icon"><use xlink:href="#iconAdd"></use></svg></button>
+                                <button class="north-travel-mini-btn" data-group-action="rename" type="button" title="${lunaT('重命名当前分组')}"><svg class="north-travel-mini-icon"><use xlink:href="#iconMark"></use></svg></button>
+                                <button class="north-travel-mini-btn north-travel-mini-btn--danger" data-group-action="delete" type="button" title="${lunaT('删除当前分组')}"><svg class="north-travel-mini-icon"><use xlink:href="#iconClose"></use></svg></button>
+                                <button class="north-travel-mini-btn" data-group-action="add" type="button" title="${lunaT('新建分组')}"><svg class="north-travel-mini-icon"><use xlink:href="#iconAdd"></use></svg></button>
                             </span>
                         </div>
                         <div class="north-travel-groups-list" data-pane="groups"></div>
                     </aside>
                     <section class="north-travel-trips-pane">
                         <div class="north-travel-pane-head">
-                            <span data-pane="trips-title">行程</span>
-                            <button class="north-travel-btn north-travel-btn--primary north-travel-btn--sm" data-trips-action="new" type="button">新建行程</button>
+                            <span data-pane="trips-title">${lunaT('行程')}</span>
+                            <button class="north-travel-btn north-travel-btn--primary north-travel-btn--sm" data-trips-action="new" type="button">${lunaT('新建行程')}</button>
                         </div>
                         <div class="north-travel-trips-search-wrap">
                             <svg class="north-travel-trips-search-icon"><use xlink:href="#iconSearch"></use></svg>
-                            <input class="north-travel-trips-search" data-pane="search" placeholder="搜索行程名称">
+                            <input class="north-travel-trips-search" data-pane="search" placeholder="${lunaT('搜索行程名称')}">
                         </div>
                         <div class="north-travel-trips-list" data-pane="trips"></div>
                     </section>
                 </div>
                 <div class="north-travel-trips-foot">
                     <span class="north-travel-trips-hint" data-pane="foot"></span>
-                    <button class="north-travel-btn north-travel-btn--primary" data-trips-action="done" type="button">完成</button>
+                    <button class="north-travel-btn north-travel-btn--primary" data-trips-action="done" type="button">${lunaT('完成')}</button>
                 </div>
             </div>
         `;
@@ -17822,7 +17861,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return '<div class="north-travel-trip-card' + (isActive ? ' active' : '') + '" data-trip-id="' + esc(t.id) + '">'
             + '<div class="north-travel-trip-card-info">'
             + '<div class="north-travel-trip-card-title">' + esc(t.title || '未命名行程')
-            + (isActive ? '<span class="north-travel-trip-card-badge">当前</span>' : '')
+            + (isActive ? '<span class="north-travel-trip-card-badge">' + lunaT('当前') + '</span>' : '')
             + '</div>'
             + (route ? '<div class="north-travel-trip-card-route">' + esc(route) + '</div>' : '')
             + '<div class="north-travel-trip-card-meta">' + dayCount + ' 天 · ' + stopNum + ' 个打卡点</div>'
@@ -17839,18 +17878,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const groups = this._travelGroups();
         return '<div class="north-travel-trip-card is-editing" data-trip-id="' + esc(t.id) + '">'
             + '<div class="north-travel-field">'
-            + '<div class="north-travel-field-label">行程名称</div>'
-            + '<input class="north-travel-field-input" data-trip-field="title" value="' + esc(t.title || '') + '" placeholder="例如：北京四日游">'
+            + '<div class="north-travel-field-label">' + lunaT('行程名称') + '</div>'
+            + '<input class="north-travel-field-input" data-trip-field="title" value="' + esc(t.title || '') + '" placeholder="' + lunaT('例如：北京四日游') + '">'
             + '</div>'
             + '<div class="north-travel-field-row">'
-            + '<div class="north-travel-field"><div class="north-travel-field-label">起点</div>'
-            + '<input class="north-travel-field-input" data-trip-field="startPoint" value="' + esc(t.startPoint || '') + '" placeholder="北京站"></div>'
-            + '<div class="north-travel-field"><div class="north-travel-field-label">终点</div>'
-            + '<input class="north-travel-field-input" data-trip-field="endPoint" value="' + esc(t.endPoint || '') + '" placeholder="大兴机场"></div>'
+            + '<div class="north-travel-field"><div class="north-travel-field-label">' + lunaT('起点') + '</div>'
+            + '<input class="north-travel-field-input" data-trip-field="startPoint" value="' + esc(t.startPoint || '') + '" placeholder="' + lunaT('北京站') + '"></div>'
+            + '<div class="north-travel-field"><div class="north-travel-field-label">' + lunaT('终点') + '</div>'
+            + '<input class="north-travel-field-input" data-trip-field="endPoint" value="' + esc(t.endPoint || '') + '" placeholder="' + lunaT('大兴机场') + '"></div>'
             + '</div>'
             + '<div class="north-travel-field">'
-            + '<div class="north-travel-field-label">分组</div>'
-            + '<input class="north-travel-field-input" data-trip-field="group" value="' + esc(t.group || '') + '" placeholder="例如：地点">'
+            + '<div class="north-travel-field-label">' + lunaT('分组') + '</div>'
+            + '<input class="north-travel-field-input" data-trip-field="group" value="' + esc(t.group || '') + '" placeholder="' + lunaT('例如：地点') + '">'
             + (groups.length
                 ? '<div class="north-travel-group-chips">' + groups.map(g => '<button class="north-travel-group-chip" data-group-value="' + esc(g) + '" type="button">' + esc(g) + '</button>').join('') + '</div>'
                 : '')
@@ -17858,8 +17897,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
             + '<div class="north-travel-trip-card-form-actions">'
             + '<button class="north-travel-btn north-travel-btn--danger north-travel-btn--sm" data-trip-action="delete" data-trip-id="' + esc(t.id) + '" type="button">删除</button>'
             + '<span class="north-travel-spacer"></span>'
-            + '<button class="north-travel-btn north-travel-btn--sm" data-trip-action="cancel" type="button">取消</button>'
-            + '<button class="north-travel-btn north-travel-btn--primary north-travel-btn--sm" data-trip-action="done" type="button">完成</button>'
+            + '<button class="north-travel-btn north-travel-btn--sm" data-trip-action="cancel" type="button">' + lunaT('取消') + '</button>'
+            + '<button class="north-travel-btn north-travel-btn--primary north-travel-btn--sm" data-trip-action="done" type="button">' + lunaT('完成') + '</button>'
             + '</div>'
             + '</div>';
     }
@@ -18041,21 +18080,21 @@ module.exports = class NorthLunaPlugin extends Plugin {
             <div class="north-travel-editor-mask" data-travel-editor="cancel"></div>
             <div class="north-travel-editor-panel">
                 <div class="north-travel-editor-head">
-                    <span class="north-travel-editor-title">编辑这一天</span>
+                    <span class="north-travel-editor-title">${lunaT('编辑这一天')}</span>
                     <span class="north-travel-editor-tag" style="--travel-editor-color:${esc(color)}">${esc(label)}</span>
                 </div>
                 <div class="north-travel-editor-body">
                     <div class="north-travel-field">
-                        <div class="north-travel-field-label">名称</div>
-                        <input class="north-travel-field-input" id="travelDayLabel" placeholder="例如：Day 1 / 抵达日" value="${esc(label)}">
+                        <div class="north-travel-field-label">${lunaT('名称')}</div>
+                        <input class="north-travel-field-input" id="travelDayLabel" placeholder="${lunaT('例如：Day 1 / 抵达日')}" value="${esc(label)}">
                     </div>
-                    <div class="north-travel-field-note">这天有 ${stopNum} 个打卡点${canDelete ? '' : '；行程至少要保留一天，所以不能删除'}</div>
+                    <div class="north-travel-field-note">${lunaT('这天有 {n} 个打卡点', { n: stopNum })}${canDelete ? '' : lunaT('；行程至少要保留一天，所以不能删除')}</div>
                 </div>
                 <div class="north-travel-editor-actions">
-                    <button class="north-travel-btn north-travel-btn--danger" data-day-editor="delete" type="button"${canDelete ? '' : ' disabled'}>删除这一天</button>
+                    <button class="north-travel-btn north-travel-btn--danger" data-day-editor="delete" type="button"${canDelete ? '' : ' disabled'}>${lunaT('删除这一天')}</button>
                     <div class="north-travel-editor-actions-right">
-                        <button class="north-travel-btn" data-day-editor="cancel" type="button">取消</button>
-                        <button class="north-travel-btn north-travel-btn--primary" data-day-editor="save" type="button">保存</button>
+                        <button class="north-travel-btn" data-day-editor="cancel" type="button">${lunaT('取消')}</button>
+                        <button class="north-travel-btn north-travel-btn--primary" data-day-editor="save" type="button">${lunaT('保存')}</button>
                     </div>
                 </div>
             </div>
@@ -18100,7 +18139,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (idx === -1) return;
 
         if (days.length <= 1) {
-            showMessage('行程至少要保留一天');
+            showMessage(lunaT('行程至少要保留一天'));
             return;
         }
 
@@ -18169,23 +18208,23 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 </div>
                 <div class="north-travel-editor-body">
                     <div class="north-travel-field">
-                        <div class="north-travel-field-label">名称</div>
-                        <input class="north-travel-field-input" id="travelStopName" placeholder="例如：故宫博物院" value="${esc(stop ? stop.name : '')}">
+                        <div class="north-travel-field-label">${lunaT('名称')}</div>
+                        <input class="north-travel-field-input" id="travelStopName" placeholder="${lunaT('例如：故宫博物院')}" value="${esc(stop ? stop.name : '')}">
                     </div>
                     <div class="north-travel-field">
-                        <div class="north-travel-field-label">时长</div>
-                        <input class="north-travel-field-input" id="travelStopDuration" placeholder="例如：2小时" value="${esc(stop ? stop.duration : '')}">
+                        <div class="north-travel-field-label">${lunaT('时长')}</div>
+                        <input class="north-travel-field-input" id="travelStopDuration" placeholder="${lunaT('例如：2小时')}" value="${esc(stop ? stop.duration : '')}">
                     </div>
                     <div class="north-travel-field">
-                        <div class="north-travel-field-label">图片</div>
+                        <div class="north-travel-field-label">${lunaT('图片')}</div>
                         <div class="north-travel-uploader" id="travelStopUploader"></div>
                     </div>
                 </div>
                 <div class="north-travel-editor-actions">
                     ${isEdit ? '<button class="north-travel-btn north-travel-btn--danger" data-travel-editor="delete" type="button">删除</button>' : '<span></span>'}
                     <div class="north-travel-editor-actions-right">
-                        <button class="north-travel-btn" data-travel-editor="cancel" type="button">取消</button>
-                        <button class="north-travel-btn north-travel-btn--primary" data-travel-editor="save" type="button">保存</button>
+                        <button class="north-travel-btn" data-travel-editor="cancel" type="button">${lunaT('取消')}</button>
+                        <button class="north-travel-btn north-travel-btn--primary" data-travel-editor="save" type="button">${lunaT('保存')}</button>
                     </div>
                 </div>
             </div>
@@ -18204,7 +18243,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const src = (typeof _resolveMediaUrl === 'function') ? _resolveMediaUrl(imagePath) : imagePath;
                 uploader.innerHTML = '<div class="north-travel-uploader-preview">'
                     + '<img src="' + esc(src) + '" alt="">'
-                    + '<span class="north-travel-uploader-remove" title="移除图片">×</span>'
+                    + '<span class="north-travel-uploader-remove" title="' + lunaT('移除图片') + '">×</span>'
                     + '</div>';
                 const rm = uploader.querySelector('.north-travel-uploader-remove');
                 if (rm) {
@@ -18217,7 +18256,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             } else {
                 uploader.innerHTML = '<div class="north-travel-uploader-empty">'
                     + '<span class="north-travel-uploader-plus">+</span>'
-                    + '<span>点击上传图片</span>'
+                    + '<span>' + lunaT('点击上传图片') + '</span>'
                     + '</div>';
             }
         };
@@ -18227,7 +18266,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const f = fileInput.files && fileInput.files[0];
             if (!f) return;
             uploader.onclick = null;
-            uploader.innerHTML = '<div class="north-travel-uploader-loading">上传中...</div>';
+            uploader.innerHTML = '<div class="north-travel-uploader-loading">' + lunaT('上传中...') + '</div>';
             let path = null;
             try {
                 /* 复用插件通用上传：自动处理 HEIC 转码、公共目录/思源 assets 切换、备份 */
@@ -18258,7 +18297,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const nameEl = wrap.querySelector('#travelStopName');
                     const name = (nameEl.value || '').trim();
                     if (!name) {
-                        showMessage('请填写打卡点名称');
+                        showMessage(lunaT('请填写打卡点名称'));
                         nameEl.focus();
                         return;
                     }
@@ -18324,7 +18363,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 return;
             }
             body.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;opacity:0.5;';
-            body.innerHTML = '<div style="text-align:center;color:var(--b3-theme-on-surface-light);"><div style="font-size:40px;margin-bottom:12px;">⚙️</div><div>设置视图正在准备中...</div><div style="font-size:12px;margin-top:8px;">打开一次完整页面即可启用完整设置</div></div>';
+            body.innerHTML = '<div style="text-align:center;color:var(--b3-theme-on-surface-light);"><div style="font-size:40px;margin-bottom:12px;">⚙️</div><div>' + lunaT('设置视图正在准备中...') + '</div><div style="font-size:12px;margin-top:8px;">' + lunaT('打开一次完整页面即可启用完整设置') + '</div></div>';
         } else if (view.id === 'chart') {
             body.style.cssText = 'flex:1;overflow-y:auto;padding:0;background:var(--b3-theme-background);';
             body.classList.remove('north-luna-moments-body');
@@ -18463,7 +18502,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         breezeExtractTags(n.content || '').forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; });
                     });
                     if (Object.keys(tagCounts).length === 0) {
-                        tagListEl.innerHTML = '<div class="north-breeze-tag-empty">暂无标签</div>';
+                        tagListEl.innerHTML = '<div class="north-breeze-tag-empty">' + lunaT('暂无标签') + '</div>';
                     } else {
                         tagListEl.innerHTML = breezeRenderTagTree(breezeBuildTagTree(tagCounts), 0, (plugin.data[RECORDS_STORAGE] || {}).tagMeta || {});
                     }
@@ -18658,7 +18697,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             visPages.push(totalPages);
                         }
                         pagerHtml = '<div class="north-breeze-pager">';
-                        pagerHtml += '<button class="north-breeze-pager-btn' + (pg > 1 ? '' : ' disabled') + '" data-page="' + (pg - 1) + '"' + (pg > 1 ? '' : ' disabled') + ' title="上一页">‹</button>';
+                        pagerHtml += '<button class="north-breeze-pager-btn' + (pg > 1 ? '' : ' disabled') + '" data-page="' + (pg - 1) + '"' + (pg > 1 ? '' : ' disabled') + ' title="' + lunaT('上一页') + '">‹</button>';
                         visPages.forEach(p => {
                             if (p === '…') {
                                 pagerHtml += '<span class="north-breeze-pager-ellipsis">…</span>';
@@ -18666,7 +18705,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 pagerHtml += '<button class="north-breeze-pager-btn' + (p === pg ? ' active' : '') + '" data-page="' + p + '">' + p + '</button>';
                             }
                         });
-                        pagerHtml += '<button class="north-breeze-pager-btn' + (pg < totalPages ? '' : ' disabled') + '" data-page="' + (pg + 1) + '"' + (pg < totalPages ? '' : ' disabled') + ' title="下一页">›</button>';
+                        pagerHtml += '<button class="north-breeze-pager-btn' + (pg < totalPages ? '' : ' disabled') + '" data-page="' + (pg + 1) + '"' + (pg < totalPages ? '' : ' disabled') + ' title="' + lunaT('下一页') + '">›</button>';
                         pagerHtml += '</div>';
                     } else if (paginationEnabled) {
                         ctx._mobileBreezePage = 1;
@@ -18683,7 +18722,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         subViewHeader = '<div class="north-breeze-week-header-bar">' +
                             '<div class="north-breeze-week-header-left">' +
                             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M16 3h3v3h-3zM8 3h3v3H8zM5 8h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8zM12 12v4"/></svg>' +
-                            '<span>本周 · 共 ' + notes.length + ' 条</span></div>' +
+                            '<span>' + lunaT('本周 · 共 {n} 条', { n: notes.length }) + '</span></div>' +
                             '<div class="north-breeze-week-header-center"><span class="north-breeze-week-signature">' + plugin._esc(weekSig) + '</span></div>' +
                             '<div class="north-breeze-week-header-right"></div></div>';
                     }
@@ -18692,13 +18731,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const N = Number(plugin._getPluginSetting('breezeReviewDailyCount')) || 8;
                         const weighted = plugin._getPluginSetting('breezeReviewWeighted') === true;
                         if (allNotes.length === 0) {
-                            list.innerHTML = '<div class="north-breeze-review-empty"><div class="north-breeze-review-empty-icon">🕰️</div><div class="north-breeze-review-empty-title">还没有笔记</div><div class="north-breeze-review-empty-hint">在上方输入框写下第一条想法吧</div></div>';
+                            list.innerHTML = '<div class="north-breeze-review-empty"><div class="north-breeze-review-empty-icon">🕰️</div><div class="north-breeze-review-empty-title">' + lunaT('还没有笔记') + '</div><div class="north-breeze-review-empty-hint">' + lunaT('在上方输入框写下第一条想法吧') + '</div></div>';
                         } else {
                             const welcomeVerb = weighted ? '按权重抽取（越久没翻过的越优先）的' : '随机的';
                             list.innerHTML = '<div class="north-breeze-review-welcome">' +
                                 '<div class="north-breeze-review-welcome-icon">🕰️</div>' +
-                                '<div class="north-breeze-review-welcome-title">往期的回顾</div>' +
-                                '<div class="north-breeze-review-welcome-hint">要不要看看' + welcomeVerb + ' ' + N + ' 条笔记？</div>' +
+                                '<div class="north-breeze-review-welcome-title">' + lunaT('往期的回顾') + '</div>' +
+                                '<div class="north-breeze-review-welcome-hint">' + lunaT(weighted ? '要不要看看按权重抽取（越久没翻过的越优先）的 {n} 条笔记？' : '要不要看看随机的 {n} 条笔记？', { n: N }) + '</div>' +
                                 '<button class="north-breeze-review-start-btn" id="mobile-review-start">' +
                                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h3v3h-3zM8 3h3v3H8zM5 8h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8zM12 12v4"/></svg>' +
                                 (weighted ? '加权' : '随机') + ' ' + N + ' 条</button></div>';
@@ -18759,13 +18798,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             '<div class="north-breeze-review-header-center"><span class="north-breeze-review-signature">' + plugin._esc(reviewSig) + '</span></div>' +
                             '<div class="north-breeze-review-header-actions">' +
                             '<button class="north-breeze-review-action-btn" id="mobile-review-refresh">' +
-                            '<svg class="north-breeze-review-action-icon"><use xlink:href="#iconRefresh"></use></svg>换</button>' +
+                            '<svg class="north-breeze-review-action-icon"><use xlink:href="#iconRefresh"></use></svg>' + lunaT('换') + '</button>' +
                             '<button class="north-breeze-review-action-btn" id="mobile-review-back">' +
-                            '<svg class="north-breeze-review-action-icon"><use xlink:href="#iconSend"></use></svg>首页</button>' +
+                            '<svg class="north-breeze-review-action-icon"><use xlink:href="#iconSend"></use></svg>' + lunaT('首页') + '</button>' +
                             '</div></div>';
                         let cardsHtml = '';
                         if (picked.length === 0) {
-                            cardsHtml = '<div class="north-breeze-empty">没有可显示的笔记～</div>';
+                            cardsHtml = '<div class="north-breeze-empty">' + lunaT('没有可显示的笔记～') + '</div>';
                         } else if (viewStyle === 'card') {
                             const sorted = breezeSortNotes(picked);
                             const colCount = 2;
@@ -18788,7 +18827,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             const others = picked.filter(n => !n.pinned);
                             const sections = [];
                             if (pinned.length > 0) {
-                                sections.push('<div class="north-breeze-date-group">置顶</div>' +
+                                sections.push('<div class="north-breeze-date-group">' + lunaT('置顶') + '</div>' +
                                     breezeSortNotes(pinned).map(n => breezeRenderNoteCard(n, false, q, picked, dateBottom, viewStyle, footerLabel, footerSig)).join(''));
                             }
                             const keys = [...new Set(others.map(breezeDateKey).filter(Boolean))].sort().reverse();
@@ -18846,7 +18885,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const others = pageNotes.filter(n => !n.pinned);
                         const sections = [];
                         if (pinned.length > 0) {
-                            sections.push('<div class="north-breeze-date-group">置顶</div>' +
+                            sections.push('<div class="north-breeze-date-group">' + lunaT('置顶') + '</div>' +
                                 breezeSortNotes(pinned).map(n => breezeRenderNoteCard(n, false, q, pageNotes, dateBottom, viewStyle, footerLabel, footerSig)).join(''));
                         }
                         const keys = [...new Set(others.map(breezeDateKey).filter(Boolean))].sort().reverse();
@@ -19163,7 +19202,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         };
         const allMonths = Array.from({ length: 12 }, (_, i) => renderMonth(i)).join('');
         calendarBody.innerHTML = `<div class="north-luna-moments-calendar-grid"><div class="north-luna-moments-calendar-photo-twocol">${allMonths}</div></div>`;
-        if (calendarCount) calendarCount.textContent = `${totalCount} 条记录`;
+        if (calendarCount) calendarCount.textContent = lunaT('{n} 条记录', { n: totalCount });
         /* 同步热力图自定义颜色：日历"有记录"底色与贡献图同色系 */
         breezeApplyHeatVars(calendarBody, this._getPluginSetting('breezeHeatmapColor'));
         /* 滚动到当前月 */
@@ -19249,9 +19288,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const dr = this._mobileBreezeDateRange || { start: '', end: '' };
         const quickActive = (dr.start || dr.end) ? '' : ' active';
         return '<div class="north-breeze-sheet-opts">' +
-                '<button type="button" class="sheet-opt' + quickActive + '" data-opt="none">不限时间</button>' +
-                '<button type="button" class="sheet-opt" data-opt="week">本周</button>' +
-                '<button type="button" class="sheet-opt" data-opt="month">本月</button>' +
+                '<button type="button" class="sheet-opt' + quickActive + '" data-opt="none">' + lunaT('不限时间') + '</button>' +
+                '<button type="button" class="sheet-opt" data-opt="week">' + lunaT('本周') + '</button>' +
+                '<button type="button" class="sheet-opt" data-opt="month">' + lunaT('本月') + '</button>' +
             '</div>' +
             '<div class="north-breeze-sheet-daterange">' +
                 '<div class="sheet-date-field" data-role="start" data-value="' + breezeEsc(dr.start || '') + '">' +
@@ -19275,13 +19314,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
             '</button>';
         });
         return '<div class="north-breeze-sheet-opts tag-mode">' +
-                '<button type="button" class="sheet-opt' + (!sc.mode || sc.mode === 'all' ? ' active' : '') + '" data-mode="all">全部内容</button>' +
-                '<button type="button" class="sheet-opt' + (sc.mode === 'none' ? ' active' : '') + '" data-mode="none">无标签</button>' +
-                '<button type="button" class="sheet-opt' + (sc.mode === 'include' ? ' active' : '') + '" data-mode="include">包含指定标签</button>' +
-                '<button type="button" class="sheet-opt' + (sc.mode === 'exclude' ? ' active' : '') + '" data-mode="exclude">排除指定标签</button>' +
+                '<button type="button" class="sheet-opt' + (!sc.mode || sc.mode === 'all' ? ' active' : '') + '" data-mode="all">' + lunaT('全部内容') + '</button>' +
+                '<button type="button" class="sheet-opt' + (sc.mode === 'none' ? ' active' : '') + '" data-mode="none">' + lunaT('无标签') + '</button>' +
+                '<button type="button" class="sheet-opt' + (sc.mode === 'include' ? ' active' : '') + '" data-mode="include">' + lunaT('包含指定标签') + '</button>' +
+                '<button type="button" class="sheet-opt' + (sc.mode === 'exclude' ? ' active' : '') + '" data-mode="exclude">' + lunaT('排除指定标签') + '</button>' +
             '</div>' +
             '<div class="north-breeze-sheet-tagpick' + (showPick ? '' : ' fn__none') + '">' +
-                (tags.length ? chips : '<div class="sheet-tag-empty">暂无标签</div>') +
+                (tags.length ? chips : '<div class="sheet-tag-empty">' + lunaT('暂无标签') + '</div>') +
             '</div>';
     }
     _buildBreezeMoreSheetBody() {
@@ -19323,7 +19362,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     '<button type="button" class="north-breeze-filter-sheet-close" aria-label="关闭">×</button>' +
                 '</div>' +
                 '<div class="north-breeze-filter-sheet-body">' + bodyHtml + '</div>' +
-                '<button type="button" class="north-breeze-filter-sheet-confirm">确定</button>' +
+                '<button type="button" class="north-breeze-filter-sheet-confirm">' + lunaT('确定') + '</button>' +
             '</div>';
         document.body.appendChild(wrap);
         /* 触控保护（同清风日历弹窗）：弹层内 touchmove 不冒泡到思源全局手势，
@@ -19459,13 +19498,13 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     '<button type="button" class="bdp-nav" data-nav="next" aria-label="下个月"><svg class="icon"><use xlink:href="#iconRight"></use></svg></button>' +
                 '</div>' +
                 '<div class="bdp-chips">' +
-                    '<button type="button" class="bdp-chip" data-quick="today">今日</button>' +
-                    '<button type="button" class="bdp-chip" data-quick="tomorrow">明天</button>' +
-                    '<button type="button" class="bdp-chip" data-quick="weekend">本周末</button>' +
-                    '<button type="button" class="bdp-chip" data-quick="nextmonday">下周一</button>' +
-                    '<button type="button" class="bdp-chip danger" data-quick="clear">清除</button>' +
+                    '<button type="button" class="bdp-chip" data-quick="today">' + lunaT('今日') + '</button>' +
+                    '<button type="button" class="bdp-chip" data-quick="tomorrow">' + lunaT('明天') + '</button>' +
+                    '<button type="button" class="bdp-chip" data-quick="weekend">' + lunaT('本周末') + '</button>' +
+                    '<button type="button" class="bdp-chip" data-quick="nextmonday">' + lunaT('下周一') + '</button>' +
+                    '<button type="button" class="bdp-chip danger" data-quick="clear">' + lunaT('清除') + '</button>' +
                 '</div>' +
-                '<div class="bdp-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>' +
+                '<div class="bdp-weekdays">' + lunaWeekLetters(false).map(d => '<span>' + d + '</span>').join('') + '</div>' +
                 '<div class="bdp-grid"></div>' +
             '</div>';
         document.body.appendChild(pop);
@@ -19477,7 +19516,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         markField(true);
         const grid = pop.querySelector('.bdp-grid');
         const render = () => {
-            pop.querySelector('.bdp-title').textContent = vy + '年' + (vm + 1) + '月';
+            pop.querySelector('.bdp-title').textContent = lunaYm(vy, vm + 1);
             /* 周一起始：周一=0 … 周日=6 */
             const first = new Date(vy, vm, 1);
             const lead = (first.getDay() + 6) % 7;
@@ -19775,13 +19814,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         breezeUninstallLinkTitleObserver();
         breezeUninstallCodeHighlightObserver();
         this.unhookMobileGoBack();
-        if (this._toolbarObserver) {
-            this._toolbarObserver.disconnect();
-            this._toolbarObserver = null;
-        }
-        document.querySelectorAll('#sidebar>.toolbar').forEach(el => {
-            el.style.removeProperty('display');
-        });
+        this._restoreMobileToolbar();
         console.log(`${PLUGIN_NAME} plugin unloaded`);
     }
 
@@ -19802,7 +19835,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         }, 500);
     }
 
-    openTab() { openTab({ app: this.app, custom: { icon: "iconLightWord", title: PLUGIN_NAME, data: {}, id: this.name + TAB_TYPE } }); }
+    openTab() { openTab({ app: this.app, custom: { icon: "iconLightWord", title: lunaT('plugin.name', PLUGIN_NAME), data: {}, id: this.name + TAB_TYPE } }); }
     // 卸载插件：保留用户笔记/朋友圈数据（RECORDS_STORAGE / MOMENTS_STORAGE），仅删除配置文件（SETTINGS_STORAGE）。对标轻语 uninstall。
     uninstall() { this.removeData(SETTINGS_STORAGE).catch(() => {}); }
 
@@ -19826,7 +19859,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 position: 'RightBottom',
                 size: { width: 820, height: 0 },
                 icon: 'iconLightWord',
-                title: '清风',
+                title: lunaT('view.notes', '清风'),
                 hotkey: '⌥⌘B'
             },
             data: {},
@@ -19854,46 +19887,46 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 <div class="north-breeze-input-area">
                     <div class="north-breeze-input-box" id="north-breeze-dock-input-box">
                         <div class="north-breeze-input-wrapper">
-                            <input class="north-breeze-title-input" id="north-breeze-dock-title-input" placeholder="笔记标题（可选）" style="display:none">
-                            <textarea class="north-breeze-input-field" id="north-breeze-dock-input" placeholder="现在的想法是..." rows="3" enterkeyhint="enter"></textarea>
+                            <input class="north-breeze-title-input" id="north-breeze-dock-title-input" placeholder="${lunaT('笔记标题（可选）')}" style="display:none">
+                            <textarea class="north-breeze-input-field" id="north-breeze-dock-input" placeholder="${lunaT('现在的想法是...')}" rows="3" enterkeyhint="enter"></textarea>
                             <div class="north-breeze-image-preview-bar" id="north-breeze-dock-preview-bar"></div>
                         </div>
                         <div class="north-breeze-input-toolbar">
                             <div class="north-breeze-toolbar-left">
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-tag" title="标签">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-tag" title="${lunaT('标签')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconTag"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-image" title="上传资源">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-image" title="${lunaT('上传资源')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconImage"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-task" title="任务列表">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-task" title="${lunaT('任务列表')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconCheck"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-ul" title="无序列表">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-ul" title="${lunaT('无序列表')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconList"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-ol" title="有序列表">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-ol" title="${lunaT('有序列表')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconOrderedList"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-title" title="设置标题">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-title" title="${lunaT('设置标题')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconHeadings"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-color" title="字体颜色">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-color" title="${lunaT('字体颜色')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconFont"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-bold" title="粗体">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-bold" title="${lunaT('粗体')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconBold"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-strike" title="删除线">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-strike" title="${lunaT('删除线')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconStrike"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-mark" title="高亮">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-mark" title="${lunaT('高亮')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconMark"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-code" title="行级代码">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-code" title="${lunaT('行级代码')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconInlineCode"></use></svg>
                                 </span>
-                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-flomo" title="Flomo 同步">
+                                <span class="north-breeze-toolbar-icon" id="north-breeze-dock-toolbar-flomo" title="${lunaT('Flomo 同步')}">
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconRiffCard"></use></svg>
                                 </span>
                             </div>
@@ -19919,7 +19952,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         // 倒序：最新的在上面
         notes.sort((a, b) => (b.time || '').localeCompare(a.time || ''));
         if (notes.length === 0) {
-            listEl.innerHTML = '<div class="north-breeze-empty">还没有记录，写下第一条吧～</div>';
+            listEl.innerHTML = '<div class="north-breeze-empty">' + lunaT('还没有记录，写下第一条吧～') + '</div>';
             /* 空列表也要回写外观（悬停/紧凑/字号），待有内容时即生效 */
             this._applyBreezeDockAppearance();
             return;
@@ -19938,7 +19971,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const sections = [];
             if (pinned.length > 0) {
                 sections.push(
-                    '<div class="north-breeze-date-group">置顶</div>' +
+                    '<div class="north-breeze-date-group">' + lunaT('置顶') + '</div>' +
                     breezeSortNotes(pinned).map(n => breezeRenderNoteCard(n, false, '', notes, dateBottom, viewStyle, footerLabel, footerSignature)).join('')
                 );
             }
@@ -20053,7 +20086,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     <img src="${breezeEsc(img.raw)}" alt="预览" loading="lazy">
                     <button class="breeze-preview-delete-btn" title="删除" data-del="${idx}">&times;</button>
                 </div>`;
-            }).join('') + `<button class="north-breeze-preview-add" title="添加资源">+</button>`;
+            }).join('') + `<button class="north-breeze-preview-add" title="${lunaT('添加资源')}">+</button>`;
             previewBar.innerHTML = html;
             previewBar.querySelectorAll('.breeze-preview-delete-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
@@ -20093,7 +20126,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     /* 内容变了 → 标记为待重新同步（下次同步原地更新日记里那一块） */
                     this._markRecordDirty(target);
                     this.saveData(RECORDS_STORAGE, this.data[RECORDS_STORAGE]).catch(() => {});
-                    showMessage('已保存');
+                    showMessage(lunaT('已保存'));
                 }
                 /* 退出编辑态 */
                 editingNoteId = null;
@@ -20377,11 +20410,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 '<span class="north-breeze-color-swatch north-breeze-color-bg" data-type="bg" data-n="' + n + '" style="background: var(--b3-font-background' + n + ')"></span>'
             ).join('');
             return '<div class="north-breeze-color-section">' +
-                '<div class="north-breeze-color-section-label">字体颜色</div>' +
+                '<div class="north-breeze-color-section-label">' + lunaT('字体颜色') + '</div>' +
                 '<div class="north-breeze-color-grid">' + fontItems + '</div>' +
             '</div>' +
             '<div class="north-breeze-color-section">' +
-                '<div class="north-breeze-color-section-label">背景颜色</div>' +
+                '<div class="north-breeze-color-section-label">' + lunaT('背景颜色') + '</div>' +
                 '<div class="north-breeze-color-grid">' + bgItems + '</div>' +
             '</div>';
         };
@@ -20422,7 +20455,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         fileInput.onchange = async () => {
             const files = Array.from(fileInput.files || []);
             if (!files.length) return;
-            showMessage('上传资源中…');
+            showMessage(lunaT('上传资源中…'));
             for (const f of files) {
                 const path = await plugin._uploadResource(f, { assetsDirPath: 'assets/' });
                 if (!path) continue;
@@ -20452,7 +20485,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }
             if (!files.length) return;
             ev.preventDefault();
-            showMessage('上传资源中…');
+            showMessage(lunaT('上传资源中…'));
             const ts = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
             for (const f of files) {
                 const isImg = (f.type && f.type.startsWith('image/')) || plugin._fileKindFromName(f.name) === 'image';
@@ -20616,7 +20649,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             config: {
                 position: 'LeftBottom',
                 icon: 'iconLightWord',
-                title: PLUGIN_NAME
+                title: lunaT('plugin.name', PLUGIN_NAME)
             },
             data: {},
             init() {
@@ -20822,7 +20855,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._lifelogRecords = this._lifelogCache;
             } else {
                 const tl = body.querySelector('#lifelog-timeline');
-                if (tl) tl.innerHTML = '<div class="north-lifelog-timeline-empty">加载中…</div>';
+                if (tl) tl.innerHTML = '<div class="north-lifelog-timeline-empty">' + lunaT('加载中…') + '</div>';
             }
             this._bindLifeLogViewOnce(body);
             if (hasCache) this._paintLifeLogView(body);
@@ -20985,7 +21018,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 records.forEach(r => { if (r.created) years.add(new Date(r.created).getFullYear()); });
                 years.add(new Date().getFullYear());
                 const sortedYears = Array.from(years).sort((a, b) => b - a);
-                calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
+                calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${lunaYear(y)}</option>`).join('');
                 calendarYear.value = new Date().getFullYear();
                 if (!calendarYear._lifelogCalYearBound) {
                     calendarYear._lifelogCalYearBound = true;
@@ -21094,7 +21127,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const d = new Date(r.created);
                     return !isNaN(d) && d.getFullYear() === targetYear;
                 }).length;
-                if (calCount) calCount.textContent = '总共 ' + total + ' 条记录';
+                if (calCount) calCount.textContent = lunaT('总共 {n} 条记录', { n: total });
                 /* 统计每月记录数 */
                 const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
                 const monthCounts = new Array(12).fill(0);
@@ -21159,7 +21192,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 dayCounts[key] = (dayCounts[key] || 0) + 1;
                 total++;
             });
-            if (calCount) calCount.textContent = '总共 ' + total + ' 条记录';
+            if (calCount) calCount.textContent = lunaT('总共 {n} 条记录', { n: total });
             /* 生成周列 */
             let columnsHtml = '';
             for (let week = 0; week < weeks; week++) {
@@ -21514,9 +21547,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const heatHtml = this._renderLifeLogMobileHeatmap(this._lifelogMobileStatsAnchor);
             statsEl.innerHTML = `
                 <div class="north-lifelog-dock-stat-periods">
-                    <button class="north-lifelog-dock-stat-period ${period==='week'?'active':''}" data-period="week">周</button>
-                    <button class="north-lifelog-dock-stat-period ${period==='month'?'active':''}" data-period="month">月</button>
-                    <button class="north-lifelog-dock-stat-period ${period==='year'?'active':''}" data-period="year">年</button>
+                    <button class="north-lifelog-dock-stat-period ${period==='week'?'active':''}" data-period="week">${lunaT('周')}</button>
+                    <button class="north-lifelog-dock-stat-period ${period==='month'?'active':''}" data-period="month">${lunaT('月')}</button>
+                    <button class="north-lifelog-dock-stat-period ${period==='year'?'active':''}" data-period="year">${lunaT('年')}</button>
                 </div>
                 <div class="north-lifelog-dock-stat-nav">
                     <button class="north-lifelog-dock-stat-nav-btn lifelog-mobile-stat-prev" type="button"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconLeft"></use></svg></button>
@@ -21528,24 +21561,24 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 </div>
                 <div class="north-lifelog-dock-stat-cards">
                     <div class="north-lifelog-dock-stat-card">
-                        <div class="north-lifelog-dock-stat-card-value">${totalCount} <span class="north-lifelog-dock-stat-card-unit">次</span></div>
-                        <div class="north-lifelog-dock-stat-card-label">记录次数</div>
+                        <div class="north-lifelog-dock-stat-card-value">${totalCount} <span class="north-lifelog-dock-stat-card-unit">${lunaT('次')}</span></div>
+                        <div class="north-lifelog-dock-stat-card-label">${lunaT('记录次数')}</div>
                     </div>
                     <div class="north-lifelog-dock-stat-card">
                         <div class="north-lifelog-dock-stat-card-value">${uniqueDays} <span class="north-lifelog-dock-stat-card-unit">天</span></div>
-                        <div class="north-lifelog-dock-stat-card-label">记录天数</div>
+                        <div class="north-lifelog-dock-stat-card-label">${lunaT('记录天数')}</div>
                     </div>
                     <div class="north-lifelog-dock-stat-card">
-                        <div class="north-lifelog-dock-stat-card-value">${avgPerDay} <span class="north-lifelog-dock-stat-card-unit">次</span></div>
-                        <div class="north-lifelog-dock-stat-card-label">每日平均</div>
+                        <div class="north-lifelog-dock-stat-card-value">${avgPerDay} <span class="north-lifelog-dock-stat-card-unit">${lunaT('次')}</span></div>
+                        <div class="north-lifelog-dock-stat-card-label">${lunaT('每日平均')}</div>
                     </div>
                     <div class="north-lifelog-dock-stat-card">
                         <div class="north-lifelog-dock-stat-card-value">${avgGap} <span class="north-lifelog-dock-stat-card-unit">天</span></div>
-                        <div class="north-lifelog-dock-stat-card-label">平均间隔</div>
+                        <div class="north-lifelog-dock-stat-card-label">${lunaT('平均间隔')}</div>
                     </div>
                 </div>
                 <div class="north-lifelog-dock-stat-heatmap">
-                    <div class="north-lifelog-dock-stat-heatmap-title">统计 ›</div>
+                    <div class="north-lifelog-dock-stat-heatmap-title">${lunaT('统计 ›')}</div>
                     ${heatHtml}
                 </div>
             `;
@@ -21599,9 +21632,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (count >= 3) level = 2;
                     if (count >= 5) level = 3;
                     if (count >= 7) level = 4;
-                    const tip = count > 0
-                        ? count + '条 ' + (cellDate.getMonth() + 1) + '月' + cellDate.getDate() + '日'
-                        : (cellDate.getMonth() + 1) + '月' + cellDate.getDate() + '日';
+                    const _md3 = lunaMonthDay(cellDate);
+                    const tip = count > 0 ? lunaT('{n}条 {md}', { n: count, md: _md3 }) : _md3;
                     const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
                     html += '<div class="north-lifelog-heatmap-grid-cell level-' + level + '" data-date="' + ymd + '" data-lifelog-tip="' + esc(tip) + '"></div>';
                 }
@@ -21863,7 +21895,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             });
             const types = Object.keys(typeCount);
             if (types.length === 0) {
-                cloud.innerHTML = '<div class="north-lifelog-types-empty">暂无类型</div>';
+                cloud.innerHTML = '<div class="north-lifelog-types-empty">' + lunaT('暂无类型') + '</div>';
                 return;
             }
             /* 按字母顺序排序，与轻语一致 */
@@ -21943,7 +21975,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (data.length === 0) {
                 /* 打断可能还在分帧追加的上一轮渲染，否则残留内容会盖住空态 */
                 timeline._lifelogRenderToken = (timeline._lifelogRenderToken || 0) + 1;
-                timeline.innerHTML = '<div class="north-lifelog-timeline-empty">暂无匹配记录</div>';
+                timeline.innerHTML = '<div class="north-lifelog-timeline-empty">' + lunaT('暂无匹配记录') + '</div>';
                 return;
             }
             /* 按日期分组，每组内按时间倒序 */
@@ -21997,7 +22029,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             : '';
                         html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
                             <div class="north-lifelog-timeline-left">
-                                <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
+                                <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="${lunaT('点击修改时间')}">${item.time}</span>
                             </div>
                             <div class="north-lifelog-timeline-axis">
                                 <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
@@ -22044,15 +22076,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 menu.innerHTML = `
                     <button class="north-lifelog-ctx-item" data-act="edit">
                         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconEdit"></use></svg>
-                        <span>编辑</span>
+                        <span>${lunaT('编辑')}</span>
                     </button>
                     <button class="north-lifelog-ctx-item" data-act="time">
                         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconClock"></use></svg>
-                        <span>修改时间</span>
+                        <span>${lunaT('修改时间')}</span>
                     </button>
                     <button class="north-lifelog-ctx-item" data-act="open">
                         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconLink"></use></svg>
-                        <span>打开文档</span>
+                        <span>${lunaT('打开文档')}</span>
                     </button>
                 `;
                 menu.style.left = e.clientX + 'px';
@@ -22126,11 +22158,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
             const dialog = document.createElement('div');
             dialog.style.cssText = 'background:var(--b3-theme-background);padding:24px;border-radius:12px;width:520px;max-width:90%;max-height:80vh;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,0.15);color:var(--b3-theme-on-background)';
-            dialog.innerHTML = `<div style="font-size:16px;font-weight:600;margin-bottom:16px">编辑 LifeLog</div>
+            dialog.innerHTML = `<div style="font-size:16px;font-weight:600;margin-bottom:16px">${lunaT('编辑 LifeLog')}</div>
                 <textarea id="lifelog-edit-content" style="width:100%;min-height:120px;padding:12px;border:1px solid var(--b3-border-color);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box;margin-bottom:16px;background:var(--b3-theme-background);color:var(--b3-theme-on-background)">${esc(originalContent)}</textarea>
                 <div style="display:flex;justify-content:flex-end;gap:12px">
-                    <button id="lifelog-edit-cancel" style="padding:8px 16px;border:1px solid var(--b3-border-color);background:var(--b3-theme-background);border-radius:6px;cursor:pointer;font-size:14px;color:var(--b3-theme-on-background)">取消</button>
-                    <button id="lifelog-edit-save" style="padding:8px 16px;border:none;background:var(--b3-theme-primary);color:#fff;border-radius:6px;cursor:pointer;font-size:14px">保存</button>
+                    <button id="lifelog-edit-cancel" style="padding:8px 16px;border:1px solid var(--b3-border-color);background:var(--b3-theme-background);border-radius:6px;cursor:pointer;font-size:14px;color:var(--b3-theme-on-background)">${lunaT('取消')}</button>
+                    <button id="lifelog-edit-save" style="padding:8px 16px;border:none;background:var(--b3-theme-primary);color:#fff;border-radius:6px;cursor:pointer;font-size:14px">${lunaT('保存')}</button>
                 </div>`;
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
@@ -22315,7 +22347,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this._lunaToast((res && res.msg) || '写入日记失败，请重试');
                     }
                 } catch (e) {
-                    this._lunaToast('提交失败：' + ((e && e.message) || e));
+                    this._lunaToast(lunaT('提交失败：') + ((e && e.message) || e));
                 } finally {
                     modalSubmit.disabled = false;
                     modalSubmit.textContent = '记录';
@@ -22702,28 +22734,28 @@ module.exports = class NorthLunaPlugin extends Plugin {
         root.innerHTML = `<div class="fn__flex-1 fn__flex-column north-lifelog-dock-body">
             <div class="north-lifelog-dock-header">
                 <div class="north-lifelog-dock-tabs">
-                    <button class="north-lifelog-dock-tab active" data-dock-tab="records" id="lifelog-dock-tab-records">记录</button>
-                    <button class="north-lifelog-dock-tab" data-dock-tab="stats" id="lifelog-dock-tab-stats">统计</button>
+                    <button class="north-lifelog-dock-tab active" data-dock-tab="records" id="lifelog-dock-tab-records">${lunaT('记录')}</button>
+                    <button class="north-lifelog-dock-tab" data-dock-tab="stats" id="lifelog-dock-tab-stats">${lunaT('统计')}</button>
                 </div>
-                <button class="north-lifelog-dock-refresh" id="north-lifelog-dock-refresh" title="刷新">
+                <button class="north-lifelog-dock-refresh" id="north-lifelog-dock-refresh" title="${lunaT('刷新')}">
                     <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconRefresh"></use></svg>
                 </button>
             </div>
             <div class="north-lifelog-calendar-week-strip" id="lifelog-dock-week-strip"></div>
             <div class="fn__flex-1 north-lifelog-timeline" id="north-lifelog-dock-list">
-                <div class="north-lifelog-timeline-empty">加载中…</div>
+                <div class="north-lifelog-timeline-empty">${lunaT('加载中…')}</div>
             </div>
             <div class="fn__flex-1 north-lifelog-dock-stats" id="north-lifelog-dock-stats" style="display:none"></div>
             <!-- Dock 悬浮添加按钮 + 类型选择 + 输入弹窗 -->
-            <button class="north-lifelog-dock-fab" id="lifelogDockFab" title="添加记录">
+            <button class="north-lifelog-dock-fab" id="lifelogDockFab" title="${lunaT('添加记录')}">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><use xlink:href="#iconAdd"></use></svg>
             </button>
             <div class="north-lifelog-pick-overlay" id="lifelogDockPickOverlay" style="display:none">
                 <div class="north-lifelog-pick-bg"></div>
                 <div class="north-lifelog-pick-panel" id="lifelogDockPickPanel">
-                    <div class="north-lifelog-pick-title">选择类型</div>
+                    <div class="north-lifelog-pick-title">${lunaT('选择类型')}</div>
                     <div class="north-lifelog-pick-types" id="lifelogDockPickTypes"></div>
-                    <button class="north-lifelog-pick-close" id="lifelogDockPickClose">取消</button>
+                    <button class="north-lifelog-pick-close" id="lifelogDockPickClose">${lunaT('取消')}</button>
                 </div>
             </div>
             <div class="north-lifelog-input-modal" id="lifelogDockInputModal" style="display:none">
@@ -22733,11 +22765,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         <span class="north-lifelog-input-modal-type" id="lifelogDockInputModalType"></span>
                         <span class="north-lifelog-input-modal-time" id="lifelogDockInputModalTime"></span>
                     </div>
-                    <textarea class="north-lifelog-input-modal-textarea" id="lifelogDockInputModalTextarea" placeholder="输入内容..." rows="3"></textarea>
+                    <textarea class="north-lifelog-input-modal-textarea" id="lifelogDockInputModalTextarea" placeholder="${lunaT('输入内容...')}" rows="3"></textarea>
                     <div class="north-lifelog-input-modal-actions">
-                        <button class="north-lifelog-input-modal-back" id="lifelogDockInputModalBack">返回</button>
-                        <button class="north-lifelog-input-modal-cancel" id="lifelogDockInputModalCancel">取消</button>
-                        <button class="north-lifelog-input-modal-submit" id="lifelogDockInputModalSubmit">记录</button>
+                        <button class="north-lifelog-input-modal-back" id="lifelogDockInputModalBack">${lunaT('返回')}</button>
+                        <button class="north-lifelog-input-modal-cancel" id="lifelogDockInputModalCancel">${lunaT('取消')}</button>
+                        <button class="north-lifelog-input-modal-submit" id="lifelogDockInputModalSubmit">${lunaT('记录')}</button>
                     </div>
                 </div>
             </div>
@@ -22815,7 +22847,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         /* 清除日期筛选并重绘周历条 */
         this._lifelogDockDateFilter = null;
         if (this._lifeLogDockEl) this._renderLifeLogDockWeekStrip(this._lifeLogDockEl);
-        listEl.innerHTML = '<div class="north-lifelog-timeline-empty">加载中…</div>';
+        listEl.innerHTML = '<div class="north-lifelog-timeline-empty">' + lunaT('加载中…') + '</div>';
         try {
             const records = await this._queryLifeLogDockRecords();
             this._lifelogDockCache = records || [];
@@ -22823,7 +22855,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             this._renderLifeLogDockList(listEl, this._lifelogDockCache);
         } catch (e) {
             console.warn('[LifeLog Dock] 加载失败:', e.message);
-            listEl.innerHTML = '<div class="north-lifelog-timeline-empty">加载失败，请重试</div>';
+            listEl.innerHTML = '<div class="north-lifelog-timeline-empty">' + lunaT('加载失败，请重试') + '</div>';
         }
     }
 
@@ -22957,7 +22989,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             data = data.filter(r => r.date === this._lifelogDockDateFilter);
         }
         if (!data || data.length === 0) {
-            listEl.innerHTML = '<div class="north-lifelog-timeline-empty">暂无 LifeLog 记录</div>';
+            listEl.innerHTML = '<div class="north-lifelog-timeline-empty">' + lunaT('暂无 LifeLog 记录') + '</div>';
             return;
         }
         const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -23017,7 +23049,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     : '';
                 html += `<div class="north-lifelog-timeline-item" data-id="${esc(item.id)}" data-type="${esc(item.type)}">
                     <div class="north-lifelog-timeline-left">
-                        <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="点击修改时间">${item.time}</span>
+                        <span class="north-lifelog-timeline-time" data-lifelog-time-edit="1" role="button" tabindex="0" title="${lunaT('点击修改时间')}">${item.time}</span>
                     </div>
                     <div class="north-lifelog-timeline-axis">
                         <div class="north-lifelog-timeline-marker"${typeColor ? ' style="--lifelog-timeline-color:' + typeColor + '"' : ''}></div>
@@ -23128,7 +23160,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     this._lunaToast((res && res.msg) || '写入日记失败，请重试');
                 }
             } catch (e) {
-                this._lunaToast('提交失败：' + ((e && e.message) || e));
+                this._lunaToast(lunaT('提交失败：') + ((e && e.message) || e));
             } finally {
                 modalSubmit.disabled = false;
                 modalSubmit.textContent = '记录';
@@ -23260,9 +23292,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const heatHtml = this._renderLifeLogDockHeatmap(this._lifelogDockStatsAnchor);
         statsEl.innerHTML = `
             <div class="north-lifelog-dock-stat-periods">
-                <button class="north-lifelog-dock-stat-period ${period==='week'?'active':''}" data-period="week">周</button>
-                <button class="north-lifelog-dock-stat-period ${period==='month'?'active':''}" data-period="month">月</button>
-                <button class="north-lifelog-dock-stat-period ${period==='year'?'active':''}" data-period="year">年</button>
+                <button class="north-lifelog-dock-stat-period ${period==='week'?'active':''}" data-period="week">${lunaT('周')}</button>
+                <button class="north-lifelog-dock-stat-period ${period==='month'?'active':''}" data-period="month">${lunaT('月')}</button>
+                <button class="north-lifelog-dock-stat-period ${period==='year'?'active':''}" data-period="year">${lunaT('年')}</button>
             </div>
             <div class="north-lifelog-dock-stat-nav">
                 <button class="north-lifelog-dock-stat-nav-btn" id="lifelog-dock-stat-prev"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconLeft"></use></svg></button>
@@ -23274,24 +23306,24 @@ module.exports = class NorthLunaPlugin extends Plugin {
             </div>
             <div class="north-lifelog-dock-stat-cards">
                 <div class="north-lifelog-dock-stat-card">
-                    <div class="north-lifelog-dock-stat-card-value">${totalCount} <span class="north-lifelog-dock-stat-card-unit">次</span></div>
-                    <div class="north-lifelog-dock-stat-card-label">记录次数</div>
+                    <div class="north-lifelog-dock-stat-card-value">${totalCount} <span class="north-lifelog-dock-stat-card-unit">${lunaT('次')}</span></div>
+                    <div class="north-lifelog-dock-stat-card-label">${lunaT('记录次数')}</div>
                 </div>
                 <div class="north-lifelog-dock-stat-card">
                     <div class="north-lifelog-dock-stat-card-value">${uniqueDays} <span class="north-lifelog-dock-stat-card-unit">天</span></div>
-                    <div class="north-lifelog-dock-stat-card-label">记录天数</div>
+                    <div class="north-lifelog-dock-stat-card-label">${lunaT('记录天数')}</div>
                 </div>
                 <div class="north-lifelog-dock-stat-card">
-                    <div class="north-lifelog-dock-stat-card-value">${avgPerDay} <span class="north-lifelog-dock-stat-card-unit">次</span></div>
-                    <div class="north-lifelog-dock-stat-card-label">每日平均</div>
+                    <div class="north-lifelog-dock-stat-card-value">${avgPerDay} <span class="north-lifelog-dock-stat-card-unit">${lunaT('次')}</span></div>
+                    <div class="north-lifelog-dock-stat-card-label">${lunaT('每日平均')}</div>
                 </div>
                 <div class="north-lifelog-dock-stat-card">
                     <div class="north-lifelog-dock-stat-card-value">${avgGap} <span class="north-lifelog-dock-stat-card-unit">天</span></div>
-                    <div class="north-lifelog-dock-stat-card-label">平均间隔</div>
+                    <div class="north-lifelog-dock-stat-card-label">${lunaT('平均间隔')}</div>
                 </div>
             </div>
             <div class="north-lifelog-dock-stat-heatmap">
-                <div class="north-lifelog-dock-stat-heatmap-title">统计 ›</div>
+                <div class="north-lifelog-dock-stat-heatmap-title">${lunaT('统计 ›')}</div>
                 ${heatHtml}
             </div>
         `;
@@ -23555,12 +23587,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }).join('');
             return `<div class="north-luna-moments-pin-group" data-mid="${this._esc(m.id)}" style="grid-template-columns: repeat(${cols}, 44px);">${cells}</div>`;
         });
-        return `<div class="north-luna-moments-pin-strip" id="momentsPinStrip" title="点击查看全部置顶">
+        return `<div class="north-luna-moments-pin-strip" id="momentsPinStrip" title="${lunaT('点击查看全部置顶')}">
             <div class="north-luna-moments-pin-strip-label">
-                <span>置顶</span>
+                <span>${lunaT('置顶')}</span>
             </div>
             <div class="north-luna-moments-pin-strip-thumbs">${groups.join('')}</div>
-            <div class="north-luna-moments-pin-strip-next" id="momentsPinNextBtn" title="还有更多置顶">›</div>
+            <div class="north-luna-moments-pin-strip-next" id="momentsPinNextBtn" title="${lunaT('还有更多置顶')}">›</div>
         </div>`;
     }
 
@@ -23571,10 +23603,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return `<div class="north-luna-moments-pin-back-bar" id="momentsPinBackBar">
             <div class="north-luna-moments-pin-back-btn" id="momentsPinBackBtn">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconArrowLeft"></use></svg>
-                <span>返回</span>
+                <span>${lunaT('返回')}</span>
             </div>
             <div class="north-luna-moments-pin-back-title">
-                <span>置顶动态 (${count})</span>
+                <span>${lunaT('置顶动态')} (${count})</span>
             </div>
             <div class="north-luna-moments-pin-back-spacer"></div>
         </div>`;
@@ -23625,7 +23657,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     <div class="north-luna-moments-nav" id="momentsNavBar">
                         <div class="north-luna-moments-nav-left"></div>
                         <div class="north-luna-moments-nav-actions">
-                            <div class="north-luna-moments-camera-btn" id="momentsCameraBtn" title="发表">
+                            <div class="north-luna-moments-camera-btn" id="momentsCameraBtn" title="${lunaT('发表')}">
                                 <div class="north-luna-moments-camera-icon"></div>
                             </div>
                         </div>
@@ -23637,41 +23669,41 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             ${(() => { const avatarSrc = ((this.data[SETTINGS_STORAGE] || {}).settings || {}).avatar || cfg.avatar || DEFAULT_AVATAR; const resolved = this._resolveImageUrl(avatarSrc); return `<img class="north-luna-moments-cover-avatar" id="momentsCoverAvatar" src="${this._esc(resolved)}" alt="avatar" decoding="async">`; })()}
                         </div>
                         <div class="north-luna-moments-cover-toolbar" id="momentsCoverToolbar">
-                            <button class="north-luna-moments-cover-tool" data-act="upload" type="button" title="上传本地图片">
+                            <button class="north-luna-moments-cover-tool" data-act="upload" type="button" title="${lunaT('上传本地图片')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconUpload"></use></svg><span>上传</span>
                             </button>
-                            <button class="north-luna-moments-cover-tool" data-act="link" type="button" title="网络图片链接">
+                            <button class="north-luna-moments-cover-tool" data-act="link" type="button" title="${lunaT('网络图片链接')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconLink"></use></svg><span>链接</span>
                             </button>
-                            <button class="north-luna-moments-cover-tool" data-act="resource" type="button" title="从资源库选择">
+                            <button class="north-luna-moments-cover-tool" data-act="resource" type="button" title="${lunaT('从资源库选择')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconImage"></use></svg><span>资源</span>
                             </button>
-                            ${this.isMobile ? `<button class="north-luna-moments-cover-tool" id="momentsSyncTool" data-act="sync" type="button" title="一键同步未同步动态">
+                            ${this.isMobile ? `<button class="north-luna-moments-cover-tool" id="momentsSyncTool" data-act="sync" type="button" title="${lunaT('一键同步未同步动态')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconCloud"></use></svg><span>同步</span>
                             </button>` : ''}
-                            <button class="north-luna-moments-cover-tool" data-act="drag" type="button" title="拖动调整位置">
+                            <button class="north-luna-moments-cover-tool" data-act="drag" type="button" title="${lunaT('拖动调整位置')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconMove"></use></svg><span>拖动</span>
                             </button>
-                            <button class="north-luna-moments-cover-tool" data-act="calendar" type="button" title="朋友圈日历">
+                            <button class="north-luna-moments-cover-tool" data-act="calendar" type="button" title="${lunaT('朋友圈日历')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconCalendar"></use></svg><span>日历</span>
                             </button>
-                            <button class="north-luna-moments-cover-tool" id="momentsMoodFilterBtn" data-act="mood-filter" type="button" title="按心情筛选朋友圈">
+                            <button class="north-luna-moments-cover-tool" id="momentsMoodFilterBtn" data-act="mood-filter" type="button" title="${lunaT('按心情筛选朋友圈')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconEmoji"></use></svg><span>心情</span>
                             </button>
-                            <button class="north-luna-moments-cover-tool" id="momentsCategoryFilterBtn" data-act="category-filter" type="button" title="按分类筛选朋友圈">
+                            <button class="north-luna-moments-cover-tool" id="momentsCategoryFilterBtn" data-act="category-filter" type="button" title="${lunaT('按分类筛选朋友圈')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconRiffCard"></use></svg><span>分类</span>
                             </button>
-                            ${(lockEnabled && lockPasscode) ? `<button class="north-luna-moments-cover-tool" id="momentsLockToolBtn" data-act="lock" type="button" title="重新锁屏">
+                            ${(lockEnabled && lockPasscode) ? `<button class="north-luna-moments-cover-tool" id="momentsLockToolBtn" data-act="lock" type="button" title="${lunaT('重新锁屏')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconLock"></use></svg><span>锁屏</span>
                             </button>` : ''}
-                            <button class="north-luna-moments-cover-tool north-luna-moments-cover-tool-danger" data-act="delete" type="button" title="删除并恢复默认">
+                            <button class="north-luna-moments-cover-tool north-luna-moments-cover-tool-danger" data-act="delete" type="button" title="${lunaT('删除并恢复默认')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconTrashcan"></use></svg><span>删除</span>
                             </button>
                         </div>
                         <div class="north-luna-moments-cover-drag-confirm" id="momentsCoverDragConfirm" style="display:none">
-                            <span class="north-luna-moments-cover-drag-hint">拖动图片调整位置，确认后生效</span>
-                            <button class="north-luna-moments-cover-drag-btn" id="momentsCoverDragOk" type="button">确定</button>
-                            <button class="north-luna-moments-cover-drag-btn north-luna-moments-cover-drag-cancel" id="momentsCoverDragCancel" type="button">取消</button>
+                            <span class="north-luna-moments-cover-drag-hint">${lunaT('拖动图片调整位置，确认后生效')}</span>
+                            <button class="north-luna-moments-cover-drag-btn" id="momentsCoverDragOk" type="button">${lunaT('确定')}</button>
+                            <button class="north-luna-moments-cover-drag-btn north-luna-moments-cover-drag-cancel" id="momentsCoverDragCancel" type="button">${lunaT('取消')}</button>
                         </div>
                         <input type="file" id="momentsCoverInput" class="north-luna-moments-file-input" accept="image/*">
                     </div>
@@ -23691,7 +23723,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         <button class="north-luna-moments-publish-submit" id="momentsPublishSubmit">发表</button>
                     </div>
                     <div class="north-luna-moments-publish-content">
-                        <textarea class="north-luna-moments-publish-textarea" id="momentsPublishText" placeholder="这一刻的想法..."></textarea>
+                        <textarea class="north-luna-moments-publish-textarea" id="momentsPublishText" placeholder="${lunaT('这一刻的想法...')}"></textarea>
                         <div class="north-luna-moments-publish-images" id="momentsPublishImages">
                             <div class="north-luna-moments-publish-grid-add" id="momentsPublishAdd"></div>
                         </div>
@@ -23699,29 +23731,29 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             <div class="north-luna-moments-publish-extra-row">
                                 <input type="date" class="north-luna-moments-publish-date-input" id="momentsPublishDate">
                                 <div class="north-luna-moments-publish-weather-wrap">
-                                    <input type="text" class="north-luna-moments-publish-location-input north-luna-weather-input" id="momentsPublishWeather" placeholder="天气" maxlength="20" autocomplete="off">
-                                    <button type="button" class="north-luna-weather-arrow" id="momentsWeatherArrow" title="常用天气">
+                                    <input type="text" class="north-luna-moments-publish-location-input north-luna-weather-input" id="momentsPublishWeather" placeholder="${lunaT('天气')}" maxlength="20" autocomplete="off">
+                                    <button type="button" class="north-luna-weather-arrow" id="momentsWeatherArrow" title="${lunaT('常用天气')}">
                                         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                     </button>
                                     <div class="north-luna-moments-weather-dropdown" id="momentsWeatherDropdown" style="display:none"></div>
                                 </div>
                                 <div class="north-luna-moments-publish-weather-wrap">
                                     <input type="text" class="north-luna-moments-publish-location-input north-luna-weather-input" id="momentsPublishMood" placeholder="心情" maxlength="20" autocomplete="off">
-                                    <button type="button" class="north-luna-weather-arrow" id="momentsMoodArrow" title="常用心情">
+                                    <button type="button" class="north-luna-weather-arrow" id="momentsMoodArrow" title="${lunaT('常用心情')}">
                                         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                     </button>
                                     <div class="north-luna-moments-weather-dropdown" id="momentsMoodDropdown" style="display:none"></div>
                                 </div>
                                 <div class="north-luna-moments-publish-weather-wrap">
                                     <input type="text" class="north-luna-moments-publish-location-input north-luna-weather-input" id="momentsPublishCategory" placeholder="分类" maxlength="20" autocomplete="off">
-                                    <button type="button" class="north-luna-weather-arrow" id="momentsCategoryArrow" title="选择分类">
+                                    <button type="button" class="north-luna-weather-arrow" id="momentsCategoryArrow" title="${lunaT('选择分类')}">
                                         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                     </button>
                                     <div class="north-luna-moments-weather-dropdown" id="momentsCategoryDropdown" style="display:none"></div>
                                 </div>
-                                <input type="text" class="north-luna-moments-publish-location-input" id="momentsPublishLocation" placeholder="地点...">
+                                <input type="text" class="north-luna-moments-publish-location-input" id="momentsPublishLocation" placeholder="${lunaT('地点...')}">
                                 <div class="north-luna-moments-publish-emoji-btn" id="momentsPublishLinkToggle">
-                                    <span>添加链接</span>
+                                    <span>${lunaT('添加链接')}</span>
                                 </div>
                                 <div class="north-luna-moments-publish-toolbar" id="momentsMdToolbar">
                                     <button type="button" class="moments-md-btn" data-md="bold" title="粗体"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use xlink:href="#iconBold"></use></svg></button>
@@ -23734,8 +23766,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         </div>
                         <div class="north-luna-moments-publish-section north-luna-moments-section-row north-luna-moments-link-section">
                             <div class="north-luna-moments-publish-link-form" id="momentsPublishLinkForm">
-                                <input type="text" class="north-luna-moments-publish-link-input" id="momentsPublishLinkTitle" placeholder="链接标题">
-                                <input type="text" class="north-luna-moments-publish-link-input" id="momentsPublishLinkUrl" placeholder="链接地址 (https://...)">
+                                <input type="text" class="north-luna-moments-publish-link-input" id="momentsPublishLinkTitle" placeholder="${lunaT('链接标题')}">
+                                <input type="text" class="north-luna-moments-publish-link-input" id="momentsPublishLinkUrl" placeholder="${lunaT('链接地址 (https://...)')}">
                             </div>
                         </div>
                     </div>
@@ -23751,9 +23783,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             <div class="north-luna-moments-cover-modal-close" data-close="link">×</div>
                         </div>
                         <div class="north-luna-moments-cover-modal-body">
-                            <input type="text" class="north-luna-moments-cover-link-input" id="momentsCoverLinkInput" placeholder="粘贴图片网络地址">
-                            <div class="north-luna-moments-cover-modal-tip">支持 http(s) 图片链接</div>
-                            <button class="north-luna-moments-cover-modal-ok" id="momentsCoverLinkOk" type="button">确定</button>
+                            <input type="text" class="north-luna-moments-cover-link-input" id="momentsCoverLinkInput" placeholder="${lunaT('粘贴图片网络地址')}">
+                            <div class="north-luna-moments-cover-modal-tip">${lunaT('支持 http(s) 图片链接')}</div>
+                            <button class="north-luna-moments-cover-modal-ok" id="momentsCoverLinkOk" type="button">${lunaT('确定')}</button>
                         </div>
                     </div>
                 </div>
@@ -23868,7 +23900,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const p2 = n => String(n).padStart(2, '0');
         const timeStr = p2(now.getHours()) + ':' + p2(now.getMinutes());
         const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-        const dateStr = (now.getMonth() + 1) + '月' + now.getDate() + '日 · ' + weekdays[now.getDay()];
+        const dateStr = LUNA_EN
+            ? lunaMonthDay(now) + ' · ' + breezeGroupWeekdays[now.getDay()]
+            : (now.getMonth() + 1) + '月' + now.getDate() + '日 · ' + weekdays[now.getDay()];
         body.innerHTML = `
             <div class="north-luna-moments-container">
                 <div class="north-luna-moments-lock-screen">
@@ -23881,10 +23915,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         <div class="north-luna-moments-lock-bottom">
                             <img class="north-luna-moments-lock-avatar" src="${this._esc(avatarSrc)}" alt="avatar">
                             <div class="north-luna-moments-lock-name">${this._esc(nickname)}</div>
-                            <input type="password" class="north-luna-moments-lock-input" id="momentsLockInput" placeholder="请输入密码" maxlength="20">
-                            <div class="north-luna-moments-lock-error" id="momentsLockError">密码错误</div>
-                            <button class="north-luna-moments-lock-btn" id="momentsLockUnlockBtn">解锁</button>
-                            <div class="north-luna-moments-lock-hint">输入密码解锁朋友圈</div>
+                            <input type="password" class="north-luna-moments-lock-input" id="momentsLockInput" placeholder="${lunaT('请输入密码')}" maxlength="20">
+                            <div class="north-luna-moments-lock-error" id="momentsLockError">${lunaT('密码错误')}</div>
+                            <button class="north-luna-moments-lock-btn" id="momentsLockUnlockBtn">${lunaT('解锁')}</button>
+                            <div class="north-luna-moments-lock-hint">${lunaT('输入密码解锁朋友圈')}</div>
                         </div>
                     </div>
                 </div>
@@ -23981,14 +24015,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         return `
             <div class="north-luna-moments-item" data-mid="${m.id}"${weatherKey ? ` data-weather="${weatherKey}"` : ''}>
-                ${(m.pinned && this._momentsViewMode === 'pinned') ? `<div class="north-luna-moments-pin-badge" title="已置顶">
+                ${(m.pinned && this._momentsViewMode === 'pinned') ? `<div class="north-luna-moments-pin-badge" title="${lunaT('已置顶')}">
                     <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><use xlink:href="#iconPin"></use></svg>
                 </div>` : ''}
                 <img class="north-luna-moments-item-avatar" src="${this._esc(avatarSrc)}"${avatarRawAttr} alt="avatar" loading="lazy" decoding="async">
                 <div class="north-luna-moments-item-content">
                     <div class="north-luna-moments-item-name">${this._esc(nickname)}</div>
                     <div class="north-luna-moments-item-text">${breezeRenderTextWithTags(m.text || '')}</div>
-                    <div class="north-luna-moments-expand" data-mid="${m.id}"><span class="moments-expand-text">全文</span><svg class="moments-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="moments-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>
+                    <div class="north-luna-moments-expand" data-mid="${m.id}"><span class="moments-expand-text">${lunaT('全文')}</span><svg class="moments-expand-icon" viewBox="0 0 24 24" fill="currentColor"><path class="moments-expand-arrow" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg></div>
                     ${mediaHtml}
                     <div class="north-luna-moments-item-meta">
                         ${metaHtml}
@@ -24044,14 +24078,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             <div class="north-luna-moments-comment-edit-row" style="display:none">
                                 <textarea class="north-luna-moments-comment-edit-input" maxlength="200">${this._esc(c.text)}</textarea>
                                 <div class="north-luna-moments-comment-edit-actions">
-                                    <button class="north-luna-moments-comment-edit-save" data-cid="${this._esc(c.id)}">保存</button>
-                                    <button class="north-luna-moments-comment-edit-cancel" data-cid="${this._esc(c.id)}">取消</button>
+                                    <button class="north-luna-moments-comment-edit-save" data-cid="${this._esc(c.id)}">${lunaT('保存')}</button>
+                                    <button class="north-luna-moments-comment-edit-cancel" data-cid="${this._esc(c.id)}">${lunaT('取消')}</button>
                                 </div>
                             </div>
                         </div>`).join('')}
                         <div class="north-luna-moments-comment-input-row" style="display:none">
-                            <input type="text" class="north-luna-moments-comment-input" placeholder="写评论..." maxlength="200">
-                            <button class="north-luna-moments-comment-send" data-mid="${m.id}">发送</button>
+                            <input type="text" class="north-luna-moments-comment-input" placeholder="${lunaT('写评论...')}" maxlength="200">
+                            <button class="north-luna-moments-comment-send" data-mid="${m.id}">${lunaT('发送')}</button>
                         </div>
                     </div>
                 </div>
@@ -24303,48 +24337,48 @@ module.exports = class NorthLunaPlugin extends Plugin {
        目标与模板沿用「数据同步」设置；是否跳过已同步记录沿用「跳过已同步记录」设置。
        结果用内联提示反馈（移动端 alert 不可靠），并在同步期间禁用按钮防重复点击。 */
     async _runMobileBatchSync(kind, btn) {
-        const label = kind === 'moments' ? '朋友圈动态' : '清风笔记';
-        if (this._batchSyncing) { this._lunaToast('已有同步任务正在进行，请稍候'); return; }
+        const label = kind === 'moments' ? lunaT('朋友圈动态') : lunaT('清风笔记');
+        if (this._batchSyncing) { this._lunaToast(lunaT('已有同步任务正在进行，请稍候')); return; }
         const storage = this.data[SETTINGS_STORAGE] || {};
         const settings = storage.settings || {};
         const target = settings.dailyNoteTarget === 'doc' ? 'doc' : 'dailynote';
         /* 目标未配置时先提示，不进空转（与设置面板里的批量同步同一套预检） */
         if (target === 'dailynote' && !(settings.dailyNotebookId || '').trim()) {
-            this._lunaToast('请先在「轻语设置 → 数据同步」中选择日记笔记本');
+            this._lunaToast(lunaT('请先在「轻语设置 → 数据同步」中选择日记笔记本'));
             return;
         }
         if (target === 'doc' && !(settings.dailyNoteDocId || '').trim()) {
-            this._lunaToast('请先在「轻语设置 → 数据同步」中选择指定文档');
+            this._lunaToast(lunaT('请先在「轻语设置 → 数据同步」中选择指定文档'));
             return;
         }
         this._batchSyncing = true;
         if (btn) { btn.disabled = true; btn.classList.add('is-syncing'); }
         try {
-            this._lunaToast(`正在同步${label}…`, false);
+            this._lunaToast(lunaT('正在同步{label}…', { label }), false);
             let r = await this._batchSyncToSiYuan(kind);
-            if (!r || !r.total) { this._lunaToast(`暂无${label}可同步`, false); return; }
+            if (!r || !r.total) { this._lunaToast(lunaT('暂无{label}可同步', { label }), false); return; }
             /* 命中「已同步过」的记录时，用户很容易以为按钮没生效（尤其此前逐条手动同步过一遍的）。
                这时明确询问是否忽略「已同步」标记、全部重写一遍 —— 正好解决「怕漏掉某条」的顾虑。 */
             if (!r.synced && r.skipped) {
                 const again = await this._lunaConfirm(
-                    '一键同步',
-                    `这 ${r.skipped} 条${label}都已经同步过了，没有需要新写入的记录。\n\n要忽略「已同步」标记，把这 ${r.skipped} 条全部重新写一遍吗？`,
-                    '全部重新同步'
+                    lunaT('一键同步'),
+                    lunaT('这 {n} 条{label}都已经同步过了，没有需要新写入的记录。\n\n要忽略「已同步」标记，把这 {n} 条全部重新写一遍吗？', { n: r.skipped, label }),
+                    lunaT('全部重新同步')
                 );
                 if (!again) {
-                    this._lunaToast(`${label}都已是「已同步」状态（${r.skipped} 条），没有需要写入的新记录`, false);
+                    this._lunaToast(lunaT('{label}都已是「已同步」状态（{n} 条），没有需要写入的新记录', { label, n: r.skipped }), false);
                     return;
                 }
-                this._lunaToast(`正在全部重新同步${label}…`, false);
+                this._lunaToast(lunaT('正在全部重新同步{label}…', { label }), false);
                 r = await this._batchSyncToSiYuan(kind, null, { force: true });
-                if (!r || !r.total) { this._lunaToast(`暂无${label}可同步`, false); return; }
+                if (!r || !r.total) { this._lunaToast(lunaT('暂无{label}可同步', { label }), false); return; }
             }
-            const parts = [`已同步 ${r.synced} 条`];
-            if (r.skipped) parts.push(`跳过已同步 ${r.skipped} 条`);
-            if (r.failed) parts.push(`失败 ${r.failed} 条`);
-            this._lunaToast(`${label}同步完成：` + parts.join('，'), !!r.failed);
+            const parts = [lunaT('已同步 {n} 条', { n: r.synced })];
+            if (r.skipped) parts.push(lunaT('跳过已同步 {n} 条', { n: r.skipped }));
+            if (r.failed) parts.push(lunaT('失败 {n} 条', { n: r.failed }));
+            this._lunaToast(lunaT('{label}同步完成：', { label }) + parts.join(LUNA_EN ? ', ' : '，'), !!r.failed);
         } catch (e) {
-            this._lunaToast('同步失败：' + ((e && e.message) || e));
+            this._lunaToast(lunaT('同步失败：') + ((e && e.message) || e));
             console.warn('[轻语] 移动端一键同步异常:', e);
         } finally {
             this._batchSyncing = false;
@@ -24356,7 +24390,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
        不用思源原生 confirm：它只有「确定」回调、拿不到取消事件，await 会挂住；
        也不用 window.confirm：移动端 WebView 弹出原生对话框的可靠性不稳定。
        样式与插件的弹层一致，取消 / 点遮罩 / 点确定都会 resolve。 */
-    _lunaConfirm(title, message, okText = '确定', cancelText = '取消') {
+    _lunaConfirm(title, message, okText = lunaT('确定'), cancelText = lunaT('取消')) {
         return new Promise((resolve) => {
             try {
                 const mask = document.createElement('div');
@@ -25019,14 +25053,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
             });
             const json = await resp.json().catch(() => null);
             if (!json || json.code !== 0) {
-                showMessage('上传失败：' + ((json && json.msg) || ('HTTP ' + resp.status)));
+                showMessage(lunaT('上传失败：') + ((json && json.msg) || ('HTTP ' + resp.status)));
                 return null;
             }
             const succMap = json.data && json.data.succMap;
             const keys = succMap ? Object.keys(succMap) : [];
             if (!keys.length) {
                 const errs = (json.data && json.data.errFiles) || [];
-                showMessage('上传失败：' + (errs.join('、') || '未知错误'));
+                showMessage(lunaT('上传失败：') + (errs.join('、') || lunaT('未知错误')));
                 return null;
             }
             const assetPath = '/' + succMap[keys[0]];
@@ -25035,7 +25069,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             this.backupAsset(fileName, file).catch(() => {});
             return assetPath;
         } catch (e) {
-            showMessage('上传异常：' + (e && e.message ? e.message : e));
+            showMessage(lunaT('上传异常：') + (e && e.message ? e.message : e));
             return null;
         }
     }
@@ -25071,12 +25105,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const resp = await fetch('/api/file/putFile', { method: 'POST', body: uploadForm, headers });
             const json = await resp.json().catch(() => null);
             if (!json || json.code !== 0) {
-                showMessage('上传失败：' + ((json && json.msg) || ('HTTP ' + resp.status)));
+                showMessage(lunaT('上传失败：') + ((json && json.msg) || ('HTTP ' + resp.status)));
                 return null;
             }
             return `public/siyuan-lumina/${actualName}`;
         } catch (e) {
-            showMessage('上传异常：' + (e && e.message ? e.message : e));
+            showMessage(lunaT('上传异常：') + (e && e.message ? e.message : e));
             return null;
         }
     }
@@ -25514,7 +25548,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             const popup = document.createElement('div');
             popup.className = 'north-luna-file-action-popup';
             popup.innerHTML =
-                '<button class="north-luna-file-action-btn download">下载文件</button>';
+                '<button class="north-luna-file-action-btn download">' + lunaT('下载文件') + '</button>';
             const rect = mediaEl.getBoundingClientRect();
             popup.style.cssText = 'position:fixed;z-index:9999;display:flex;gap:6px;background:var(--b3-theme-background);border:1px solid var(--b3-border-color);border-radius:8px;padding:6px 8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);';
             popup.style.top = (rect.bottom + 4) + 'px';
@@ -25525,7 +25559,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const a = document.createElement('a');
                 a.href = url; a.download = name; a.style.display = 'none';
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                if (typeof showMessage === 'function') showMessage('已开始下载');
+                if (typeof showMessage === 'function') showMessage(lunaT('已开始下载'));
             });
             const closePopup = (ev) => {
                 if (!popup.contains(ev.target)) { popup.remove(); document.removeEventListener('click', closePopup); }
@@ -25620,7 +25654,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             </div>
             ${navHtml}
             <div class="north-luna-moments-image-preview-container"></div>
-            <div class="north-luna-moments-image-preview-hint">滚轮缩放 | 拖拽移动 | 双击重置</div>
+            <div class="north-luna-moments-image-preview-hint">${lunaT('滚轮缩放 | 拖拽移动 | 双击重置')}</div>
         `;
         document.body.appendChild(overlay);
 
@@ -26227,10 +26261,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
             mask.className = 'north-luna-moments-draft-mask';
             mask.innerHTML =
                 '<div class="north-luna-moments-draft-dialog">' +
-                    '<div class="north-luna-moments-draft-title">是否保留当前内容？</div>' +
+                    '<div class="north-luna-moments-draft-title">' + lunaT('是否保留当前内容？') + '</div>' +
                     '<div class="north-luna-moments-draft-actions">' +
-                        '<button type="button" class="north-luna-moments-draft-btn north-luna-moments-draft-discard">不保留</button>' +
-                        '<button type="button" class="north-luna-moments-draft-btn north-luna-moments-draft-keep">保留</button>' +
+                        '<button type="button" class="north-luna-moments-draft-btn north-luna-moments-draft-discard">' + lunaT('不保留') + '</button>' +
+                        '<button type="button" class="north-luna-moments-draft-btn north-luna-moments-draft-keep">' + lunaT('保留') + '</button>' +
                     '</div>' +
                 '</div>';
             document.body.appendChild(mask);
@@ -26286,11 +26320,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     '<span class="north-breeze-color-swatch north-breeze-color-bg" data-type="bg" data-n="' + n + '" style="background: var(--b3-font-background' + n + ')"></span>'
                 ).join('');
                 return '<div class="north-breeze-color-section">' +
-                    '<div class="north-breeze-color-section-label">字体颜色</div>' +
+                    '<div class="north-breeze-color-section-label">' + lunaT('字体颜色') + '</div>' +
                     '<div class="north-breeze-color-grid">' + fontItems + '</div>' +
                 '</div>' +
                 '<div class="north-breeze-color-section">' +
-                    '<div class="north-breeze-color-section-label">背景颜色</div>' +
+                    '<div class="north-breeze-color-section-label">' + lunaT('背景颜色') + '</div>' +
                     '<div class="north-breeze-color-grid">' + bgItems + '</div>' +
                 '</div>';
             };
@@ -26479,7 +26513,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const buildCategoryDropdown = () => {
             const options = getCategoryOptions();
             if (options.length === 0) {
-                categoryDropdown.innerHTML = '<div class="north-luna-weather-dropdown-item" style="color:var(--b3-theme-on-surface-light);cursor:default;">填写后下次自动出现</div>';
+                categoryDropdown.innerHTML = '<div class="north-luna-weather-dropdown-item" style="color:var(--b3-theme-on-surface-light);cursor:default;">' + lunaT('填写后下次自动出现') + '</div>';
             } else {
                 categoryDropdown.innerHTML = options.map(o =>
                     '<div class="north-luna-weather-dropdown-item">' + this._esc(o) + '</div>'
@@ -26515,7 +26549,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const submitBtn = container.querySelector('#momentsPublishSubmit');
         submitBtn.addEventListener('click', async () => {
             const text = container.querySelector('#momentsPublishText').value.trim();
-            if (!text && publishImages.length === 0) { showMessage('请输入内容或添加图片'); return; }
+            if (!text && publishImages.length === 0) { showMessage(lunaT('请输入内容或添加图片')); return; }
 
             const linkTitleEl = container.querySelector('#momentsPublishLinkTitle');
             const linkUrlEl = container.querySelector('#momentsPublishLinkUrl');
@@ -26527,7 +26561,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
             // 把待发表的文件真正上传到思源 assets 目录（/api/asset/upload），
             // 用返回的 assets 相对路径替换内存里的临时 blob: URL；编辑模式里已是存储路径的则原样保留。
-            if (publishFiles && publishFiles.length) showMessage('正在上传图片…');
+            if (publishFiles && publishFiles.length) showMessage(lunaT('正在上传图片…'));
             const finalImages = [];
             for (let i = 0; i < publishImages.length; i++) {
                 const file = publishFiles && publishFiles[i];
@@ -26608,7 +26642,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         }).catch(() => {});
                     }, 1000);
                 }
-            }).catch(e => showMessage('保存失败'));
+            }).catch(e => showMessage(lunaT('保存失败')));
         });
 
         /* ===== 封面工具栏 ===== */
@@ -26617,7 +26651,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         coverInput.onchange = async () => {
             const f = coverInput.files && coverInput.files[0];
             if (!f) return;
-            showMessage('封面上传中…');
+            showMessage(lunaT('封面上传中…'));
             const path = await this._uploadResource(f, { assetsDirPath: 'assets/' });
             if (path) this._applyCoverUrl(container, path);
             coverInput.value = '';
@@ -26641,7 +26675,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                    把全部未同步的朋友圈动态写入思源笔记文档，目标/模板沿用「数据同步」设置 */
                 else if (act === 'sync') this._runMobileBatchSync('moments', btn);
                 else if (act === 'delete') {
-                    if (confirm) confirm('删除', '确定要删除封面并恢复默认吗？', () => this._resetCover(container));
+                    if (confirm) confirm(lunaT('删除'), lunaT('确定要删除封面并恢复默认吗？'), () => this._resetCover(container));
                 }
             });
         });
@@ -26653,7 +26687,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const linkOk = container.querySelector('#momentsCoverLinkOk');
         linkOk.addEventListener('click', () => {
             const url = linkInput.value.trim();
-            if (!url) { showMessage('请输入图片链接'); return; }
+            if (!url) { showMessage(lunaT('请输入图片链接')); return; }
             this._applyCoverUrl(container, url);
             linkModal.classList.remove('active');
             linkInput.value = '';
@@ -26693,7 +26727,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             (this.momentsData.items || []).forEach(m => years.add(new Date(m.created).getFullYear()));
             years.add(new Date().getFullYear());
             const sortedYears = Array.from(years).sort((a, b) => b - a);
-            calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
+            calendarYear.innerHTML = sortedYears.map(y => `<option value="${y}">${lunaYear(y)}</option>`).join('');
             calendarYear.value = new Date().getFullYear();
         };
 
@@ -26853,8 +26887,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     '<div class="north-luna-moments-comment-edit-row" style="display:none">' +
                     '<textarea class="north-luna-moments-comment-edit-input" maxlength="200">' + this._esc(text) + '</textarea>' +
                     '<div class="north-luna-moments-comment-edit-actions">' +
-                    '<button class="north-luna-moments-comment-edit-save" data-cid="' + cid + '">保存</button>' +
-                    '<button class="north-luna-moments-comment-edit-cancel" data-cid="' + cid + '">取消</button>' +
+                    '<button class="north-luna-moments-comment-edit-save" data-cid="' + cid + '">' + lunaT('保存') + '</button>' +
+                    '<button class="north-luna-moments-comment-edit-cancel" data-cid="' + cid + '">' + lunaT('取消') + '</button>' +
                     '</div>' +
                     '</div>';
                 if (inputRow) panel.insertBefore(item, inputRow);
@@ -26882,7 +26916,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     this.saveMoments().catch(() => {});
                 };
                 if (typeof confirm === 'function') {
-                    confirm('删除评论', '确定要删除这条评论吗？', doDelete);
+                    confirm(lunaT('删除评论'), lunaT('确定要删除这条评论吗？'), doDelete);
                 } else {
                     doDelete();
                 }
@@ -27005,12 +27039,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 const syncTarget = syncSettings.dailyNoteTarget || 'dailynote';
                 if (syncTarget === 'dailynote' && !syncSettings.dailyNotebookId) {
                     syncBtn.dataset.syncing = '';
-                    if (typeof showMessage === 'function') showMessage('请先在「轻语设置 → 数据同步」中选择日记笔记本');
+                    if (typeof showMessage === 'function') showMessage(lunaT('请先在「轻语设置 → 数据同步」中选择日记笔记本'));
                     return;
                 }
                 if (syncTarget === 'doc' && !syncSettings.dailyNoteDocId) {
                     syncBtn.dataset.syncing = '';
-                    if (typeof showMessage === 'function') showMessage('请先在「轻语设置 → 数据同步」中选择指定文档');
+                    if (typeof showMessage === 'function') showMessage(lunaT('请先在「轻语设置 → 数据同步」中选择指定文档'));
                     return;
                 }
                 (async () => {
@@ -27047,7 +27081,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         }
                     } catch (e) {
                         console.error('[朋友圈] 同步异常:', e);
-                        if (typeof showMessage === 'function') showMessage('同步异常：' + (e.message || '未知错误'));
+                        if (typeof showMessage === 'function') showMessage(lunaT('同步异常：') + (e.message || lunaT('未知错误')));
                     }
                     syncBtn.dataset.syncing = '';
                 })();
@@ -27060,12 +27094,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 // 先获取待删动态的图片列表，删除后清理对应的 assets 文件
                 const delItem = (this.data[MOMENTS_STORAGE].items || []).find(m => m.id === mid);
                 const delImages = delItem ? (delItem.images || []) : [];
-                if (confirm) confirm('删除', '确定要删除这条朋友圈吗？', () => {
+                if (confirm) confirm(lunaT('删除'), lunaT('确定要删除这条朋友圈吗？'), () => {
                     this.data[MOMENTS_STORAGE].items = (this.data[MOMENTS_STORAGE].items || []).filter(m => m.id !== mid);
                     /* 清理被删除动态的图片（仍被清风笔记引用的保留，见 _isMediaUsedByBreezeNotes） */
                     delImages.forEach(img => { if (!this._isMediaUsedByBreezeNotes(img)) this.deletePluginImage(img); });
                     this.saveMoments().then(() => {
-                        showMessage('已删除');
+                        showMessage(lunaT('已删除'));
                         this.refreshMomentsList(body);
                     }).catch(() => {});
                 });
@@ -27135,7 +27169,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             menu.className = 'north-luna-comment-ctx-menu';
             menu.innerHTML =
                 '<div class="north-luna-comment-ctx-item north-luna-comment-ctx-edit" data-cid="' + this._esc(cid) + '">' +
-                    '<svg class="icon" style="width:13px;height:13px;margin-right:8px;vertical-align:-2px;"><use xlink:href="#iconEdit"></use></svg>编辑</div>' +
+                    '<svg class="icon" style="width:13px;height:13px;margin-right:8px;vertical-align:-2px;"><use xlink:href="#iconEdit"></use></svg>' + lunaT('编辑') + '</div>' +
                 '<div class="north-luna-comment-ctx-item north-luna-comment-ctx-del" data-cid="' + this._esc(cid) + '">' +
                     '<svg class="icon" style="width:13px;height:13px;margin-right:8px;vertical-align:-2px;"><use xlink:href="#iconTrashcan"></use></svg>删除</div>';
             menu.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;z-index:9999;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px 0;min-width:120px;font-size:13px;';
@@ -27199,7 +27233,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     if (cItem) cItem.remove();
                     this.saveMoments().catch(() => {});
                 };
-                if (typeof confirm === 'function') { confirm('删除评论', '确定要删除这条评论吗？', doDelete); }
+                if (typeof confirm === 'function') { confirm(lunaT('删除评论'), lunaT('确定要删除这条评论吗？'), doDelete); }
                 else { doDelete(); }
             });
         };
@@ -27427,7 +27461,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         // 第一行：全部
         const allItem = document.createElement('div');
         allItem.className = 'north-luna-moments-mood-filter-item' + (currentFilter ? '' : ' active');
-        allItem.innerHTML = `<span class="north-luna-moments-mood-filter-label">全部</span><span class="north-luna-moments-mood-filter-count">${totalCount}</span>`;
+        allItem.innerHTML = `<span class="north-luna-moments-mood-filter-label">${lunaT('全部')}</span><span class="north-luna-moments-mood-filter-count">${totalCount}</span>`;
         allItem.addEventListener('click', () => {
             this.momentsMoodFilter = null;
         this.momentsCategoryFilter = null;
@@ -27507,7 +27541,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         // 第一行：全部
         const allItem = document.createElement('div');
         allItem.className = 'north-luna-moments-mood-filter-item' + (currentFilter ? '' : ' active');
-        allItem.innerHTML = `<span class="north-luna-moments-mood-filter-label">全部</span><span class="north-luna-moments-mood-filter-count">${totalCount}</span>`;
+        allItem.innerHTML = `<span class="north-luna-moments-mood-filter-label">${lunaT('全部')}</span><span class="north-luna-moments-mood-filter-count">${totalCount}</span>`;
         allItem.addEventListener('click', () => {
             this.momentsCategoryFilter = null;
             panel.remove();
@@ -27840,7 +27874,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
     _enterCoverDragMode(container) {
         const coverSection = container.querySelector('#momentsCoverSection');
         const img = coverSection && coverSection.querySelector('img.north-luna-moments-cover-img[src]');
-        if (!img) { showMessage('请先设置封面图片，再调整位置'); return; }
+        if (!img) { showMessage(lunaT('请先设置封面图片，再调整位置')); return; }
         this._initCoverDrag(img);
         img.dataset.coverDragEnabled = 'true';
         img.classList.add('cover-draggable');
@@ -27879,7 +27913,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
     async _openResourcePicker(container, onPick) {
         const modal = container.querySelector('#momentsCoverResourceModal');
         const grid = container.querySelector('#momentsCoverResourceGrid');
-        grid.innerHTML = '<div class="north-luna-moments-cover-grid-loading">加载中...</div>';
+        grid.innerHTML = '<div class="north-luna-moments-cover-grid-loading">' + lunaT('加载中...') + '</div>';
         modal.classList.add('active');
 
         // 关闭按钮
@@ -27910,7 +27944,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         const renderGrid = () => {
             const list = items.filter(it => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(it.name));
-            if (!list.length) { grid.innerHTML = '<div class="north-luna-moments-cover-grid-loading">资源库中没有可用图片</div>'; return; }
+            if (!list.length) { grid.innerHTML = '<div class="north-luna-moments-cover-grid-loading">' + lunaT('资源库中没有可用图片') + '</div>'; return; }
             grid.innerHTML = list.map(it => `<div class="north-luna-moments-cover-grid-item" data-path="${this._esc(it.path)}" style="background-image:url(&quot;${it.bg}&quot;)" title="${this._esc(it.name)}"></div>`).join('');
             grid.querySelectorAll('.north-luna-moments-cover-grid-item').forEach(item => {
                 item.addEventListener('click', () => {
@@ -28137,12 +28171,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const sorted = inPinnedView ? this._sortMoments(filtered2) : this._sortMomentsForFeed(filtered2);
         if (sorted.length === 0) {
             const emptyMsg = inPinnedView
-                ? '<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">还没有置顶的动态</div>'
+                ? '<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">' + lunaT('还没有置顶的动态') + '</div>'
                 : (this.momentsCategoryFilter
-                    ? `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">当前分类「${this._esc(this.momentsCategoryFilter)}」下还没有朋友圈</div>`
+                    ? `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">${lunaT('当前分类「{name}」下还没有朋友圈', { name: this._esc(this.momentsCategoryFilter) })}</div>`
                     : (this.momentsMoodFilter
-                    ? `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">当前心情「${this._esc(this.momentsMoodFilter)}」下还没有朋友圈</div>`
-                    : `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">暂无朋友圈，点击右上角相机发表吧~</div>`));
+                    ? `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">${lunaT('当前心情「{name}」下还没有朋友圈', { name: this._esc(this.momentsMoodFilter) })}</div>`
+                    : `<div style="padding:60px 20px;text-align:center;color:var(--b3-theme-on-surface-light);font-size:14px;">${lunaT('暂无朋友圈，点击右上角相机发表吧~')}</div>`));
             listEl.innerHTML = emptyMsg;
         } else {
             listEl.innerHTML = '';

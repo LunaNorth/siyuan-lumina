@@ -9,14 +9,18 @@
     "frontends": ["all"],
     "displayName": {
         "default": "Lumina",
-        "zh_CN": "轻语"
+        "zh_CN": "轻语",
+        "zh-CN": "轻语"
     },
     "description": {
         "default": "A lightweight note-taking plugin for SiYuan, inspired by Flomo",
-        "zh_CN": "记录每一个轻闪而过的念头"
+        "zh_CN": "记录每一个轻闪而过的念头",
+        "zh-CN": "记录每一个轻闪而过的念头"
     },
     "readme": {
-        "default": "README.md"
+        "default": "README.md",
+        "zh_CN": "README.zh-CN.md",
+        "zh-CN": "README.zh-CN.md"
     },
     "keywords": ["碎碎念", "记录", "回顾"],
     "funding": {
