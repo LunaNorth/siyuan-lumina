@@ -67,7 +67,7 @@ Plugin data is kept under the plugin's own storage (`lumina-records`, `lumina-mo
 
 ## Changelog
 
-### v2.5.3
+### v2.5.4
 - **Fix** — on mobile, the plugin's dock entry disappeared after being opened once; the drawer's entry bar is no longer hidden.
 - **New** — multilingual interface: follows SiYuan's UI language across settings, views, toolbars, dates and notifications.
 
