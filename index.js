@@ -10,7 +10,14 @@ const TRAVEL_STORAGE = "lumina-travel";
 const FLOMO_API_BASE = "https://flomoapp.com/api/v1";
 const FLOMO_SECRET = "dbbc3dd73364b4084c3a69346e0ce2b2";
 const FLOMO_API_KEY = "flomo_web";
-const FLOMO_APP_VERSION = "2.0";
+/* 2026-11 Flomo 前端（web 5.26.x）实际下发的公共参数：app_version 升到 4.0 并新增 platform / supports_video。
+   旧值 2.0 会被服务端判定为「当前版本不支持登录验证」，登录直接失败。 */
+const FLOMO_APP_VERSION = "4.0";
+const FLOMO_PLATFORM = "web";
+/* 网页版登录专用路由：旧路由 /user/login_by_email 已对 flomo_web 关闭，必须走 /user/web/login_by_email */
+const FLOMO_LOGIN_PATH = "/user/web/login_by_email";
+/* 需要图片验证码时接口返回的业务码 */
+const FLOMO_CAPTCHA_CODE = -40;
 const TAB_TYPE = "lumina-siyu-tab";
 const PLUGIN_NAME = "轻语";
 
@@ -7477,10 +7484,22 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this.breezePage = 1; // 分页当前页码（分页关闭时无意义）
                 this.breezeQuickFilter = null; // 快速筛选：'no-tag' | 'has-comment' | 'has-image' | 'no-image' | 'has-link' | 'has-task' | 'archived' | null
                 this.breezeQuickFilterExpanded = false; // 子菜单是否展开
-                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'dailynote', syncNotebookId: '', syncDocId: '', flomoSyncedSlugs: [] };
+                /* 默认同步到清风笔记：Flomo 笔记进清风视图才是主路径；
+                   需要写日记的用户可在「同步目标」里切到「数据同步设置」 */
+                this.flomoConfig = { username: '', password: '', accessToken: '', lastSyncTime: '', syncTarget: 'breeze', syncNotebookId: '', syncDocId: '', flomoSyncedSlugs: [] };
                 // 从存储中读回 Flomo 配置
                 const savedFlomo = (plugin.data[SETTINGS_STORAGE] || {}).flomoConfig;
-                if (savedFlomo) Object.assign(this.flomoConfig, savedFlomo);
+                if (savedFlomo) {
+                    Object.assign(this.flomoConfig, savedFlomo);
+                    /* 迁移早期遗留值 'dailynote'：那是旧版本写死的默认值，用户从没主动选过。
+                       统一按「清风笔记」处理，并清空同步进度，让下一次同步把历史笔记补写进清风。
+                       清风侧按 flomo_<slug> 去重覆盖，重复执行不会产生重复笔记。 */
+                    if (this.flomoConfig.syncTarget === 'dailynote') {
+                        this.flomoConfig.syncTarget = 'breeze';
+                        this.flomoConfig.flomoSyncedSlugs = [];
+                        this.flomoConfig.lastSyncTime = '';
+                    }
+                }
                 this._renderBreezeTagList = () => {
                     const list = this.container.querySelector('#breeze-tags-list');
                     if (!list) return;
@@ -11772,10 +11791,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 };
 
                 /* ===== Flomo 同步设置面板 ===== */
+                /* 同步目标归一化：默认清风笔记，只有明确选了「数据同步设置」才写日记。
+                   老版本把同步目标写死成 'dailynote'（等于"没选过"），必须归到 breeze，
+                   否则下拉里两项都不高亮、同步完还看不到笔记（其实写进日记了）。 */
+                this._flomoTarget = () => {
+                    const raw = (this.flomoConfig && this.flomoConfig.syncTarget) || 'breeze';
+                    return raw === 'data' ? 'data' : 'breeze';
+                };
                 this._renderFlomoSettings = () => {
                     const cfg = this.flomoConfig || {};
                     const isLoggedIn = !!cfg.accessToken;
-                    const t = (cfg.syncTarget || 'breeze');
+                    const t = this._flomoTarget();
                     const disabledAttr = isLoggedIn ? '' : ' disabled';
                     const dimClass = isLoggedIn ? '' : ' style="opacity:0.45;pointer-events:none;"';
                     const accountHtml = `<div class="north-luna-settings-item"><div class="north-luna-settings-item-text"><div class="north-luna-settings-item-title">Flomo 账号</div><div class="north-luna-settings-item-desc">登录 Flomo 以同步笔记到思源</div></div><div class="north-luna-settings-item-ctrl" style="display:flex;align-items:center;gap:8px;"><span class="north-luna-flomo-status${isLoggedIn ? ' loggedin' : ''}">${isLoggedIn ? '已登录 (' + cfg.username + ')' : '未登录'}</span>${isLoggedIn ? '<button class="north-luna-settings-btn" id="flomo-logout-btn">退出</button>' : '<button class="north-luna-settings-btn" id="flomo-login-btn">登录</button>'}</div></div>`;
@@ -11817,6 +11843,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             </div>
                             <input type="text" id="flomo-dlg-email" class="north-luna-settings-input" placeholder="${lunaT('邮箱或手机号')}" style="width:100%;box-sizing:border-box;margin-bottom:12px;">
                             <input type="password" id="flomo-dlg-password" class="north-luna-settings-input" placeholder="${lunaT('请输入密码')}" style="width:100%;box-sizing:border-box;margin-bottom:8px;">
+                            <div class="north-luna-flomo-captcha-row" id="flomo-dlg-captcha-row">
+                                <img class="north-luna-flomo-captcha-img" id="flomo-dlg-captcha-img" title="${lunaT('点击刷新')}" alt="captcha">
+                                <input type="text" id="flomo-dlg-captcha" class="north-luna-settings-input north-luna-flomo-captcha-input" placeholder="${lunaT('图片验证码')}" maxlength="8" autocomplete="off">
+                            </div>
                             <button class="north-luna-flomo-dlg-btn" id="flomo-dlg-login">${lunaT('登录')}</button>
                             <div class="north-luna-flomo-dlg-tip">${lunaT('登录 Flomo 解锁同步功能')}</div>
                         </div>
@@ -11852,15 +11882,44 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     const onEsc = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); } };
                     document.addEventListener('keydown', onEsc);
                     const loginBtn = mask.querySelector('#flomo-dlg-login');
+                    const captchaRow = mask.querySelector('#flomo-dlg-captcha-row');
+                    const captchaImg = mask.querySelector('#flomo-dlg-captcha-img');
+                    const captchaInput = mask.querySelector('#flomo-dlg-captcha');
+                    let captchaData = null;
+                    /* 只有 Flomo 风控要求验证码时才展开这一行，平时登录仍是邮箱 + 密码两步 */
+                    const showCaptchaRow = (data) => {
+                        if (!data || !data.image) return;
+                        captchaData = data;
+                        captchaImg.src = data.image;
+                        captchaRow.classList.add('active');
+                    };
+                    const refreshCaptcha = async () => {
+                        const d = await this._flomoFetchCaptcha();
+                        if (d) { captchaData = d; captchaImg.src = d.image; if (captchaInput) captchaInput.value = ''; captchaRow.classList.add('active'); }
+                        else showMessage(lunaT('验证码获取失败，请稍后重试'));
+                    };
+                    if (captchaImg) captchaImg.onclick = refreshCaptcha;
                     loginBtn.onclick = async () => {
                         const u = mask.querySelector('#flomo-dlg-email')?.value?.trim();
                         const p = mask.querySelector('#flomo-dlg-password')?.value?.trim();
                         if (!u || !p) { showMessage(lunaT('请输入邮箱和密码')); return; }
+                        const code = captchaInput ? captchaInput.value.trim() : '';
+                        if (captchaRow.classList.contains('active') && !code) { showMessage(lunaT('请输入图片验证码')); return; }
                         loginBtn.textContent = '登录中...'; loginBtn.disabled = true;
-                        const r = await this._flomoLogin(u, p);
+                        const r = await this._flomoLogin(u, p, (code && captchaData) ? { key: captchaData.key, code } : null);
                         loginBtn.textContent = '登录'; loginBtn.disabled = false;
-                        showMessage(r.message);
-                        if (r.success) { close(); const body = this.container?.querySelector('.north-luna-main-body'); if (body) this._renderSettingsView(body); }
+                        if (r.success) {
+                            close();
+                            const body = this.container?.querySelector('.north-luna-main-body');
+                            if (body) this._renderSettingsView(body);
+                        } else if (r.needCaptcha) {
+                            showCaptchaRow(r.captcha);
+                            showMessage(r.message);
+                        } else {
+                            /* 带着验证码还失败（多半是验证码输错/过期）：换一张再试 */
+                            if (code) await refreshCaptcha();
+                            showMessage(r.message);
+                        }
                     };
                 };
 
@@ -11879,7 +11938,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const r = body.querySelector('#flomo-target-cddl');
                         if (r) {
                             const act = r.querySelector('.north-luna-settings-cddl-item.active');
-                            if (act) this.flomoConfig.syncTarget = act.dataset.value;
+                            if (act) this.flomoConfig.syncTarget = act.dataset.value === 'breeze' ? 'breeze' : 'data';
                         }
                         const fullCb = body.querySelector('#flomo-full-sync');
                         const isFull = !!(fullCb && fullCb.checked);
@@ -11896,9 +11955,23 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         const popup = flomoCddl.querySelector('.north-luna-settings-cddl-popup');
                         trigger.onclick = (e) => { e.preventDefault(); e.stopPropagation(); popup.classList.toggle('open'); };
                         popup.querySelectorAll('.north-luna-settings-cddl-item').forEach(it => {
-                            it.onclick = () => {
-                                this.flomoConfig.syncTarget = it.dataset.value;
+                            it.onclick = async () => {
+                                const prev = this._flomoTarget();
+                                const next = it.dataset.value;
+                                this.flomoConfig.syncTarget = next;
                                 popup.classList.remove('open');
+                                if (next !== prev) {
+                                    if (next === 'breeze') {
+                                        /* 切到清风：把同步进度清掉，让「立即同步」重新写入全部笔记。
+                                           清风侧按 flomo_<slug> 去重覆盖，重复执行不会产生重复笔记。 */
+                                        this.flomoConfig.flomoSyncedSlugs = [];
+                                        this.flomoConfig.lastSyncTime = '';
+                                        showMessage('已切换到清风笔记，请点「立即同步」重新写入全部 Flomo 笔记');
+                                    } else {
+                                        showMessage('已切换到数据同步设置，之后同步的笔记会写入日记，清风视图不再显示');
+                                    }
+                                    try { await this._saveFlomoConfig(); } catch (e) {}
+                                }
                                 this._renderSettingsView(body);
                             };
                         });
@@ -12041,23 +12114,78 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     }
                 };
 
-                this._flomoLogin = async (username, password) => {
+                /* 统一的公共参数 + 签名。
+                   Flomo web 5.26 的 prepareParams 实际下发：
+                   timestamp / api_key / app_version=4.0 / platform=web / webp / supports_video，
+                   签名算法未变：参数按 key 排序、跳过空值 → 拼 k=v&… → 去掉末尾 & → 追加固定盐取 md5。 */
+                this._flomoBuildParams = (extra) => {
+                    const params = Object.assign({}, extra || {});
+                    params.timestamp = Math.floor(Date.now() / 1000);
+                    params.api_key = FLOMO_API_KEY;
+                    params.app_version = FLOMO_APP_VERSION;
+                    params.platform = FLOMO_PLATFORM;
+                    params.webp = '1';
+                    params.supports_video = 1;
+                    params.sign = this._flomoSign(params);
+                    return params;
+                };
+
+                /* 拉取登录用的图片验证码：GET /app/captcha/ → { code_key, image(内联 base64) } */
+                this._flomoFetchCaptcha = async () => {
                     try {
-                        const ts = Math.floor(Date.now() / 1000).toString();
-                        const params = { api_key: FLOMO_API_KEY, app_version: FLOMO_APP_VERSION, email: username, password, timestamp: ts, webp: '1' };
-                        params.sign = this._flomoSign(params);
+                        const params = this._flomoBuildParams({});
+                        const qs = Object.keys(params).sort().map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
+                        const data = await this._flomoFetch(FLOMO_API_BASE + '/app/captcha/?' + qs, { headers: { 'Accept': 'application/json' } });
+                        if (data && (data.code === 0 || data.code === '0') && data.data && data.data.image) {
+                            return { key: data.data.code_key || '', image: data.data.image };
+                        }
+                        return null;
+                    } catch (e) { return null; }
+                };
+
+                this._flomoLogin = async (username, password, captcha) => {
+                    try {
+                        const body = {
+                            email: username,
+                            password: password,
+                            wechat_union_id: '',
+                            wechat_oa_open_id: '',
+                            apple_sub: '',
+                            huawei_union_id: '',
+                            huawei_open_id: ''
+                        };
+                        if (captcha && captcha.key && captcha.code) {
+                            body.captcha_code_key = captcha.key;
+                            body.captcha_code = captcha.code;
+                        }
+                        const params = this._flomoBuildParams(body);
                         const formBody = Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
-                        const data = await this._flomoFetch(FLOMO_API_BASE + '/user/login_by_email', {
-                            method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'siyuan-lumina/1.0' }, body: formBody
+                        const data = await this._flomoFetch(FLOMO_API_BASE + FLOMO_LOGIN_PATH, {
+                            method: 'POST',
+                            /* 只用简单请求头，避免触发 CORS 预检（Flomo 仅放行 content-type） */
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: formBody
                         });
-                        if (data.code === 0 && data.data && data.data.access_token) {
+                        if ((data.code === 0 || data.code === '0') && data.data && data.data.access_token) {
                             this.flomoConfig.username = username;
                             this.flomoConfig.password = password;
                             this.flomoConfig.accessToken = data.data.access_token;
                             await this._saveFlomoConfig();
                             return { success: true, message: '登录成功' };
                         }
+                        const code = Number(data.code);
                         let errMsg = data.message || '登录失败';
+                        /* 风控要求图片验证码：把图形拉回来交给登录弹窗展示 */
+                        if (code === FLOMO_CAPTCHA_CODE || /验证码/.test(errMsg)) {
+                            const captchaData = await this._flomoFetchCaptcha();
+                            return {
+                                success: false,
+                                needCaptcha: !!captchaData,
+                                captcha: captchaData,
+                                message: captchaData ? (errMsg || '请输入图片验证码') : 'Flomo 要求图片验证码，但获取失败，请稍后重试'
+                            };
+                        }
+                        if (/当前版本不支持登录验证/.test(errMsg)) errMsg = 'Flomo 登录接口已升级，请更新插件到最新版本';
                         if (errMsg === 'gogogo') errMsg = '登录过于频繁，请稍后再试（Flomo 限流）';
                         return { success: false, message: errMsg };
                     } catch (e) { return { success: false, message: '登录失败: ' + e.message }; }
@@ -12079,12 +12207,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     try {
                         while (true) {
                             if (++pageGuard > 500) { showMessage(lunaT('已拉取页数过多，已停止以防卡死')); break; }
-                            const ts = Math.floor(Date.now() / 1000).toString();
-                            const params = { api_key: FLOMO_API_KEY, app_version: FLOMO_APP_VERSION, latest_slug: latestSlug, latest_updated_at: cursorTime, limit: '200', timestamp: ts, tz: '8:0', webp: '1' };
-                            params.sign = this._flomoSign(params);
+                            const params = this._flomoBuildParams({ latest_slug: latestSlug, latest_updated_at: cursorTime, limit: '200', tz: '8:0' });
                             const qs = Object.keys(params).sort().map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
                             const data = await this._flomoFetch(FLOMO_API_BASE + '/memo/updated?' + qs, {
-                                headers: { 'Authorization': `Bearer ${this.flomoConfig.accessToken}`, 'Content-Type': 'application/json', 'User-Agent': 'siyuan-lumina/1.0' }
+                                headers: { 'Authorization': `Bearer ${this.flomoConfig.accessToken}` }
                             });
                             if (data.code !== 0 || !Array.isArray(data.data)) break;
                             allMemos.push(...data.data);
@@ -12103,10 +12229,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         this.flomoConfig.lastSyncTime = plugin._formatLocalDateTime(Date.now());
                         await this._saveFlomoConfig();
                         if (stats) {
+                            const toBreeze = stats.target === 'breeze';
+                            const where = toBreeze ? '已写入清风笔记' : '已写入日记（清风视图不显示）';
                             if (stats.added === 0) {
                                 showMessage(stats.skipped ? `同步完成：笔记均已是最新（${stats.skipped} 条已删除或已同步）` : '同步完成：没有新笔记');
                             } else {
-                                let msg = `同步完成：新增 ${stats.added} 条`;
+                                let msg = `同步完成：新增 ${stats.added} 条，${where}`;
                                 if (stats.skipped) msg += `，跳过 ${stats.skipped} 条`;
                                 if (stats.imgFail) msg += `，${stats.imgFail} 张图片下载失败`;
                                 showMessage(msg);
@@ -12118,7 +12246,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                 this._saveFlomoMemos = async (memos, isFullSync) => {
                     if (!memos.length) { showMessage(lunaT('没有新笔记需要同步')); return; }
-                    const t = this.flomoConfig.syncTarget || 'breeze';
+                    const t = this._flomoTarget();
                     const slugSet = new Set(isFullSync ? [] : (this.flomoConfig.flomoSyncedSlugs || []));
                     let added = 0;
                     let skipped = 0;
@@ -12222,11 +12350,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         }
                         if (t === 'breeze') {
                             const note = { id: 'flomo_' + m.slug, time: m.created_at ? plugin._formatLocalDateTime(new Date(m.created_at)).slice(0, 16) : plugin._formatLocalDateTime(Date.now()).slice(0, 16), content, images: imgs, files: [], source: 'flomo' };
-                            const list = plugin.data[RECORDS_STORAGE].breezeNotes || [];
+                            /* 存储可能还没初始化（全新库/数据被清过），兜底建一个，否则这里会抛错中断整轮同步 */
+                            const store = plugin.data[RECORDS_STORAGE] || (plugin.data[RECORDS_STORAGE] = { breezeNotes: [], tagMeta: {}, breezeReviewHistory: {} });
+                            if (!Array.isArray(store.breezeNotes)) store.breezeNotes = [];
+                            const list = store.breezeNotes;
                             const existIdx = list.findIndex(n => n.id === note.id);
                             /* 已存在（如全量重新同步）：覆盖更新，让重新下载的原图生效，避免重复添加同一条 flomo 笔记 */
                             if (existIdx >= 0) list[existIdx] = note;
-                            else plugin.data[RECORDS_STORAGE].breezeNotes = [note].concat(list);
+                            else store.breezeNotes = [note].concat(list);
                         } else {
                             /* 跟随数据同步设置：每日日记 */
                             const syncSettings = (plugin.data[SETTINGS_STORAGE] || {}).settings || {};
@@ -12260,7 +12391,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         /* Dock 面板同步刷新（不受当前视图限制） */
                         plugin._breezeNotifyDockChanged && plugin._breezeNotifyDockChanged();
                     }
-                    return { added, skipped, imgFail, total: memos.length };
+                    return { added, skipped, imgFail, total: memos.length, target: t };
                 };
 
                 this._flomoUploadImage = async (url) => {
@@ -13848,7 +13979,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._editLifeLogBlock = async (blockId) => {
                     if (!blockId) return;
                     /* LifeLog 记录 id 可能以 lifelog_ 开头，实际块 ID 不含此前缀 */
-                    const bid = String(blockId).replace(/^lifelog_/, '');
+                    const bid = String(blockId).replace(/^lifelog_dock_/, '').replace(/^lifelog_/, '');
                     const safeBid = breezeValidSqlId(bid);
                     /* 查询块原始内容 */
                     let originalContent = '';
@@ -13889,16 +14020,64 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
                     overlay.querySelector('#lifelog-edit-save').onclick = async () => {
                         const newContent = overlay.querySelector('#lifelog-edit-content').value.trim();
-                        if (!newContent) { close(); return; }
+                        if (!newContent) { showMessage(lunaT('内容不能为空')); return; }
+                        const saveBtn = overlay.querySelector('#lifelog-edit-save');
+                        saveBtn.disabled = true;
                         try {
-                            const resp = await fetch('/api/block/updateBlock', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ id: bid, dataType: 'markdown', data: newContent })
+                            const tk = window.siyuan?.config?.api?.token || '';
+                            const hdrs = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
+                            const post = async (url, body) => {
+                                const r = await fetch(url, { method: 'POST', headers: hdrs, body: JSON.stringify(body) });
+                                return r.json().catch(() => null);
+                            };
+                            /* 先备份 custom-lifelog-*：视图的 SQL 靠 date/time/type 三个属性做 INNER JOIN，
+                               属性一旦被 markdown 重建冲掉，这条记录就再也查不出来（永久消失） */
+                            let keep = {};
+                            try {
+                                const ar = await post('/api/attr/getBlockAttrs', { id: bid });
+                                if (ar && ar.code === 0 && ar.data) {
+                                    Object.keys(ar.data).forEach((k) => {
+                                        if (/^custom-lifelog-/.test(k)) keep[k] = ar.data[k];
+                                    });
+                                }
+                            } catch (e) { /* 读不到属性就只做内容更新 */ }
+                            const ur = await post('/api/block/updateBlock', { id: bid, dataType: 'markdown', data: newContent });
+                            if (!ur || ur.code !== 0) {
+                                saveBtn.disabled = false;
+                                showMessage(lunaT('保存失败，请重试'));
+                                return;
+                            }
+                            /* 属性写回：date/time/type 用原值覆盖（实测 updateBlock 不会丢，但旧内核/异常路径不保证，
+                               缺一个就等于这条记录从 SQL 里彻底消失）；content / updated 是外部 LifeLog 插件读的冗余字段，
+                               不同步会一直显示旧正文，看起来就像「编辑完记录坏了」 */
+                            const attrs = {};
+                            ['custom-lifelog-date', 'custom-lifelog-time', 'custom-lifelog-type'].forEach((k) => {
+                                if (keep[k]) attrs[k] = keep[k];
                             });
-                            const json = await resp.json();
-                            if (json.code === 0) close();
-                        } catch (e) { /* silent */ }
+                            if (Object.prototype.hasOwnProperty.call(keep, 'custom-lifelog-content')) {
+                                let pure = newContent.replace(/^\s*\d{1,2}:\d{2}(?::\d{2})?\s*/, '').trim();
+                                const tyName = String(keep['custom-lifelog-type'] || '').replace(/[：:].*$/, '').trim();
+                                if (tyName) {
+                                    try {
+                                        pure = pure.replace(new RegExp('^' + tyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[：:]\\s*'), '').trim();
+                                    } catch (e) { /* 类型里有正则特殊字符就不剥前缀 */ }
+                                }
+                                attrs['custom-lifelog-content'] = pure;
+                            }
+                            if (Object.prototype.hasOwnProperty.call(keep, 'custom-lifelog-updated')) {
+                                attrs['custom-lifelog-updated'] = plugin._formatLocalDateTime(Date.now());
+                            }
+                            if (Object.keys(attrs).length) {
+                                try { await post('/api/attr/setBlockAttrs', { id: bid, attrs }); } catch (e) { /* best-effort */ }
+                            }
+                            close();
+                            /* flush 索引 + 清缓存 + 重绘：不做这步，切回视图会因为 SQL 索引没更新而「看不到这条」 */
+                            try { await plugin._refreshLifeLogAfterEdit(); } catch (e) { /* noop */ }
+                            showMessage(lunaT('已保存'));
+                        } catch (e) {
+                            saveBtn.disabled = false;
+                            showMessage(lunaT('保存失败，请重试'));
+                        }
                     };
                 };
 
@@ -13906,7 +14085,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._openLifeLogBlock = async (blockId) => {
                     if (!blockId) return;
                     /* LifeLog 记录 id 可能以 lifelog_ 开头，实际块 ID 不含此前缀 */
-                    const bid = String(blockId).replace(/^lifelog_/, '');
+                    const bid = String(blockId).replace(/^lifelog_dock_/, '').replace(/^lifelog_/, '');
                     if (typeof openTab === 'function' && plugin && plugin.app) {
                         try {
                             openTab({ app: plugin.app, doc: { id: bid, action: ['cb-get-hl', 'cb-get-context'] } });
@@ -22135,7 +22314,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this._editLifeLogBlock = async (blockId) => {
             if (!blockId) return;
             /* LifeLog 记录 id 可能以 lifelog_ 开头，实际块 ID 不含此前缀 */
-            const bid = String(blockId).replace(/^lifelog_/, '');
+            const bid = String(blockId).replace(/^lifelog_dock_/, '').replace(/^lifelog_/, '');
             const safeBid = breezeValidSqlId(bid);
             /* 查询块原始内容 */
             let originalContent = '';
@@ -22176,16 +22355,64 @@ module.exports = class NorthLunaPlugin extends Plugin {
             overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
             overlay.querySelector('#lifelog-edit-save').onclick = async () => {
                 const newContent = overlay.querySelector('#lifelog-edit-content').value.trim();
-                if (!newContent) { close(); return; }
+                if (!newContent) { showMessage(lunaT('内容不能为空')); return; }
+                const saveBtn = overlay.querySelector('#lifelog-edit-save');
+                saveBtn.disabled = true;
                 try {
-                    const resp = await fetch('/api/block/updateBlock', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: bid, dataType: 'markdown', data: newContent })
+                    const tk = window.siyuan?.config?.api?.token || '';
+                    const hdrs = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
+                    const post = async (url, body) => {
+                        const r = await fetch(url, { method: 'POST', headers: hdrs, body: JSON.stringify(body) });
+                        return r.json().catch(() => null);
+                    };
+                    /* 先备份 custom-lifelog-*：视图的 SQL 靠 date/time/type 三个属性做 INNER JOIN，
+                       属性一旦被 markdown 重建冲掉，这条记录就再也查不出来（永久消失） */
+                    let keep = {};
+                    try {
+                        const ar = await post('/api/attr/getBlockAttrs', { id: bid });
+                        if (ar && ar.code === 0 && ar.data) {
+                            Object.keys(ar.data).forEach((k) => {
+                                if (/^custom-lifelog-/.test(k)) keep[k] = ar.data[k];
+                            });
+                        }
+                    } catch (e) { /* 读不到属性就只做内容更新 */ }
+                    const ur = await post('/api/block/updateBlock', { id: bid, dataType: 'markdown', data: newContent });
+                    if (!ur || ur.code !== 0) {
+                        saveBtn.disabled = false;
+                        showMessage(lunaT('保存失败，请重试'));
+                        return;
+                    }
+                    /* 属性写回：date/time/type 用原值覆盖（实测 updateBlock 不会丢，但旧内核/异常路径不保证，
+                       缺一个就等于这条记录从 SQL 里彻底消失）；content / updated 是外部 LifeLog 插件读的冗余字段，
+                       不同步会一直显示旧正文，看起来就像「编辑完记录坏了」 */
+                    const attrs = {};
+                    ['custom-lifelog-date', 'custom-lifelog-time', 'custom-lifelog-type'].forEach((k) => {
+                        if (keep[k]) attrs[k] = keep[k];
                     });
-                    const json = await resp.json();
-                    if (json.code === 0) close();
-                } catch (e) { /* silent */ }
+                    if (Object.prototype.hasOwnProperty.call(keep, 'custom-lifelog-content')) {
+                        let pure = newContent.replace(/^\s*\d{1,2}:\d{2}(?::\d{2})?\s*/, '').trim();
+                        const tyName = String(keep['custom-lifelog-type'] || '').replace(/[：:].*$/, '').trim();
+                        if (tyName) {
+                            try {
+                                pure = pure.replace(new RegExp('^' + tyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[：:]\\s*'), '').trim();
+                            } catch (e) { /* 类型里有正则特殊字符就不剥前缀 */ }
+                        }
+                        attrs['custom-lifelog-content'] = pure;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(keep, 'custom-lifelog-updated')) {
+                        attrs['custom-lifelog-updated'] = this._formatLocalDateTime(Date.now());
+                    }
+                    if (Object.keys(attrs).length) {
+                        try { await post('/api/attr/setBlockAttrs', { id: bid, attrs }); } catch (e) { /* best-effort */ }
+                    }
+                    close();
+                    /* flush 索引 + 清缓存 + 重绘：不做这步，切回视图会因为 SQL 索引没更新而「看不到这条」 */
+                    try { await this._refreshLifeLogAfterEdit(); } catch (e) { /* noop */ }
+                    showMessage(lunaT('已保存'));
+                } catch (e) {
+                    saveBtn.disabled = false;
+                    showMessage(lunaT('保存失败，请重试'));
+                }
             };
         };
         
@@ -22193,7 +22420,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this._openLifeLogBlock = async (blockId) => {
             if (!blockId) return;
             /* LifeLog 记录 id 可能以 lifelog_ 开头，实际块 ID 不含此前缀 */
-            const bid = String(blockId).replace(/^lifelog_/, '');
+            const bid = String(blockId).replace(/^lifelog_dock_/, '').replace(/^lifelog_/, '');
             if (typeof openTab === 'function' && this && this.app) {
                 try {
                     openTab({ app: this.app, doc: { id: bid, action: ['cb-get-hl', 'cb-get-context'] } });
@@ -22723,6 +22950,45 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this._lifelogDockCache = null;
         this._lifelogDockCacheTime = 0;
         return { ok: true, msg: '时间已修改', moved, blockId: bid, date: newDate, time: normTime };
+    }
+
+    /* ============================================================
+     * LifeLog · 编辑正文后的统一收尾
+     *
+     * 视图数据来自 SQL：INNER JOIN attributes(custom-lifelog-date/time/type) 且 b.type='p'。
+     * 编辑正文走的是 /api/block/updateBlock（markdown 整体替换），这条链路有两个坑：
+     *   1) 思源 SQL 索引是异步更新的，写完立刻切回视图查不到这条 → 表现为「一确认，笔记就没了」；
+     *   2) updateBlock 按 markdown 重建块，块的 custom-lifelog-* 属性有被冲掉的风险，
+     *      属性一旦缺失，SQL 的 INNER JOIN 就再也匹配不到这条记录（永久消失）。
+     * 所以保存后必须：写回属性 → flush 索引 → 清缓存 → 按当前筛选重绘。
+     * ============================================================ */
+    async _refreshLifeLogAfterEdit() {
+        const tk = window.siyuan?.config?.api?.token || '';
+        const hdrs = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
+        try {
+            await fetch('/api/sqlite/flushTransaction', { method: 'POST', headers: hdrs, body: '{}' });
+        } catch (e) { /* 索引延时无法强行保证，失败也不阻断重绘 */ }
+        this._lifelogCache = null;
+        this._lifelogCacheTime = 0;
+        this._lifelogDockCache = null;
+        this._lifelogDockCacheTime = 0;
+        /* 主视图的渲染跑在 tab 上下文里，它自己还有一份 30s 缓存，不清掉会拿旧数组渲染 */
+        try {
+            if (this._siyuTab) { this._siyuTab._lifelogCache = null; this._siyuTab._lifelogCacheTime = 0; }
+            if (this._lunaDockCtx) { this._lunaDockCtx._lifelogCache = null; this._lunaDockCtx._lifelogCacheTime = 0; }
+        } catch (e) { /* noop */ }
+        const body = document.querySelector('.north-lifelog-container');
+        if (!body) return;
+        try {
+            if (this._loadLifeLogData) await this._loadLifeLogData(true);
+            const inputEl = body.querySelector('#lifelogSearchInput');
+            if (this._renderLifeLogTimeline) this._renderLifeLogTimeline(body, inputEl ? inputEl.value.trim() : '');
+            if (this._renderLifeLogTypesCloud) this._renderLifeLogTypesCloud(body);
+            if (this._renderLifeLogHeatmap) this._renderLifeLogHeatmap(body);
+            if (this._renderLifeLogWeekStrip) this._renderLifeLogWeekStrip(body);
+            if (this._updateLifeLogStats) this._updateLifeLogStats(body);
+            if (this._renderLifeLogMobileStats) this._renderLifeLogMobileStats(body);
+        } catch (e) { /* noop */ }
     }
 
     _renderLifeLogDockContent(root) {

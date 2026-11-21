@@ -67,6 +67,11 @@ Plugin data is kept under the plugin's own storage (`lumina-records`, `lumina-mo
 
 ## Changelog
 
+### v2.5.5
+- **Fix** — Flomo sign-in stopped working after Flomo changed its login endpoint. Sign-in and sync are back.
+- **Fix** — editing a LifeLog record made it disappear from the timeline.
+- **Improved** — Flomo notes now sync into Breeze by default instead of the daily note.
+
 ### v2.5.4
 - **Fix** — on mobile, the plugin's dock entry disappeared after being opened once; the drawer's entry bar is no longer hidden.
 - **New** — multilingual interface: follows SiYuan's UI language across settings, views, toolbars, dates and notifications.

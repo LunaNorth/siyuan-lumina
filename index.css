@@ -6829,6 +6829,35 @@
     font-size: 12px;
     margin-top: 10px;
 }
+/* 图片验证码行：默认隐藏，Flomo 风控要求时才展开 */
+.north-luna-flomo-captcha-row {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    width: 75%;
+    margin: 0 auto 8px;
+}
+.north-luna-flomo-captcha-row.active {
+    display: flex;
+}
+.north-luna-flomo-captcha-img {
+    flex: 0 0 auto;
+    width: 100px;
+    height: 34px;
+    object-fit: contain;
+    border-radius: 6px;
+    border: 1px solid var(--b3-border-color);
+    background: #fff;
+    cursor: pointer;
+    user-select: none;
+}
+#flomo-dlg-panel .north-luna-flomo-captcha-input {
+    flex: 1 1 auto;
+    width: auto !important;
+    margin: 0 !important;
+    text-align: left;
+    letter-spacing: 2px;
+}
 
 /* 展示型值 */
 .north-luna-settings-avatar-card {
