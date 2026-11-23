@@ -63,7 +63,7 @@ Plugin data is kept under the plugin's own storage (`lumina-records`, `lumina-mo
 
 SiYuan 3.8.0 and later ship a built-in MCP server, so an AI client can read your Lumina notes and add new ones through a small inbox file. No extra MCP server needs to be installed.
 
-Full guide (client setup, reading, writing, troubleshooting): **[docs/mcp.md](docs/mcp.md)** · [中文](docs/mcp.zh-CN.md)
+Full guide (client setup, reading, writing, troubleshooting): **[docs/mcp.md](https://github.com/LunaNorth/siyuan-lumina/blob/main/docs/mcp.md)** · [中文](https://github.com/LunaNorth/siyuan-lumina/blob/main/docs/mcp.zh-CN.md)
 
 ## Feedback
 
@@ -75,7 +75,7 @@ Full guide (client setup, reading, writing, troubleshooting): **[docs/mcp.md](do
 
 ### v2.5.7
 - **New** — works with AI: SiYuan 3.8+ ships an MCP server, so an AI client can read your Lumina notes and add new ones through an inbox file (Settings → Data sync → AI / MCP).
-- **Note** — there is no extra MCP server to install; see [docs/mcp.md](docs/mcp.md) for setup.
+- **Note** — there is no extra MCP server to install; see [docs/mcp.md](https://github.com/LunaNorth/siyuan-lumina/blob/main/docs/mcp.md) for setup.
 
 ### v2.5.6
 - **Fix** — in LifeLog, tapping Save spun and then went back to normal without saving anything. Most likely when the notebook has no daily-note path set, or after settings were reset on a new device.

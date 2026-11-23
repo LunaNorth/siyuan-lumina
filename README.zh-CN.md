@@ -27,7 +27,7 @@
 
 思源 3.8.0 起内核自带 MCP 服务，AI 可以直接读轻语里的笔记，也能把内容写进清风笔记——不需要安装任何额外的 MCP 服务器。
 
-完整教程（客户端连接、读取数据、写入收件箱、故障排查）：**[docs/mcp.zh-CN.md](docs/mcp.zh-CN.md)** · [English](docs/mcp.md)
+完整教程（客户端连接、读取数据、写入收件箱、故障排查）：**[中文教程](https://github.com/LunaNorth/siyuan-lumina/blob/main/docs/mcp.zh-CN.md)** · [English](https://github.com/LunaNorth/siyuan-lumina/blob/main/docs/mcp.md)
 
 ## 更新日志
 
@@ -35,17 +35,13 @@
 
 ### v2.5.7
 - 【新增】支持配合 AI 使用：思源 3.8 及以上版本自带 MCP，AI 可以直接读轻语里的笔记，也能通过「AI 收件箱」把内容写进清风笔记（开关在「设置 → 数据同步 → AI / MCP」）
-- 【说明】不需要额外安装任何 MCP 服务，连接与使用方法见 [docs/mcp.zh-CN.md](docs/mcp.zh-CN.md)
+- 【说明】不需要额外安装任何 MCP 服务，连接与使用方法见 [MCP 使用教程](https://github.com/LunaNorth/siyuan-lumina/blob/main/docs/mcp.zh-CN.md)
 
 ### v2.5.6
 - 【修复】LifeLog 点「记录」后只转圈、内容没写进去（多见于没有设置日记保存路径的笔记本，或在新设备上配置被重置后）
 - 【修复】记录失败时没有任何提示，看起来像点了没反应；现在会直接说明失败原因
 - 【优化】LifeLog 写入更稳：日记相关设置不完整时也能正常记录，不再整条失败
 
-### v2.5.5
-- 【修复】Flomo 登录失效：官方接口升级后无法登录，同步随之中断
-- 【修复】LifeLog 记录编辑后从时间轴消失
-- 【优化】Flomo 同步默认写入清风笔记
 
 
 
@@ -68,6 +64,12 @@
 
 <details>
 <summary>往期更新记录</summary>
+
+### v2.5.5
+- 【修复】Flomo 登录失效：官方接口升级后无法登录，同步随之中断
+- 【修复】LifeLog 记录编辑后从时间轴消失
+- 【优化】Flomo 同步默认写入清风笔记
+
 
 ### v2.5.4
 - 【修复】移动端插件入口点过一次后消失、无法再进入
