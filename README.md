@@ -59,6 +59,12 @@ Want another language? Contributions are welcome.
 
 Plugin data is kept under the plugin's own storage (`lumina-records`, `lumina-moments`, `lumina-travel`, `lumina-settings`). Uninstalling the plugin keeps your notes and moments; only the settings file is removed.
 
+## Use with AI (MCP)
+
+SiYuan 3.8.0 and later ship a built-in MCP server, so an AI client can read your Lumina notes and add new ones through a small inbox file. No extra MCP server needs to be installed.
+
+Full guide (client setup, reading, writing, troubleshooting): **[docs/mcp.md](docs/mcp.md)** · [中文](docs/mcp.zh-CN.md)
+
 ## Feedback
 
 - Bugs, ideas and translation fixes: [community thread](https://ld246.com/article/1777266791604) or [open an issue](https://github.com/LunaNorth/siyuan-lumina/issues).
@@ -66,6 +72,10 @@ Plugin data is kept under the plugin's own storage (`lumina-records`, `lumina-mo
 - The in-app guide is Chinese-only for now; English documentation is being added gradually. Ask in the thread and I will reply in English.
 
 ## Changelog
+
+### v2.5.7
+- **New** — works with AI: SiYuan 3.8+ ships an MCP server, so an AI client can read your Lumina notes and add new ones through an inbox file (Settings → Data sync → AI / MCP).
+- **Note** — there is no extra MCP server to install; see [docs/mcp.md](docs/mcp.md) for setup.
 
 ### v2.5.6
 - **Fix** — in LifeLog, tapping Save spun and then went back to normal without saving anything. Most likely when the notebook has no daily-note path set, or after settings were reset on a new device.

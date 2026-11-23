@@ -5345,6 +5345,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
         // 5. 所有数据加载完毕 → 检测轻语旧数据
         Promise.all([_loadRecords, _loadSettings]).then(() => {
             this._maybeAutoImportLumina();
+            /* MCP 收件箱：等 notes / settings 就绪后再开始轮询，
+               避免 AI 写入时记录列表还是空壳（addBreezeNote 会基于 this.data 落盘） */
+            try { this._startMcpInboxWatcher(); } catch (e) { /* noop */ }
         }).catch(() => {});
 
         this.addTab({
@@ -8776,6 +8779,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         ]},
                         { title: 'Flomo 同步', items: [
                             { type: 'flomo', key: 'flomo' }
+                        ]},
+                        { title: 'AI / MCP', items: [
+                            { type: 'toggle', key: 'mcpInbox', title: '接收 AI 写入（MCP 收件箱）', desc: '配合思源 3.8 及以上版本内置的 MCP 使用：AI 往 data/storage/petal/siyuan-lumina/mcp-inbox.txt 里按行写入内容，插件每 30 秒取走一次并收进清风笔记，随后清空该文件。关闭后 AI 只能读、不能写。默认开启。', default: true }
                         ]}
                     ]},
                     lifelog: { label: 'LifeLog设置', icon: 'iconKeymap', groups: [
@@ -15367,6 +15373,126 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return note;
     }
 
+    /* ============================================================
+     * MCP 收件箱：让 AI 通过「思源内置 MCP」把内容写进清风笔记
+     *
+     * 为什么不自己实现 MCP Server：
+     *   思源 3.8.0 起内核自带 MCP（POST /mcp，Streamable HTTP，需管理员 token），
+     *   AI 客户端连上就能拿到 file / http_request / sql / search 等一整套工具；
+     *   而插件跑在渲染进程（WebView）里，既开不了监听端口，也起不了 stdio 子进程，
+     *   硬做只会多出一个要长期维护的安装包。
+     *
+     * 所以插件这边只约定一个「收件箱」文件，AI 往里按行追加，插件定时取走：
+     *   路径：data/storage/petal/<插件名>/mcp-inbox.txt
+     *   格式：一行一条；空行、以 # 或 // 开头的行忽略；行首的 - * + 会自动去掉
+     * 取走后清空文件；清空失败时靠本次会话的已读集合兜底，不会重复导入。
+     * 写入走的是 addBreezeNote（与手动发布同一条链路），所以标签、@、链接解析、
+     * 视图刷新都和手动输入完全一致。
+     * ============================================================ */
+    _mcpInboxFilePath() {
+        return `data/storage/petal/${this.name || 'siyuan-lumina'}/mcp-inbox.txt`;
+    }
+
+    _mcpInboxEnabled() {
+        try {
+            if (typeof this._getPluginSetting === 'function') return this._getPluginSetting('mcpInbox') !== false;
+        } catch (e) { /* fall through */ }
+        const st = ((this.data || {})[SETTINGS_STORAGE] || {}).settings || {};
+        return st.mcpInbox !== false;
+    }
+
+    _startMcpInboxWatcher() {
+        if (this._mcpInboxTimer || !this._mcpInboxEnabled()) return;
+        /* 首次延迟 6s：避开插件刚加载时的数据与索引抖动；之后 30s 一轮。
+           文件通常只有几十字节，一次本地 getFile 开销可忽略；页面在后台时跳过。 */
+        this._mcpInboxFirstTimer = setTimeout(() => this._mcpInboxTick(), 6000);
+        this._mcpInboxTimer = setInterval(() => this._mcpInboxTick(), 30000);
+    }
+
+    _stopMcpInboxWatcher() {
+        if (this._mcpInboxFirstTimer) { clearTimeout(this._mcpInboxFirstTimer); this._mcpInboxFirstTimer = null; }
+        if (this._mcpInboxTimer) { clearInterval(this._mcpInboxTimer); this._mcpInboxTimer = null; }
+    }
+
+    async _mcpInboxTick() {
+        if (this._mcpInboxBusy || !this._mcpInboxEnabled()) return;
+        if (typeof document !== 'undefined' && document.hidden) return;
+        this._mcpInboxBusy = true;
+        try {
+            const n = await this._consumeMcpInbox();
+            if (n > 0) console.log('[Lumina] MCP 收件箱：已收下 ' + n + ' 条');
+        } catch (e) {
+            console.warn('[Lumina] MCP 收件箱处理失败:', e && e.message);
+        } finally {
+            this._mcpInboxBusy = false;
+        }
+    }
+
+    async _readMcpInboxFile() {
+        const tk = window.siyuan?.config?.api?.token || '';
+        const hh = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
+        try {
+            const resp = await fetch('/api/file/getFile', {
+                method: 'POST',
+                headers: hh,
+                body: JSON.stringify({ path: '/' + this._mcpInboxFilePath() })
+            });
+            if (!resp || !resp.ok) return '';
+            const text = await resp.text();
+            /* 文件不存在时内核回的是 {"code":404,...} 这样的 JSON，而不是正文 */
+            const t = String(text || '').trim();
+            if (t.startsWith('{') && t.endsWith('}')) {
+                try {
+                    const j = JSON.parse(t);
+                    if (j && typeof j === 'object' && typeof j.code === 'number') return '';
+                } catch (e) { /* 正文恰好长得像 JSON，按普通文本处理 */ }
+            }
+            return text;
+        } catch (e) { return ''; }
+    }
+
+    async _clearMcpInboxFile() {
+        const tk = window.siyuan?.config?.api?.token || '';
+        const headers = tk ? { 'Authorization': 'Token ' + tk } : {};
+        try {
+            const form = new FormData();
+            form.append('path', this._mcpInboxFilePath());
+            form.append('file', new File([new Blob([''], { type: 'text/plain' })], 'mcp-inbox.txt', { type: 'text/plain' }));
+            form.append('isDir', 'false');
+            const resp = await fetch('/api/file/putFile', { method: 'POST', body: form, headers });
+            const json = await resp.json().catch(() => null);
+            return !!(json && json.code === 0);
+        } catch (e) { return false; }
+    }
+
+    async _consumeMcpInbox() {
+        const text = await this._readMcpInboxFile();
+        if (!text || !String(text).trim()) return 0;
+        const lines = String(text).split(/\r?\n/)
+            .map(l => l.replace(/^[-*+]\s+/, '').trim())
+            .filter(l => l && !l.startsWith('#') && !l.startsWith('//'));
+        if (!lines.length) { await this._clearMcpInboxFile(); return 0; }
+        if (!this._mcpInboxSeen) this._mcpInboxSeen = new Set();
+        const key = (s) => s.slice(0, 120);
+        const pending = lines.filter(l => !this._mcpInboxSeen.has(key(l))).length;
+        let done = 0;
+        for (const content of lines) {
+            if (this._mcpInboxSeen.has(key(content))) continue;
+            try {
+                await this.addBreezeNote({ content });
+                this._mcpInboxSeen.add(key(content));
+                done++;
+            } catch (e) {
+                console.warn('[Lumina] MCP 收件箱单条写入失败:', e && e.message);
+            }
+        }
+        /* 全部写成功才清空；有失败就把文件留着，下一轮只重试没成功的那几条 */
+        if (done >= pending) await this._clearMcpInboxFile();
+        /* 已读集合只在「文件没清成功」时有用，攒太多没意义，超过 500 条直接重置 */
+        if (this._mcpInboxSeen.size > 500) this._mcpInboxSeen = new Set();
+        return done;
+    }
+
     /* ===== 多端同步：从磁盘重新读取清风数据（lumina-records） =====
        移动端在清风视图写入的内容经思源同步落盘后，PC 端通过本方法重新读取最新数据，
        使移动端新内容在 PC 端生效。对齐轻语「说说」视图：reopen / refresh / switch 即重载。 */
@@ -19998,6 +20124,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
     }
 
     onunload() {
+        try { this._stopMcpInboxWatcher(); } catch (e) { /* noop */ }
         breezeUninstallLinkTitleObserver();
         breezeUninstallCodeHighlightObserver();
         this.unhookMobileGoBack();
