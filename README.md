@@ -67,6 +67,11 @@ Plugin data is kept under the plugin's own storage (`lumina-records`, `lumina-mo
 
 ## Changelog
 
+### v2.5.6
+- **Fix** — in LifeLog, tapping Save spun and then went back to normal without saving anything. Most likely when the notebook has no daily-note path set, or after settings were reset on a new device.
+- **Fix** — a failed save now tells you why, instead of doing nothing at all.
+- **Improved** — LifeLog saving is more forgiving: a record still goes through when the daily-note settings are incomplete.
+
 ### v2.5.5
 - **Fix** — Flomo sign-in stopped working after Flomo changed its login endpoint. Sign-in and sync are back.
 - **Fix** — editing a LifeLog record made it disappear from the timeline.

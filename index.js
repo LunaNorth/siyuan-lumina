@@ -50,6 +50,12 @@ function lunaT(key, zhText, vars) {
     return s;
 }
 
+/* 临时双语文案：i18n 词条表还没收录的新提示，按界面语言直接给两种写法。
+   用法 lunaLang('中文', 'English')，英文界面下返回英文，中文界面下返回中文。 */
+function lunaLang(zh, en) {
+    return LUNA_EN ? en : zh;
+}
+
 /* 日期类文案：月/日顺序与星期缩写不适合走词条表，按界面语言直接给两种写法 */
 let LUNA_EN = false;
 function lunaSetLang(lang) {
@@ -14201,11 +14207,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
                     /* 提交记录 */
                     const submit = async () => {
-                        if (!modalSubmit || !modalTextarea) return;
+                        if (!modalSubmit || !modalTextarea || modalSubmit.disabled) return;
                         const content = modalTextarea.value.trim();
                         if (!content) return;
                         modalSubmit.disabled = true;
-                        modalSubmit.textContent = '记录中…';
+                        modalSubmit.textContent = lunaLang('记录中…', 'Saving…');
                         try {
                             const now = new Date();
                             const p2 = (n) => String(n).padStart(2, '0');
@@ -14236,13 +14242,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                     }).catch(() => {});
                                 }, 400);
                             } else {
-                                plugin._lunaToast((res && res.msg) || '写入日记失败，请重试');
+                                plugin._lunaToast((res && res.msg) || lunaLang('写入日记失败，请重试', 'Failed to write, please retry'));
                             }
                         } catch (e) {
                             plugin._lunaToast(lunaT('提交失败：') + ((e && e.message) || e));
                         } finally {
                             modalSubmit.disabled = false;
-                            modalSubmit.textContent = '记录';
+                            modalSubmit.textContent = lunaT('记录');
+                            /* 失败时弹窗还开着、正文也还在：把焦点还给输入框，直接重试即可 */
+                            if (modal && modal.style.display !== 'none') { try { modalTextarea.focus(); } catch (err) {} }
                         }
                     };
 
@@ -22536,11 +22544,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
         
             /* 提交记录 */
             const submit = async () => {
-                if (!modalSubmit || !modalTextarea) return;
+                if (!modalSubmit || !modalTextarea || modalSubmit.disabled) return;
                 const content = modalTextarea.value.trim();
                 if (!content) return;
                 modalSubmit.disabled = true;
-                modalSubmit.textContent = '记录中…';
+                modalSubmit.textContent = lunaLang('记录中…', 'Saving…');
                 try {
                     const now = new Date();
                     const p2 = (n) => String(n).padStart(2, '0');
@@ -22571,13 +22579,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             }).catch(() => {});
                         }, 400);
                     } else {
-                        this._lunaToast((res && res.msg) || '写入日记失败，请重试');
+                        this._lunaToast((res && res.msg) || lunaLang('写入日记失败，请重试', 'Failed to write, please retry'));
                     }
                 } catch (e) {
                     this._lunaToast(lunaT('提交失败：') + ((e && e.message) || e));
                 } finally {
                     modalSubmit.disabled = false;
-                    modalSubmit.textContent = '记录';
+                    modalSubmit.textContent = lunaT('记录');
+                    /* 失败时弹窗还开着、正文也还在：把焦点还给输入框，直接重试即可 */
+                    if (modal && modal.style.display !== 'none') { try { modalTextarea.focus(); } catch (err) {} }
                 }
             };
         
@@ -22719,13 +22729,12 @@ module.exports = class NorthLunaPlugin extends Plugin {
     }
 
     /* ============================================================
-     * LifeLog · 添加记录（PC 主视图 / 移动端共用写入链路）
+     * LifeLog · 添加记录（PC 主视图 / 移动端 / 侧边栏 Dock 共用写入链路）
      *
-     * 背景：/api/block/appendDailyNoteBlock 的 notebook 是内核必填字段，
-     *   留空会直接返回 {"code":-1,"msg":"Field [notebook] is required"}，
-     *   旧实现「留空则使用思源默认日记笔记本」并不成立 → PC 端一提交就弹
-     *   「写入日记失败，请重试」（alert），移动端 alert 常被 WebView 拦掉，
-     *   表现为「点了记录没有任何反应」。
+     * notebook 是内核必填字段，留空直接返回 {"code":-1,"msg":"Field [notebook] is required"}；
+     * 更要紧的是笔记本的「日记保存路径」：为空或写成 "/" 时，appendDailyNoteBlock /
+     * createDailyNote 都会失败（内核报「请先在笔记本设置中指定日记保存路径」，
+     * 文案还随内核语言变化）。所以写入分了三级降级，详见 _appendLifeLogRecord。
      *
      * 另外：LifeLog 视图是按 blocks 上的 custom-lifelog-date / -time / -type
      *   三个属性检索记录的（SQL INNER JOIN attributes），只写正文不补属性，
@@ -22749,16 +22758,14 @@ module.exports = class NorthLunaPlugin extends Plugin {
         return (((this.data || {})[SETTINGS_STORAGE] || {}).settings || {})[key];
     }
 
-    /* 解析可用的日记笔记本 ID。
-       优先级：LifeLog 设置 → 数据同步的日记笔记本 → 已配置日记保存路径的笔记本 → 第一个未关闭笔记本。
-       解析结果带会话级缓存（设置改动后会先重新读取设置项，不会被缓存挡住）。 */
-    async _resolveLifeLogNotebookId() {
-        const configured = String(this._lifeLogSetting('lifelogNotebookId') || '').trim();
-        if (configured) return configured;
-        const syncNb = String(this._lifeLogSetting('dailyNotebookId') || '').trim();
-        if (syncNb) return syncNb;
-        if (this._lifelogNotebookIdCache) return this._lifelogNotebookIdCache;
-
+    /* 未关闭的笔记本列表（30 秒缓存）。
+       解析日记笔记本、校验「设置里写的笔记本是否还存在」都走这里，
+       避免每次提交都多打一次接口；列表本身很短，缓存也不占什么。 */
+    async _listOpenLifeLogNotebooks() {
+        const now = Date.now();
+        if (this._lifelogBoxesCache && this._lifelogBoxesCacheTime && (now - this._lifelogBoxesCacheTime < 30000)) {
+            return this._lifelogBoxesCache;
+        }
         const tk = window.siyuan?.config?.api?.token || '';
         const hh = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
         let boxes = [];
@@ -22769,13 +22776,48 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 ? json.data.notebooks.filter(b => b && b.id && !b.closed)
                 : [];
         } catch (e) { boxes = []; }
+        this._lifelogBoxesCache = boxes;
+        this._lifelogBoxesCacheTime = now;
+        return boxes;
+    }
+
+    /* 日记保存路径是否可用：空 或 "/" 内核都当作「未配置」。
+       见 kernel/model/file.go 的 CreateDailyNote：
+         if "" == boxConf.DailyNoteSavePath || "/" == boxConf.DailyNoteSavePath { 报错 }
+       所以这里必须一起排除 "/"，否则会挑到一个「看起来配了、其实写不进去」的笔记本。 */
+    _isUsableDailyNotePath(p) {
+        const s = String(p == null ? '' : p).trim();
+        return !!s && s !== '/';
+    }
+
+    /* 解析可用的日记笔记本 ID。
+       优先级：LifeLog 设置 → 数据同步的日记笔记本 → 已配置日记保存路径的笔记本 → 第一个未关闭笔记本。
+       配置里写的笔记本 ID 可能已经失效（换电脑、同步冲突、笔记本被删都发生过），
+       所以先拿未关闭笔记本列表校验一遍：不存在的直接忽略，否则一提交就是
+       「box not found」——用户只看到按钮转圈，根本不知道哪儿错了。 */
+    async _resolveLifeLogNotebookId() {
+        const boxes = await this._listOpenLifeLogNotebooks();
+        const hasBox = (id) => !!id && boxes.some(b => b && b.id === id);
+        /* 列表取不到（接口异常/网络抖动）时不做校验，照旧用配置值，免得彻底写不进去 */
+        const canUse = (id) => !!id && (hasBox(id) || boxes.length === 0);
+
+        const configured = String(this._lifeLogSetting('lifelogNotebookId') || '').trim();
+        if (canUse(configured)) return configured;
+        const syncNb = String(this._lifeLogSetting('dailyNotebookId') || '').trim();
+        if (canUse(syncNb)) return syncNb;
+        if (this._lifelogNotebookIdCache && (hasBox(this._lifelogNotebookIdCache) || boxes.length === 0)) {
+            return this._lifelogNotebookIdCache;
+        }
+
+        const tk = window.siyuan?.config?.api?.token || '';
+        const hh = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
         /* 优先挑「已配置日记保存路径」的笔记本，写进去才会落在正常日记里 */
         for (const box of boxes) {
             try {
                 const cr = await fetch('/api/notebook/getNotebookConf', { method: 'POST', headers: hh, body: JSON.stringify({ notebook: box.id }) });
                 const cj = await cr.json().catch(() => null);
                 const p = (cj && cj.code === 0 && cj.data && cj.data.conf && cj.data.conf.dailyNoteSavePath) || '';
-                if (String(p).trim()) {
+                if (this._isUsableDailyNotePath(p)) {
                     this._lifelogNotebookIdCache = box.id;
                     return box.id;
                 }
@@ -22789,60 +22831,155 @@ module.exports = class NorthLunaPlugin extends Plugin {
     }
 
     /* LifeLog 提示：移动端 WebView 里 alert 常被拦掉（点了没反应），
-       统一改成不阻塞的内联提示；PC 端也顺带避免 alert 冻结界面。 */
+       统一改成不阻塞的内联提示；PC 端也顺带避免 alert 冻结界面。
+       类名必须与 index.css 里的 .north-luna-toast 对上——之前这里写的是
+       north-lifelog-notify，CSS 里根本没有这个选择器，元素是个没样式的裸 div，
+       于是所有「写入失败」的提示都看不见，用户只看到按钮转一圈又恢复原样。 */
     _lunaToast(msg, isError = true) {
         const text = String(msg == null ? '' : msg);
         let el = document.getElementById('northLunaToast');
         if (!el) {
             el = document.createElement('div');
             el.id = 'northLunaToast';
-            el.className = 'north-lifelog-notify';
+            el.className = 'north-luna-toast';
             document.body.appendChild(el);
         }
         el.textContent = text;
         el.classList.toggle('is-error', !!isError);
         el.classList.add('show');
         clearTimeout(this._lunaToastTimer);
-        this._lunaToastTimer = setTimeout(() => { try { el.classList.remove('show'); } catch (e) {} }, 2800);
+        /* 报错信息可能很长（含内核返回的原因），多留点阅读时间 */
+        const dur = text.length > 60 ? 6000 : 2800;
+        this._lunaToastTimer = setTimeout(() => { try { el.classList.remove('show'); } catch (e) {} }, dur);
     }
 
     /* 追加一条 LifeLog 记录到「今天」的日记。
-       返回 { ok, msg, blockId, docId, notebookId }，调用方据此决定提示内容。 */
+       返回 { ok, msg, blockId, docId, notebookId }，调用方据此决定提示内容。
+
+       写入分三级，任一级成功就返回，前一级失败自动降级：
+         1) /api/block/appendDailyNoteBlock —— 内核标准链路，自动建当日日记、套用日记模板；
+         2) createDailyNote（或按路径建文档）→ /api/block/appendBlock —— 内核链路异常时的等价写法；
+         3) 笔记本没配日记保存路径时，按思源默认日记模板手动建文档再追加。
+       为什么要有 2、3：1 依赖笔记本的「日记保存路径」。路径为空或写成 "/" 时内核
+       直接报「请先在笔记本设置中指定日记保存路径」，且报错文案会跟随内核语言变化。
+       旧实现只有第 1 级，失败后提示又被 CSS 类名 bug 吃掉 → 用户看到的就是
+       「点记录，按钮转一圈，然后恢复原样，什么也没发生」。
+       三级全失败才返回 ok:false，并把每一级的真实报错拼出来，方便用户反馈。 */
     async _appendLifeLogRecord(markdown, meta) {
         const tk = window.siyuan?.config?.api?.token || '';
         const hh = Object.assign({ 'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Token ' + tk } : {});
+        const post = async (url, body) => {
+            try {
+                const resp = await fetch(url, { method: 'POST', headers: hh, body: JSON.stringify(body) });
+                return await resp.json().catch(() => null);
+            } catch (e) {
+                return { code: -1, msg: (e && e.message) || 'network error' };
+            }
+        };
         let notebookId = '';
         try {
             notebookId = await this._resolveLifeLogNotebookId();
         } catch (e) { notebookId = ''; }
         if (!notebookId) {
-            return { ok: false, msg: '未找到可写入的日记笔记本，请先在「轻语设置 → LifeLog」中选择日记笔记本' };
+            return {
+                ok: false,
+                msg: lunaLang(
+                    '未找到可写入的日记笔记本，请先在「轻语设置 → LifeLog」中选择日记笔记本',
+                    'No writable notebook found. Choose a daily-note notebook in Lumina settings → LifeLog.'
+                )
+            };
         }
-        let json = null;
-        try {
-            const resp = await fetch('/api/block/appendDailyNoteBlock', {
-                method: 'POST',
-                headers: hh,
-                body: JSON.stringify({ notebook: notebookId, dataType: 'markdown', data: markdown })
-            });
-            json = await resp.json().catch(() => null);
-        } catch (e) {
-            return { ok: false, msg: '网络异常：' + ((e && e.message) || e) };
+        const today = this._formatLocalDateTime(Date.now()).slice(0, 10);
+        const errors = [];
+        let picked = null;
+
+        /* 1) 内核标准链路 */
+        const json = await post('/api/block/appendDailyNoteBlock', { notebook: notebookId, dataType: 'markdown', data: markdown });
+        if (json && json.code === 0) {
+            picked = this._pickLifeLogAppendIds(json);
+        } else {
+            errors.push('appendDailyNoteBlock: ' + ((json && json.msg) || 'empty response'));
         }
-        if (!json || json.code !== 0) {
-            return { ok: false, msg: '写入日记失败：' + ((json && json.msg) || '未知错误') };
-        }
-        /* 从返回的 doOperations 中解析新块 ID 与所属文档 ID */
-        let blockId = '', docId = '';
-        const ops = Array.isArray(json.data) ? json.data : (json.data ? [json.data] : []);
-        for (const item of ops) {
-            const doOps = Array.isArray(item && item.doOperations) ? item.doOperations : [];
-            for (const op of doOps) {
-                if (op && op.id && !blockId) blockId = op.id;
-                if (op && op.parentID && !docId) docId = op.parentID;
+
+        /* 2) 等价写法：定位/新建当日日记文档 → appendBlock */
+        if (!picked) {
+            let docId = '';
+            try { docId = await this._resolveOrCreateDailyNoteDocId(notebookId, today); } catch (e) { docId = ''; }
+            if (docId) {
+                const j2 = await post('/api/block/appendBlock', { dataType: 'markdown', data: markdown, parentID: docId });
+                if (j2 && j2.code === 0) {
+                    picked = this._pickLifeLogAppendIds(j2);
+                    if (!picked.docId) picked.docId = docId;
+                } else {
+                    errors.push('appendBlock: ' + ((j2 && j2.msg) || 'empty response'));
+                }
+            } else {
+                errors.push('dailyNote: save path not configured');
             }
-            if (blockId && docId) break;
         }
+
+        /* 3) 兜底：笔记本没配日记路径 → 用思源默认日记模板手动建文档再追加。
+           路径模板与思源新建笔记本时的默认值一致，之后用户在笔记本设置里补上
+           同样的路径，历史记录仍落在同一个位置，不会变成孤岛。 */
+        if (!picked) {
+            const DEFAULT_DAILY_PATH = '/daily note/{{now | date "2006/01"}}/{{now | date "2006-01-02"}}';
+            let hpath = '';
+            try { hpath = this._renderDailyNotePath(DEFAULT_DAILY_PATH, today) || ''; } catch (e) { hpath = ''; }
+            let docId = '';
+            if (hpath) {
+                const ids = await post('/api/filetree/getIDsByHPath', { path: hpath, notebook: notebookId });
+                if (ids && ids.code === 0 && Array.isArray(ids.data) && ids.data.length) docId = ids.data[0];
+                if (!docId) {
+                    const cj = await post('/api/filetree/createDocWithMd', { notebook: notebookId, path: hpath, markdown: '' });
+                    if (cj && cj.code === 0 && cj.data) docId = String(cj.data);
+                    else errors.push('createDocWithMd: ' + ((cj && cj.msg) || 'empty response'));
+                }
+            }
+            if (docId) {
+                /* createDocWithMd 建出来的文档不带 custom-dailynote-*，补上才算真日记 */
+                try { await this._markDailyNoteAttr(docId, today); } catch (e) { /* best-effort */ }
+                const j3 = await post('/api/block/appendBlock', { dataType: 'markdown', data: markdown, parentID: docId });
+                if (j3 && j3.code === 0) {
+                    picked = this._pickLifeLogAppendIds(j3);
+                    if (!picked.docId) picked.docId = docId;
+                } else {
+                    errors.push('appendBlock(fallback): ' + ((j3 && j3.msg) || 'empty response'));
+                }
+            }
+        }
+
+        if (!picked) {
+            const detail = errors.filter(Boolean).join(' | ') || 'unknown error';
+            console.error('[LifeLog] 写入日记失败:', detail, { notebookId, markdown });
+            return {
+                ok: false,
+                msg: lunaLang('写入日记失败：', 'Failed to write to the daily note: ') + detail,
+                detail,
+                notebookId
+            };
+        }
+
+        let blockId = picked.blockId || '';
+        const docId = picked.docId || '';
+
+        /* 有的版本 doOperations 里只给父文档 ID，不给段落 ID——属性补不上，
+           这条记录就永远查不出来（表现为「写进去了但列表看不到」）。
+           退一步查该文档最后一个段落，取其中一个补属性。 */
+        if (!blockId && docId) {
+            const safeDocId = breezeValidSqlId(docId);
+            if (safeDocId) {
+                const qr = await post('/api/query/sql', { stmt: `SELECT id, content FROM blocks WHERE parent_id = '${safeDocId}' AND type = 'p' ORDER BY sort DESC, created DESC LIMIT 5` });
+                const rows = (qr && qr.code === 0 && Array.isArray(qr.data)) ? qr.data : [];
+                if (rows.length) {
+                    const pure = String(markdown || '').replace(/^\s*\d{1,2}:\d{2}\s*/, '').replace(/^[^：:\s]{1,20}[：:]\s*/, '').trim();
+                    const hit = pure.length >= 6
+                        ? rows.find(r => String(r.content || '').indexOf(pure.slice(0, 6)) >= 0)
+                        : null;
+                    blockId = (hit || rows[0]).id;
+                }
+            }
+        }
+
         /* 补 custom-lifelog-* 属性：视图按这三个属性检索，不补则「写进去了但看不到」。
            best-effort：失败只告警，不影响记录本身已经写进日记。 */
         if (blockId && meta) {
@@ -22851,9 +22988,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
             if (meta.time) attrs['custom-lifelog-time'] = String(meta.time);
             if (meta.type) attrs['custom-lifelog-type'] = String(meta.type);
             if (Object.keys(attrs).length) {
-                try {
-                    await fetch('/api/attr/setBlockAttrs', { method: 'POST', headers: hh, body: JSON.stringify({ id: blockId, attrs }) });
-                } catch (e) { console.warn('[LifeLog] 写入记录属性失败:', e && e.message); }
+                const ar = await post('/api/attr/setBlockAttrs', { id: blockId, attrs });
+                if (!ar || ar.code !== 0) console.warn('[LifeLog] 写入记录属性失败:', (ar && ar.msg) || 'empty response');
             }
         }
         /* 思源 SQL 索引有延迟，写完立刻要查必须先 flush，否则刷新时记录还不存在 */
@@ -22863,6 +22999,26 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this._lifelogDockCache = null;
         this._lifelogDockCacheTime = 0;
         return { ok: true, msg: '已记录', blockId, docId, notebookId };
+    }
+
+    /* 从 appendDailyNoteBlock / appendBlock 的返回值里解析「新块 ID」与「所属文档 ID」。
+       注意：位置无关的 appendInsert 里 fields 可能把 id 写成父文档 ID，
+       两者相同就丢弃块 ID，交给上层用 SQL 兜底，避免把属性写在文档块上。 */
+    _pickLifeLogAppendIds(json) {
+        let blockId = '', docId = '';
+        const data = json && json.data;
+        const ops = Array.isArray(data) ? data : (data ? [data] : []);
+        for (const item of ops) {
+            const doOps = Array.isArray(item && item.doOperations) ? item.doOperations : [];
+            for (const op of doOps) {
+                if (!op) continue;
+                if (!docId && op.parentID) docId = String(op.parentID);
+                if (!blockId && op.id) blockId = String(op.id);
+            }
+            if (blockId && docId) break;
+        }
+        if (blockId && docId && blockId === docId) blockId = '';
+        return { blockId, docId };
     }
 
     /* ============================================================
@@ -23401,11 +23557,11 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const closeAll = () => { modal.style.display = 'none'; pickOverlay.style.display = 'none'; modalTextarea.value = ''; _selType = ''; };
 
         const submit = async () => {
-            if (!modalSubmit || !modalTextarea) return;
+            if (!modalSubmit || !modalTextarea || modalSubmit.disabled) return;
             const content = modalTextarea.value.trim();
             if (!content) return;
             modalSubmit.disabled = true;
-            modalSubmit.textContent = '记录中…';
+            modalSubmit.textContent = lunaLang('记录中…', 'Saving…');
             try {
                 const now = new Date();
                 const p2 = (n) => String(n).padStart(2, '0');
@@ -23423,13 +23579,15 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     closeAll();
                     setTimeout(() => { this._refreshLifeLogDockContent(true); }, 400);
                 } else {
-                    this._lunaToast((res && res.msg) || '写入日记失败，请重试');
+                    this._lunaToast((res && res.msg) || lunaLang('写入日记失败，请重试', 'Failed to write, please retry'));
                 }
             } catch (e) {
                 this._lunaToast(lunaT('提交失败：') + ((e && e.message) || e));
             } finally {
                 modalSubmit.disabled = false;
-                modalSubmit.textContent = '记录';
+                modalSubmit.textContent = lunaT('记录');
+                /* 失败时弹窗还开着、正文也还在：把焦点还给输入框，直接重试即可 */
+                if (modal && modal.style.display !== 'none') { try { modalTextarea.focus(); } catch (err) {} }
             }
         };
 
