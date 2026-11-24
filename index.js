@@ -3644,6 +3644,8 @@ function breezeHighlightCodeBlocks(root) {
    左上角挂语言标签（取 code 的 language-xxx 类）、右上角挂复制按钮。
    不把标签/按钮放进 pre 内部：pre 是横向滚动容器，absolute 子元素会随滚动跑偏 */
 function breezeDecorateCodeBlock(pre, code) {
+    /* 套用思源代码块主题：highlight.js 的 .code-block 规则负责背景与基础文字色 */
+    if (pre && pre.classList) pre.classList.add('code-block');
     if (pre.parentElement && pre.parentElement.classList && pre.parentElement.classList.contains('north-breeze-code-wrap')) return;
     const wrap = document.createElement('div');
     wrap.className = 'north-breeze-code-wrap';
@@ -3781,19 +3783,30 @@ function breezeEnsureHljs() {
     return _breezeHljsLoading;
 }
 
-/* 补 hljs token 配色样式：主题取自思源外观配置（mode 0=浅色，否则深色），
-   与思源注入的 protyleHljsStyle 同源同款；任一已存在则不重复注入 */
+/* 补 hljs 主题样式：优先直接复用思源注入的 protyleHljsStyle；
+   思源尚未注入时，按外观配置加载同一份代码块主题，并在主题变化时同步 href */
 function breezeEnsureHljsStyle() {
     try {
-        if (document.getElementById('lumina-hljs-style') || document.getElementById('protyleHljsStyle')) return;
         const conf = (window.siyuan && window.siyuan.config && window.siyuan.config.appearance) || {};
         const dark = conf.mode !== 0;
         let theme = dark ? conf.codeBlockThemeDark : conf.codeBlockThemeLight;
-        if (!theme) theme = dark ? 'github-dark' : 'default';
+        if (!theme) theme = dark ? 'vs2015' : 'vs';
+        const href = '/stage/protyle/js/highlight.js/styles/' + theme + '.min.css?v=11.12.0';
+        const siyuanStyle = document.getElementById('protyleHljsStyle');
+        const ownStyle = document.getElementById('lumina-hljs-style');
+        /* 思源已注入主题时以它为准，移除插件自己的副本，避免两套主题互相覆盖 */
+        if (siyuanStyle) {
+            if (ownStyle) ownStyle.remove();
+            return;
+        }
+        if (ownStyle) {
+            if (ownStyle.getAttribute('href') !== href) ownStyle.setAttribute('href', href);
+            return;
+        }
         const link = document.createElement('link');
         link.id = 'lumina-hljs-style';
         link.rel = 'stylesheet';
-        link.href = '/stage/protyle/js/highlight.js/styles/' + theme + '.min.css?v=11.12.0';
+        link.href = href;
         document.head.appendChild(link);
     } catch (e) { /* noop */ }
 }
@@ -5234,9 +5247,36 @@ module.exports = class NorthLunaPlugin extends Plugin {
         // 朋友圈临时筛选状态（不持久化，刷新视图后重置）
         this.momentsMoodFilter = null;
         this.momentsCategoryFilter = null;
+        /* 朋友圈视图状态：feed=动态 / album=相册（不持久化，重新打开回到动态） */
+        this._momentsActiveTab = 'feed';
+        this._momentsViewMode = 'feed';
+        /* 相册日期筛选（不持久化） */
+        this._momentsAlbumYear = null;
+        this._momentsAlbumMonth = null;
+        this._momentsAlbumYearInitialized = false;
+        this._momentsAlbumMedia = '';
+        this._momentsAlbumLocation = '';
+        this._momentsAlbumMood = '';
+        this._momentsAlbumCategory = '';
 
         const plugin = this;
         PLUGIN_REF = this;
+        /* 轻语速记：独立窗口状态与 IPC 通道。
+           通道名带实例随机后缀，避免多个思源窗口 / 插件重载时互相覆盖 handler。 */
+        this._quickNoteWin = null;
+        this._quickNoteCreating = false;
+        this._quickNoteSaving = false;
+        this._quickNoteAllowClose = false;
+        this._quickNoteLastTrigger = 0;
+        this._quickNoteInstanceId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        this._quickNoteChannels = {
+            save: 'lumina-quicknote-save-' + this._quickNoteInstanceId,
+            upload: 'lumina-quicknote-upload-' + this._quickNoteInstanceId,
+            tags: 'lumina-quicknote-tags-' + this._quickNoteInstanceId,
+            notes: 'lumina-quicknote-notes-' + this._quickNoteInstanceId,
+            close: 'lumina-quicknote-close-' + this._quickNoteInstanceId
+        };
+        try { this._initQuickNoteIPC(); } catch (e) { console.warn('[轻语速记] 初始化 IPC 失败:', e); }
         // 清风链接标题：载入缓存并启动全局观察器（自动把裸网址替换为网页标题）
         breezeLinkTitlePlugin = this;
         breezeLoadLinkTitleCache(this);
@@ -5281,6 +5321,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
             }
         }).catch(() => {});
+        /* 速记窗口可能在启动后立刻被快捷键唤起：保存前必须等 records 真正读完，
+           否则会拿 onload 里的空占位对象落盘，覆盖已有清风笔记。 */
+        this._recordsReady = _loadRecords.catch(() => {});
         // 2. 加载 settings（activeView, settings, nav*, flomoConfig）
         const _loadSettings = this.loadData(SETTINGS_STORAGE).then(data => {
             const d = (data && typeof data === "object") ? data : { activeView: "notes", settings: {} };
@@ -5355,6 +5398,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
             init() {
                 this.plugin = plugin;
                 this.container = this.element;
+                /* 思源标签页容器（.fn__flex-1）默认 overflow:auto，会多出一条右侧滚动条；
+                   内层视图各自负责滚动，这里标记后由 CSS 隐藏外层滚动条 */
+                this.element.classList.add('north-luna-tab-panel');
                 // 记录当前 tab 实例
                 plugin._siyuTab = this;
                 // 打开时默认第一个视图（按用户配置的 navOrder 排序，跳过隐藏视图）
@@ -8249,7 +8295,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this._collectGalleryItems = () => {
                     const items = [];
                     const notes = (plugin.data[RECORDS_STORAGE] || {}).breezeNotes || [];
-                    const moments = (plugin.data[MOMENTS_STORAGE] || {}).items || [];
                     // 清风笔记中的图片/视频/文件
                     // 注意：清风存储时图片和视频都进了 n.images（4193 行），需按扩展名区分
                     // 已归档笔记的图片/视频/文件不在明月（画廊）视图展示 —— 与清风视图「归档默认隐藏」保持一致，
@@ -8266,20 +8311,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             items.push({ id: n.id, type: 'file', src: f.path, name: f.name, created: time, text: n.content || '', tags: breezeExtractTags(n.content || ''), source: 'breeze' });
                         });
                     });
-                    // 朋友圈中的图片/视频（根据设置决定是否收集）
-                    if (!plugin._getPluginSetting('galleryHideMoments')) {
-                        /* 按 src 去重：同一张图可能同时被清风笔记与朋友圈动态引用（历史数据），
-                           不去重会在明月里出现同一张图两张卡片 */
-                        const _srcSeen = new Set(items.map(i => i.src));
-                        moments.forEach(m => {
-                            (m.images || []).forEach(img => {
-                                if (_srcSeen.has(img)) return;
-                                _srcSeen.add(img);
-                                const kind = plugin._fileKindFromName(img);
-                                items.push({ id: m.id, type: kind === 'video' ? 'video' : 'image', src: img, created: m.createdAt || m.created, text: m.text || '', tags: [], source: 'moments' });
-                            });
-                        });
-                    }
                     items.sort((a, b) => (new Date(b.created).getTime() || 0) - (new Date(a.created).getTime() || 0));
                     return items;
                 };
@@ -8357,7 +8388,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                         body.innerHTML = `<div class="north-luna-gallery-empty">
                             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                             <p>${lunaT('暂无内容')}</p>
-                            <p class="north-luna-gallery-empty-sub">在清风笔记或朋友圈中添加图片/视频后就会出现在这里</p>
+                            <p class="north-luna-gallery-empty-sub">在清风笔记中添加图片/视频后就会出现在这里</p>
                         </div>`;
                         return;
                     }
@@ -8632,6 +8663,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'breezeScrollDamping', title: '滚动阻尼', desc: '开启后页面滚动更加丝滑，滚轮停止后内容还会惯性滑行一小段。', default: false },
                             { type: 'toggle', key: 'breezePaginationEnabled', title: '笔记分页', desc: '开启后，清风全部笔记视图将按设定条数分页，底部显示页码导航。默认关闭。', default: false },
                             { type: 'slider', key: 'breezePageSize', title: '每页笔记条数', desc: '分页开启时生效，决定每页显示的笔记数量。', default: 20, min: 10, max: 50, step: 2 },
+                            { type: 'button', action: 'openQuickNote', title: lunaLang('轻语速记', 'Quick Note'), desc: lunaLang('打开独立速记窗口，随手记录后自动保存到清风。默认全局快捷键 ⌥⌘U，可在思源「设置 → 快捷键」中修改。', 'Open a floating quick-capture window. Notes are saved to Breeze. Default global shortcut: ⌥⌘U (editable in SiYuan Settings → Keymap).'), buttonText: lunaLang('打开速记', 'Open') },
                             { type: 'toggle', key: 'autoSyncBreeze', title: '自动同步思源笔记文档', desc: '开启后，发布清风笔记时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
                             { type: 'toggle', key: 'breezeDockEnabled', title: '启用清风侧边栏', desc: '开启后在思源右侧边栏显示精简版清风面板。需要刷新思源笔记或重新打开思源笔记后才能生效。', default: false },
                             { type: 'toggle', key: 'breezeEnterToSubmit', title: '回车直接提交', desc: '开启后，主输入框按 Enter 直接发布；Shift+Enter 仍然换行。关闭后只能点发送按钮提交。', default: false },
@@ -8701,7 +8733,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 { value: '9', label: '9 列' }
                             ] },
                             { type: 'input', key: 'galleryTitle', title: '自定义标题', desc: '明月视图顶部显示的标题，留空则使用默认「明月」', default: '明月' },
-                            { type: 'toggle', key: 'galleryShowTime', title: '日期显示时分', desc: '开启后明月瀑布流的日期浮层显示到分钟（如「2026-09-12 20:59」）；关闭则只显示日期。默认开启，独立于朋友圈的「显示时分」。', default: true }
+                            { type: 'toggle', key: 'galleryShowTime', title: '日期显示时分', desc: '开启后明月瀑布流的日期浮层显示到分钟（如「2026-09-12 20:59」）；关闭则只显示日期。默认开启。', default: true }
                         ]}
                     ]},
                     moments: { label: '朋友圈设置', title: '朋友圈', icon: 'iconRiffCard', groups: [
@@ -8725,7 +8757,6 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'momentsShowCommentTime', title: '显示评论日期', desc: '开启后评论的日期/时间才显示：PC 端为鼠标悬停该条评论时显示，移动端为点击昵称弹出菜单时显示；关闭后（默认）评论始终不显示日期。PC 与移动端同时生效。', default: false },
                             { type: 'toggle', key: 'momentsShowTime', title: '显示时分', desc: '开启后朋友圈动态的时间显示到分钟（如「2026年9月12日 20:59」）；关闭后只显示到年月日。默认开启，PC 与移动端同时生效。', default: true },
                             { type: 'toggle', key: 'autoSyncMoments', title: '自动同步思源笔记文档', desc: '开启后，发布朋友圈动态时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
-                            { type: 'toggle', key: 'galleryHideMoments', title: '在明月中隐藏朋友圈资源', desc: '开启后，朋友圈中添加的图片/视频/文件不会出现在明月（拾光）视图中。默认开启。', default: true },
                             { type: 'select', key: 'momentsLongNoteCollapse', title: '长笔记自动折叠', desc: '超过设定行数的朋友圈动态会自动折叠，底部显示展开按钮。图片始终完整显示，只折叠文字部分。', default: 'never', options: [
                                 { value: 'never', label: '永不折叠' },
                                 { value: '4', label: '4 行' },
@@ -8828,6 +8859,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'toggle', key: 'momentsCoverToolSync', title: '同步', desc: '移动端朋友圈封面工具栏：显示/隐藏「同步」按钮（一键把未同步的动态写入思源文档）', default: true },
                             { type: 'toggle', key: 'momentsCoverToolDrag', title: '拖动', desc: '移动端朋友圈封面工具栏：显示/隐藏「拖动」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolCalendar', title: '日历', desc: '移动端朋友圈封面工具栏：显示/隐藏「日历」按钮', default: true },
+                            { type: 'toggle', key: 'momentsCoverToolAlbum', title: lunaLang('相册', 'Album'), desc: lunaLang('移动端朋友圈封面工具栏：显示/隐藏「相册」按钮', 'Mobile Moments cover toolbar: show or hide the Album button'), default: true },
                             { type: 'toggle', key: 'momentsCoverToolMoodFilter', title: '心情', desc: '移动端朋友圈封面工具栏：显示/隐藏「心情」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolCategoryFilter', title: '分类', desc: '移动端朋友圈封面工具栏：显示/隐藏「分类」按钮', default: true },
                             { type: 'toggle', key: 'momentsCoverToolDelete', title: '删除', desc: '移动端朋友圈封面工具栏：显示/隐藏「删除」按钮', default: true }
@@ -10969,7 +11001,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 };
 
                 this._handleSettingsAction = (action, btn) => {
-                    if (action === "exportMoments") {
+                    if (action === "openQuickNote") {
+                        try { plugin._toggleQuickNoteWindow(); } catch (e) { plugin._openQuickNoteOverlay(); }
+                    } else if (action === "exportMoments") {
                         const data = JSON.stringify(plugin.momentsData, null, 2);
                         const blob = new Blob([data], { type: "application/json" });
                         const url = URL.createObjectURL(blob);
@@ -14404,6 +14438,27 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 this.openTab();
             },
         });
+        /* 轻语速记：全局快捷键 + 命令面板共用同一个入口。
+           部分思源版本在快捷键冲突时可能同时触发 callback / globalCallback，
+           这里用 400ms 防抖合并，既保留命令面板可用性，也不会创建两个窗口。 */
+        const openQuickNote = () => {
+            const now = Date.now();
+            if (now - this._quickNoteLastTrigger < 400) return;
+            this._quickNoteLastTrigger = now;
+            try {
+                this._toggleQuickNoteWindow();
+            } catch (e) {
+                console.error('[轻语速记] 打开失败:', e);
+                this._openQuickNoteOverlay();
+            }
+        };
+        this.addCommand({
+            langKey: "openQuickNote",
+            langText: lunaLang("轻语速记", "Quick Note"),
+            hotkey: "⌥⌘U",
+            callback: openQuickNote,
+            globalCallback: openQuickNote
+        });
         /* 移动端 Dock 必须同步注册（不能等 loadData 回调用再注册，否则快捷键时 Dock 尚不存在） */
         if (this.isMobile) {
             try { this._initLifeLogMobileMethods(); } catch (e) { console.error('初始化移动端 LifeLog 方法失败', e); }
@@ -15337,9 +15392,1790 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (this.isMobile) this.applyMobileAddFloating(ctx, viewId);
     }
 
+    /* ============================================================
+     * 轻语速记：独立窗口 + 页面浮层兜底
+     *
+     * 设计取舍：
+     *   - 桌面端优先使用 Electron BrowserWindow，无边框、置顶、可拖动，
+     *     这样即使思源主窗口被遮挡，也能用全局快捷键随手记录；
+     *   - @electron/remote 不可用、移动端或创建失败时，自动降级为页面浮层，
+     *     保证功能始终可用；
+     *   - 保存统一走 addBreezeNote，持久化、视图刷新、标签解析全部复用清风链路；
+     *   - 上传通过 IPC 回到主窗口调用 _uploadResource，尊重「资源存储位置」设置。
+     * ============================================================ */
+    _initQuickNoteIPC() {
+        if (this._quickNoteIpcReady) return;
+        let ipcMain = null;
+        let BrowserWindow = null;
+        try {
+            const remote = require('@electron/remote');
+            ipcMain = remote.ipcMain;
+            BrowserWindow = remote.BrowserWindow;
+        } catch (e) {
+            return;
+        }
+        if (!ipcMain || !BrowserWindow) return;
+        this._quickNoteRemote = { ipcMain, BrowserWindow };
+        const ch = this._quickNoteChannels;
+        const token = this._quickNoteInstanceId;
+
+        /* 速记窗口是独立 BrowserWindow，和插件不在同一个渲染进程，只能走主进程中转。
+           这里刻意用 ipcMain.on 而不是 ipcMain.handle：
+           handle 经 @electron/remote 代理后，渲染进程返回的 Promise 会被当成普通对象序列化，
+           子窗口的 invoke 只会拿到一个没有 ok 字段的空壳，表现为「保存失败：」后面什么都没有。
+           on 的回调是同步进入渲染进程的，异步任务完成后用 webContents.send 把结果推回子窗口即可。 */
+        /* 经 remote 代理传进来的参数会变成「远程代理对象」，嵌套数组不是真数组，
+           Array.isArray 会判成 false（图片会被当成空）。所以请求统一用 JSON 字符串传，
+           只传原始值，彻底避开代理对象与结构化克隆的限制。
+           监听器第一个参数是 event，第二个才是消息，这里从后往前找。 */
+        const pickMsg = (...args) => {
+            /* 从后往前找：消息一定是最后一个参数，避免先去读 event 代理对象。 */
+            for (let i = args.length - 1; i >= 0; i--) {
+                try {
+                    const arg = args[i];
+                    if (typeof arg !== 'string' || !arg) continue;
+                    const msg = JSON.parse(arg);
+                    if (msg && msg.token === token) return msg;
+                } catch (e) { /* 跳过不可读的代理对象 */ }
+            }
+            return null;
+        };
+        const replyLater = (channel, msg, task, fallbackMessage) => {
+            Promise.resolve()
+                .then(task)
+                .then((result) => this._quickNoteSendReply(channel, msg.id, result))
+                .catch((e) => this._quickNoteSendReply(channel, msg.id, {
+                    ok: false,
+                    message: (e && e.message) || fallbackMessage
+                }));
+        };
+        this._quickNoteSaveHandler = (...args) => {
+            const msg = pickMsg(...args);
+            if (!msg) return;
+            /* 回执只带必要字段：note 里可能有思源内部对象，跨进程结构化克隆容易失败。 */
+            replyLater(ch.save, msg, () => this._saveQuickNotePayload(msg.payload || {}).then((r) => ({
+                ok: !!(r && r.ok),
+                empty: !!(r && r.empty),
+                message: r && r.message ? String(r.message) : ''
+            })), lunaLang('保存失败', 'Save failed'));
+        };
+        this._quickNoteUploadHandler = (...args) => {
+            const msg = pickMsg(...args);
+            if (!msg) return;
+            replyLater(ch.upload, msg, () => this._quickNoteUploadBase64(msg.payload || {}).then((r) => ({
+                ok: !!(r && r.ok),
+                path: r && r.path ? String(r.path) : '',
+                name: r && r.name ? String(r.name) : '',
+                kind: r && r.kind ? String(r.kind) : '',
+                message: r && r.message ? String(r.message) : ''
+            })), lunaLang('上传失败', 'Upload failed'));
+        };
+        this._quickNoteTagsHandler = (...args) => {
+            const msg = pickMsg(...args);
+            if (!msg) return;
+            replyLater(ch.tags, msg, () => this._quickNoteTags(), lunaLang('标签加载失败', 'Failed to load tags'));
+        };
+        this._quickNoteNotesHandler = (...args) => {
+            const msg = pickMsg(...args);
+            if (!msg) return;
+            replyLater(ch.notes, msg, () => this._quickNoteRecentNotes((msg.payload || {}).limit), lunaLang('笔记加载失败', 'Failed to load notes'));
+        };
+        ipcMain.on(ch.save, this._quickNoteSaveHandler);
+        ipcMain.on(ch.upload, this._quickNoteUploadHandler);
+        ipcMain.on(ch.tags, this._quickNoteTagsHandler);
+        ipcMain.on(ch.notes, this._quickNoteNotesHandler);
+
+        this._quickNoteCloseHandler = (...args) => {
+            const msg = pickMsg(...args);
+            if (!msg) return;
+            this._quickNoteSendReply(ch.close, msg.id, { ok: true });
+            try {
+                const win = this._quickNoteFindWindow();
+                if (win && !win.isDestroyed()) {
+                    this._quickNoteAllowClose = true;
+                    win.close();
+                }
+            } catch (e) { /* noop */ }
+        };
+        ipcMain.on(ch.close, this._quickNoteCloseHandler);
+        this._quickNoteIpcReady = true;
+    }
+
+    _quickNoteSendReply(channel, id, result) {
+        let payload = '';
+        try {
+            /* 纯 JSON 文本：不含函数、DOM、Electron 对象，跨窗口传输零歧义。 */
+            payload = JSON.stringify({ id: id || '', result: result === undefined ? null : result });
+        } catch (e) {
+            payload = JSON.stringify({ id: id || '', result: { ok: false, message: lunaLang('返回结果无法传输', 'Result could not be transferred') } });
+        }
+        try {
+            const win = this._quickNoteFindWindow();
+            if (!win || win.isDestroyed() || !win.webContents) return;
+            win.webContents.send(channel + '-reply', payload);
+        } catch (e) { /* noop */ }
+    }
+
+    _quickNoteFindWindow() {
+        try {
+            if (this._quickNoteWin && !this._quickNoteWin.isDestroyed()) return this._quickNoteWin;
+            const BrowserWindow = this._quickNoteRemote && this._quickNoteRemote.BrowserWindow;
+            if (!BrowserWindow) return null;
+            const title = this._quickNoteWindowTitle();
+            const all = BrowserWindow.getAllWindows();
+            for (const win of all) {
+                try {
+                    /* 只按窗口标题识别：remote 返回的是代理对象，给它写自定义属性
+                       不会同步回主进程，反而可能让代理序列化出错。
+                       标题带实例后缀，多个思源窗口同时开速记时不会互相抢窗口。 */
+                    if (win && !win.isDestroyed() && win.getTitle && win.getTitle() === title) {
+                        this._quickNoteWin = win;
+                        return win;
+                    }
+                } catch (e) { /* noop */ }
+            }
+        } catch (e) { /* noop */ }
+        return null;
+    }
+
+    _quickNoteWindowTitle() {
+        return '__lumina_quick_note__' + (this._quickNoteInstanceId || '');
+    }
+
+    _quickNoteIsOpen() {
+        const win = this._quickNoteFindWindow();
+        return !!(win && !win.isDestroyed() && win.isVisible && win.isVisible());
+    }
+
+    _toggleQuickNoteWindow() {
+        if (this.isMobile) {
+            this._openQuickNoteOverlay();
+            return;
+        }
+        this._initQuickNoteIPC();
+        const existing = this._quickNoteFindWindow();
+        if (existing) {
+            try {
+                /* 可见即视为“已打开”：再次按快捷键应保存并关闭（toggle）。
+                   只有窗口被隐藏/最小化时才恢复并聚焦，避免第二次按键无反应。 */
+                if (!existing.isVisible()) {
+                    if (existing.isMinimized && existing.isMinimized()) existing.restore();
+                    existing.show();
+                    existing.focus();
+                    return;
+                }
+            } catch (e) { /* noop */ }
+            this._saveAndCloseQuickNoteWindow(existing);
+            return;
+        }
+        this._createQuickNoteWindow().catch((e) => {
+            console.warn('[轻语速记] 创建独立窗口失败，降级为页面浮层:', e);
+            this._openQuickNoteOverlay();
+        });
+    }
+
+    async _createQuickNoteWindow() {
+        if (this._quickNoteCreating) return;
+        if (!this._quickNoteRemote) this._initQuickNoteIPC();
+        if (!this._quickNoteRemote) throw new Error('Electron remote unavailable');
+        this._quickNoteCreating = true;
+        this._quickNoteAllowClose = false;
+        try {
+            const { BrowserWindow } = this._quickNoteRemote;
+            const existing = this._quickNoteFindWindow();
+            if (existing) {
+                existing.show();
+                existing.focus();
+                return;
+            }
+            const win = new BrowserWindow({
+                width: 520,
+                height: 400,
+                minWidth: 420,
+                minHeight: 320,
+                frame: false,
+                transparent: true,
+                backgroundColor: '#00000000',
+                alwaysOnTop: true,
+                resizable: true,
+                center: true,
+                show: false,
+                title: this._quickNoteWindowTitle(),
+                autoHideMenuBar: true,
+                webPreferences: {
+                    nodeIntegration: true,
+                    contextIsolation: false,
+                    sandbox: false,
+                    spellcheck: true
+                }
+            });
+            this._quickNoteWin = win;
+            try { win.setTitle(this._quickNoteWindowTitle()); } catch (e) {}
+
+            win.on('close', (event) => {
+                if (this._quickNoteAllowClose) return;
+                event.preventDefault();
+                this._saveAndCloseQuickNoteWindow(win);
+            });
+            win.on('closed', () => {
+                if (this._quickNoteWin === win) this._quickNoteWin = null;
+                this._quickNoteAllowClose = false;
+            });
+
+            const html = this._getQuickNoteHTML();
+            await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+            if (!win.isDestroyed()) {
+                win.show();
+                win.focus();
+            }
+        } finally {
+            this._quickNoteCreating = false;
+        }
+    }
+
+    async _saveAndCloseQuickNoteWindow(win) {
+        if (!win || win.isDestroyed()) return false;
+        if (this._quickNoteSaving) return false;
+        this._quickNoteSaving = true;
+        try {
+            /* 正在上传/保存时不抢窗口，等子窗口处理完再看。 */
+            let busy = false;
+            try {
+                busy = await win.webContents.executeJavaScript('!!window.__luminaQuickNoteBusy', true);
+            } catch (e) { /* noop */ }
+            if (busy) {
+                setTimeout(() => this._saveAndCloseQuickNoteWindow(win), 220);
+                return false;
+            }
+            let payload = null;
+            try {
+                payload = await win.webContents.executeJavaScript(
+                    '(window.__luminaQuickNoteGetPayload ? window.__luminaQuickNoteGetPayload() : null)',
+                    true
+                );
+            } catch (e) { /* 页面尚未就绪时按空内容处理 */ }
+            /* 快捷键再次触发（toggle）等价于「保存」：有内容才保存，空内容直接关闭。
+               点「取消」走的是另一条路（子窗口直接发 close），不会走到这里。 */
+            if (payload && this._quickNoteHasPayload(payload)) {
+                const result = await this._saveQuickNotePayload(payload);
+                if (!result || !result.ok) {
+                    if (result && result.message) showMessage(result.message);
+                    return false;
+                }
+            }
+            this._quickNoteAllowClose = true;
+            if (!win.isDestroyed()) win.close();
+            return true;
+        } finally {
+            this._quickNoteSaving = false;
+        }
+    }
+
+    _quickNoteHasPayload(payload) {
+        if (!payload || typeof payload !== 'object') return false;
+        const content = String(payload.content || '').trim();
+        const images = Array.isArray(payload.images) ? payload.images.filter(Boolean) : [];
+        const files = Array.isArray(payload.files) ? payload.files.filter(Boolean) : [];
+        const pending = Array.isArray(payload.pending) ? payload.pending.filter(p => p && p.base64) : [];
+        return !!(content || images.length || files.length || pending.length);
+    }
+
+    async _quickNoteUploadBase64(data) {
+        const base64 = String(data.base64 || '');
+        if (!base64) return { ok: false, message: lunaLang('没有读取到文件', 'No file data') };
+        const name = String(data.name || 'resource.png');
+        let blob = null;
+        try {
+            const resp = await fetch(base64);
+            blob = await resp.blob();
+        } catch (e) {
+            return { ok: false, message: lunaLang('读取文件失败', 'Failed to read file') };
+        }
+        const mime = String(data.type || (blob && blob.type) || 'application/octet-stream');
+        let file = null;
+        try {
+            file = new File([blob], name, { type: mime });
+        } catch (e) {
+            return { ok: false, message: lunaLang('创建文件失败', 'Failed to create file') };
+        }
+        const path = await this._uploadResource(file, { assetsDirPath: 'assets/' });
+        if (!path) return { ok: false, message: lunaLang('上传失败', 'Upload failed') };
+        const byMime = mime.startsWith('image/') ? 'image' : (mime.startsWith('video/') ? 'video' : '');
+        const kind = byMime || this._fileKindFromName(name);
+        return { ok: true, path, name, kind };
+    }
+
+    _quickNoteTags() {
+        try {
+            const notes = ((this.data[RECORDS_STORAGE] || {}).breezeNotes) || [];
+            const tags = new Set();
+            notes.forEach(n => {
+                try { breezeExtractTags(n && n.content || '').forEach(t => tags.add(t)); } catch (e) {}
+            });
+            return Array.from(tags).sort((a, b) => String(a).localeCompare(String(b), 'zh'));
+        } catch (e) {
+            return [];
+        }
+    }
+
+    _quickNoteRecentNotes(limit) {
+        const max = Number(limit) || 80;
+        try {
+            const notes = ((this.data[RECORDS_STORAGE] || {}).breezeNotes) || [];
+            return notes.filter(n => n && n.id).slice(0, max).map(n => ({
+                id: n.id,
+                time: n.time || '',
+                text: String(n.content || '')
+                    .replace(/\[MEMO:[^\]]*\]/g, '')
+                    .replace(/<[^>]*>/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .slice(0, 80)
+            }));
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /* 速记专用资源拆分：1.7.7 的速记把上传结果以 Markdown 插进正文，
+       路径可能是 assets/、/assets/、public/siyuan-lumina/ 或 data/storage/petal/。
+       当前清风的 breezeParseMarkdownResources 只认最后一种，这里单独兼容全部本地路径；
+       http/data/blob 等外链仍留在正文，不做资源化。 */
+    _parseQuickNoteResources(raw) {
+        const result = { text: '', images: [], files: [] };
+        const source = String(raw || '');
+        const re = /(!?)\[([^\]]*)\]\(([^)\s]+)\)/g;
+        let out = '';
+        let last = 0;
+        let m;
+        while ((m = re.exec(source)) !== null) {
+            const path = String(m[3] || '');
+            const isLocal = /^(?:\/)?(?:assets|public|data\/storage\/petal)\//i.test(path);
+            if (!isLocal) continue;
+            out += source.slice(last, m.index);
+            const name = String(m[2] || '').trim() || path.split('/').pop() || 'resource';
+            if (m[1] === '!') result.images.push(path);
+            else result.files.push({ name, path });
+            last = re.lastIndex;
+        }
+        out += source.slice(last);
+        result.text = out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+        return result;
+    }
+
+    async _saveQuickNotePayload(payload) {
+        if (!this._quickNoteHasPayload(payload)) {
+            return { ok: false, empty: true, message: lunaLang('还没有内容', 'Nothing to save') };
+        }
+        try { await this._recordsReady; } catch (e) { /* 加载失败也继续，至少让用户看到错误 */ }
+        /* 待发送资源：点「保存」这一刻才真正上传。
+           好处是点「取消」时资源库里不会留下任何孤儿文件（旧实现选图即上传）。 */
+        const pending = Array.isArray(payload.pending) ? payload.pending.filter(p => p && p.base64) : [];
+        const uploadedImages = [];
+        const uploadedFiles = [];
+        for (const item of pending.slice(0, 50)) {
+            const res = await this._quickNoteUploadBase64({
+                base64: item.base64,
+                name: item.name || '',
+                type: item.type || ''
+            });
+            if (!res || !res.ok || !res.path) {
+                return { ok: false, message: (res && res.message) || lunaLang('资源上传失败', 'Failed to upload the resource') };
+            }
+            const path = String(res.path).replace(/^\//, '');
+            if (res.kind === 'image' || res.kind === 'video') {
+                uploadedImages.push(path);
+            } else {
+                uploadedFiles.push({ name: String(res.name || this._fileNameFromPath(path)), path: path });
+            }
+        }
+        const rawContent = String(payload.content || '').trim();
+        /* 1.7.7 的速记上传后把 ![](路径) 直接插进正文；当前清风把资源存在 images/files 数组里。
+           这里统一拆一次：正文只留文字，资源进数组，避免卡片里同一张图显示两遍。 */
+        const parsed = this._parseQuickNoteResources(rawContent);
+        let content = rawContent;
+        let parsedImages = [];
+        let parsedFiles = [];
+        if (parsed.images.length || parsed.files.length) {
+            content = String(parsed.text || '').trim();
+            parsedImages = parsed.images.slice();
+            parsedFiles = parsed.files.slice();
+        }
+        const images = (Array.isArray(payload.images) ? payload.images : [])
+            .map(p => String(p || '').trim()).filter(Boolean);
+        const files = (Array.isArray(payload.files) ? payload.files : [])
+            .map(f => {
+                if (typeof f === 'string') return { name: this._fileNameFromPath(f), path: f };
+                if (!f || !f.path) return null;
+                return { name: String(f.name || this._fileNameFromPath(f.path)), path: String(f.path) };
+            })
+            .filter(Boolean);
+        parsedImages.forEach(p => { if (!images.includes(p)) images.push(p); });
+        parsedFiles.forEach(f => {
+            if (!files.some(x => x.path === f.path)) files.push(f);
+        });
+        uploadedImages.forEach(p => { if (!images.includes(p)) images.push(p); });
+        uploadedFiles.forEach(f => {
+            if (!files.some(x => x.path === f.path)) files.push(f);
+        });
+        const note = await this.addBreezeNote({
+            content,
+            images: images.slice(0, 50),
+            files: files.slice(0, 50)
+        });
+        if (this._getPluginSetting('autoSyncBreeze')) {
+            Promise.resolve().then(() => this._syncToDailyNote({
+                content: note.content,
+                images: note.images,
+                files: note.files,
+                time: note.time,
+                source: 'breeze',
+                comments: note.comments || [],
+                commentNickname: this._getProfileNickname()
+            }, { ref: note, prevBlockId: note.docBlockId })).catch((e) => {
+                console.warn('[轻语速记] 自动同步失败:', e && e.message);
+            });
+        }
+        return { ok: true, note };
+    }
+
+    _openQuickNoteOverlay() {
+        try {
+            const existing = document.querySelector('.north-luna-quicknote-overlay');
+            if (existing) {
+                const ed = existing.querySelector('.north-luna-quicknote-editor');
+                if (ed) ed.focus();
+                return;
+            }
+            const overlay = document.createElement('div');
+            overlay.className = 'north-luna-quicknote-overlay';
+            const title = lunaLang('轻语速记', 'Quick Note');
+            const placeholder = lunaLang('记录此刻的想法…', 'Capture what is on your mind...');
+            const saveText = lunaLang('保存', 'Save');
+            const closeText = lunaLang('关闭', 'Close');
+            overlay.innerHTML =
+                '<div class="north-luna-quicknote-mask"></div>' +
+                '<div class="north-luna-quicknote-panel" role="dialog" aria-label="' + this._esc(title) + '">' +
+                    '<div class="north-luna-quicknote-head">' +
+                        '<div class="north-luna-quicknote-brand"><span class="north-luna-quicknote-logo">✎</span><span>' + this._esc(title) + '</span></div>' +
+                        '<button type="button" class="north-luna-quicknote-x" aria-label="' + this._esc(closeText) + '">×</button>' +
+                    '</div>' +
+                    '<textarea class="north-luna-quicknote-editor" placeholder="' + this._esc(placeholder) + '"></textarea>' +
+                    '<div class="north-luna-quicknote-attachments"></div>' +
+                    '<div class="north-luna-quicknote-status"></div>' +
+                    '<div class="north-luna-quicknote-foot">' +
+                        '<div class="north-luna-quicknote-tools">' +
+                            '<button type="button" data-act="tag" title="' + this._esc(lunaLang('标签', 'Tag')) + '">#</button>' +
+                            '<button type="button" data-act="mention" title="' + this._esc(lunaLang('引用笔记', 'Reference note')) + '">@</button>' +
+                            '<button type="button" data-act="upload" title="' + this._esc(lunaLang('上传资源', 'Upload')) + '">＋</button>' +
+                            '<button type="button" data-act="task" title="' + this._esc(lunaLang('任务列表', 'Task')) + '">☑</button>' +
+                            '<button type="button" data-act="ul" title="' + this._esc(lunaLang('无序列表', 'Bullet list')) + '">•</button>' +
+                            '<button type="button" data-act="ol" title="' + this._esc(lunaLang('有序列表', 'Numbered list')) + '">1.</button>' +
+                        '</div>' +
+                        '<button type="button" class="north-luna-quicknote-save">' + this._esc(saveText) + '</button>' +
+                    '</div>' +
+                '</div>';
+            document.body.appendChild(overlay);
+            const editor = overlay.querySelector('.north-luna-quicknote-editor');
+            const attachments = overlay.querySelector('.north-luna-quicknote-attachments');
+            const status = overlay.querySelector('.north-luna-quicknote-status');
+            let images = [];
+            let files = [];
+            let saving = false;
+            const setStatus = (text, isError) => {
+                if (!status) return;
+                status.textContent = text || '';
+                status.classList.toggle('is-error', !!isError);
+            };
+            const renderAttachments = () => {
+                if (!attachments) return;
+                attachments.innerHTML = '';
+                images.forEach((path, index) => {
+                    const chip = document.createElement('span');
+                    chip.className = 'north-luna-quicknote-chip';
+                    chip.innerHTML = '<span class="north-luna-quicknote-chip-name">' + this._esc(this._fileNameFromPath(path)) + '</span><button type="button" data-remove-image="' + index + '">×</button>';
+                    attachments.appendChild(chip);
+                });
+                files.forEach((file, index) => {
+                    const chip = document.createElement('span');
+                    chip.className = 'north-luna-quicknote-chip';
+                    chip.innerHTML = '<span class="north-luna-quicknote-chip-name">' + this._esc(file.name || this._fileNameFromPath(file.path)) + '</span><button type="button" data-remove-file="' + index + '">×</button>';
+                    attachments.appendChild(chip);
+                });
+                attachments.classList.toggle('has-items', images.length + files.length > 0);
+            };
+            const insert = (before, after) => {
+                const start = editor.selectionStart;
+                const end = editor.selectionEnd;
+                const text = editor.value;
+                const selected = text.slice(start, end);
+                editor.value = text.slice(0, start) + before + selected + after + text.slice(end);
+                const pos = start + before.length + selected.length;
+                editor.setSelectionRange(pos, pos);
+                editor.focus();
+            };
+            const close = async () => {
+                if (saving) return;
+                const payload = { content: editor.value, images, files };
+                if (this._quickNoteHasPayload(payload)) {
+                    saving = true;
+                    setStatus(lunaLang('保存中…', 'Saving...'));
+                    try {
+                        const result = await this._saveQuickNotePayload(payload);
+                        if (!result || !result.ok) {
+                            setStatus((result && result.message) || lunaLang('保存失败', 'Save failed'), true);
+                            saving = false;
+                            return;
+                        }
+                    } catch (e) {
+                        setStatus(e && e.message ? e.message : lunaLang('保存失败', 'Save failed'), true);
+                        saving = false;
+                        return;
+                    }
+                    saving = false;
+                }
+                overlay.remove();
+                document.removeEventListener('keydown', onKey, true);
+            };
+            const save = async () => {
+                if (saving) return;
+                const payload = { content: editor.value, images, files };
+                if (!this._quickNoteHasPayload(payload)) {
+                    editor.focus();
+                    return;
+                }
+                saving = true;
+                setStatus(lunaLang('保存中…', 'Saving...'));
+                try {
+                    const result = await this._saveQuickNotePayload(payload);
+                    if (!result || !result.ok) {
+                        setStatus((result && result.message) || lunaLang('保存失败', 'Save failed'), true);
+                        return;
+                    }
+                    editor.value = '';
+                    images = [];
+                    files = [];
+                    renderAttachments();
+                    setStatus(lunaLang('已保存到清风', 'Saved to Breeze'));
+                    editor.focus();
+                } catch (e) {
+                    setStatus(e && e.message ? e.message : lunaLang('保存失败', 'Save failed'), true);
+                } finally {
+                    saving = false;
+                }
+            };
+            const onKey = (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    close();
+                } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    save();
+                }
+            };
+            document.addEventListener('keydown', onKey, true);
+            overlay.querySelector('.north-luna-quicknote-mask').addEventListener('click', close);
+            overlay.querySelector('.north-luna-quicknote-x').addEventListener('click', close);
+            overlay.querySelector('.north-luna-quicknote-save').addEventListener('click', save);
+            attachments.addEventListener('click', (e) => {
+                const removeImage = e.target.closest('[data-remove-image]');
+                const removeFile = e.target.closest('[data-remove-file]');
+                if (removeImage) {
+                    images.splice(Number(removeImage.dataset.removeImage), 1);
+                    renderAttachments();
+                } else if (removeFile) {
+                    files.splice(Number(removeFile.dataset.removeFile), 1);
+                    renderAttachments();
+                }
+            });
+            overlay.querySelector('.north-luna-quicknote-tools').addEventListener('click', async (e) => {
+                const btn = e.target.closest('button[data-act]');
+                if (!btn) return;
+                const act = btn.dataset.act;
+                if (act === 'tag' || act === 'mention') {
+                    const old = overlay.querySelector('.north-luna-quicknote-picker');
+                    if (old) { old.remove(); return; }
+                    const isTag = act === 'tag';
+                    const pop = document.createElement('div');
+                    pop.className = 'north-luna-quicknote-picker';
+                    pop.innerHTML =
+                        '<input type="text" class="north-luna-quicknote-picker-input" placeholder="' +
+                        this._esc(isTag ? lunaLang('选择或创建标签…', 'Select or create a tag...') : lunaLang('搜索要引用的笔记…', 'Search notes to reference...')) +
+                        '"><div class="north-luna-quicknote-picker-list"></div>';
+                    overlay.querySelector('.north-luna-quicknote-panel').appendChild(pop);
+                    const panel = overlay.querySelector('.north-luna-quicknote-panel');
+                    const panelRect = panel.getBoundingClientRect();
+                    const btnRect = btn.getBoundingClientRect();
+                    pop.style.left = Math.max(10, Math.min(btnRect.left - panelRect.left, panelRect.width - 260)) + 'px';
+                    pop.style.bottom = Math.max(48, panelRect.bottom - btnRect.top + 8) + 'px';
+                    const pickerInput = pop.querySelector('.north-luna-quicknote-picker-input');
+                    const pickerList = pop.querySelector('.north-luna-quicknote-picker-list');
+                    const allTags = isTag ? this._quickNoteTags() : [];
+                    const allNotes = isTag ? [] : this._quickNoteRecentNotes(80);
+                    const renderPicker = () => {
+                        const q = pickerInput.value.trim().toLowerCase();
+                        pickerList.innerHTML = '';
+                        if (isTag) {
+                            const filtered = allTags.filter(t => !q || t.toLowerCase().includes(q));
+                            const isNew = q && !allTags.some(t => t.toLowerCase() === q);
+                            if (isNew) {
+                                const item = document.createElement('button');
+                                item.type = 'button';
+                                item.className = 'north-luna-quicknote-picker-item';
+                                item.textContent = '# ' + pickerInput.value.trim();
+                                item.addEventListener('click', () => { insert('#' + pickerInput.value.trim() + ' ', ''); pop.remove(); });
+                                pickerList.appendChild(item);
+                            }
+                            filtered.forEach(tag => {
+                                const item = document.createElement('button');
+                                item.type = 'button';
+                                item.className = 'north-luna-quicknote-picker-item';
+                                item.textContent = '#' + tag;
+                                item.addEventListener('click', () => { insert('#' + tag + ' ', ''); pop.remove(); });
+                                pickerList.appendChild(item);
+                            });
+                            if (!pickerList.children.length) {
+                                const empty = document.createElement('div');
+                                empty.className = 'north-luna-quicknote-picker-empty';
+                                empty.textContent = lunaLang('还没有标签，输入即可创建', 'No tags yet. Type to create one.');
+                                pickerList.appendChild(empty);
+                            }
+                        } else {
+                            const filtered = allNotes.filter(n => !q || (n.text || '').toLowerCase().includes(q) || (n.time || '').includes(q));
+                            filtered.forEach(note => {
+                                const item = document.createElement('button');
+                                item.type = 'button';
+                                item.className = 'north-luna-quicknote-picker-item';
+                                const text = document.createElement('span');
+                                text.className = 'north-luna-quicknote-picker-text';
+                                text.textContent = note.text || lunaLang('(无正文)', '(empty)');
+                                const meta = document.createElement('span');
+                                meta.className = 'north-luna-quicknote-picker-meta';
+                                meta.textContent = note.time || '';
+                                item.appendChild(text);
+                                item.appendChild(meta);
+                                /* MEMO 标记放到正文首行：清风渲染会裁掉标记之前的“原预览”文字，
+                                   放行内会把用户已写内容误当预览删掉。 */
+                                item.addEventListener('click', () => {
+                                    const memo = '[MEMO:' + note.id + ']';
+                                    editor.value = memo + '\n' + editor.value.replace(/^\s+/, '');
+                                    editor.setSelectionRange(memo.length + 1, memo.length + 1);
+                                    editor.focus();
+                                    pop.remove();
+                                });
+                                pickerList.appendChild(item);
+                            });
+                            if (!pickerList.children.length) {
+                                const empty = document.createElement('div');
+                                empty.className = 'north-luna-quicknote-picker-empty';
+                                empty.textContent = lunaLang('暂无笔记可引用', 'No notes to reference');
+                                pickerList.appendChild(empty);
+                            }
+                        }
+                    };
+                    pickerInput.addEventListener('input', renderPicker);
+                    pickerInput.addEventListener('keydown', (ev) => {
+                        if (ev.key === 'Escape') { ev.preventDefault(); pop.remove(); editor.focus(); }
+                        else if (ev.key === 'Enter') {
+                            ev.preventDefault();
+                            const first = pickerList.querySelector('.north-luna-quicknote-picker-item');
+                            if (first) first.click();
+                        }
+                    });
+                    renderPicker();
+                    setTimeout(() => pickerInput.focus(), 20);
+                } else if (act === 'task') {
+                    insert('- [ ] ', '');
+                } else if (act === 'ul') {
+                    insert('- ', '');
+                } else if (act === 'ol') {
+                    insert('1. ', '');
+                } else if (act === 'upload') {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.multiple = true;
+                    input.accept = 'image/*,video/*,.heic,.heif,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+                    input.style.display = 'none';
+                    document.body.appendChild(input);
+                    input.onchange = async () => {
+                        const list = Array.from(input.files || []);
+                        input.remove();
+                    /* 浮层兜底没有独立渲染进程，直接在页面内上传即可：
+                       这里把上传后的 Markdown 插入正文，保存时统一拆分到 images/files，
+                       与 1.7.7 独立窗口的输入体验保持一致。 */
+                        for (const file of list) {
+                            setStatus(lunaLang('上传中…', 'Uploading...'));
+                            const path = await this._uploadResource(file, { assetsDirPath: 'assets/' });
+                            if (!path) continue;
+                            const kind = this._fileKindFromName(file.name);
+                        const cleanPath = String(path).replace(/^\/+/, '');
+                        if (kind === 'image' || kind === 'video') {
+                            insert('![' + (kind === 'video' ? '视频' : '图片') + '](' + cleanPath + ')\n', '');
+                        } else {
+                            insert('[' + (file.name || cleanPath.split('/').pop()) + '](' + cleanPath + ')\n', '');
+                        }
+                        }
+                        renderAttachments();
+                        setStatus('');
+                    };
+                    input.click();
+                }
+            });
+            renderAttachments();
+            setStatus(lunaLang('保存到清风 · Ctrl/⌘ + Enter 快速保存', 'Saved to Breeze · Ctrl/Cmd + Enter to save'));
+            setTimeout(() => editor.focus(), 30);
+        } catch (e) {
+            console.error('[轻语速记] 打开浮层失败:', e);
+        }
+    }
+
+    _getQuickNoteHTML() {
+        const computed = window.getComputedStyle(document.documentElement);
+        const pick = (name, fallback) => {
+            let value = '';
+            try { value = String(computed.getPropertyValue(name) || '').trim(); } catch (e) {}
+            if (!value || /[;{}<>]/.test(value)) return fallback;
+            return value;
+        };
+        const primaryColor = pick('--b3-theme-primary', '#00B96B');
+        const bgColor = pick('--b3-theme-background', '#FFFFFF');
+        const textColor = pick('--b3-theme-on-background', '#262626');
+        const borderColor = pick('--b3-border-color', '#F0F0F0');
+        const placeholderColor = pick('--b3-theme-on-surface-light', '#BFBFBF');
+        const toolBtnText = pick('--b3-theme-on-surface-light', '#8C8C8C');
+        const toolBtnHover = pick('--b3-list-hover', '#F5F5F5');
+        const btnCloseText = pick('--b3-theme-on-surface-light', '#8C8C8C');
+        const btnCloseHover = pick('--b3-list-hover', '#F5F5F5');
+        const pickerBg = pick('--b3-theme-surface', '#fff');
+        const pickerBorder = pick('--b3-border-color', '#e8e8e8');
+        const pickerText = pick('--b3-theme-on-surface', '#555');
+        const pickerHover = pick('--b3-list-hover', '#f5f5f5');
+        const pickerPlaceholder = pick('--b3-theme-on-surface-light', '#999');
+        const ch = this._quickNoteChannels;
+        const title = this._esc(lunaLang('轻语速记', 'Quick Note'));
+        const placeholder = this._esc(lunaLang('记录此刻的想法...', 'Capture what is on your mind...'));
+        const saveText = this._esc(lunaLang('保存', 'Save'));
+        const cancelText = this._esc(lunaLang('取消', 'Cancel'));
+        const tagText = this._esc(lunaLang('标签', 'Tag'));
+        const taskText = this._esc(lunaLang('任务列表', 'Task list'));
+        const ulText = this._esc(lunaLang('无序列表', 'Bullet list'));
+        const olText = this._esc(lunaLang('有序列表', 'Numbered list'));
+        const tagPlaceholder = this._esc(lunaLang('选择或创建标签...', 'Select or create a tag...'));
+        const createTagText = this._esc(lunaLang('创建标签', 'Create tag'));
+        const noTagsText = this._esc(lunaLang('输入创建新标签', 'Type to create a tag'));
+        const noNotesText = this._esc(lunaLang('暂无笔记', 'No notes'));
+        const mentionSearchText = this._esc(lunaLang('输入搜索笔记...', 'Search notes...'));
+        const saveFailText = this._esc(lunaLang('保存失败：', 'Save failed: '));
+        const noResponseText = this._esc(lunaLang('未收到主窗口响应，请重试', 'No response from the main window, please retry'));
+        const emptyText = this._esc(lunaLang('还没有内容', 'Nothing to save'));
+        const readFailText = this._esc(lunaLang('读取文件失败', 'Failed to read the file'));
+        const removeText = this._esc(lunaLang('移除', 'Remove'));
+        const addResourceText = this._esc(lunaLang('添加图片或文件', 'Add image or file'));
+
+        return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>${this._esc(this._quickNoteWindowTitle())}</title>
+<style>
+:root {
+    --primary-color: ${primaryColor};
+    --card-bg: ${bgColor};
+    --card-text: ${textColor};
+    --card-border: ${borderColor};
+    --placeholder-color: ${placeholderColor};
+    --tool-btn-text: ${toolBtnText};
+    --tool-btn-hover: ${toolBtnHover};
+    --btn-close-text: ${btnCloseText};
+    --btn-close-hover: ${btnCloseHover};
+    --picker-bg: ${pickerBg};
+    --picker-border: ${pickerBorder};
+    --picker-text: ${pickerText};
+    --picker-hover: ${pickerHover};
+    --picker-placeholder: ${pickerPlaceholder};
+    --tooltip-bg: rgba(0, 0, 0, 0.8);
+    --font-size: 14.5px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+.quick-note-card {
+    width: 100%;
+    height: 100%;
+    background: var(--card-bg);
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.card-header {
+    padding: 24px 28px 0 28px;
+    display: flex;
+    align-items: center;
+    -webkit-app-region: drag;
+    gap: 12px;
+}
+.header-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-color) 100%);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+}
+.header-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--card-text);
+    letter-spacing: -0.2px;
+}
+.card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 28px 0 28px;
+    min-height: 0;
+}
+.editor-area {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    border: none;
+    padding: 16px 4px;
+    font-size: var(--font-size);
+    line-height: 1.8;
+    color: var(--card-text);
+    background: transparent;
+    resize: none;
+    outline: none;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+.editor-area::placeholder {
+    color: var(--placeholder-color);
+    font-size: var(--font-size);
+}
+/* 待发送资源：与清风输入框一致（56px 缩略图 + 虚线加号），选图阶段只做本地预览 */
+.attachment-bar {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 2px 4px 10px;
+    flex-shrink: 0;
+}
+.attachment-bar.has-items {
+    display: flex;
+}
+.attachment-item {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--card-border);
+    outline: 1px solid transparent;
+    outline-offset: -1px;
+    transition: outline-color 0.2s;
+}
+.attachment-item:hover {
+    outline-color: var(--primary-color);
+}
+.attachment-item img,
+.attachment-item video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+}
+.attachment-item.is-file {
+    width: auto;
+    min-width: 124px;
+    max-width: 210px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px 0 8px;
+    background: var(--card-border);
+}
+.attachment-file-badge {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: #fff;
+    background: var(--primary-color);
+    text-transform: uppercase;
+}
+.attachment-file-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.3;
+    color: var(--card-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.attachment-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 13px;
+    line-height: 18px;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s, background 0.2s;
+    z-index: 2;
+}
+.attachment-item:hover .attachment-remove {
+    opacity: 1;
+}
+.attachment-remove:hover {
+    background: rgba(220, 38, 38, 0.85);
+}
+.attachment-add {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    border: 1px dashed var(--card-border);
+    background: transparent;
+    color: var(--placeholder-color);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.attachment-add:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+@media (hover: none), (pointer: coarse) {
+    .attachment-remove { opacity: 1; }
+}
+.divider {
+    height: 1px;
+    background: var(--card-border);
+    margin: 0 28px;
+}
+.card-footer {
+    padding: 12px 28px 16px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.toolbar {
+    display: flex;
+    gap: 4px;
+}
+.tool-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--tool-btn-text);
+    font-size: 15px;
+    transition: all 0.2s ease;
+    position: relative;
+}
+.tool-btn:hover {
+    background: var(--tool-btn-hover);
+    color: var(--card-text);
+}
+.tool-btn:active {
+    transform: scale(0.95);
+}
+.tool-btn .tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--tooltip-bg);
+    color: white;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    pointer-events: none;
+    font-weight: 500;
+}
+.tool-btn:hover .tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+.action-btns {
+    display: flex;
+    gap: 8px;
+}
+.btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.btn-close {
+    background: transparent;
+    color: var(--btn-close-text);
+}
+.btn-close:hover {
+    background: var(--btn-close-hover);
+    color: var(--card-text);
+}
+.btn-save {
+    background: var(--primary-color);
+    color: white;
+}
+.btn-save:hover {
+    opacity: 0.9;
+}
+.btn-save:active {
+    transform: scale(0.98);
+}
+.btn-save:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+.tag-picker {
+    position: fixed;
+    background: var(--picker-bg);
+    border: 1px solid var(--picker-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 99999;
+    width: 260px;
+    padding: 8px 0;
+}
+.tag-picker-input-wrapper {
+    display: flex;
+    align-items: center;
+    padding: 0 12px 6px;
+    border-bottom: 1px solid var(--picker-border);
+    margin-bottom: 4px;
+}
+.tag-picker-prefix {
+    color: var(--picker-placeholder);
+    font-size: 14px;
+    margin-right: 4px;
+}
+.tag-picker-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    padding: 4px 0;
+    color: var(--picker-text);
+    background: transparent;
+    font-family: inherit;
+}
+.tag-picker-item {
+    padding: 7px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--picker-text);
+}
+.tag-picker-item:hover, .tag-picker-item.selected {
+    background: var(--picker-hover);
+}
+.tag-picker-create {
+    border-top: 1px dashed var(--picker-border);
+    margin-top: 2px;
+    padding-top: 7px;
+}
+.tag-picker-create-hint {
+    font-size: 11px;
+    color: var(--picker-placeholder);
+    margin-right: 6px;
+}
+.tag-picker-empty {
+    padding: 12px;
+    font-size: 13px;
+    color: var(--picker-placeholder);
+    text-align: center;
+}
+.mention-picker {
+    position: fixed;
+    background: var(--picker-bg);
+    border: 1px solid var(--picker-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 99999;
+    width: 280px;
+}
+.mention-search {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--picker-border);
+    font-size: 12px;
+    color: var(--picker-placeholder);
+    background: transparent;
+}
+.mention-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--picker-text);
+    border-bottom: 1px solid var(--picker-border);
+}
+.mention-item:hover, .mention-item.selected {
+    background: var(--picker-hover);
+}
+.mention-item:last-child {
+    border-bottom: none;
+}
+.mention-item.hidden {
+    display: none;
+}
+.mention-date {
+    font-size: 11px;
+    color: var(--picker-placeholder);
+    margin-bottom: 2px;
+}
+.quick-note-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 84px;
+    z-index: 999999;
+    max-width: calc(100vw - 48px);
+    transform: translate(-50%, 6px);
+    padding: 7px 12px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.76);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.quick-note-toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+</style>
+</head>
+<body>
+<div class="quick-note-card">
+    <div class="card-header">
+        <div class="header-icon">✎</div>
+        <div class="header-title">${title}</div>
+    </div>
+    <div class="card-body">
+        <textarea class="editor-area" id="editor" placeholder="${placeholder}" spellcheck="false"></textarea>
+        <div class="attachment-bar" id="attachment-bar"></div>
+    </div>
+    <div class="divider"></div>
+    <div class="card-footer">
+        <div class="toolbar">
+            <button class="tool-btn" id="btn-tag">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+                <span class="tooltip">${tagText}</span>
+            </button>
+            <button class="tool-btn" id="btn-image">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                <span class="tooltip">${addResourceText}</span>
+            </button>
+            <button class="tool-btn" id="btn-task">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
+                <span class="tooltip">${taskText}</span>
+            </button>
+            <button class="tool-btn" id="btn-ul">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/></svg>
+                <span class="tooltip">${ulText}</span>
+            </button>
+            <button class="tool-btn" id="btn-ol">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5h10"/><path d="M11 12h10"/><path d="M11 19h10"/><path d="M4 4h1v5"/><path d="M4 9h2"/><path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02"/></svg>
+                <span class="tooltip">${olText}</span>
+            </button>
+        </div>
+        <div class="action-btns">
+            <button class="btn btn-close" id="btn-close">${cancelText}</button>
+            <button class="btn btn-save" id="btn-save">${saveText}</button>
+        </div>
+    </div>
+</div>
+<script>
+const { ipcRenderer } = require('electron');
+const IPC_TOKEN = ${JSON.stringify(this._quickNoteInstanceId)};
+const CH_SAVE = ${JSON.stringify(ch.save)};
+const CH_UPLOAD = ${JSON.stringify(ch.upload)};
+const CH_TAGS = ${JSON.stringify(ch.tags)};
+const CH_NOTES = ${JSON.stringify(ch.notes)};
+const CH_CLOSE = ${JSON.stringify(ch.close)};
+const MSG_TAG_PLACEHOLDER = ${JSON.stringify(tagPlaceholder)};
+const MSG_CREATE_TAG = ${JSON.stringify(createTagText)};
+const MSG_NO_TAGS = ${JSON.stringify(noTagsText)};
+const MSG_NO_NOTES = ${JSON.stringify(noNotesText)};
+const MSG_MENTION_SEARCH = ${JSON.stringify(mentionSearchText)};
+const MSG_SAVE_FAIL = ${JSON.stringify(saveFailText)};
+const MSG_NO_RESPONSE = ${JSON.stringify(noResponseText)};
+const MSG_EMPTY = ${JSON.stringify(emptyText)};
+const MSG_READ_FAIL = ${JSON.stringify(readFailText)};
+const MSG_REMOVE = ${JSON.stringify(removeText)};
+const MSG_ADD_RESOURCE = ${JSON.stringify(addResourceText)};
+const editor = document.getElementById('editor');
+const attachmentBar = document.getElementById('attachment-bar');
+let ALL_TAGS = [];
+let RECENT_NOTES = [];
+let tagPicker = null;
+let mentionPicker = null;
+let saving = false;
+/* 待发送资源：选图/粘贴时只在本地预览，点「保存」才真正上传到思源。
+   这样点「取消」不会在资源库里留下任何文件。 */
+let attachments = [];
+window.__luminaQuickNoteBusy = false;
+editor.focus();
+
+/* 请求经主进程转发给插件（插件在主进程注册了同名 on 监听），
+   插件处理完再用 webContents.send 把结果推回本窗口。 */
+function bridgeInvoke(channel, payload, timeout) {
+    return new Promise((resolve, reject) => {
+        const id = 'qn_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        const replyChannel = channel + '-reply';
+        let timer = null;
+        const cleanup = () => {
+            clearTimeout(timer);
+            ipcRenderer.removeListener(replyChannel, onReply);
+        };
+        const onReply = (event, message) => {
+            let parsed = null;
+            try { parsed = typeof message === 'string' ? JSON.parse(message) : message; } catch (e) { return; }
+            if (!parsed || parsed.id !== id) return;
+            cleanup();
+            resolve(parsed.result);
+        };
+        ipcRenderer.on(replyChannel, onReply);
+        timer = setTimeout(() => {
+            cleanup();
+            reject(new Error(MSG_NO_RESPONSE));
+        }, timeout || 20000);
+        try {
+            ipcRenderer.send(channel, JSON.stringify({ token: IPC_TOKEN, id: id, payload: payload }));
+        } catch (e) {
+            cleanup();
+            reject(e);
+        }
+    });
+}
+
+function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
+let toastTimer = null;
+function toast(message) {
+    let el = document.querySelector('.quick-note-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.className = 'quick-note-toast';
+        document.body.appendChild(el);
+    }
+    el.textContent = String(message || '');
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+function insertTextAtCursor(before, after) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const text = editor.value;
+    const selected = text.substring(start, end);
+    editor.value = text.substring(0, start) + before + selected + after + text.substring(end);
+    const newPos = start + before.length + selected.length;
+    editor.setSelectionRange(newPos, newPos);
+    editor.focus();
+}
+function insertTag(tag) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const text = editor.value;
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+    const needsHash = before.length === 0 || before.endsWith(' ') || before.endsWith('\\n');
+    const tagText = needsHash ? '#' + tag + ' ' : tag + ' ';
+    editor.value = before + tagText + after;
+    editor.setSelectionRange(start + tagText.length, start + tagText.length);
+    editor.focus();
+}
+function getPayload() {
+    /* 只回传文字与「本地待上传」文件，不包含任何已上传路径：
+       上传动作发生在主窗口保存阶段，避免取消后留下孤儿资源。 */
+    return {
+        content: editor.value,
+        pending: attachments.map(a => ({ id: a.id, name: a.name, type: a.type, kind: a.kind, base64: a.base64 }))
+    };
+}
+window.__luminaQuickNoteGetPayload = getPayload;
+
+function attachmentKind(name, mime) {
+    const t = String(mime || '');
+    if (t.startsWith('image/')) return 'image';
+    if (t.startsWith('video/')) return 'video';
+    const ext = (String(name || '').split('.').pop() || '').toLowerCase();
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'heic', 'heif'].includes(ext)) return 'image';
+    if (['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v'].includes(ext)) return 'video';
+    return 'file';
+}
+function attachmentExt(name) {
+    const dot = String(name || '').lastIndexOf('.');
+    return dot > 0 ? String(name).slice(dot + 1).toLowerCase() : '';
+}
+function renderAttachments() {
+    if (!attachmentBar) return;
+    if (!attachments.length) {
+        attachmentBar.innerHTML = '';
+        attachmentBar.classList.remove('has-items');
+        return;
+    }
+    attachmentBar.classList.add('has-items');
+    const frag = document.createDocumentFragment();
+    attachments.forEach((item) => {
+        const el = document.createElement('div');
+        el.className = 'attachment-item' + (item.kind === 'file' ? ' is-file' : '');
+        el.dataset.id = item.id;
+        if (item.kind === 'file') {
+            el.innerHTML =
+                '<span class="attachment-file-badge">' + esc((attachmentExt(item.name) || 'FILE').toUpperCase()) + '</span>' +
+                '<span class="attachment-file-name">' + esc(item.name || 'FILE') + '</span>' +
+                '<button type="button" class="attachment-remove" title="' + MSG_REMOVE + '">&times;</button>';
+        } else if (item.kind === 'video') {
+            el.innerHTML =
+                '<video src="' + esc(item.preview) + '" preload="metadata" muted></video>' +
+                '<button type="button" class="attachment-remove" title="' + MSG_REMOVE + '">&times;</button>';
+        } else {
+            el.innerHTML =
+                '<img src="' + esc(item.preview) + '" alt="" loading="lazy" decoding="async">' +
+                '<button type="button" class="attachment-remove" title="' + MSG_REMOVE + '">&times;</button>';
+        }
+        el.querySelector('.attachment-remove').addEventListener('click', (e) => {
+            e.stopPropagation();
+            attachments = attachments.filter(a => a.id !== item.id);
+            renderAttachments();
+            editor.focus();
+        });
+        frag.appendChild(el);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'attachment-add';
+    addBtn.title = MSG_ADD_RESOURCE;
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', () => pickFiles());
+    frag.appendChild(addBtn);
+    attachmentBar.innerHTML = '';
+    attachmentBar.appendChild(frag);
+}
+/* 选图 → 只读成本地 base64 预览，不碰资源库 */
+async function addLocalFiles(files) {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    for (const file of list) {
+        try {
+            const base64 = await readFileAsDataUrl(file);
+            const name = file.name || ('resource-' + Date.now());
+            attachments.push({
+                id: 'a_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+                name: name,
+                type: file.type || '',
+                kind: attachmentKind(name, file.type),
+                base64: base64,
+                preview: base64
+            });
+        } catch (e) {
+            toast(MSG_READ_FAIL);
+        }
+    }
+    renderAttachments();
+    editor.focus();
+}
+
+function showTagPicker() {
+    if (tagPicker) { tagPicker.remove(); tagPicker = null; return; }
+    tagPicker = document.createElement('div');
+    tagPicker.className = 'tag-picker';
+    const rect = document.getElementById('btn-tag').getBoundingClientRect();
+    tagPicker.style.left = rect.left + 'px';
+    tagPicker.style.visibility = 'hidden';
+    tagPicker.innerHTML =
+        '<div class="tag-picker-input-wrapper">' +
+            '<span class="tag-picker-prefix">#</span>' +
+            '<input type="text" class="tag-picker-input" placeholder="' + MSG_TAG_PLACEHOLDER + '" autocomplete="off">' +
+        '</div>' +
+        '<div class="tag-picker-list"></div>';
+    document.body.appendChild(tagPicker);
+    const pickerInput = tagPicker.querySelector('.tag-picker-input');
+    const pickerList = tagPicker.querySelector('.tag-picker-list');
+    function renderList(value) {
+        const v = (value || '').trim().toLowerCase();
+        let html = '';
+        const filtered = v ? ALL_TAGS.filter(t => t.toLowerCase().includes(v)) : ALL_TAGS;
+        const isNew = v && !ALL_TAGS.some(t => t.toLowerCase() === v);
+        if (isNew) {
+            html += '<div class="tag-picker-item tag-picker-create" data-tag="' + esc(v) + '"><span class="tag-picker-create-hint">' + MSG_CREATE_TAG + '</span><span class="tag-picker-item-name">#' + esc(v) + '</span></div>';
+        }
+        html += filtered.map(tag => '<div class="tag-picker-item" data-tag="' + esc(tag) + '"><span class="tag-picker-item-name">' + esc(tag) + '</span></div>').join('');
+        if (!html) html = '<div class="tag-picker-empty">' + MSG_NO_TAGS + '</div>';
+        pickerList.innerHTML = html;
+    }
+    renderList();
+    const height = tagPicker.offsetHeight;
+    tagPicker.style.top = (rect.top - height - 6) + 'px';
+    tagPicker.style.visibility = 'visible';
+    pickerInput.focus();
+    pickerInput.addEventListener('input', () => renderList(pickerInput.value));
+    pickerInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const v = pickerInput.value.trim();
+            if (v) { insertTag(v); tagPicker.remove(); tagPicker = null; }
+        } else if (e.key === 'Escape') {
+            tagPicker.remove(); tagPicker = null;
+        }
+    });
+    pickerList.addEventListener('click', (ev) => {
+        const item = ev.target.closest('.tag-picker-item');
+        if (item) { insertTag(item.dataset.tag); tagPicker.remove(); tagPicker = null; }
+    });
+    setTimeout(() => {
+        document.addEventListener('click', function closeOnClick(ev) {
+            if (!tagPicker) return;
+            if (!tagPicker.contains(ev.target) && !ev.target.closest('#btn-tag')) {
+                tagPicker.remove(); tagPicker = null;
+                document.removeEventListener('click', closeOnClick);
+            }
+        });
+    }, 0);
+}
+
+function showMentionPicker(triggerPos) {
+    if (mentionPicker) { mentionPicker.remove(); mentionPicker = null; }
+    const pos = triggerPos !== undefined ? triggerPos : editor.selectionStart;
+    let atPos = pos;
+    if (triggerPos === undefined) {
+        const value = editor.value;
+        if (value.substring(pos - 1, pos) !== '@') {
+            editor.value = value.substring(0, pos) + '@' + value.substring(pos);
+            editor.setSelectionRange(pos + 1, pos + 1);
+            atPos = pos;
+        } else {
+            atPos = pos - 1;
+        }
+    }
+    mentionPicker = document.createElement('div');
+    mentionPicker.className = 'mention-picker';
+    mentionPicker.style.position = 'fixed';
+    mentionPicker.style.bottom = '80px';
+    mentionPicker.style.left = '20px';
+    mentionPicker.dataset.triggerPos = atPos;
+    if (RECENT_NOTES.length === 0) {
+        mentionPicker.innerHTML = '<div class="mention-item">' + MSG_NO_NOTES + '</div>';
+    } else {
+        mentionPicker.innerHTML = '<div class="mention-search">' + MSG_MENTION_SEARCH + '</div>' + RECENT_NOTES.map(n => {
+            return '<div class="mention-item" data-id="' + esc(n.id) + '"><div class="mention-date">' + esc(n.time || '') + '</div><div>' + esc(n.text || MSG_NO_NOTES) + '</div></div>';
+        }).join('');
+    }
+    document.body.appendChild(mentionPicker);
+    mentionPicker.querySelectorAll('.mention-item[data-id]').forEach(item => {
+        item.addEventListener('click', () => {
+            editor.focus();
+            const memoText = '[MEMO:' + item.dataset.id + ']';
+            const triggerPos = parseInt(mentionPicker.dataset.triggerPos, 10);
+            const cursorPos = editor.selectionStart;
+            const value = editor.value;
+            /* 清风渲染会把 MEMO 标记之前的「原预览」文字裁掉（批注逻辑）。
+               速记里的 @ 是随手引用，不能吃掉用户已经写好的正文，所以把标记放到首行，
+               原有内容整体下移一行；同时移除用户为触发 @ 输入的字符和搜索词。 */
+            const before = value.slice(0, triggerPos);
+            const after = cursorPos > triggerPos ? value.slice(cursorPos) : value.slice(triggerPos + 1);
+            const existing = (before + after).replace(/^\\s+/, '');
+            editor.value = memoText + '\\n' + existing;
+            editor.setSelectionRange(memoText.length + 1, memoText.length + 1);
+            mentionPicker.remove(); mentionPicker = null;
+            editor.focus();
+        });
+    });
+}
+function filterMentionPicker(searchText) {
+    if (!mentionPicker) return;
+    const items = mentionPicker.querySelectorAll('.mention-item[data-id]');
+    const st = searchText.toLowerCase();
+    items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.classList.toggle('hidden', !text.includes(st));
+    });
+}
+function handleMentionInput() {
+    const existing = document.querySelector('.mention-picker');
+    if (!existing) {
+        const cursorPos = editor.selectionStart;
+        const value = editor.value;
+        const beforeCursor = value.substring(0, cursorPos);
+        const currentLine = beforeCursor.split('\\n').pop();
+        const atIndex = currentLine.lastIndexOf('@');
+        if (atIndex >= 0) {
+            const afterAt = currentLine.substring(atIndex + 1);
+            if (!afterAt.includes('@')) {
+                const lineStartPos = cursorPos - currentLine.length;
+                showMentionPicker(lineStartPos + atIndex);
+            }
+        }
+        return;
+    }
+    const triggerPos = parseInt(existing.dataset.triggerPos, 10);
+    const cursorPos = editor.selectionStart;
+    const value = editor.value;
+    if (cursorPos <= triggerPos) { existing.remove(); mentionPicker = null; return; }
+    if (value.substring(triggerPos, triggerPos + 1) !== '@') { existing.remove(); mentionPicker = null; return; }
+    const searchText = value.substring(triggerPos + 1, cursorPos);
+    filterMentionPicker(searchText);
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('read failed'));
+        reader.readAsDataURL(file);
+    });
+}
+function pickFiles() {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*,video/*,application/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip';
+    fileInput.multiple = true;
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+    fileInput.onchange = async () => {
+        const files = fileInput.files;
+        try { if (files && files.length) await addLocalFiles(files); }
+        finally { if (fileInput.parentNode) document.body.removeChild(fileInput); }
+    };
+    fileInput.click();
+}
+
+document.getElementById('btn-tag').addEventListener('click', (e) => {
+    e.stopPropagation();
+    showTagPicker();
+});
+document.getElementById('btn-image').addEventListener('click', () => pickFiles());
+document.getElementById('btn-task').addEventListener('click', () => {
+    insertTextAtCursor('- [ ] ', '');
+    editor.focus();
+});
+document.getElementById('btn-ul').addEventListener('click', () => {
+    insertTextAtCursor('- ', '');
+    editor.focus();
+});
+document.getElementById('btn-ol').addEventListener('click', () => {
+    const lines = editor.value.substring(0, editor.selectionStart).split('\\n');
+    const currentLine = lines[lines.length - 1];
+    const match = currentLine.match(/^(\\d+)\\.\\s/);
+    const num = match ? parseInt(match[1]) + 1 : 1;
+    insertTextAtCursor(num + '. ', '');
+    editor.focus();
+});
+editor.addEventListener('input', handleMentionInput);
+editor.addEventListener('paste', async (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    const files = [];
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].kind !== 'file') continue;
+        const file = items[i].getAsFile();
+        if (file) files.push(file);
+    }
+    if (files.length === 0) return;
+    e.preventDefault();
+    await addLocalFiles(files);
+});
+document.addEventListener('click', (e) => {
+    if (tagPicker && !tagPicker.contains(e.target) && !e.target.closest('#btn-tag')) {
+        tagPicker.remove(); tagPicker = null;
+    }
+    if (mentionPicker && !mentionPicker.contains(e.target)) {
+        mentionPicker.remove(); mentionPicker = null;
+    }
+});
+
+async function save() {
+    if (saving) return false;
+    const text = editor.value.trim();
+    if (!text && attachments.length === 0) {
+        toast(MSG_EMPTY);
+        return false;
+    }
+    saving = true;
+    window.__luminaQuickNoteBusy = true;
+    const saveBtn = document.getElementById('btn-save');
+    saveBtn.disabled = true;
+    try {
+        const result = await bridgeInvoke(CH_SAVE, getPayload());
+        if (!result || !result.ok) {
+            toast(MSG_SAVE_FAIL + ((result && result.message) || MSG_NO_RESPONSE));
+            return false;
+        }
+        editor.value = '';
+        attachments = [];
+        renderAttachments();
+        /* 速记是「记完就走」的场景：保存成功后直接关窗，回到思源。
+           需要连续记录时再按一次全局快捷键即可，比留在原地多点一次关闭更顺手。 */
+        bridgeInvoke(CH_CLOSE, null, 3000).catch(() => {});
+        return true;
+    } catch (e) {
+        toast(MSG_SAVE_FAIL + ((e && e.message) || MSG_NO_RESPONSE));
+        return false;
+    } finally {
+        saving = false;
+        window.__luminaQuickNoteBusy = false;
+        saveBtn.disabled = false;
+    }
+}
+async function closeWindow() {
+    if (saving) return;
+    /* 「取消」= 放弃本次记录：不上传资源、不落库，直接关窗。 */
+    editor.value = '';
+    attachments = [];
+    renderAttachments();
+    bridgeInvoke(CH_CLOSE, null, 3000).catch(() => {});
+}
+document.getElementById('btn-save').addEventListener('click', save);
+document.getElementById('btn-close').addEventListener('click', closeWindow);
+editor.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        save();
+        return;
+    }
+    if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+        const cursorPos = editor.selectionStart;
+        const value = editor.value;
+        const beforeCursor = value.substring(0, cursorPos);
+        const afterCursor = value.substring(cursorPos);
+        const lines = beforeCursor.split('\\n');
+        const currentLine = lines[lines.length - 1];
+        const unorderedMatch = currentLine.match(/^(•\\s|-\\s(?!\\[)|\\*\\s)(.*)$/);
+        const taskMatch = currentLine.match(/^(- \\[[ x]\\]\\s?)(.*)$/);
+        const orderedMatch = currentLine.match(/^(\\d+)\\.\\s(.*)$/);
+        if (taskMatch) {
+            if (!taskMatch[2].trim()) {
+                e.preventDefault();
+                lines[lines.length - 1] = '';
+                editor.value = lines.join('\\n') + '\\n' + afterCursor;
+                const newPos = lines.join('\\n').length + 1;
+                editor.setSelectionRange(newPos, newPos);
+                return;
+            }
+            e.preventDefault();
+            const newLine = '\\n' + taskMatch[1];
+            editor.value = beforeCursor + newLine + afterCursor;
+            editor.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+            return;
+        }
+        if (unorderedMatch) {
+            if (!unorderedMatch[2].trim()) {
+                e.preventDefault();
+                lines[lines.length - 1] = '';
+                editor.value = lines.join('\\n') + '\\n' + afterCursor;
+                const newPos = lines.join('\\n').length + 1;
+                editor.setSelectionRange(newPos, newPos);
+                return;
+            }
+            e.preventDefault();
+            const newLine = '\\n' + unorderedMatch[1];
+            editor.value = beforeCursor + newLine + afterCursor;
+            editor.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+            return;
+        }
+        if (orderedMatch) {
+            if (!orderedMatch[2].trim()) {
+                e.preventDefault();
+                lines[lines.length - 1] = '';
+                editor.value = lines.join('\\n') + '\\n' + afterCursor;
+                const newPos = lines.join('\\n').length + 1;
+                editor.setSelectionRange(newPos, newPos);
+                return;
+            }
+            e.preventDefault();
+            const nextNum = parseInt(orderedMatch[1]) + 1;
+            const newLine = '\\n' + nextNum + '. ';
+            editor.value = beforeCursor + newLine + afterCursor;
+            editor.setSelectionRange(cursorPos + newLine.length, cursorPos + newLine.length);
+            return;
+        }
+    }
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        if (tagPicker) { tagPicker.remove(); tagPicker = null; return; }
+        if (mentionPicker) { mentionPicker.remove(); mentionPicker = null; return; }
+        closeWindow();
+    }
+});
+bridgeInvoke(CH_TAGS, null).then(tags => {
+    if (Array.isArray(tags)) ALL_TAGS = tags;
+}).catch(() => {});
+bridgeInvoke(CH_NOTES, { limit: 80 }).then(notes => {
+    if (Array.isArray(notes)) RECENT_NOTES = notes;
+}).catch(() => {});
+</script>
+</body>
+</html>`;
+    }
+
     async addBreezeNote(input = {}) {
         const content = String(input.content || '').trim();
-        if (!content) throw new Error('记录内容为空');
+        const inputImages = Array.isArray(input.images) ? input.images.filter(Boolean) : [];
+        const inputFiles = Array.isArray(input.files) ? input.files.filter(Boolean) : [];
+        /* 允许「只有图片/附件、没有正文」的记录：速记窗口先传图再写字的场景很常见。
+           纯空记录仍然拒绝，避免误触产生空卡片。 */
+        if (!content && !inputImages.length && !inputFiles.length) throw new Error('记录内容为空');
 
         const timestamp = Number(input.timestamp || Date.now());
         const date = new Date(Number.isFinite(timestamp) ? timestamp : Date.now());
@@ -15349,8 +17185,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
             id: `b_${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
             time,
             content,
-            images: Array.isArray(input.images) ? input.images.slice() : [],
-            files: Array.isArray(input.files) ? input.files.slice() : []
+            images: inputImages.slice(),
+            files: inputFiles.slice()
         };
         const title = String(input.title || '').trim();
         if (title) note.title = title;
@@ -20124,12 +21960,41 @@ module.exports = class NorthLunaPlugin extends Plugin {
     }
 
     onunload() {
+        try { this._cleanupQuickNote(); } catch (e) { /* noop */ }
         try { this._stopMcpInboxWatcher(); } catch (e) { /* noop */ }
         breezeUninstallLinkTitleObserver();
         breezeUninstallCodeHighlightObserver();
         this.unhookMobileGoBack();
         this._restoreMobileToolbar();
         console.log(`${PLUGIN_NAME} plugin unloaded`);
+    }
+
+    _cleanupQuickNote() {
+        try {
+            if (this._quickNoteWin && !this._quickNoteWin.isDestroyed()) {
+                this._quickNoteAllowClose = true;
+                this._quickNoteWin.close();
+            }
+        } catch (e) { /* noop */ }
+        this._quickNoteWin = null;
+        try {
+            const ipcMain = this._quickNoteRemote && this._quickNoteRemote.ipcMain;
+            const ch = this._quickNoteChannels || {};
+            if (ipcMain) {
+                if (this._quickNoteSaveHandler) ipcMain.removeListener(ch.save, this._quickNoteSaveHandler);
+                if (this._quickNoteUploadHandler) ipcMain.removeListener(ch.upload, this._quickNoteUploadHandler);
+                if (this._quickNoteTagsHandler) ipcMain.removeListener(ch.tags, this._quickNoteTagsHandler);
+                if (this._quickNoteNotesHandler) ipcMain.removeListener(ch.notes, this._quickNoteNotesHandler);
+                if (this._quickNoteCloseHandler) ipcMain.removeListener(ch.close, this._quickNoteCloseHandler);
+            }
+        } catch (e) { /* noop */ }
+        this._quickNoteSaveHandler = null;
+        this._quickNoteUploadHandler = null;
+        this._quickNoteTagsHandler = null;
+        this._quickNoteNotesHandler = null;
+        this._quickNoteCloseHandler = null;
+        this._quickNoteIpcReady = false;
+        this._quickNoteRemote = null;
     }
 
     /* ===== 思源生命周期钩子：插件存储数据被改动时触发 =====
@@ -23995,6 +25860,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
        节点之间的空白会被 flex 布局吃掉，所以「日期与时分之间的空格」由 CSS 的 margin-left 提供。 */
     formatMomentDate(ts) {
         const d = new Date(ts);
+        if (isNaN(d.getTime())) return '';
         const p2 = n => String(n).padStart(2, '0');
         const datePart = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
         return datePart + `<span class="north-luna-moments-item-time">${p2(d.getHours())}:${p2(d.getMinutes())}</span>`;
@@ -24177,7 +26043,615 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this.refreshMomentsList(body);
     }
 
+    /* ===== 朋友圈相册：时间轴视图 =====
+       相册是纯派生视图，不新增存储字段；动态增删改后重新收集即可。
+       一条动态一行：左侧日期、中间缩略图、右侧文字，点击打开动态详情。 */
+    _collectMomentsAlbumMoments() {
+        const timeOf = (m) => {
+            const raw = m && (m.createdAt || m.created);
+            if (typeof raw === 'number') return raw;
+            const ts = new Date(raw).getTime();
+            return isNaN(ts) ? null : ts;
+        };
+        /* 相册收录全部动态：纯文字动态同样是一条生活记录，也要能在时间轴里回看。
+           媒体缩略图只是行的展示形式，不再作为收录条件。 */
+        return this._sortMomentsForFeed(this.momentsData.items || [])
+            .map((m) => ({ moment: m, created: timeOf(m) }));
+    }
+
+    _momentsAlbumYears() {
+        const years = new Set();
+        this._collectMomentsAlbumMoments().forEach(({ created }) => {
+            if (created === null || created === undefined) return;
+            const d = new Date(created);
+            if (!isNaN(d.getTime())) years.add(d.getFullYear());
+        });
+        return [...years].sort((a, b) => b - a);
+    }
+
+    /* 相册综合筛选：日期 + 内容类型 + 地点 + 心情 + 分类。
+       筛选状态独立于动态流，切回动态时不会互相污染。 */
+    _momentsAlbumFiltered(all) {
+        const year = this._momentsAlbumYear || null;
+        const month = this._momentsAlbumMonth || null;
+        const media = this._momentsAlbumMedia || '';
+        const location = (this._momentsAlbumLocation || '').trim();
+        const mood = (this._momentsAlbumMood || '').trim();
+        const category = (this._momentsAlbumCategory || '').trim();
+        return (all || []).filter(({ moment, created }) => {
+            if (year || month) {
+                if (created === null || created === undefined) return false;
+                const d = new Date(created);
+                if (isNaN(d.getTime())) return false;
+                if (year && d.getFullYear() !== year) return false;
+                if (month && d.getMonth() + 1 !== month) return false;
+            }
+            if (media) {
+                const imgs = (moment.images || []).filter(Boolean);
+                const kinds = imgs.map(src => this._fileKindFromName(src));
+                const hasImage = kinds.includes('image');
+                const hasVideo = kinds.includes('video');
+                if (media === 'image' && !hasImage) return false;
+                if (media === 'video' && !hasVideo) return false;
+                if (media === 'text' && (hasImage || hasVideo)) return false;
+            }
+            if (location && (moment.location || '').trim() !== location) return false;
+            if (mood && (moment.mood || '').trim() !== mood) return false;
+            if (category && (moment.category || '').trim() !== category) return false;
+            return true;
+        });
+    }
+
+    _momentsAlbumHasFilter() {
+        return !!(this._momentsAlbumYear || this._momentsAlbumMonth || this._momentsAlbumMedia
+            || (this._momentsAlbumLocation || '').trim()
+            || (this._momentsAlbumMood || '').trim()
+            || (this._momentsAlbumCategory || '').trim());
+    }
+
+    _momentsAlbumHasExtraFilter() {
+        return !!(this._momentsAlbumMonth || this._momentsAlbumMedia
+            || (this._momentsAlbumLocation || '').trim()
+            || (this._momentsAlbumMood || '').trim()
+            || (this._momentsAlbumCategory || '').trim());
+    }
+
+    /* 行内标签：天气 / 心情 / 分类 / 地点，与动态卡片的 meta 顺序保持一致 */
+    _momentsAlbumMetaChips(m, wrapClass) {
+        if (!m) return '';
+        const chips = [];
+        if (m.weather) chips.push(`<span class="north-luna-moments-album-chip weather">${this._esc(m.weather)}</span>`);
+        if (m.mood) chips.push(`<span class="north-luna-moments-album-chip mood">${this._esc(m.mood)}</span>`);
+        if (m.category) chips.push(`<span class="north-luna-moments-album-chip category">${this._esc(m.category)}</span>`);
+        const fileCount = (m.images || []).filter(src => {
+            if (!src) return false;
+            const kind = this._fileKindFromName(src);
+            return kind !== 'image' && kind !== 'video';
+        }).length;
+        if (fileCount > 0) chips.push(`<span class="north-luna-moments-album-chip file"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><use xlink:href="#iconFile"></use></svg>${lunaLang('附件', 'File')} ${fileCount}</span>`);
+        return chips.length ? `<div class="${wrapClass || 'north-luna-moments-album-meta'}">${chips.join('')}</div>` : '';
+    }
+
+    _renderMomentsAlbum(body) {
+        const albumEl = body && body.querySelector('#momentsAlbum');
+        if (!albumEl) return;
+        const container = albumEl.closest('.north-luna-moments-container');
+        const all = this._collectMomentsAlbumMoments();
+        /* 首次打开相册默认选中最新年份（与参考图一致）；用户选「全部年份」后不再自动重置 */
+        if (!this._momentsAlbumYearInitialized) {
+            this._momentsAlbumYearInitialized = true;
+            const years = this._momentsAlbumYears();
+            this._momentsAlbumYear = years.length ? years[0] : null;
+        }
+        const year = this._momentsAlbumYear || null;
+        const month = this._momentsAlbumMonth || null;
+        const filtered = this._momentsAlbumFiltered(all);
+        let chipText;
+        if (year) {
+            chipText = month
+                ? (LUNA_EN ? `${year}-${String(month).padStart(2, '0')}` : `${year}年${month}月`)
+                : (LUNA_EN ? String(year) : `${year}年`);
+        } else if (month) {
+            chipText = lunaLang(`每年${month}月`, `${month}mo · all years`);
+        } else {
+            chipText = lunaLang('全部年份', 'All years');
+        }
+        const countText = lunaLang(`${filtered.length} 条`, `${filtered.length} item${filtered.length === 1 ? '' : 's'}`);
+        const filterActive = this._momentsAlbumHasExtraFilter();
+
+        const headHtml = `<div class="north-luna-moments-album-head">
+            <button type="button" class="north-luna-moments-album-year" id="momentsAlbumYearBtn" title="${lunaLang('筛选日期', 'Filter by date')}">
+                <span>${this._esc(chipText)}</span>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><use xlink:href="#iconDown"></use></svg>
+            </button>
+            <div class="north-luna-moments-album-head-right">
+                <span class="north-luna-moments-album-total">${this._esc(countText)}</span>
+                <button type="button" class="north-luna-moments-album-filter-toggle${filterActive ? ' active' : ''}" id="momentsAlbumFilterBtn" title="${lunaLang('筛选相册', 'Filter album')}" aria-label="${lunaLang('筛选相册', 'Filter album')}">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><use xlink:href="#iconFilter"></use></svg>
+                </button>
+            </div>
+        </div>`;
+
+        if (filtered.length === 0) {
+            albumEl.innerHTML = headHtml + `<div class="north-luna-moments-album-empty">
+                <svg class="north-luna-moments-album-empty-icon" viewBox="0 0 24 24" fill="currentColor"><use xlink:href="#iconGallery"></use></svg>
+                <p class="north-luna-moments-album-empty-title">${all.length === 0 ? lunaLang('还没有动态', 'No moments yet') : lunaLang('没有符合条件的动态', 'No moments match the filters')}</p>
+                <p class="north-luna-moments-album-empty-sub">${all.length === 0 ? lunaLang('发表第一条动态后，会自动出现在这里', 'Your moments will appear here automatically') : lunaLang('调整日期、内容或标签筛选试试', 'Try adjusting the date, content or tag filters')}</p>
+            </div>`;
+            this._bindMomentsAlbumHead(albumEl, body);
+            this._syncMomentsAlbumToolbar(container);
+            return;
+        }
+
+        const rowsHtml = filtered.map(({ moment, created }) => {
+            const d = (created === null || created === undefined) ? null : new Date(created);
+            const valid = !!d && !isNaN(d.getTime());
+            const day = valid ? String(d.getDate()).padStart(2, '0') : '--';
+            const monthLabel = valid
+                ? lunaLang(`${d.getMonth() + 1}月`, `${d.getMonth() + 1}mo`)
+                : '';
+            const imgs = (moment.images || []).filter((src) => {
+                if (!src) return false;
+                const kind = this._fileKindFromName(src);
+                return kind === 'image' || kind === 'video';
+            });
+            const caption = (moment.text || '').trim();
+            const dateHtml = `<div class="north-luna-moments-album-date">
+                    <span class="north-luna-moments-album-day">${day}</span>
+                    <span class="north-luna-moments-album-month-label">${this._esc(monthLabel)}</span>
+                </div>`;
+            /* 纯文字 / 无图动态：文字本身作为整块浅色气泡，不再放占位图标 */
+            if (imgs.length === 0) {
+                const textHtml = caption
+                    ? breezeRenderTextWithTags(caption)
+                    : lunaLang('（无文字内容）', '(No text)');
+                return `<div class="north-luna-moments-album-row is-text" data-mid="${this._esc(moment.id)}" role="button" tabindex="0" aria-label="${lunaLang('查看详情', 'View details')}">
+                    ${dateHtml}
+                    <div class="north-luna-moments-album-text-bubble">${textHtml}</div>
+                </div>`;
+            }
+            const MAX = 4;
+            const visible = imgs.slice(0, MAX);
+            const extra = imgs.length - MAX;
+            const cols = imgs.length <= 1 ? 1 : (imgs.length === 3 ? 3 : 2);
+            const thumbs = visible.map((src, idx) => {
+                const kind = this._fileKindFromName(src);
+                const resolved = this._resolveImageUrl(src);
+                const more = (idx === MAX - 1 && extra > 0)
+                    ? `<span class="north-luna-moments-album-thumb-more">+${extra}</span>`
+                    : '';
+                const media = kind === 'video'
+                    ? `<video src="${this._esc(resolved)}" preload="metadata" muted playsinline></video><span class="north-luna-moments-video-play-icon"></span>`
+                    : `<img src="${this._esc(resolved)}" alt="" loading="lazy" decoding="async">`;
+                return `<span class="north-luna-moments-album-thumb">${media}${more}</span>`;
+            }).join('');
+            return `<div class="north-luna-moments-album-row" data-mid="${this._esc(moment.id)}" role="button" tabindex="0" aria-label="${lunaLang('查看详情', 'View details')}">
+                ${dateHtml}
+                <div class="north-luna-moments-album-thumbs cols-${cols}">${thumbs}</div>
+                <div class="north-luna-moments-album-info">
+                    ${caption ? `<div class="north-luna-moments-album-caption">${breezeRenderTextWithTags(caption)}</div>` : ''}
+                    ${this._momentsAlbumMetaChips(moment)}
+                </div>
+            </div>`;
+        }).join('');
+
+        albumEl.innerHTML = headHtml + `<div class="north-luna-moments-album-timeline">${rowsHtml}</div>`;
+        this._bindMomentsAlbumHead(albumEl, body);
+        this._syncMomentsAlbumToolbar(container);
+        albumEl.querySelectorAll('.north-luna-moments-album-row').forEach((row) => {
+            const open = () => this._openMomentDetail(body, row.dataset.mid);
+            row.addEventListener('click', open);
+            row.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+            });
+        });
+    }
+
+    _bindMomentsAlbumHead(albumEl, body) {
+        const yearBtn = albumEl.querySelector('#momentsAlbumYearBtn');
+        if (yearBtn) yearBtn.addEventListener('click', () => this._openMomentsAlbumFilter(body));
+        const filterBtn = albumEl.querySelector('#momentsAlbumFilterBtn');
+        if (filterBtn) filterBtn.addEventListener('click', () => this._openMomentsAlbumFilter(body));
+    }
+
+    /* 相册视图下也显示封面工具栏的「心情 / 分类」，并同步高亮状态 */
+    _syncMomentsAlbumToolbar(container) {
+        if (!container) return;
+        const moodBtn = container.querySelector('#momentsMoodFilterBtn');
+        if (moodBtn) {
+            const mood = (this._momentsAlbumMood || '').trim();
+            moodBtn.style.display = '';
+            moodBtn.classList.toggle('active', !!mood);
+            moodBtn.title = mood
+                ? lunaLang(`当前筛选：${mood}（点击修改）`, `Filtering: ${mood} (click to change)`)
+                : lunaLang('按心情筛选朋友圈', 'Filter moments by mood');
+        }
+        const catBtn = container.querySelector('#momentsCategoryFilterBtn');
+        if (catBtn) {
+            const category = (this._momentsAlbumCategory || '').trim();
+            catBtn.style.display = '';
+            catBtn.classList.toggle('active', !!category);
+            catBtn.title = category
+                ? lunaLang(`当前筛选：${category}（点击修改）`, `Filtering: ${category} (click to change)`)
+                : lunaLang('按分类筛选朋友圈', 'Filter moments by category');
+        }
+    }
+
+    /* 相册综合筛选：日期 + 内容类型 + 地点 + 心情 + 分类 */
+    _openMomentsAlbumFilter(body) {
+        const container = body && body.querySelector('.north-luna-moments-container');
+        if (!container) return;
+        container.querySelectorAll('.north-luna-moments-mood-filter-panel').forEach(el => el.remove());
+        const old = container.querySelector('#momentsAlbumFilter');
+        if (old) old.remove();
+        const moments = this._collectMomentsAlbumMoments().map(x => x.moment);
+        const years = this._momentsAlbumYears();
+        const curYear = this._momentsAlbumYear || '';
+        const curMonth = this._momentsAlbumMonth || '';
+        const curLocation = this._momentsAlbumLocation || '';
+        const curMood = this._momentsAlbumMood || '';
+        const curCategory = this._momentsAlbumCategory || '';
+        const countSorted = (getter) => {
+            const map = new Map();
+            moments.forEach(m => {
+                const value = String(getter(m) || '').trim();
+                if (!value) return;
+                map.set(value, (map.get(value) || 0) + 1);
+            });
+            return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh'));
+        };
+        const locations = countSorted(m => m.location);
+        const moods = countSorted(m => m.mood);
+        const categories = countSorted(m => m.category);
+        const yearOptions = [`<option value="">${lunaLang('全部年份', 'All years')}</option>`]
+            .concat(years.map(y => `<option value="${y}"${String(y) === String(curYear) ? ' selected' : ''}>${LUNA_EN ? y : y + '年'}</option>`))
+            .join('');
+        const monthOptions = [`<option value="">${lunaLang('全部月份', 'All months')}</option>`]
+            .concat(Array.from({ length: 12 }, (_, i) => i + 1)
+                .map(m => `<option value="${m}"${String(m) === String(curMonth) ? ' selected' : ''}>${LUNA_EN ? m : m + '月'}</option>`))
+            .join('');
+        const buildOptions = (items, current, allLabel) => {
+            let html = `<option value="">${allLabel}</option>`;
+            items.forEach(([value, count]) => {
+                html += `<option value="${this._esc(value)}"${value === current ? ' selected' : ''}>${this._esc(value)} (${count})</option>`;
+            });
+            if (items.length === 0) {
+                html += `<option value="" disabled>${lunaLang('暂无记录', 'No records yet')}</option>`;
+            }
+            return html;
+        };
+        const locationOptions = buildOptions(locations, curLocation, lunaLang('全部地点', 'All locations'));
+        const moodOptions = buildOptions(moods, curMood, lunaLang('全部心情', 'All moods'));
+        const categoryOptions = buildOptions(categories, curCategory, lunaLang('全部分类', 'All categories'));
+        const mediaOptions = [
+            ['', lunaLang('全部', 'All')],
+            ['image', lunaLang('含图片', 'Photos')],
+            ['video', lunaLang('含视频', 'Videos')],
+            ['text', lunaLang('无图', 'Text only')],
+        ];
+        const mediaBtns = mediaOptions.map(([value, label]) =>
+            `<button type="button" class="north-luna-moments-album-filter-seg${value === (this._momentsAlbumMedia || '') ? ' active' : ''}" data-media="${value}">${label}</button>`
+        ).join('');
+        const el = document.createElement('div');
+        el.className = 'north-luna-moments-album-filter';
+        el.id = 'momentsAlbumFilter';
+        el.innerHTML = `
+            <div class="north-luna-moments-album-filter-overlay"></div>
+            <div class="north-luna-moments-album-filter-panel">
+                <div class="north-luna-moments-album-filter-header">
+                    <div class="north-luna-moments-album-filter-title">${lunaLang('筛选相册', 'Filter album')}</div>
+                    <button type="button" class="north-luna-moments-album-filter-close" aria-label="${lunaT('关闭')}"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><use xlink:href="#iconClose"></use></svg></button>
+                </div>
+                <div class="north-luna-moments-album-filter-section">
+                    <div class="north-luna-moments-album-filter-label">${lunaLang('日期', 'Date')}</div>
+                    <div class="north-luna-moments-album-filter-row">
+                        <label class="north-luna-moments-album-filter-field">
+                            <span>${lunaLang('年份', 'Year')}</span>
+                            <select id="momentsAlbumFilterYear">${yearOptions}</select>
+                        </label>
+                        <label class="north-luna-moments-album-filter-field">
+                            <span>${lunaLang('月份', 'Month')}</span>
+                            <select id="momentsAlbumFilterMonth">${monthOptions}</select>
+                        </label>
+                    </div>
+                </div>
+                <div class="north-luna-moments-album-filter-section">
+                    <div class="north-luna-moments-album-filter-label">${lunaLang('内容类型', 'Content type')}</div>
+                    <div class="north-luna-moments-album-filter-seg-group">${mediaBtns}</div>
+                </div>
+                <div class="north-luna-moments-album-filter-section">
+                    <label class="north-luna-moments-album-filter-field">
+                        <span>${lunaLang('地点', 'Location')}</span>
+                        <select id="momentsAlbumFilterLocation">${locationOptions}</select>
+                    </label>
+                </div>
+                <div class="north-luna-moments-album-filter-row">
+                    <label class="north-luna-moments-album-filter-field">
+                        <span>${lunaLang('心情', 'Mood')}</span>
+                        <select id="momentsAlbumFilterMood">${moodOptions}</select>
+                    </label>
+                    <label class="north-luna-moments-album-filter-field">
+                        <span>${lunaLang('分类', 'Category')}</span>
+                        <select id="momentsAlbumFilterCategory">${categoryOptions}</select>
+                    </label>
+                </div>
+                <div class="north-luna-moments-album-filter-actions">
+                    <button type="button" class="north-luna-moments-album-filter-btn reset">${lunaLang('重置', 'Reset')}</button>
+                    <div class="north-luna-moments-album-filter-actions-right">
+                        <button type="button" class="north-luna-moments-album-filter-btn cancel">${lunaT('取消')}</button>
+                        <button type="button" class="north-luna-moments-album-filter-btn confirm">${lunaT('确定')}</button>
+                    </div>
+                </div>
+            </div>`;
+        container.appendChild(el);
+        requestAnimationFrame(() => el.classList.add('active'));
+        const close = () => el.remove();
+        el.querySelector('.north-luna-moments-album-filter-overlay').addEventListener('click', close);
+        el.querySelector('.north-luna-moments-album-filter-close').addEventListener('click', close);
+        el.querySelector('.north-luna-moments-album-filter-btn.cancel').addEventListener('click', close);
+        let selectedMedia = this._momentsAlbumMedia || '';
+        el.querySelectorAll('.north-luna-moments-album-filter-seg').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                selectedMedia = btn.dataset.media || '';
+                el.querySelectorAll('.north-luna-moments-album-filter-seg').forEach(b => b.classList.toggle('active', b === btn));
+            });
+        });
+        el.querySelector('.north-luna-moments-album-filter-btn.reset').addEventListener('click', () => {
+            this._momentsAlbumYear = null;
+            this._momentsAlbumMonth = null;
+            this._momentsAlbumMedia = '';
+            this._momentsAlbumLocation = '';
+            this._momentsAlbumMood = '';
+            this._momentsAlbumCategory = '';
+            close();
+            this._renderMomentsAlbum(body);
+        });
+        el.querySelector('.north-luna-moments-album-filter-btn.confirm').addEventListener('click', () => {
+            const y = el.querySelector('#momentsAlbumFilterYear').value;
+            const m = el.querySelector('#momentsAlbumFilterMonth').value;
+            this._momentsAlbumYear = y ? Number(y) : null;
+            this._momentsAlbumMonth = m ? Number(m) : null;
+            this._momentsAlbumMedia = selectedMedia;
+            this._momentsAlbumLocation = el.querySelector('#momentsAlbumFilterLocation').value || '';
+            this._momentsAlbumMood = el.querySelector('#momentsAlbumFilterMood').value || '';
+            this._momentsAlbumCategory = el.querySelector('#momentsAlbumFilterCategory').value || '';
+            close();
+            this._renderMomentsAlbum(body);
+        });
+    }
+
+    /* 动态详情页：复用朋友圈数据结构，展示正文 / 媒体 / 点赞 / 评论 */
+    _renderMomentDetailContent(m, toolbarHtml) {
+        const nickname = this._getProfileNickname();
+        const userAvatar = ((this.data[SETTINGS_STORAGE] || {}).settings || {}).avatar;
+        const avatarSrc = this._resolveImageUrl(userAvatar ? userAvatar : DEFAULT_AVATAR);
+        let mediaHtml = '';
+        if (m.images && m.images.length > 0) {
+            const gridClass = m.images.length === 1 ? 'single' : m.images.length === 2 ? 'double' : m.images.length === 3 ? 'triple' : m.images.length <= 4 ? 'four' : 'nine';
+            const items = m.images.map(src => this._renderMediaItem(src)).join('');
+            mediaHtml = `<div class="north-luna-moments-detail-media"><div class="north-luna-moments-image-grid ${gridClass}">${items}</div></div>`;
+        }
+        const likes = m.liked ? `<div class="north-luna-moments-like-row">
+            <svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-2px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"></path></svg>
+            <span class="north-luna-moments-like-nickname">${this._esc(nickname)}</span>
+        </div>` : '';
+        const comments = (m.comments || []).map(c => `<div class="north-luna-moments-comment-item">
+            <div class="north-luna-moments-comment-display">
+                <span class="north-luna-moments-comment-text"><strong>${this._esc(nickname)}：</strong>${this._esc(c.text)}</span>
+                <span class="north-luna-moments-comment-time">${this._formatCommentTime(c.time)}</span>
+            </div>
+        </div>`).join('');
+        return `<div class="north-luna-moments-detail-item" data-mid="${this._esc(m.id)}">
+            <img class="north-luna-moments-detail-avatar" src="${this._esc(avatarSrc)}" alt="avatar" loading="lazy" decoding="async">
+            <div class="north-luna-moments-detail-content">
+                <div class="north-luna-moments-detail-name">${this._esc(nickname)}</div>
+                <div class="north-luna-moments-detail-text">${breezeRenderTextWithTags(m.text || '')}</div>
+                ${mediaHtml}
+                ${toolbarHtml || ''}
+                ${this._momentsAlbumMetaChips(m, 'north-luna-moments-detail-chips')}
+                <div class="north-luna-moments-detail-interactions">${likes}${comments}</div>
+            </div>
+        </div>`;
+    }
+
+    _openMomentDetail(body, mid) {
+        const container = body && body.querySelector('.north-luna-moments-container');
+        if (!container) return;
+        const m = (this.momentsData.items || []).find(x => String(x.id) === String(mid));
+        if (!m) return;
+        container.classList.add('moments-detail-open');
+        container.querySelectorAll('#momentsAlbumFilter').forEach(el => el.remove());
+        container.querySelectorAll('.north-luna-moments-mood-filter-panel').forEach(el => el.remove());
+        let page = container.querySelector('#momentsDetailPage');
+        if (!page) {
+            page = document.createElement('div');
+            page.id = 'momentsDetailPage';
+            page.className = 'north-luna-moments-detail';
+            container.appendChild(page);
+        }
+        if (page._momentsDetailCleanup) {
+            page._momentsDetailCleanup();
+            page._momentsDetailCleanup = null;
+        }
+        const detailLocation = (m.location || '').trim();
+        const detailMetaLine = [
+            detailLocation ? this._esc(detailLocation) : '',
+            this.formatMomentDate(m.created || m.createdAt)
+        ].filter(Boolean).join(' · ');
+        const toolbarHtml = `<div class="north-luna-moments-detail-toolbar">
+                    <div class="north-luna-moments-detail-toolbar-main">
+                        <span class="north-luna-moments-detail-toolbar-time">${detailMetaLine}</span>
+                        <button type="button" class="north-luna-moments-detail-tool danger" id="momentsDetailDeleteBtn" title="${lunaT('删除')}" aria-label="${lunaT('删除')}">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><use xlink:href="#iconTrashcan"></use></svg>
+                        </button>
+                    </div>
+                    <div class="north-luna-moments-detail-more-wrap">
+                        <button type="button" class="north-luna-moments-detail-tool north-luna-moments-detail-more-btn" id="momentsDetailMoreBtn" title="${lunaLang('更多操作', 'More actions')}" aria-label="${lunaLang('更多操作', 'More actions')}"><svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><use xlink:href="#iconMore"></use></svg></button>
+                        <div class="north-luna-moments-detail-menu" id="momentsDetailMenu">
+                            <button type="button" data-act="edit"><svg class="north-luna-moments-detail-menu-icon" viewBox="0 0 24 24" fill="currentColor"><use xlink:href="#iconEdit"></use></svg><span>${lunaLang('修改', 'Edit')}</span></button>
+                            <button type="button" data-act="pin"><svg class="north-luna-moments-detail-menu-icon" viewBox="0 0 24 24" fill="currentColor"><use xlink:href="${m.pinned ? '#iconUnpin' : '#iconPin'}"></use></svg><span>${m.pinned ? lunaLang('取消置顶', 'Unpin') : lunaLang('置顶', 'Pin')}</span></button>
+                        </div>
+                    </div>
+                </div>`;
+        page.innerHTML = `<div class="north-luna-moments-detail-nav">
+                <button type="button" class="north-luna-moments-detail-back" id="momentsDetailBack" aria-label="${lunaT('返回')}">‹</button>
+                <div class="north-luna-moments-detail-title">${lunaT('详情')}</div>
+                <div class="north-luna-moments-detail-nav-spacer"></div>
+            </div>
+            <div class="north-luna-moments-detail-body">
+                ${this._renderMomentDetailContent(m, toolbarHtml)}
+            </div>`;
+        this._momentsDetailScroll = body.scrollTop || 0;
+        body.scrollTop = 0;
+        page.classList.add('active');
+        const closeDetail = () => {
+            if (page._momentsDetailCleanup) {
+                page._momentsDetailCleanup();
+                page._momentsDetailCleanup = null;
+            }
+            page.classList.remove('active');
+            container.classList.remove('moments-detail-open');
+            body.scrollTop = this._momentsDetailScroll || 0;
+        };
+        page.querySelector('#momentsDetailBack').addEventListener('click', closeDetail);
+        page.querySelector('.north-luna-moments-detail-body').addEventListener('click', (e) => {
+            if (e.target.closest('[data-kind]')) this._handleMediaClick(e, '.north-luna-moments-detail-item');
+        });
+        const menu = page.querySelector('#momentsDetailMenu');
+        const moreBtn = page.querySelector('#momentsDetailMoreBtn');
+        const closeMenu = () => menu.classList.remove('active');
+        const onDocMouseDown = (e) => {
+            if (!menu.contains(e.target) && !moreBtn.contains(e.target)) closeMenu();
+        };
+        page._momentsDetailCleanup = () => document.removeEventListener('mousedown', onDocMouseDown);
+        moreBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const willOpen = !menu.classList.contains('active');
+            menu.classList.toggle('active', willOpen);
+            if (willOpen) {
+                setTimeout(() => {
+                    if (menu.classList.contains('active')) document.addEventListener('mousedown', onDocMouseDown);
+                }, 0);
+            } else {
+                document.removeEventListener('mousedown', onDocMouseDown);
+            }
+        });
+        menu.querySelector('[data-act="edit"]').addEventListener('click', () => {
+            closeMenu();
+            if (typeof this._momentsOpenPublishPage !== 'function') return;
+            if (page._momentsDetailCleanup) {
+                page._momentsDetailCleanup();
+                page._momentsDetailCleanup = null;
+            }
+            page.classList.remove('active');
+            container.classList.remove('moments-detail-open');
+            body.scrollTop = this._momentsDetailScroll || 0;
+            this._momentsOpenPublishPage(m);
+        });
+        const pinBtn = menu.querySelector('[data-act="pin"]');
+        pinBtn.addEventListener('click', () => {
+            closeMenu();
+            m.pinned = !m.pinned;
+            const pinLabel = pinBtn.querySelector('span');
+            if (pinLabel) pinLabel.textContent = m.pinned ? lunaLang('取消置顶', 'Unpin') : lunaLang('置顶', 'Pin');
+            const pinUse = pinBtn.querySelector('use');
+            if (pinUse) pinUse.setAttribute('xlink:href', m.pinned ? '#iconUnpin' : '#iconPin');
+            this.saveMoments().then(() => {
+                if (typeof showMessage === 'function') showMessage(m.pinned ? lunaT('已置顶') : lunaT('已取消置顶'));
+                this.refreshMomentsList(body);
+            }).catch(() => {});
+        });
+        const deleteMoment = () => {
+            const delImages = [...(m.images || [])];
+            this.data[MOMENTS_STORAGE].items = (this.data[MOMENTS_STORAGE].items || [])
+                .filter(x => String(x.id) !== String(mid));
+            delImages.forEach(img => { if (!this._isMediaUsedByBreezeNotes(img)) this.deletePluginImage(img); });
+            this.saveMoments().then(() => {
+                if (typeof showMessage === 'function') showMessage(lunaT('已删除'));
+                closeDetail();
+                this.refreshMomentsList(body);
+            }).catch(() => {});
+        };
+        page.querySelector('#momentsDetailDeleteBtn').addEventListener('click', () => {
+            if (typeof confirm === 'function') {
+                confirm(lunaT('删除'), lunaT('确定要删除这条朋友圈吗？'), deleteMoment);
+            } else if (window.confirm(lunaT('确定要删除这条朋友圈吗？'))) {
+                deleteMoment();
+            }
+        });
+    }
+
+    /* 切换动态 / 相册：只切显示状态，不重建封面和发表页 */
+    _scrollMomentsTo(body, targetEl) {
+        if (!body || !targetEl) return;
+        const bodyRect = body.getBoundingClientRect();
+        const targetRect = targetEl.getBoundingClientRect();
+        const delta = targetRect.top - bodyRect.top;
+        if (Math.abs(delta) > 1) {
+            body.scrollTop = Math.max(0, body.scrollTop + delta - 44);
+        }
+    }
+
+    /* 朋友圈页面所在滚动链（含思源标签页容器 / 外层布局）统一隐藏滚动条：
+       不改变任何 overflow / 滚动能力，只去掉可见滚动条 */
+    _hideScrollbarsUpward(el) {
+        let node = el;
+        while (node && node.nodeType === 1 && node !== document.body) {
+            node.classList.add('north-luna-scrollbar-hidden');
+            node = node.parentElement;
+        }
+    }
+
+    _setMomentsTab(body, tab, options = {}) {
+        const next = tab === 'album' ? 'album' : 'feed';
+        const prev = this._momentsActiveTab;
+        this._momentsActiveTab = next;
+        if (next === 'feed' && prev === 'album') this._momentsViewMode = 'feed';
+
+        const container = body && body.querySelector('.north-luna-moments-container');
+        if (!container) return;
+        /* 切换视图时收起只属于动态流的浮层，避免相册页残留筛选面板 / 操作菜单 */
+        container.querySelectorAll('.north-luna-moments-mood-filter-panel').forEach(el => el.remove());
+        container.querySelectorAll('.north-luna-moments-action-popup.active').forEach(el => el.classList.remove('active'));
+        container.querySelectorAll('.north-luna-moments-item.popup-open').forEach(el => el.classList.remove('popup-open'));
+        /* 切换视图时收起相册筛选弹层与动态详情页 */
+        container.querySelectorAll('#momentsAlbumFilter').forEach(el => el.remove());
+        const detailPage = container.querySelector('#momentsDetailPage');
+        if (detailPage) {
+            if (detailPage._momentsDetailCleanup) {
+                detailPage._momentsDetailCleanup();
+                detailPage._momentsDetailCleanup = null;
+            }
+            detailPage.classList.remove('active');
+            container.classList.remove('moments-detail-open');
+        }
+        container.classList.toggle('moments-tab-album', next === 'album');
+        /* 封面工具栏上的入口跟着切换：动态页显示「相册」，相册页显示「动态」 */
+        const albumToolBtn = container.querySelector('#momentsAlbumToolBtn');
+        if (albumToolBtn) {
+            const isAlbum = next === 'album';
+            albumToolBtn.title = isAlbum ? lunaLang('返回动态', 'Back to moments') : lunaLang('朋友圈相册', 'Moments album');
+            const label = albumToolBtn.querySelector('span');
+            if (label) label.textContent = isAlbum ? lunaLang('动态', 'Moments') : lunaLang('相册', 'Album');
+            const use = albumToolBtn.querySelector('use');
+            if (use) use.setAttribute('xlink:href', isAlbum ? '#iconGlobe' : '#iconGallery');
+        }
+
+        if (next === 'album') {
+            this._renderMomentsAlbum(body);
+        } else if (options.refresh !== false) {
+            this.refreshMomentsList(body);
+        }
+
+        if (options.scroll !== false) {
+            this._scrollMomentsTo(body, next === 'album'
+                ? container.querySelector('#momentsAlbum')
+                : container.querySelector('#momentsList'));
+        }
+    }
+
     renderMoments(body) {
+        this._hideScrollbarsUpward(body);
         const cfg = this.momentsData.config || {};
         const settingsAll = (this.data[SETTINGS_STORAGE] || {}).settings || {};
         const lockEnabled = settingsAll.momentsLockEnabled === true;
@@ -24196,6 +26670,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         const signature = this._getProfileSignature();
         const cover = cfg.cover || null;
         const coverPosition = cfg.coverPosition || 50;
+        const activeTab = this._momentsActiveTab === 'album' ? 'album' : 'feed';
 
         /* 移动端与 PC 端字号独立：移动端用 momentsMobileFontSize（默认 15），PC 用 momentsFontSize（默认 16） */
         const initialFontSize = this.isMobile
@@ -24203,7 +26678,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             : (settingsAll.momentsFontSize || 16);
 
         body.innerHTML = `
-            <div class="north-luna-moments-container${settingsAll.momentsHoverBorder === true ? ' moments-hover-border' : ''}${settingsAll.momentsShowCommentTime !== true ? ' moments-hide-comment-time' : ''}${settingsAll.momentsShowTime === false ? ' moments-hide-item-time' : ''}" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder === true ? '' : '--mom-mobile-item-border: none;'} ${settingsAll.momentsShowBorder === false ? '--mom-pc-item-border: none;' : ''}">
+            <div class="north-luna-moments-container${settingsAll.momentsHoverBorder === true ? ' moments-hover-border' : ''}${settingsAll.momentsShowCommentTime !== true ? ' moments-hide-comment-time' : ''}${settingsAll.momentsShowTime === false ? ' moments-hide-item-time' : ''}${activeTab === 'album' ? ' moments-tab-album' : ''}" style="--moments-font-size: ${initialFontSize}px; ${settingsAll.momMobileShowBorder === true ? '' : '--mom-mobile-item-border: none;'} ${settingsAll.momentsShowBorder === false ? '--mom-pc-item-border: none;' : ''}">
                 <div class="north-luna-moments-main" id="momentsMainPage">
                     <div class="north-luna-moments-nav" id="momentsNavBar">
                         <div class="north-luna-moments-nav-left"></div>
@@ -24238,6 +26713,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             <button class="north-luna-moments-cover-tool" data-act="calendar" type="button" title="${lunaT('朋友圈日历')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconCalendar"></use></svg><span>日历</span>
                             </button>
+                            <button class="north-luna-moments-cover-tool" id="momentsAlbumToolBtn" data-act="album" type="button" title="${activeTab === 'album' ? lunaLang('返回动态', 'Back to moments') : lunaLang('朋友圈相册', 'Moments album')}">
+                                <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="${activeTab === 'album' ? '#iconGlobe' : '#iconGallery'}"></use></svg><span>${activeTab === 'album' ? lunaLang('动态', 'Moments') : lunaLang('相册', 'Album')}</span>
+                            </button>
                             <button class="north-luna-moments-cover-tool" id="momentsMoodFilterBtn" data-act="mood-filter" type="button" title="${lunaT('按心情筛选朋友圈')}">
                                 <svg style="width:14px;height:14px;fill:currentColor;"><use xlink:href="#iconEmoji"></use></svg><span>心情</span>
                             </button>
@@ -24261,6 +26739,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     <div class="north-luna-moments-signature">
                         <div class="north-luna-moments-signature-text">${signature}</div>
                     </div>
+                    <div class="north-luna-moments-album" id="momentsAlbum"></div>
                     ${this._renderPinnedStrip()}
                     <div class="north-luna-moments-list${((this.data[SETTINGS_STORAGE] || {}).settings || {}).momentsHoverBorder === true ? ' moments-hover-border' : ''}" id="momentsList"></div>
                     <div class="north-luna-moments-bottom-space"></div>
@@ -24395,6 +26874,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
             { act: 'sync', key: 'momentsCoverToolSync', def: true },
             { act: 'drag', key: 'momentsCoverToolDrag', def: true },
             { act: 'calendar', key: 'momentsCoverToolCalendar', def: true },
+            { act: 'album', key: 'momentsCoverToolAlbum', def: true },
             { act: 'mood-filter', key: 'momentsCoverToolMoodFilter', def: true },
             { act: 'category-filter', key: 'momentsCoverToolCategoryFilter', def: true },
             { act: 'delete', key: 'momentsCoverToolDelete', def: true }
@@ -26560,7 +29040,17 @@ module.exports = class NorthLunaPlugin extends Plugin {
         };
 
         overlay.querySelector('.north-luna-moments-image-preview-overlay').addEventListener('click', closeModal);
-        overlay.querySelector('.north-luna-moments-image-preview-close').addEventListener('click', closeModal);
+        const previewCloseBtn = overlay.querySelector('.north-luna-moments-image-preview-close');
+        /* 阻止事件冒泡/默认行为：避免关闭预览的同一次点击继续落到下方思源窗口按钮上 */
+        previewCloseBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        previewCloseBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeModal();
+        });
         container.addEventListener('click', (e) => {
             if (e.target === container || e.target.closest('.north-luna-moments-video-preview-container')) {
                 if (e.target === container && !container.classList.contains('north-luna-moments-video-preview-container')) {
@@ -26728,6 +29218,8 @@ module.exports = class NorthLunaPlugin extends Plugin {
             textEl.focus();
             requestAnimationFrame(autoResizePub);
         };
+        /* 相册详情页的「修改」需要复用同一个发表页（含编辑态、草稿、图片回填逻辑） */
+        this._momentsOpenPublishPage = openPublishPage;
 
         /* ===== 草稿：取消时「保留 / 不保留」 ===== */
         const closePublishPage = () => {
@@ -27161,12 +29653,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
             }
             this.saveMoments().then(() => {
                 const isNew = !editingId;
+                const stayInAlbum = !isNew && this._momentsActiveTab === 'album';
                 showMessage(editingId ? '已保存' : '已发表');
                 main.style.visibility = '';
                 pub.classList.remove('active');
                 editingId = null;
                 clearDraft();   // 发表/保存成功后清除草稿
-                this.refreshMomentsList(body);
+                /* 相册里编辑后留在相册，避免刚改完就被切回动态页；
+                   新建动态仍然回到动态页，方便马上看到刚发布的内容 */
+                if (stayInAlbum) {
+                    this._setMomentsTab(body, 'album', { refresh: false, scroll: false });
+                } else {
+                    this._setMomentsTab(body, 'feed', { refresh: false, scroll: false });
+                    this.refreshMomentsList(body);
+                }
                 /* 自动同步思源笔记文档：发布后 1s 防抖，仅新建时生效（编辑不触发） */
                 if (isNew && this._getPluginSetting('autoSyncMoments')) {
                     clearTimeout(this._momentsAutoSyncTimer);
@@ -27220,6 +29720,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 }
                 else if (act === 'drag') this._enterCoverDragMode(container);
                 else if (act === 'calendar') this._openCoverCalendar(container);
+                else if (act === 'album') this._setMomentsTab(body, this._momentsActiveTab === 'album' ? 'feed' : 'album');
                 else if (act === 'mood-filter') this._openMoodFilterPanel(container, btn);
                 else if (act === 'category-filter') this._openCategoryFilterPanel(container, btn);
                 /* 一键同步（封面工具栏内的「同步」，仅移动端渲染）：
@@ -27990,14 +30491,34 @@ module.exports = class NorthLunaPlugin extends Plugin {
         this.saveMoments();
     }
 
+    /* 筛选面板选完后，按当前视图刷新：动态流刷新列表，相册重渲染时间轴 */
+    _refreshMomentsAfterFilter(container) {
+        if (!container) return;
+        const body = container.parentElement;
+        if (this._momentsActiveTab === 'album') this._renderMomentsAlbum(body);
+        else this.refreshMomentsList(body);
+    }
+
     _openMoodFilterPanel(container, anchorBtn) {
+        container.querySelectorAll('#momentsAlbumFilter').forEach(el => el.remove());
         // 切换关闭/打开：如果面板已存在则关闭
         const existing = container.querySelector('.north-luna-moments-mood-filter-panel');
-        if (existing) { existing.remove(); return; }
+        if (existing) {
+            const same = existing.dataset.kind === 'mood';
+            existing.remove();
+            if (same) return;
+        }
+
+        /* 相册与动态流使用各自独立的筛选状态，避免在相册筛完切回动态还在过滤 */
+        const albumMode = this._momentsActiveTab === 'album';
+        const filterKey = albumMode ? '_momentsAlbumMood' : 'momentsMoodFilter';
+        const sourceItems = albumMode
+            ? this._collectMomentsAlbumMoments().map(x => x.moment)
+            : (this.momentsData.items || []);
 
         // 收集所有有记录的心情（去重 + 计数）
         const counts = new Map();
-        (this.momentsData.items || []).forEach(m => {
+        sourceItems.forEach(m => {
             const mood = (m.mood || '').trim();
             if (!mood) return;
             counts.set(mood, (counts.get(mood) || 0) + 1);
@@ -28006,18 +30527,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         const panel = document.createElement('div');
         panel.className = 'north-luna-moments-mood-filter-panel';
-        const currentFilter = this.momentsMoodFilter || '';
-        const totalCount = (this.momentsData.items || []).length;
+        panel.dataset.kind = 'mood';
+        const currentFilter = this[filterKey] || '';
+        const totalCount = sourceItems.length;
 
         // 第一行：全部
         const allItem = document.createElement('div');
         allItem.className = 'north-luna-moments-mood-filter-item' + (currentFilter ? '' : ' active');
         allItem.innerHTML = `<span class="north-luna-moments-mood-filter-label">${lunaT('全部')}</span><span class="north-luna-moments-mood-filter-count">${totalCount}</span>`;
         allItem.addEventListener('click', () => {
-            this.momentsMoodFilter = null;
-        this.momentsCategoryFilter = null;
+            this[filterKey] = '';
+            if (!albumMode) this.momentsCategoryFilter = null;
             panel.remove();
-            this.refreshMomentsList(container.parentElement);
+            this._refreshMomentsAfterFilter(container);
         });
         panel.appendChild(allItem);
 
@@ -28025,7 +30547,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (moods.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'north-luna-moments-mood-filter-empty';
-            empty.textContent = '还没有任何心情记录';
+            empty.textContent = lunaLang('还没有任何心情记录', 'No moods recorded yet');
             panel.appendChild(empty);
         } else {
             moods.forEach(([mood, count]) => {
@@ -28034,9 +30556,9 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 item.innerHTML = `<span class="north-luna-moments-mood-filter-label">${this._esc(mood)}</span><span class="north-luna-moments-mood-filter-count">${count}</span>`;
                 item.addEventListener('click', () => {
                     // 二次点击同一项 → 取消筛选
-                    this.momentsMoodFilter = (this.momentsMoodFilter === mood) ? null : mood;
+                    this[filterKey] = (this[filterKey] === mood) ? '' : mood;
                     panel.remove();
-                    this.refreshMomentsList(container.parentElement);
+                    this._refreshMomentsAfterFilter(container);
                 });
                 panel.appendChild(item);
             });
@@ -28071,13 +30593,24 @@ module.exports = class NorthLunaPlugin extends Plugin {
     }
 
     _openCategoryFilterPanel(container, anchorBtn) {
+        container.querySelectorAll('#momentsAlbumFilter').forEach(el => el.remove());
         // 切换关闭/打开：如果面板已存在则关闭
         const existing = container.querySelector('.north-luna-moments-mood-filter-panel');
-        if (existing) { existing.remove(); return; }
+        if (existing) {
+            const same = existing.dataset.kind === 'category';
+            existing.remove();
+            if (same) return;
+        }
+
+        const albumMode = this._momentsActiveTab === 'album';
+        const filterKey = albumMode ? '_momentsAlbumCategory' : 'momentsCategoryFilter';
+        const sourceItems = albumMode
+            ? this._collectMomentsAlbumMoments().map(x => x.moment)
+            : (this.momentsData.items || []);
 
         // 从已有朋友圈中收集所有使用过的分类（去重 + 计数）
         const counts = new Map();
-        (this.momentsData.items || []).forEach(m => {
+        sourceItems.forEach(m => {
             const cat = (m.category || '').trim();
             if (!cat) return;
             counts.set(cat, (counts.get(cat) || 0) + 1);
@@ -28086,17 +30619,18 @@ module.exports = class NorthLunaPlugin extends Plugin {
 
         const panel = document.createElement('div');
         panel.className = 'north-luna-moments-mood-filter-panel';
-        const currentFilter = this.momentsCategoryFilter || '';
-        const totalCount = (this.momentsData.items || []).length;
+        panel.dataset.kind = 'category';
+        const currentFilter = this[filterKey] || '';
+        const totalCount = sourceItems.length;
 
         // 第一行：全部
         const allItem = document.createElement('div');
         allItem.className = 'north-luna-moments-mood-filter-item' + (currentFilter ? '' : ' active');
         allItem.innerHTML = `<span class="north-luna-moments-mood-filter-label">${lunaT('全部')}</span><span class="north-luna-moments-mood-filter-count">${totalCount}</span>`;
         allItem.addEventListener('click', () => {
-            this.momentsCategoryFilter = null;
+            this[filterKey] = '';
             panel.remove();
-            this.refreshMomentsList(container.parentElement);
+            this._refreshMomentsAfterFilter(container);
         });
         panel.appendChild(allItem);
 
@@ -28105,19 +30639,19 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (!hasData) {
             const empty = document.createElement('div');
             empty.className = 'north-luna-moments-mood-filter-empty';
-            empty.textContent = '还没有使用过分类，发表时填写即会自动出现';
+            empty.textContent = lunaLang('还没有使用过分类，发表时填写即会自动出现', 'No categories yet. Add one when posting.');
             panel.appendChild(empty);
         } else {
             categories.forEach(([cat]) => {
                 const item = document.createElement('div');
                 item.className = 'north-luna-moments-mood-filter-item' + (cat === currentFilter ? ' active' : '');
-                const displayCount = (this.momentsData.items || []).filter(m => (m.category || '').trim() === cat).length;
+                const displayCount = sourceItems.filter(m => (m.category || '').trim() === cat).length;
                 item.innerHTML = `<span class="north-luna-moments-mood-filter-label">${this._esc(cat)}</span><span class="north-luna-moments-mood-filter-count">${displayCount || 0}</span>`;
                 item.addEventListener('click', () => {
                     // 二次点击同一项 → 取消筛选
-                    this.momentsCategoryFilter = (this.momentsCategoryFilter === cat) ? null : cat;
+                    this[filterKey] = (this[filterKey] === cat) ? '' : cat;
                     panel.remove();
-                    this.refreshMomentsList(container.parentElement);
+                    this._refreshMomentsAfterFilter(container);
                 });
                 panel.appendChild(item);
             });
@@ -28696,24 +31230,32 @@ module.exports = class NorthLunaPlugin extends Plugin {
         /* 朋友圈动态是**独立记录**：由清风笔记「添加到朋友圈」生成后即与来源笔记解耦，
            来源笔记的归档 / 删除都不再影响它（否则归档一条笔记会连带让朋友圈里的动态消失） */
         // 同步筛选按钮的 active 高亮（置顶视图下隐藏）
+        const albumMode = this._momentsActiveTab === 'album';
+        const hideFilterTools = inPinnedView && !albumMode;
+        const moodFilterValue = albumMode ? (this._momentsAlbumMood || '') : (this.momentsMoodFilter || '');
         const moodBtn = container.querySelector('#momentsMoodFilterBtn');
         if (moodBtn) {
-            moodBtn.style.display = inPinnedView ? 'none' : '';
-            if (this.momentsMoodFilter) {
+            moodBtn.style.display = hideFilterTools ? 'none' : '';
+            if (moodFilterValue) {
                 moodBtn.classList.add('active');
-                moodBtn.title = `当前筛选：${this.momentsMoodFilter}（点击再次打开面板，点击列表中的"全部"取消）`;
+                moodBtn.title = albumMode
+                    ? lunaLang(`当前筛选：${moodFilterValue}（点击修改）`, `Filtering: ${moodFilterValue} (click to change)`)
+                    : `当前筛选：${moodFilterValue}（点击再次打开面板，点击列表中的"全部"取消）`;
             } else {
                 moodBtn.classList.remove('active');
                 moodBtn.title = '按心情筛选朋友圈';
             }
         }
         // 同步分类筛选按钮状态
+        const categoryFilterValue = albumMode ? (this._momentsAlbumCategory || '') : (this.momentsCategoryFilter || '');
         const catBtn = container.querySelector('#momentsCategoryFilterBtn');
         if (catBtn) {
-            catBtn.style.display = inPinnedView ? 'none' : '';
-            if (this.momentsCategoryFilter) {
+            catBtn.style.display = hideFilterTools ? 'none' : '';
+            if (categoryFilterValue) {
                 catBtn.classList.add('active');
-                catBtn.title = `当前筛选：${this.momentsCategoryFilter}（点击再次打开面板，点击列表中的"全部"取消）`;
+                catBtn.title = albumMode
+                    ? lunaLang(`当前筛选：${categoryFilterValue}（点击修改）`, `Filtering: ${categoryFilterValue} (click to change)`)
+                    : `当前筛选：${categoryFilterValue}（点击再次打开面板，点击列表中的"全部"取消）`;
             } else {
                 catBtn.classList.remove('active');
                 catBtn.title = '按分类筛选朋友圈';
@@ -28743,11 +31285,10 @@ module.exports = class NorthLunaPlugin extends Plugin {
         if (newStripHtml && signatureEl && listEl) {
             if (oldStrip) {
                 oldStrip.outerHTML = newStripHtml;
-            } else if (inPinnedView) {
-                /* 置顶视图：返回条插在签名下方 */
-                signatureEl.insertAdjacentHTML('afterend', newStripHtml);
             } else {
-                signatureEl.insertAdjacentHTML('afterend', newStripHtml);
+                /* 置顶条/返回条紧贴动态列表上方插入。
+                   不能插在签名后面 —— 签名与列表之间现在还有「动态 / 相册」标签和相册容器。 */
+                listEl.insertAdjacentHTML('beforebegin', newStripHtml);
             }
             const newStrip = container.querySelector('#momentsPinStrip');
             if (newStrip) {
@@ -28762,5 +31303,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                 });
             }
         }
+        /* 相册视图下，列表数据变化也要同步重渲染相册 */
+        if (this._momentsActiveTab === 'album') this._renderMomentsAlbum(body);
     }
 };

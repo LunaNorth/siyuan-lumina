@@ -73,6 +73,12 @@ Full guide (client setup, reading, writing, troubleshooting): **[docs/mcp.md](ht
 
 ## Changelog
 
+### v2.5.8
+- **New** — Moments now has an Album tab: browse every post by date, with filters for type, location, mood and category.
+- **New** — Quick Note window: press `⌥⌘U` to capture a thought anywhere, then save it straight into Breeze.
+- **Fix** — Quick Note save and upload failed with an empty error; images are now previewed locally and only uploaded when you hit Save.
+- **Improved** — Cancel now discards the note instead of saving it, and saving closes the window.
+
 ### v2.5.7
 - **New** — works with AI: SiYuan 3.8+ ships an MCP server, so an AI client can read your Lumina notes and add new ones through an inbox file (Settings → Data sync → AI / MCP).
 - **Note** — there is no extra MCP server to install; see [docs/mcp.md](https://github.com/LunaNorth/siyuan-lumina/blob/main/docs/mcp.md) for setup.

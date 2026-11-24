@@ -244,6 +244,17 @@
     flex-direction: column;
 }
 
+/* 插件所在的思源标签页容器（.fn__flex-1 自带 overflow:auto）：隐藏多余的外层滚动条 */
+.north-luna-tab-panel {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.north-luna-tab-panel::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
 .north-luna-moments-container {
     position: relative;
     width: 100%;
@@ -309,6 +320,26 @@
 .north-luna-moments-main {
     width: 100%;
     overflow-x: hidden;
+    /* overflow-x:hidden 会让纵向计算为 auto，这里同时隐藏该层滚动条 */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.north-luna-moments-main::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+/* 朋友圈页面滚动链上的所有容器：只隐藏滚动条，保留滚动 */
+.north-luna-scrollbar-hidden {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+}
+.north-luna-scrollbar-hidden::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
 }
 
 
@@ -871,6 +902,943 @@
     font-size: 13px;
     color: var(--moments-signature-text);
     line-height: 1.5;
+}
+
+/* ===== 朋友圈相册 ===== */
+.north-luna-moments-album {
+    padding: 4px 16px 24px;
+}
+
+.north-luna-moments-album-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0 14px;
+}
+
+.north-luna-moments-album-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--moments-text);
+}
+
+.north-luna-moments-album-meta {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--moments-text-secondary);
+}
+
+.north-luna-moments-album-month {
+    margin-bottom: 18px;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 360px;
+}
+
+.north-luna-moments-album-month-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.north-luna-moments-album-month-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--moments-text);
+}
+
+.north-luna-moments-album-month-count {
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--b3-theme-surface-lighter) 80%, transparent);
+    color: var(--moments-text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.north-luna-moments-album-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 4px;
+}
+
+.north-luna-moments-album-cell {
+    position: relative;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--b3-theme-surface-lighter);
+    cursor: zoom-in;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.north-luna-moments-album-cell img,
+.north-luna-moments-album-cell video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.north-luna-moments-album-cell video {
+    background: #000;
+}
+
+.north-luna-moments-album-cell .north-luna-moments-video-play-icon {
+    width: 34px;
+    height: 34px;
+}
+
+.north-luna-moments-album-cell .north-luna-moments-video-play-icon::after {
+    border-left-width: 11px;
+    border-top-width: 7px;
+    border-bottom-width: 7px;
+}
+
+.north-luna-moments-album-cell-shade {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.28), transparent 45%);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+
+.north-luna-moments-album-cell:hover .north-luna-moments-album-cell-shade {
+    opacity: 1;
+}
+
+.north-luna-moments-album-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 64px 24px;
+    color: var(--moments-text-secondary);
+    text-align: center;
+}
+
+.north-luna-moments-album-empty-icon {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 12px;
+    opacity: 0.28;
+}
+
+.north-luna-moments-album-empty-title {
+    margin: 0;
+    font-size: 14px;
+    color: var(--moments-text);
+}
+
+.north-luna-moments-album-empty-sub {
+    margin: 6px 0 0;
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+/* 相册视图下隐藏动态流；动态视图下隐藏相册容器 */
+.north-luna-moments-container.moments-tab-album .north-luna-moments-pin-strip,
+.north-luna-moments-container.moments-tab-album .north-luna-moments-pin-back-bar,
+.north-luna-moments-container.moments-tab-album .north-luna-moments-list,
+.north-luna-moments-container.moments-tab-album .north-luna-moments-bottom-space {
+    display: none !important;
+}
+
+.north-luna-moments-container:not(.moments-tab-album) .north-luna-moments-album {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .north-luna-moments-album {
+        padding: 2px 12px 20px;
+    }
+    .north-luna-moments-album-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 3px;
+    }
+    .north-luna-moments-album-cell {
+        border-radius: 6px;
+    }
+}
+
+.north-luna-container.is-mobile .north-luna-moments-album {
+    padding: 2px 12px 20px;
+}
+
+.north-luna-container.is-mobile .north-luna-moments-album-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+}
+
+/* ===== 朋友圈相册（时间轴） ===== */
+.north-luna-moments-album {
+    padding: 4px 16px 32px;
+}
+
+.north-luna-moments-album-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0 12px;
+    margin-bottom: 6px;
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+    border-bottom: 1px solid color-mix(in srgb, var(--moments-border) 65%, transparent);
+}
+
+.north-luna-moments-album-year {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: -8px;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--moments-text);
+    font-size: 17px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.north-luna-moments-album-year:hover {
+    background: var(--b3-list-hover);
+    color: var(--moments-text);
+}
+
+.north-luna-moments-album-total {
+    font-size: 12px;
+    color: var(--moments-text-secondary);
+    white-space: nowrap;
+}
+
+.north-luna-moments-album-head-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.north-luna-moments-album-filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--moments-text);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.north-luna-moments-album-filter-toggle:hover {
+    background: transparent;
+    color: var(--moments-text);
+}
+
+.north-luna-moments-album-filter-toggle.active {
+    background: transparent;
+    color: var(--b3-theme-primary);
+}
+
+.north-luna-moments-album-timeline {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+}
+
+.north-luna-moments-album-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 22px 0;
+    border-radius: 10px;
+    border-bottom: 1px solid color-mix(in srgb, var(--moments-border) 45%, transparent);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.north-luna-moments-album-row:last-child {
+    border-bottom: 0;
+}
+
+.north-luna-moments-album-row:hover {
+    background: transparent;
+}
+
+.north-luna-moments-album-row:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--b3-theme-primary) 55%, transparent);
+    outline-offset: 2px;
+}
+
+.north-luna-moments-album-date {
+    flex: 0 0 62px;
+    width: 62px;
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    padding-top: 1px;
+}
+
+.north-luna-moments-album-day {
+    font-size: 26px;
+    font-weight: 300;
+    line-height: 1;
+    color: var(--moments-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.north-luna-moments-album-month-label {
+    font-size: 12px;
+    color: var(--moments-text-secondary);
+    white-space: nowrap;
+}
+
+.north-luna-moments-album-thumbs {
+    flex: 0 0 auto;
+    width: 216px;
+    display: grid;
+    gap: 3px;
+}
+
+.north-luna-moments-album-thumbs.cols-1 {
+    grid-template-columns: 1fr;
+    width: 108px;
+}
+
+.north-luna-moments-album-thumbs.cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.north-luna-moments-album-thumbs.cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.north-luna-moments-album-thumb {
+    position: relative;
+    display: block;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    border-radius: 4px;
+    background: var(--b3-theme-surface-lighter);
+}
+
+.north-luna-moments-album-thumb img,
+.north-luna-moments-album-thumb video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.north-luna-moments-album-thumb video {
+    background: #000;
+}
+
+.north-luna-moments-album-thumb .north-luna-moments-video-play-icon {
+    width: 28px;
+    height: 28px;
+}
+
+.north-luna-moments-album-thumb-more {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.north-luna-moments-album-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.north-luna-moments-album-caption {
+    padding-top: 2px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--moments-text-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+/* 纯文字 / 无图动态：文字本身作为整块浅色气泡 */
+.north-luna-moments-album-text-bubble {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--b3-theme-surface) 70%, transparent);
+    color: var(--moments-text);
+    font-size: 15px;
+    line-height: 1.55;
+    word-break: break-word;
+}
+
+.north-luna-moments-album-meta,
+.north-luna-moments-detail-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.north-luna-moments-album-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    max-width: 100%;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--b3-theme-surface-lighter);
+    color: var(--moments-text-secondary);
+    font-size: 11px;
+    line-height: 1.6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.north-luna-moments-album-chip.mood {
+    background: color-mix(in srgb, var(--b3-theme-primary) 12%, transparent);
+    color: color-mix(in srgb, var(--b3-theme-primary) 82%, var(--moments-text));
+}
+
+.north-luna-moments-album-chip svg {
+    flex: 0 0 auto;
+}
+
+/* 相册日期筛选弹层 */
+.north-luna-moments-album-filter {
+    position: fixed;
+    inset: 0;
+    z-index: 10060;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.north-luna-moments-album-filter.active {
+    opacity: 1;
+}
+
+.north-luna-moments-album-filter-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.north-luna-moments-album-filter-panel {
+    position: relative;
+    width: min(440px, calc(100vw - 40px));
+    max-height: min(82vh, 720px);
+    overflow-y: auto;
+    padding: 20px;
+    border-radius: 12px;
+    background: var(--b3-theme-surface);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.north-luna-moments-album-filter-panel::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+.north-luna-moments-album-filter-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.north-luna-moments-album-filter-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--moments-text);
+}
+
+.north-luna-moments-album-filter-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--moments-text-secondary);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.north-luna-moments-album-filter-close:hover {
+    background: var(--b3-list-hover);
+    color: var(--moments-text);
+}
+
+.north-luna-moments-album-filter-section {
+    margin-bottom: 14px;
+}
+
+.north-luna-moments-album-filter-label {
+    margin-bottom: 7px;
+    font-size: 12px;
+    color: var(--moments-text-secondary);
+}
+
+.north-luna-moments-album-filter-row {
+    display: flex;
+    gap: 10px;
+}
+
+.north-luna-moments-album-filter-section + .north-luna-moments-album-filter-row,
+.north-luna-moments-album-filter-row + .north-luna-moments-album-filter-row {
+    margin-top: 12px;
+}
+
+.north-luna-moments-album-filter-field {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--moments-text-secondary);
+}
+
+.north-luna-moments-album-filter-field select {
+    width: 100%;
+    padding: 9px 28px 9px 10px;
+    border: 1px solid var(--moments-border);
+    border-radius: 8px;
+    background-color: var(--b3-theme-background);
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--b3-theme-primary) 50%),
+        linear-gradient(135deg, var(--b3-theme-primary) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 55%, calc(100% - 9px) 55%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    color: var(--moments-text);
+    font-size: 14px;
+    font-family: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+    outline: none;
+}
+
+.north-luna-moments-album-filter-seg-group {
+    display: flex;
+    gap: 6px;
+}
+
+.north-luna-moments-album-filter-seg {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 6px;
+    border: 1px solid var(--moments-border);
+    border-radius: 8px;
+    background: var(--b3-theme-background);
+    color: var(--moments-text-secondary);
+    font-size: 13px;
+    font-family: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.north-luna-moments-album-filter-seg:hover {
+    border-color: color-mix(in srgb, var(--b3-theme-primary) 45%, var(--moments-border));
+}
+
+.north-luna-moments-album-filter-seg.active {
+    border-color: var(--b3-theme-primary);
+    background: color-mix(in srgb, var(--b3-theme-primary) 14%, transparent);
+    color: var(--b3-theme-primary);
+    font-weight: 600;
+}
+
+.north-luna-moments-album-filter-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.north-luna-moments-album-filter-actions-right {
+    display: flex;
+    flex-shrink: 0;
+    gap: 10px;
+}
+
+.north-luna-moments-album-filter-btn {
+    flex-shrink: 0;
+    padding: 7px 16px;
+    border: 0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.north-luna-moments-album-filter-btn.cancel {
+    background: var(--b3-theme-surface-lighter);
+    color: var(--moments-text-secondary);
+}
+
+.north-luna-moments-album-filter-btn.confirm {
+    background: var(--b3-theme-primary);
+    color: #fff;
+}
+
+.north-luna-moments-album-filter-btn.reset {
+    padding: 7px 10px;
+    background: transparent;
+    color: var(--moments-text-secondary);
+}
+
+.north-luna-moments-album-filter-btn.reset:hover {
+    background: var(--b3-theme-surface-lighter);
+    color: var(--moments-text);
+}
+
+/* 动态详情页 */
+.north-luna-moments-detail {
+    position: absolute;
+    inset: 0;
+    z-index: auto;
+    display: none;
+    flex-direction: column;
+    background: var(--moments-bg);
+}
+
+.north-luna-moments-detail.active {
+    display: flex;
+}
+
+/* 详情页打开时隐藏主页面：避免主页面封面工具栏等元素参与层级竞争，
+   同时让详情页不再需要高 z-index，思源顶栏弹出的面板可正常显示在详情之上 */
+.north-luna-moments-container.moments-detail-open .north-luna-moments-main,
+.north-luna-moments-container.moments-detail-open .north-luna-moments-publish {
+    display: none;
+}
+
+.north-luna-moments-detail-nav {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    height: 52px;
+    padding: 0 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--moments-border) 65%, transparent);
+}
+
+.north-luna-moments-detail-back {
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--moments-text);
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.north-luna-moments-detail-back:hover {
+    background: var(--b3-list-hover);
+}
+
+.north-luna-moments-detail-title {
+    flex: 1;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--moments-text);
+}
+
+.north-luna-moments-detail-nav-spacer {
+    width: 40px;
+}
+
+.north-luna-moments-detail-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 20px 16px 48px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.north-luna-moments-detail-body::-webkit-scrollbar {
+    display: none;
+}
+
+.north-luna-moments-detail-item {
+    display: flex;
+    gap: 12px;
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.north-luna-moments-detail-avatar {
+    flex: 0 0 42px;
+    width: 42px;
+    height: 42px;
+    border-radius: 6px;
+    object-fit: cover;
+}
+
+.north-luna-moments-detail-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.north-luna-moments-detail-name {
+    margin-bottom: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--moments-name-color);
+}
+
+.north-luna-moments-detail-text {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--moments-text);
+    word-break: break-word;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.north-luna-moments-detail-text * {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.north-luna-moments-detail-media {
+    margin-top: 12px;
+}
+
+.north-luna-moments-detail-meta {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--moments-text-secondary);
+}
+
+.north-luna-moments-detail-interactions {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid color-mix(in srgb, var(--moments-border) 65%, transparent);
+}
+
+.north-luna-moments-detail-interactions .north-luna-moments-comment-item {
+    margin-top: 8px;
+}
+
+.north-luna-moments-detail-toolbar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    margin: 10px 0 0;
+    padding: 0;
+}
+
+.north-luna-moments-detail-toolbar-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 2px;
+}
+
+.north-luna-moments-detail-toolbar-time {
+    min-width: 0;
+    font-size: 12px;
+    color: var(--moments-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.north-luna-moments-detail-tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--moments-text-secondary);
+    font-size: 16px;
+    line-height: 1;
+    font-family: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.north-luna-moments-detail-tool:hover {
+    background: var(--b3-list-hover);
+    color: var(--moments-text);
+}
+
+.north-luna-moments-detail-tool.danger:hover {
+    background: color-mix(in srgb, #e05252 12%, transparent);
+    color: #e05252;
+}
+
+.north-luna-moments-detail-more-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.north-luna-moments-detail-more-btn {
+    width: 38px;
+    height: 28px;
+    border-radius: 8px;
+    background: transparent;
+}
+
+.north-luna-moments-detail-more-btn:hover {
+    background: transparent;
+}
+
+.north-luna-moments-detail-menu {
+    position: absolute;
+    right: 0;
+    top: 34px;
+    z-index: 6;
+    display: none;
+    min-width: 132px;
+    padding: 5px;
+    border: 1px solid var(--moments-border);
+    border-radius: 10px;
+    background: var(--b3-theme-surface);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.north-luna-moments-detail-menu.active {
+    display: block;
+}
+
+.north-luna-moments-detail-menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--moments-text);
+    font-size: 13px;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.north-luna-moments-detail-menu-icon {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+}
+
+.north-luna-moments-detail-menu button:hover {
+    background: var(--b3-list-hover);
+}
+
+@media (max-width: 768px) {
+    .north-luna-moments-album {
+        padding: 2px 12px 24px;
+    }
+    .north-luna-moments-album-row {
+        gap: 10px;
+        padding: 18px 0;
+    }
+    .north-luna-moments-album-date {
+        flex-basis: 52px;
+        width: 52px;
+    }
+    .north-luna-moments-album-day {
+        font-size: 24px;
+    }
+    .north-luna-moments-album-thumbs {
+        width: min(190px, 46vw);
+    }
+    .north-luna-moments-album-thumbs.cols-1 {
+        width: min(95px, 23vw);
+    }
+    .north-luna-moments-album-text-bubble {
+        padding: 9px 12px;
+        font-size: 14px;
+    }
+    .north-luna-moments-album-caption {
+        font-size: 14px;
+        -webkit-line-clamp: 3;
+    }
+    .north-luna-moments-album-year {
+        font-size: 16px;
+    }
+    .north-luna-moments-album-filter-panel {
+        width: min(420px, calc(100vw - 24px));
+        padding: 16px;
+    }
+    .north-luna-moments-album-filter-seg {
+        padding: 7px 4px;
+        font-size: 12px;
+    }
+    .north-luna-moments-detail-body {
+        padding: 16px 12px 40px;
+    }
+}
+
+.north-luna-container.is-mobile .north-luna-moments-album {
+    padding: 2px 12px 24px;
+}
+
+.north-luna-container.is-mobile .north-luna-moments-album-thumbs {
+    width: min(190px, 46vw);
+}
+
+.north-luna-container.is-mobile .north-luna-moments-album-thumbs.cols-1 {
+    width: min(95px, 23vw);
+}
+
+.north-luna-container.is-mobile .north-luna-moments-album-text-bubble {
+    padding: 9px 12px;
+    font-size: 14px;
 }
 
 /* 置顶缩略图条（仿微信朋友圈） - 与列表同宽 */
@@ -1577,12 +2545,21 @@
     height: 56px;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     padding: 0 20px;
     gap: 10px;
     z-index: 2;
     background: linear-gradient(180deg, rgba(0,0,0,0.45) 0%, transparent 100%);
     pointer-events: none;
+    -webkit-app-region: no-drag;
+}
+
+/* 桌面端：工具栏整体靠左，并避开 macOS 左上角窗口按钮区域；
+   Windows 的 titlebar-area-x 为 0，不影响左侧间距 */
+@media (min-width: 768px) {
+    .north-luna-moments-image-preview-toolbar {
+        padding-left: calc(env(titlebar-area-x, 0px) + 20px);
+    }
 }
 
 .north-luna-moments-image-preview-toolbar > * {
@@ -1606,6 +2583,8 @@
     transition: all 0.2s ease;
     user-select: none;
     flex-shrink: 0;
+    -webkit-app-region: no-drag;
+    order: -1;
 }
 
 .north-luna-moments-image-preview-close:hover {
@@ -8598,9 +9577,9 @@
 }
 
 /* 行级代码：圆角矩形 + 边框 + 浅底 */
-.north-breeze-note-text code,
+.north-breeze-note-text code:not(.hljs),
 .north-breeze-note-text .north-breeze-md-code,
-.north-breeze-note-content code,
+.north-breeze-note-content code:not(.hljs),
 .north-breeze-note-content .north-breeze-md-code {
     color: var(--neo-inline-code-color, var(--b3-theme-primary));
     background-color: oklch(from currentColor l c h / 0.1);
@@ -13449,16 +14428,22 @@ a.north-breeze-link[data-lumina-title-state="pending"] {
 :is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) pre {
     margin: 6px 0;
     padding: 8px 10px;
-    background-color: color-mix(in srgb, currentColor 5%, transparent);
+    /* 背景与基础文字色交给思源当前代码块主题（.code-block），确保 VS 等主题完整生效 */
     border-radius: 8px;
     overflow-x: auto;
     font-size: 0.88em;
     line-height: 1.6;
 }
+/* hljs 尚未就绪 / 主题未加载时的兜底底色 */
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) pre:not(.code-block) {
+    background-color: color-mix(in srgb, currentColor 5%, transparent);
+}
 /* 行级 code 的底色/边框在代码块内还原为普通排版 */
-:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) pre code {
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) pre code:not(.hljs) {
     color: inherit;
     background-color: transparent;
+}
+:is(.north-breeze-note-text, .north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) pre code {
     outline: none;
     padding: 0;
     border-radius: 0;
@@ -13543,8 +14528,6 @@ a.north-breeze-link[data-lumina-title-state="pending"] {
    字体按需求固定 Consolas（思源代码块同款；monospace 作非 Windows 回落） */
 :is(.north-breeze-note-content, .north-breeze-memo-card-content, .north-luna-moments-item-text) .north-breeze-code-wrap code {
     display: block;
-    color: inherit;
-    background-color: transparent;
     outline: none;
     padding: 0;
     border-radius: 0;
@@ -14978,4 +15961,287 @@ a.north-breeze-link[data-lumina-title-state="pending"] {
 .north-luna-container.is-mobile .north-luna-nav-order-overlay {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+}
+
+/* ============================================================
+ * 轻语速记：页面浮层兜底（移动端 / Electron 独立窗口不可用时）
+ * ============================================================ */
+.north-luna-quicknote-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.north-luna-quicknote-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.32);
+}
+.north-luna-quicknote-panel {
+    position: relative;
+    z-index: 1;
+    width: min(520px, 100%);
+    max-height: min(620px, calc(100vh - 40px));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 82%, transparent);
+    border-radius: 18px;
+    background: var(--b3-theme-background, #fff);
+    color: var(--b3-theme-on-background, #202124);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+.north-luna-quicknote-head {
+    height: 56px;
+    flex: 0 0 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px 0 18px;
+    border-bottom: 1px solid color-mix(in srgb, var(--b3-border-color) 66%, transparent);
+}
+.north-luna-quicknote-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 650;
+}
+.north-luna-quicknote-logo {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: var(--b3-theme-primary, #3575f0);
+    color: #fff;
+    font-size: 15px;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--b3-theme-primary) 28%, transparent);
+}
+.north-luna-quicknote-x {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--b3-theme-on-surface, #6b7280);
+    cursor: pointer;
+    font-size: 21px;
+    line-height: 1;
+}
+.north-luna-quicknote-x:hover {
+    background: var(--b3-list-hover, rgba(127, 127, 127, 0.1));
+    color: var(--b3-theme-on-background, #202124);
+}
+.north-luna-quicknote-editor {
+    width: 100%;
+    min-height: 190px;
+    max-height: 42vh;
+    flex: 1;
+    padding: 18px 20px 10px;
+    border: none;
+    outline: none;
+    resize: none;
+    background: transparent;
+    color: var(--b3-theme-on-background, #202124);
+    font: inherit;
+    font-size: 15px;
+    line-height: 1.78;
+}
+.north-luna-quicknote-editor::placeholder {
+    color: var(--b3-theme-on-surface, #6b7280);
+    opacity: 0.72;
+}
+.north-luna-quicknote-attachments {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-height: 104px;
+    overflow-y: auto;
+    padding: 0 20px 10px;
+}
+.north-luna-quicknote-attachments.has-items {
+    display: flex;
+}
+.north-luna-quicknote-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 220px;
+    padding: 5px 6px 5px 9px;
+    border: 1px solid color-mix(in srgb, var(--b3-border-color) 78%, transparent);
+    border-radius: 9px;
+    background: var(--b3-theme-surface, #f7f8fa);
+    color: var(--b3-theme-on-surface, #6b7280);
+    font-size: 11px;
+}
+.north-luna-quicknote-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.north-luna-quicknote-chip button {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--b3-theme-on-surface, #6b7280);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+.north-luna-quicknote-chip button:hover {
+    background: var(--b3-list-hover, rgba(127, 127, 127, 0.1));
+    color: var(--b3-theme-on-background, #202124);
+}
+.north-luna-quicknote-status {
+    min-height: 30px;
+    padding: 0 20px;
+    color: var(--b3-theme-on-surface, #6b7280);
+    font-size: 11px;
+    line-height: 30px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.north-luna-quicknote-status.is-error {
+    color: #d84a4a;
+}
+.north-luna-quicknote-foot {
+    flex: 0 0 62px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 16px 0 12px;
+    border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 66%, transparent);
+}
+.north-luna-quicknote-tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.north-luna-quicknote-tools button {
+    min-width: 31px;
+    height: 31px;
+    padding: 0 7px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--b3-theme-on-surface, #6b7280);
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+}
+.north-luna-quicknote-tools button:hover {
+    background: var(--b3-list-hover, rgba(127, 127, 127, 0.1));
+    color: var(--b3-theme-on-background, #202124);
+}
+.north-luna-quicknote-save {
+    height: 34px;
+    padding: 0 18px;
+    border: none;
+    border-radius: 9px;
+    background: var(--b3-theme-primary, #3575f0);
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--b3-theme-primary) 22%, transparent);
+}
+.north-luna-quicknote-save:hover {
+    filter: brightness(1.04);
+}
+.north-luna-quicknote-picker {
+    position: absolute;
+    z-index: 3;
+    width: 250px;
+    max-height: 240px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 11px;
+    background: var(--b3-theme-surface, #f7f8fa);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+.north-luna-quicknote-picker-input {
+    width: 100%;
+    padding: 9px 11px;
+    border: none;
+    border-bottom: 1px solid var(--b3-border-color);
+    outline: none;
+    background: transparent;
+    color: var(--b3-theme-on-background, #202124);
+    font: inherit;
+    font-size: 12px;
+}
+.north-luna-quicknote-picker-list {
+    overflow-y: auto;
+    padding: 5px;
+}
+.north-luna-quicknote-picker-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 7px 9px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--b3-theme-on-surface, #6b7280);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+}
+.north-luna-quicknote-picker-item:hover {
+    background: var(--b3-list-hover, rgba(127, 127, 127, 0.1));
+    color: var(--b3-theme-on-background, #202124);
+}
+.north-luna-quicknote-picker-text {
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.north-luna-quicknote-picker-meta {
+    font-size: 10px;
+    opacity: 0.75;
+}
+.north-luna-quicknote-picker-empty {
+    padding: 10px 9px;
+    color: var(--b3-theme-on-surface, #6b7280);
+    font-size: 11px;
+}
+.north-luna-quicknote-picker-list::-webkit-scrollbar {
+    width: 5px;
+}
+.north-luna-quicknote-picker-list::-webkit-scrollbar-thumb {
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--b3-theme-on-surface) 32%, transparent);
+}
+@media (max-width: 768px) {
+    .north-luna-quicknote-overlay {
+        align-items: flex-end;
+        padding: 12px;
+    }
+    .north-luna-quicknote-panel {
+        width: 100%;
+        max-height: calc(100vh - 24px);
+        border-radius: 16px;
+    }
+    .north-luna-quicknote-editor {
+        min-height: 150px;
+    }
 }
