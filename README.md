@@ -73,6 +73,11 @@ Full guide (client setup, reading, writing, troubleshooting): **[docs/mcp.md](ht
 
 ## Changelog
 
+### v2.5.9
+- **Fix** — In the browser version, Enter in the Breeze sidebar posted a note by accident. It now inserts a newline unless "Enter to submit" is on, and list continuation no longer submits.
+- **Fix** — Long non-Chinese text in Moments (e.g. Vietnamese) could overflow the card sideways; it now breaks by character.
+- **Improved** — The "Enter to submit" setting description now covers both the main input and the sidebar.
+
 ### v2.5.8
 - **New** — Moments now has an Album tab: browse every post by date, with filters for type, location, mood and category.
 - **New** — Quick Note window: press `⌥⌘U` to capture a thought anywhere, then save it straight into Breeze.

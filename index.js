@@ -6722,7 +6722,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                     /* 根据「回车直接提交」设置初始化移动端键盘提示（enterkeyhint）：
                        开='done'（键盘显示"完成"），关='enter'（显示"换行"）。
                        移动端始终强制换行，与 keydown 逻辑保持一致。 */
-                    input.setAttribute('enterkeyhint', (!plugin.isMobile && this._getSetting('breezeEnterToSubmit') !== false) ? 'done' : 'enter');
+                    input.setAttribute('enterkeyhint', (!plugin.isMobile && this._getSetting('breezeEnterToSubmit') === true) ? 'done' : 'enter');
 
                     /* 输入框自适应高度：内容少时紧凑、多时随内容撑高（至 max-height 后转滚动），
                        与内联编辑框 autoResize 一致，解决「文字多可滑动但展示空间太小」 */
@@ -6741,7 +6741,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             /* 列表续行：若光标所在行的「上一行」（即光标前最后一个换行后的内容）匹配 task/ul/ol，
                                则在光标处插入 "\n" + 同前缀（任务续 "- [ ] "、无序续 "- "、有序续 "N+1. "）。
                                若上一行只有前缀没有正文（即刚点完工具栏立刻按 Enter），删除前缀退出列表。
-                               普通行则走「回车直接提交」开关逻辑（默认开启） */
+                               普通行则走「回车直接提交」开关逻辑（默认关闭） */
                             const s = input.selectionStart, end = input.selectionEnd;
                             const v = input.value;
                             const before = v.substring(0, s);
@@ -6781,7 +6781,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                                 return;
                             }
                             /* 普通行：按开关决定提交 or 默认换行（移动端始终强制换行） */
-                            if (!plugin.isMobile && this._getSetting('breezeEnterToSubmit') !== false) {
+                            if (!plugin.isMobile && this._getSetting('breezeEnterToSubmit') === true) {
                                 e.preventDefault();
                                 submit();
                             }
@@ -8666,7 +8666,7 @@ module.exports = class NorthLunaPlugin extends Plugin {
                             { type: 'button', action: 'openQuickNote', title: lunaLang('轻语速记', 'Quick Note'), desc: lunaLang('打开独立速记窗口，随手记录后自动保存到清风。默认全局快捷键 ⌥⌘U，可在思源「设置 → 快捷键」中修改。', 'Open a floating quick-capture window. Notes are saved to Breeze. Default global shortcut: ⌥⌘U (editable in SiYuan Settings → Keymap).'), buttonText: lunaLang('打开速记', 'Open') },
                             { type: 'toggle', key: 'autoSyncBreeze', title: '自动同步思源笔记文档', desc: '开启后，发布清风笔记时会自动同步写入思源笔记文档（使用「数据同步」设置中的模板与目标）。默认关闭。', default: false },
                             { type: 'toggle', key: 'breezeDockEnabled', title: '启用清风侧边栏', desc: '开启后在思源右侧边栏显示精简版清风面板。需要刷新思源笔记或重新打开思源笔记后才能生效。', default: false },
-                            { type: 'toggle', key: 'breezeEnterToSubmit', title: '回车直接提交', desc: '开启后，主输入框按 Enter 直接发布；Shift+Enter 仍然换行。关闭后只能点发送按钮提交。', default: false },
+                            { type: 'toggle', key: 'breezeEnterToSubmit', title: '回车直接提交', desc: '开启后，主输入框与清风侧边栏输入框按 Enter 直接发布；Shift+Enter 仍然换行。关闭后按 Enter 只会换行，需点发送按钮提交。', default: false },
                             { type: 'toggle', key: 'breezeSidebarFullScroll', title: '左侧面板整体滚动', desc: '开启后，左侧面板作为一个整体上下滚动，而非仅标签区独立滚动。', default: false },
                             { type: 'slider', key: 'breezeSidebarWidth', title: '侧边栏宽度', desc: '自定义清风左侧边栏的显示宽度，默认 260px（即当前大小）。', default: 260, min: 180, max: 420, step: 10 },
                             { type: 'input', key: 'breezeReviewSignature', title: '每日回顾签名', desc: '显示在「每日回顾」顶部中央的个性签名。留空时回退使用「朋友圈设置 → 个性签名」。', default: '遇事不决，可问春风' },
@@ -14597,14 +14597,20 @@ module.exports = class NorthLunaPlugin extends Plugin {
         }, 3000);
     }
 
-    _getPluginSetting(key) {
-        // 优先用 tab 实例的 _getSetting（有完整 schema 默认值回退），tab 还未启动时直接读 settings
+    _getPluginSetting(key, defaultValue) {
+        // 优先用 tab 实例的 _getSetting（有完整 schema 默认值回退），tab 还未启动时直接读 settings。
+        // Dock / 移动端等没有 tab 的场景可显式传入 defaultValue，避免「未写入存储」被调用方
+        // 用 `!== false` 误判成开启（例如 breezeEnterToSubmit 默认关闭却返回 undefined）。
+        let value;
         try {
             if (this._siyuTab && typeof this._siyuTab._getSetting === 'function') {
-                return this._siyuTab._getSetting(key);
+                value = this._siyuTab._getSetting(key);
             }
         } catch (e) { /* fall through */ }
-        return ((this.data[SETTINGS_STORAGE] || {}).settings || {})[key];
+        if (value === undefined) {
+            value = ((this.data[SETTINGS_STORAGE] || {}).settings || {})[key];
+        }
+        return value === undefined ? defaultValue : value;
     }
 
     /* 朋友圈长笔记自动折叠：按设置阈值（N 行）裁剪 .north-luna-moments-item-text 文字段；
@@ -22454,7 +22460,10 @@ bridgeInvoke(CH_NOTES, { limit: 80 }).then(notes => {
         // 回车提交（与设置同步，移动端始终强制换行）
         // 注意：必须每次按键实时读取设置。Dock 是独立 DOM，改设置后不会自动重建，
         // 若在此缓存成常量，用户在设置里改动后侧边栏仍沿用旧值，导致开关看起来不生效。
-        const getEnterToSubmit = () => !plugin.isMobile && plugin._getPluginSetting('breezeEnterToSubmit') !== false;
+        /* 默认关闭：只有用户明确开启（存储值为 true）才回车提交。
+           不能用 `!== false` —— Dock 无 tab 时读不到 schema 默认值，未写入存储会返回 undefined，
+           会被误判成开启，导致网页版侧边栏回车即提交。 */
+        const getEnterToSubmit = () => !plugin.isMobile && plugin._getPluginSetting('breezeEnterToSubmit', false) === true;
         const syncEnterKeyHint = () => input.setAttribute('enterkeyhint', getEnterToSubmit() ? 'done' : 'enter');
         syncEnterKeyHint();
         input.addEventListener('focus', syncEnterKeyHint);
@@ -22480,7 +22489,7 @@ bridgeInvoke(CH_NOTES, { limit: 80 }).then(notes => {
                     input.setSelectionRange(lineStart + 1, lineStart + 1);
                     updateState();
                     requestAnimationFrame(autoResize);
-
+                    return;
                 }
                 let prefix = '';
                 if (mTask) prefix = mTask[1] + mTask[2] + ' [ ] ';
@@ -22495,7 +22504,7 @@ bridgeInvoke(CH_NOTES, { limit: 80 }).then(notes => {
                     input.setSelectionRange(newPos, newPos);
                     updateState();
                     requestAnimationFrame(autoResize);
-
+                    return;
                 }
                 if (getEnterToSubmit()) {
                     e.preventDefault();
@@ -27035,7 +27044,8 @@ bridgeInvoke(CH_NOTES, { limit: 80 }).then(notes => {
             </div>`;
         }
 
-        // 天气、心情、地点 meta（顺序：天气 → 心情 → 地址 → 日期，与轻语一致；地址前无图标）
+        /* 天气、心情、分类、地点、日期 meta（顺序：天气 → 心情 → 分类 → 地址 → 日期，与轻语一致）。
+           移动端与桌面端保持一致：全部沉在卡片底部、与「更多」按钮同一行，不单独上移。 */
         const metaParts = [];
         if (m.weather) metaParts.push(`<span class="north-luna-moments-meta-item">${m.weather}</span>`);
         if (m.mood) metaParts.push(`<span class="north-luna-moments-meta-item">${m.mood}</span>`);
